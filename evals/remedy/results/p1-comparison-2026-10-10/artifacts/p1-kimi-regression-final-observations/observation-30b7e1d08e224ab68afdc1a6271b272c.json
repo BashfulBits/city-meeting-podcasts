@@ -1,0 +1,88 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-duplicate-views",
+        "evidence_ref_ids": [
+          "provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727"
+        ],
+        "missing_evidence": [
+          "A second, distinct recording with a different clip_id or provider_guid (and/or a different published date or content_hash) demonstrating a separate meeting.",
+          "Evidence that the AgendaViewer and MediaPlayer links correspond to two different clips rather than two interfaces to the same clip_id=3727 under view_id=10.",
+          "A complete source archive and independent adjudication, given the seed-only completeness status and stated limitations."
+        ],
+        "proposed_action": "Reject the claim that the body met twice based on this evidence; treat the material as a single recording (one clip_id=3727, one provider_guid, one content_hash, one published date) and do not create a second meeting or duplicate entry from the two view endpoints.",
+        "proposed_owner": "TIF 4 Board of Directors (Fort Worth, TX)",
+        "rationale": "Only one evidence reference was supplied, and its immutable metadata describes exactly one clip: clip_id=3727, a provider_guid identical to the MediaPlayer URL, a single content_hash, and a single published timestamp (2020-06-03). Within that source_span, the two links (AgendaViewer and MediaPlayer) are two archive views of the same clip_id under the same view_id; per approved policy, shared tokens (view_id, clip_id, city) do not establish distinct identity. Two view endpoints of one clip do not prove the body met twice, so the claim is unsupported and the duplicated body/title label string is a labeling artifact, not evidence of a second session. Owner was selected independently from the official body label metadata (TIF 4 Board of Directors, Fort Worth, TX), and only the supplied evidence-reference ID is cited. Because the archive is seed-only and not adjudicated, no affirmative inference of multiple meetings is possible from the frozen evidence.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 92.83142791688442,
+      "prompt_case_id": "tif-duplicate-views",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-duplicate-views\",\"supported\":false,\"proposed_owner\":\"TIF 4 Board of Directors (Fort Worth, TX)\",\"proposed_action\":\"Reject the claim that the body met twice based on this evidence; treat the material as a single recording (one clip_id=3727, one provider_guid, one content_hash, one published date) and do not create a second meeting or duplicate entry from the two view endpoints.\",\"evidence_ref_ids\":[\"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\"],\"missing_evidence\":[\"A second, distinct recording with a different clip_id or provider_guid (and/or a different published date or content_hash) demonstrating a separate meeting.\",\"Evidence that the AgendaViewer and MediaPlayer links correspond to two different clips rather than two interfaces to the same clip_id=3727 under view_id=10.\",\"A complete source archive and independent adjudication, given the seed-only completeness status and stated limitations.\"],\"rationale\":\"Only one evidence reference was supplied, and its immutable metadata describes exactly one clip: clip_id=3727, a provider_guid identical to the MediaPlayer URL, a single content_hash, and a single published timestamp (2020-06-03). Within that source_span, the two links (AgendaViewer and MediaPlayer) are two archive views of the same clip_id under the same view_id; per approved policy, shared tokens (view_id, clip_id, city) do not establish distinct identity. Two view endpoints of one clip do not prove the body met twice, so the claim is unsupported and the duplicated body/title label string is a labeling artifact, not evidence of a second session. Owner was selected independently from the official body label metadata (TIF 4 Board of Directors, Fort Worth, TX), and only the supplied evidence-reference ID is cited. Because the archive is seed-only and not adjudicated, no affirmative inference of multiple meetings is possible from the frozen evidence.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "I need to reply with valid raw JSON matching the schema. My previous reply got cut off in rationale. Let me write complete valid JSON.\n\nCase: claim says \"Two archive views of the same clip prove this body met twice.\" Evidence: single evidence ref with one clip_id 3727, one provider_guid, one content_hash, one published date. The two links (agenda and canonical_video) point to the same clip_id=3727 \u2014 two views of the same clip, not two meetings. So the claim is not supported.\n\nproposed_owner: from body label \"TIF 4 BOARD OF DIRECTORS MEETING\", city fort-worth-tx \u2192 \"TIF 4 Board of Directors (Fort Worth, TX)\".\n\nproposed_action: reject claim of two meetings; treat as single recording.\n\nevidence_ref_ids: [\"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\"]\n\nmissing_evidence: list of what's missing.\n\nrationale: keep under 2000 chars.",
+                "refusal": null
+              },
+              "reasoning_content": "I need to reply with valid raw JSON matching the schema. My previous reply got cut off in rationale. Let me write complete valid JSON.\n\nCase: claim says \"Two archive views of the same clip prove this body met twice.\" Evidence: single evidence ref with one clip_id 3727, one provider_guid, one content_hash, one published date. The two links (agenda and canonical_video) point to the same clip_id=3727 \u2014 two views of the same clip, not two meetings. So the claim is not supported.\n\nproposed_owner: from body label \"TIF 4 BOARD OF DIRECTORS MEETING\", city fort-worth-tx \u2192 \"TIF 4 Board of Directors (Fort Worth, TX)\".\n\nproposed_action: reject claim of two meetings; treat as single recording.\n\nevidence_ref_ids: [\"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\"]\n\nmissing_evidence: list of what's missing.\n\nrationale: keep under 2000 chars.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626968,
+        "id": "chatcmpl-99378d5c-74b9-49ed-8622-dd3667bbc569",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 2682,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 216,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2817,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 5499
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

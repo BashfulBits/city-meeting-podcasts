@@ -1,0 +1,88 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "sign-distinct",
+        "evidence_ref_ids": [
+          "provider-346308"
+        ],
+        "missing_evidence": [
+          "A frozen provider record for a Special Sign District committee",
+          "Official metadata establishing that the Arts District Sign Advisory Committee and any Special Sign District committee are the same body",
+          "An ordinance, agenda, minutes, membership record, or verified provider GUID linkage proving identity rather than shared sign/topic tokens"
+        ],
+        "proposed_action": "abstain_pending_equivalence_evidence",
+        "proposed_owner": "Arts District Sign Advisory Committee",
+        "rationale": "The sole supplied evidence-reference provider-346308 establishes only the immutable provider label/title for the Arts District Sign Advisory Committee dated 2025-06-17. It does not supply a Special Sign District committee record or any official equivalence metadata. Shared Dallas/sign terminology is insufficient to establish identity under the approved policy, so the claimed necessary sameness is not adjudicable on the frozen evidence.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "sign-distinct",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 52.753109875135124,
+      "prompt_case_id": "sign-distinct",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"sign-distinct\",\"supported\":null,\"proposed_owner\":\"Arts District Sign Advisory Committee\",\"proposed_action\":\"abstain_pending_equivalence_evidence\",\"evidence_ref_ids\":[\"provider-346308\"],\"missing_evidence\":[\"A frozen provider record for a Special Sign District committee\",\"Official metadata establishing that the Arts District Sign Advisory Committee and any Special Sign District committee are the same body\",\"An ordinance, agenda, minutes, membership record, or verified provider GUID linkage proving identity rather than shared sign/topic tokens\"],\"rationale\":\"The sole supplied evidence-reference provider-346308 establishes only the immutable provider label/title for the Arts District Sign Advisory Committee dated 2025-06-17. It does not supply a Special Sign District committee record or any official equivalence metadata. Shared Dallas/sign terminology is insufficient to establish identity under the approved policy, so the claimed necessary sameness is not adjudicable on the frozen evidence.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "We need answer JSON only matching schema. We have done. Now need compute answer.\n\nWe need assess claim using only frozen evidence and approved policy. Official metadata immutable. Shared city/topic tokens do not establish identity. Abstain missing evidence. Select owner independently and cite only supplied evidence-reference IDs.\n\nInput body_label Arts District Sign Advisory Committee, city dallas-tx, claim: \"Arts District Sign and Special Sign District committees are necessarily the same body.\" Evidence refs one provider-346308: body/title only Arts District Sign Advisory Committee - Jun 17 2025. Policy provenance exact provider label or GUID from archive snapshot. No evidence about Special Sign District committee, no official metadata equating bodies. Shared tokens sign/dallas don't establish identity. Thus claim unsupported. Need supported likely false? Schema supported boolean|null. Since assessing claim: claim is not supported by evidence. Could supported=false (the claim is false relative to evidence? We cannot prove committees are distinct either; only that necessary sameness is not established). They say abstain when evidence missing. For identity claim, missing evidence -> supported null? Need decide. The claim says necessarily same body. We have evidence only of Arts District Sign Advisory Committee. There is no evidence of Special Sign District committee. Under instruction \"Abstain when evidence is missing\" and supported can be null. So supported should be null, proposed_action likely \"abstain\" or \"reject_claim\"? Proposed owner independently maybe body_label? Need select owner independently and cite evidence ref IDs. Owner likely \"Arts District Sign Advisory Committee\" because that's the only evidenced body. But claim compares two committees; proposed_owner? The schema likely from remedy eval: choose owner for the case. body_label supplied Arts District Sign Advisory Committee. Since metadata immutable, owner should be official body label from Evidence: Arts District Sign Advisory Committee. Proposed action maybe \"no_merge\" / \"do_not_merge\". Need infer expected values? Schema allows any string/null. We can choose clear action. Since claim unsupported due missing evidence, proposed_action maybe \"abstain\". But also we may propose owner independently: \"Arts District Sign Advisory Committee\". Evidence_ref_ids: supplied IDs only: [\"provider-346308\"]. missing_evidence: list what missing: evidence that a Special Sign District committee exists in the frozen archive; official metadata/minutes/agendas establishing Arts District Sign Advisory Committee and Special Sign District committee are same body; membership/ordinance/resolution or provider GUID equivalence. Rationale under 2000 chars.\n\nNeed include case_id. Input id is \"sign-distinct\". Use that.\n\nNeed be careful: If supported null means abstain; proposed_action maybe \"abstain\". But user prompt says \"Select an owner independently and cite only supplied evidence-reference IDs.\" If abstain, still owner? They required proposed_owner. Could be string. OK.\n\nCould supported=false because the claim is necessarily same, and evidence shows an official label \"Arts District Sign Advisory Committee\" only; no \"Special Sign District\" body in evidence. However absence of evidence is not evidence of absence. The prompt explicitly says shared city/topic tokens do not establish identity; abstain when evidence missing. The claim has a strong necessarily. Since no evidence supports it, the assessment of claim should be unsupported. In schema, supported perhaps false means claim not supported. They distinguish missing_evidence. In many eval tasks, supported=false means contradiction/insufficient? Need infer.\n\nThe claim: \"A and B are necessarily the same body.\" Evidence: one provider label for A. No B. Under approved policy, exact provider label or verified GUID. Official metadata immutable. We cannot establish identity from shared tokens. So claim is not supported by frozen evidence. Should `supported` be false or null? They provide `supported` nullable and say abstain when evidence missing. Abstain => supported=null. If evidence existed to refute, false. Here missing evidence for B and equivalence. So null. Proposed_action: \"abstain_pending_equivalence_evidence\" maybe.\n\nNeed cite only evidence-reference IDs. evidence_ref_ids should be [\"provider-346308\"]. Missing evidence can mention absence without IDs. OK.\n\nNeed output raw JSON no markdown. Ensure valid JSON. Rationale mentions supplied evidence provider-346308. Cite only IDs in evidence_ref_ids; rationale can mention ID? It says cite only supplied evidence-reference IDs. Rationale can say \"The sole supplied evidence-reference provider-346308...\" that's fine. No other IDs like source_key? Avoid citing source_key. It says cite only evidence-reference IDs; in rationale maybe only provider-346308. Need not use url.\n\nNeed maybe proposed_owner \"Arts District Sign Advisory Committee\" exact. Good.\n\nNeed final only JSON. Done.",
+                "refusal": null
+              },
+              "reasoning_content": "We need answer JSON only matching schema. We have done. Now need compute answer.\n\nWe need assess claim using only frozen evidence and approved policy. Official metadata immutable. Shared city/topic tokens do not establish identity. Abstain missing evidence. Select owner independently and cite only supplied evidence-reference IDs.\n\nInput body_label Arts District Sign Advisory Committee, city dallas-tx, claim: \"Arts District Sign and Special Sign District committees are necessarily the same body.\" Evidence refs one provider-346308: body/title only Arts District Sign Advisory Committee - Jun 17 2025. Policy provenance exact provider label or GUID from archive snapshot. No evidence about Special Sign District committee, no official metadata equating bodies. Shared tokens sign/dallas don't establish identity. Thus claim unsupported. Need supported likely false? Schema supported boolean|null. Since assessing claim: claim is not supported by evidence. Could supported=false (the claim is false relative to evidence? We cannot prove committees are distinct either; only that necessary sameness is not established). They say abstain when evidence missing. For identity claim, missing evidence -> supported null? Need decide. The claim says necessarily same body. We have evidence only of Arts District Sign Advisory Committee. There is no evidence of Special Sign District committee. Under instruction \"Abstain when evidence is missing\" and supported can be null. So supported should be null, proposed_action likely \"abstain\" or \"reject_claim\"? Proposed owner independently maybe body_label? Need select owner independently and cite evidence ref IDs. Owner likely \"Arts District Sign Advisory Committee\" because that's the only evidenced body. But claim compares two committees; proposed_owner? The schema likely from remedy eval: choose owner for the case. body_label supplied Arts District Sign Advisory Committee. Since metadata immutable, owner should be official body label from Evidence: Arts District Sign Advisory Committee. Proposed action maybe \"no_merge\" / \"do_not_merge\". Need infer expected values? Schema allows any string/null. We can choose clear action. Since claim unsupported due missing evidence, proposed_action maybe \"abstain\". But also we may propose owner independently: \"Arts District Sign Advisory Committee\". Evidence_ref_ids: supplied IDs only: [\"provider-346308\"]. missing_evidence: list what missing: evidence that a Special Sign District committee exists in the frozen archive; official metadata/minutes/agendas establishing Arts District Sign Advisory Committee and Special Sign District committee are same body; membership/ordinance/resolution or provider GUID equivalence. Rationale under 2000 chars.\n\nNeed include case_id. Input id is \"sign-distinct\". Use that.\n\nNeed be careful: If supported null means abstain; proposed_action maybe \"abstain\". But user prompt says \"Select an owner independently and cite only supplied evidence-reference IDs.\" If abstain, still owner? They required proposed_owner. Could be string. OK.\n\nCould supported=false because the claim is necessarily same, and evidence shows an official label \"Arts District Sign Advisory Committee\" only; no \"Special Sign District\" body in evidence. However absence of evidence is not evidence of absence. The prompt explicitly says shared city/topic tokens do not establish identity; abstain when evidence missing. The claim has a strong necessarily. Since no evidence supports it, the assessment of claim should be unsupported. In schema, supported perhaps false means claim not supported. They distinguish missing_evidence. In many eval tasks, supported=false means contradiction/insufficient? Need infer.\n\nThe claim: \"A and B are necessarily the same body.\" Evidence: one provider label for A. No B. Under approved policy, exact provider label or verified GUID. Official metadata immutable. We cannot establish identity from shared tokens. So claim is not supported by frozen evidence. Should `supported` be false or null? They provide `supported` nullable and say abstain when evidence missing. Abstain => supported=null. If evidence existed to refute, false. Here missing evidence for B and equivalence. So null. Proposed_action: \"abstain_pending_equivalence_evidence\" maybe.\n\nNeed cite only evidence-reference IDs. evidence_ref_ids should be [\"provider-346308\"]. Missing evidence can mention absence without IDs. OK.\n\nNeed output raw JSON no markdown. Ensure valid JSON. Rationale mentions supplied evidence provider-346308. Cite only IDs in evidence_ref_ids; rationale can mention ID? It says cite only supplied evidence-reference IDs. Rationale can say \"The sole supplied evidence-reference provider-346308...\" that's fine. No other IDs like source_key? Avoid citing source_key. It says cite only evidence-reference IDs; in rationale maybe only provider-346308. Need not use url.\n\nNeed maybe proposed_owner \"Arts District Sign Advisory Committee\" exact. Good.\n\nNeed final only JSON. Done.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791627944,
+        "id": "chatcmpl-8796b28d-2d35-4bb9-9d05-a60dd06534d5",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 1164,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 972,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 967,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 2131
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

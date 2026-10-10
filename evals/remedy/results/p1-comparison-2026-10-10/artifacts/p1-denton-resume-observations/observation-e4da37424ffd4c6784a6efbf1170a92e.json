@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "88b934478f270c5d644c6e9c840782be12df4a79e0c09e6516c3669fca4169c5",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:38:49.583582+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-library-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign",
+        "proposed_owner": "denton-tx-library-board",
+        "rationale": "The official agenda establishes that the convened body is the Library Board (Library Advisory Board). Although the meeting was held in the Council Work Session Room, the governing family policy explicitly states that the meeting room is not the owner. Therefore, the recording belongs in denton-tx-library-board rather than denton-tx-city-council.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-library-council",
+      "configuration_id": "dffcd46cce6f3b43dc70ab7d7f17c935375b57143397e9168c154a3bfe4ebb8e",
+      "latency_seconds": 12.831295375246555,
+      "prompt_case_id": "denton-library-council",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-library-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-library-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda establishes that the convened body is the Library Board (Library Advisory Board). Although the meeting was held in the Council Work Session Room, the governing family policy explicitly states that the meeting room is not the owner. Therefore, the recording belongs in denton-tx-library-board rather than denton-tx-city-council.\"\n}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791625181,
+        "id": "3QfKatSWE8CGz7IPs8zGmA8",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 998,
+          "completion_tokens_details": {
+            "reasoning_tokens": 842,
+            "text_tokens": 156
+          },
+          "prompt_tokens": 2656,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2656,
+            "video_tokens": null
+          },
+          "total_tokens": 3654
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

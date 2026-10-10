@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign",
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The official agenda (official-agenda, recording_id 122084) confirms the officially convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, meeting Wednesday, May 26, 2021 at 12:00 PM \u2014 exactly matching the recording's body label, date, time, and provider_guid 122084. Per the approved identity policy, ownership follows the officially convened body, not the meeting room, and distinct numbered boards remain distinct: this is Zone No. 1, not TIRZ No. 2 (whose feed only lists 'Tax Increment Reinvestment Zone No. 2 Board' meetings). Among existing feeds, only 'denton-tx-tirz-1-board' (Denton: TIRZ No. 1 Board) matches this body, and it already lists this exact recording (body and provider_guid 122084). The assignment is directly supported by the official metadata; no shared-token inference is needed.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-own",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 29.0557634588331,
+      "prompt_case_id": "denton-zone1-own",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"assign\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda (official-agenda, recording_id 122084) confirms the officially convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, meeting Wednesday, May 26, 2021 at 12:00 PM \u2014 exactly matching the recording's body label, date, time, and provider_guid 122084. Per the approved identity policy, ownership follows the officially convened body, not the meeting room, and distinct numbered boards remain distinct: this is Zone No. 1, not TIRZ No. 2 (whose feed only lists 'Tax Increment Reinvestment Zone No. 2 Board' meetings). Among existing feeds, only 'denton-tx-tirz-1-board' (Denton: TIRZ No. 1 Board) matches this body, and it already lists this exact recording (body and provider_guid 122084). The assignment is directly supported by the official metadata; no shared-token inference is needed.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this claim:\n\n- The recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\" with provider_guid \"122084\"\n- The claim is that this recording belongs in \"denton-tx-tirz-1-board\"\n- Looking at the existing feeds, there is a feed \"denton-tx-tirz-1-board\" (Denton: TIRZ No. 1 Board) which includes in its body_includes list: {\"body\": \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\", \"provider_guid\": \"122084\"} \u2014 an exact match on both body and provider_guid.\n- The official agenda evidence confirms it's the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, meeting May 26, 2021 at 12:00 PM.\n- The family policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\" \u2014 TIRZ No. 1 is distinct from TIRZ No. 2, and this recording is clearly Zone No. 1.\n\nSo the claim is supported. The owner should be denton-tx-tirz-1-board. Proposed action: assign/keep the recording in that feed.\n\nEvidence reference IDs: only \"official-agenda\" is provided as an evidence ref. The existing feeds aren't evidence refs per se, but the instructions say \"cite only supplied evidence-reference IDs.\" The evidence_refs array has one item with id \"official-agenda\". So I should cite \"official-agenda\".\n\nThe official agenda directly confirms the body identity (Downtown Denton TIRZ No. 1 Board), date (May 26, 2021), time (12:00 PM), and the recording_id matches 122084.\n\nMissing evidence: none really. Completeness status is unknown but that's about archive completeness, not owner assignment. The evidence is sufficient for owner assignment.\n\nProposed action: \"assign\" \u2014 assign the recording to denton-tx-tirz-1-board. Or \"keep\" since it's already included in the feed's source body_includes. Given decision_type is owner_assignment, the action could be \"assign_to_owner\" or similar. I'll say \"assign\" \u2014 let me phrase it as \"assign_recording_to_owner\" or just something reasonable. The schema expects a string or null. I'll use \"assign\" with the owner slug.\n\nRationale: The official agenda (official-agenda) confirms the officially convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, meeting May 26, 2021 at 12:00 PM, matching the recording label and recording_id 122084. Per identity policy, use the officially convened body; this is TIRZ No. 1, distinct from TIRZ No. 2. The existing feed denton-tx-tirz-1-board already carries this exact recording (provider_guid 122084). Shared city/topic tokens don't matter; the body identity is exact.\n\nSupported: true.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this claim:\n\n- The recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\" with provider_guid \"122084\"\n- The claim is that this recording belongs in \"denton-tx-tirz-1-board\"\n- Looking at the existing feeds, there is a feed \"denton-tx-tirz-1-board\" (Denton: TIRZ No. 1 Board) which includes in its body_includes list: {\"body\": \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\", \"provider_guid\": \"122084\"} \u2014 an exact match on both body and provider_guid.\n- The official agenda evidence confirms it's the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, meeting May 26, 2021 at 12:00 PM.\n- The family policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\" \u2014 TIRZ No. 1 is distinct from TIRZ No. 2, and this recording is clearly Zone No. 1.\n\nSo the claim is supported. The owner should be denton-tx-tirz-1-board. Proposed action: assign/keep the recording in that feed.\n\nEvidence reference IDs: only \"official-agenda\" is provided as an evidence ref. The existing feeds aren't evidence refs per se, but the instructions say \"cite only supplied evidence-reference IDs.\" The evidence_refs array has one item with id \"official-agenda\". So I should cite \"official-agenda\".\n\nThe official agenda directly confirms the body identity (Downtown Denton TIRZ No. 1 Board), date (May 26, 2021), time (12:00 PM), and the recording_id matches 122084.\n\nMissing evidence: none really. Completeness status is unknown but that's about archive completeness, not owner assignment. The evidence is sufficient for owner assignment.\n\nProposed action: \"assign\" \u2014 assign the recording to denton-tx-tirz-1-board. Or \"keep\" since it's already included in the feed's source body_includes. Given decision_type is owner_assignment, the action could be \"assign_to_owner\" or similar. I'll say \"assign\" \u2014 let me phrase it as \"assign_recording_to_owner\" or just something reasonable. The schema expects a string or null. I'll use \"assign\" with the owner slug.\n\nRationale: The official agenda (official-agenda) confirms the officially convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, meeting May 26, 2021 at 12:00 PM, matching the recording label and recording_id 122084. Per identity policy, use the officially convened body; this is TIRZ No. 1, distinct from TIRZ No. 2. The existing feed denton-tx-tirz-1-board already carries this exact recording (provider_guid 122084). Shared city/topic tokens don't matter; the body identity is exact.\n\nSupported: true.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628240,
+        "id": "chatcmpl-9fc1778c-cb72-46b1-88d9-56447d47cc7f",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 926,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 663,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2734,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3660
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

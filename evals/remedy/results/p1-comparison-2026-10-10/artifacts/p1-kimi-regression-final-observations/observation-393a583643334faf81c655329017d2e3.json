@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-zone-marker",
+        "evidence_ref_ids": [
+          "provider-204712"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "Add recording 204712 to the existing Dallas TIF feed under the immutable label 'Reinvestment Zone 21 University Tax Increment Financing District'; do not create a separate University district feed.",
+        "proposed_owner": "dallas-tx:tif",
+        "rationale": "The frozen 2026-10-02 archive snapshot shows a Dallas City Council provider recording (verified GUID 204712, published 2020-09-10) whose official metadata lists the body as 'Reinvestment Zone 21 University Tax Increment Financing District'. Official metadata is immutable, so the label is taken as-is. The 'University' token is part of the TIF district's proper name and, per the rule that shared city/topic tokens do not establish identity, does not justify a separate University district feed. Under the approved TIF policy (policy_version 2026-10-02) and split_group dallas-tx:tif, the recording belongs to the Dallas TIF feed. Evidence provenance is satisfied by the exact provider label and verified GUID from the snapshot; seed-only completeness limits scope but does not preclude this single-feed assignment. No additional evidence is required to support the requested action as stated.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-zone-marker",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 93.64823416667059,
+      "prompt_case_id": "tif-zone-marker",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-zone-marker\",\"supported\":true,\"proposed_owner\":\"dallas-tx:tif\",\"proposed_action\":\"Add recording 204712 to the existing Dallas TIF feed under the immutable label 'Reinvestment Zone 21 University Tax Increment Financing District'; do not create a separate University district feed.\",\"evidence_ref_ids\":[\"provider-204712\"],\"missing_evidence\":[],\"rationale\":\"The frozen 2026-10-02 archive snapshot shows a Dallas City Council provider recording (verified GUID 204712, published 2020-09-10) whose official metadata lists the body as 'Reinvestment Zone 21 University Tax Increment Financing District'. Official metadata is immutable, so the label is taken as-is. The 'University' token is part of the TIF district's proper name and, per the rule that shared city/topic tokens do not establish identity, does not justify a separate University district feed. Under the approved TIF policy (policy_version 2026-10-02) and split_group dallas-tx:tif, the recording belongs to the Dallas TIF feed. Evidence provenance is satisfied by the exact provider label and verified GUID from the snapshot; seed-only completeness limits scope but does not preclude this single-feed assignment. No additional evidence is required to support the requested action as stated.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this task. The system prompt tells me to:\n- Assess the supplied claim using only frozen evidence and approved policy\n- Official metadata is immutable\n- Shared city/topic tokens do not establish identity\n- Abstain when evidence is missing\n- Select an owner independently\n- Cite only supplied evidence-reference IDs\n\nThe claim is: \"Include this in Dallas TIF without creating a University district feed.\"\n\nThe evidence shows:\n- A recording from Dallas TX with body \"Reinvestment Zone 21 University Tax Increment Financing District\"\n- Provider GUID 204712, published 2020-09-10\n- This is from the Dallas City Council video archive\n- The policy status is \"approved\"\n- The decision type is \"tif\"\n- The split group is \"dallas-tx:tif\"\n\nThe claim asks to:\n1. Include this recording in the Dallas TIF feed\n2. NOT create a separate \"University district\" feed\n\nThe evidence is a single recording (provider-204712) that shows a legitimate Dallas TIF district (Reinvestment Zone 21 University TIF District) meeting. The body label says it's a TIF district for Dallas.\n\nLet me think about whether the claim is supported:\n- The recording is from the official Dallas TX Swagit archive (dallastx.new.swagit.com/views/113/city-council)\n- It's a TIF district meeting (Reinvestment Zone 21 University TIF District)\n- The policy is approved and decision_type is \"tif\"\n- The claim says to include it in Dallas TIF but NOT create a separate University district feed\n\nThe claim seems supported by the evidence - there's a genuine TIF district recording from Dallas that should be tracked as part of Dallas TIF coverage. The \"University\" token is part of the district name (University TIF District), not a request to create a separate feed.\n\nThe owner should be Dallas TIF (not a University district feed).\n\nEvidence refs available: \"provider-204712\"\n\nThe supported should be true - the evidence supports including this in Dallas TIF without creating a University district feed.\n\nProposed action: Add recording 204712 to the Dallas TIF feed.\n\nProposed owner: Something like \"dallas-tx:tif\" or \"Dallas TIF\"\n\nMissing evidence: potentially none, or note that it's seed-only (single recording, not independently adjudicated). The completeness status says \"seed-only\" with limitations \"Not a complete source archive; not independently adjudicated.\" But per policy, exact provider label or verified GUID from the snapshot is sufficient evidence provenance.\n\nShared city/topic tokens do not establish identity - this means just because it says \"University\" doesn't mean it belongs to a University feed. The recording belongs to Dallas TIF.\n\nSo:\n- supported: true\n- proposed_owner: \"dallas-tx:tif\" (or Dallas TIF)\n- proposed_action: \"Add the recording to the Dallas TIF feed; do not create a separate University district feed.\"\n- evidence_ref_ids: [\"provider-204712\"]\n- missing_evidence: [] (or mention independence note)\n- rationale: explain\n\nPer policy, evidence provenance = exact provider label or verified GUID from the 2026-10-02 archive snapshot. We have provider GUID 204712 with matching title/body. That satisfies the requirement.\n\nRationale: The frozen snapshot shows a Dallas City Council archive recording (provider GUID 204712, 2020-09-10) whose official body label is \"Reinvestment Zone 21 University Tax Increment Financing District,\" a Dallas TIF entity. Metadata is immutable, so the label stands as-is. The 'University' token is part of the district's proper name and does not establish a separate owner identity; per approved TIF policy (2026-10-02) the recording belongs under Dallas TIF (split group dallas-tx:tif). No University district feed should be created. Note seed-only completeness; no second source, but policy requires only provider label/verified GUID, which is supplied.\n\nKeep rationale under 2000 chars. Output JSON only.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this task. The system prompt tells me to:\n- Assess the supplied claim using only frozen evidence and approved policy\n- Official metadata is immutable\n- Shared city/topic tokens do not establish identity\n- Abstain when evidence is missing\n- Select an owner independently\n- Cite only supplied evidence-reference IDs\n\nThe claim is: \"Include this in Dallas TIF without creating a University district feed.\"\n\nThe evidence shows:\n- A recording from Dallas TX with body \"Reinvestment Zone 21 University Tax Increment Financing District\"\n- Provider GUID 204712, published 2020-09-10\n- This is from the Dallas City Council video archive\n- The policy status is \"approved\"\n- The decision type is \"tif\"\n- The split group is \"dallas-tx:tif\"\n\nThe claim asks to:\n1. Include this recording in the Dallas TIF feed\n2. NOT create a separate \"University district\" feed\n\nThe evidence is a single recording (provider-204712) that shows a legitimate Dallas TIF district (Reinvestment Zone 21 University TIF District) meeting. The body label says it's a TIF district for Dallas.\n\nLet me think about whether the claim is supported:\n- The recording is from the official Dallas TX Swagit archive (dallastx.new.swagit.com/views/113/city-council)\n- It's a TIF district meeting (Reinvestment Zone 21 University TIF District)\n- The policy is approved and decision_type is \"tif\"\n- The claim says to include it in Dallas TIF but NOT create a separate University district feed\n\nThe claim seems supported by the evidence - there's a genuine TIF district recording from Dallas that should be tracked as part of Dallas TIF coverage. The \"University\" token is part of the district name (University TIF District), not a request to create a separate feed.\n\nThe owner should be Dallas TIF (not a University district feed).\n\nEvidence refs available: \"provider-204712\"\n\nThe supported should be true - the evidence supports including this in Dallas TIF without creating a University district feed.\n\nProposed action: Add recording 204712 to the Dallas TIF feed.\n\nProposed owner: Something like \"dallas-tx:tif\" or \"Dallas TIF\"\n\nMissing evidence: potentially none, or note that it's seed-only (single recording, not independently adjudicated). The completeness status says \"seed-only\" with limitations \"Not a complete source archive; not independently adjudicated.\" But per policy, exact provider label or verified GUID from the snapshot is sufficient evidence provenance.\n\nShared city/topic tokens do not establish identity - this means just because it says \"University\" doesn't mean it belongs to a University feed. The recording belongs to Dallas TIF.\n\nSo:\n- supported: true\n- proposed_owner: \"dallas-tx:tif\" (or Dallas TIF)\n- proposed_action: \"Add the recording to the Dallas TIF feed; do not create a separate University district feed.\"\n- evidence_ref_ids: [\"provider-204712\"]\n- missing_evidence: [] (or mention independence note)\n- rationale: explain\n\nPer policy, evidence provenance = exact provider label or verified GUID from the 2026-10-02 archive snapshot. We have provider GUID 204712 with matching title/body. That satisfies the requirement.\n\nRationale: The frozen snapshot shows a Dallas City Council archive recording (provider GUID 204712, 2020-09-10) whose official body label is \"Reinvestment Zone 21 University Tax Increment Financing District,\" a Dallas TIF entity. Metadata is immutable, so the label stands as-is. The 'University' token is part of the district's proper name and does not establish a separate owner identity; per approved TIF policy (2026-10-02) the recording belongs under Dallas TIF (split group dallas-tx:tif). No University district feed should be created. Note seed-only completeness; no second source, but policy requires only provider label/verified GUID, which is supplied.\n\nKeep rationale under 2000 chars. Output JSON only.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626574,
+        "id": "chatcmpl-087a23e5-955e-40b6-b955-ecc2e9148494",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 3175,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 849,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2166,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 5341
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

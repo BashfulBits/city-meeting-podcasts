@@ -1,0 +1,17 @@
+import subprocess,json,os
+from pathlib import Path
+root=Path("/private/tmp/p1-kimi-reviewer");base=Path("/private/tmp")
+for name,split,mode,cap,prior in [
+ ("p1-kimi-regression-final","regression","claim_support",27,"p1-kimi-probe"),
+ ("p1-kimi-holdout-final","holdout","claim_support",10,None),
+ ("p1-kimi-blind-final","holdout","blind_owner",10,None),
+]:
+ manifest=root/("evals/remedy/holdout/p1-denton-2026-10-10/manifest.json" if split=="holdout" else "evals/remedy/manifest.json")
+ out=base/(name+".json")
+ command=["/usr/local/bin/citypods-env","env","R2_BUCKET=citypods-spike","PYTHONPATH=.","python","scripts/eval_remedy.py","run","--manifest",str(manifest),"--admission",str(base/("p1-kimi-"+split+"-"+mode+".yml")),"--role","reviewer","--mode",mode,"--live","--max-cases",str(cap),"--request-timeout","120","--case-deadline","150","--checkpoint-dir",str(base/(name+"-observations")),"--out",str(out)]
+ if prior: command += ["--resume-results",str(base/(prior+".json"))]
+ with (base/(name+".log")).open("x") as log:
+  subprocess.run(command,cwd=root,stdout=log,stderr=subprocess.STDOUT,check=True)
+ report=base/(name+"-report.json")
+ subprocess.run(["python","scripts/eval_remedy.py","report","--manifest",str(manifest),"--gold",str(manifest.with_name("gold.json")),"--results",str(out),"--out",str(report)],cwd=root,env=os.environ|{"PYTHONPATH":"."},check=True)
+ print(name,[(r["report"]["counts"],r["report"]["owner_selection"]) for r in json.loads(report.read_text())["reports"]],flush=True)

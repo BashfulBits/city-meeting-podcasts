@@ -1,0 +1,33 @@
+import json,time
+from dataclasses import replace
+from citypods.compute.llm_policy import ROUTE_REGISTRY
+rid="nvidia_deepseek_v4_1_flash_free"
+original=ROUTE_REGISTRY[rid]
+ROUTE_REGISTRY[rid]=replace(original, reasoning_controls_json=json.dumps({"max":{"reasoning_effort":100}}))
+from pathlib import Path
+from datetime import datetime,UTC,timedelta
+from citypods.remedy_evaluation import Manifest,RemedyEvalAnswer,case_messages,canonical_hash,validate_answer
+from citypods.compute.structured import register_response_model,parse_structured_json
+from citypods.compute.base import InferenceJob
+from citypods.compute.llm import LiteLLMBackend,LLMBackendConfig
+from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.config import load_site_config
+from citypods.storage import make_storage
+root=Path('/private/tmp/p1-kimi-reviewer')
+m=Manifest.model_validate(json.loads((root/'evals/remedy/manifest.json').read_text()));case=m.cases[int(__import__('sys').argv[1])]
+s=load_site_config(root/'config/site_config.yml');storage=make_storage(s,s.get('base_url',''),root/s.get('output_dir','docs'))
+assert storage is not None and storage.cas_capable
+register_response_model('remedy-eval-v2',RemedyEvalAnswer)
+backend=LiteLLMBackend(LLMBackendConfig(model='nvidia/deepseek-v4.1-flash'),storage=storage)
+policy=LLMRequestPolicy(allowed_models=('nvidia/deepseek-v4.1-flash',),allowed_route_ids=('nvidia_deepseek_v4_1_flash_free',),purpose='audit-remedy',require_direct=True,deadline_at=datetime.now(UTC)+timedelta(seconds=150))
+job=InferenceJob(task='tag',recipe_hash=canonical_hash({'diagnostic':'deepseek-numeric-100-diagnostic','case':case.id}),inputs={'messages':case_messages(case),'structured_output':'remedy-eval-v2','llm_policy':policy,'reasoning_level':'max','max_tokens':2048,'timeout':120,'num_retries':0,'max_provider_attempts':2})
+start=time.monotonic();row={'kind':'numeric-control-diagnostic-only','qualified':False,'case_id':case.id,'max_effort_verified':False,'requested_controls':{'reasoning_effort':100},'override_scope':'this diagnostic process only'}
+try:
+ result=backend.run_immediate(job)
+ answer=validate_answer(parse_structured_json(result.output['choices'][0]['message']['content']),case)
+ row.update(status='completed',route_id=result.route_id,upstream_model=result.upstream_model,reasoning_level=result.reasoning_level,provider_attempts=result.provider_attempts,answer=answer.model_dump(),raw_response=result.output)
+except Exception as e:
+ row.update(status='failed',error_class=type(e).__name__,provider_attempts=getattr(e,'provider_attempts',None))
+row['latency_seconds']=time.monotonic()-start
+with Path('/private/tmp/p1-deepseek-numeric-100-'+str(__import__('sys').argv[1])+'.json').open('x') as f: json.dump(row,f,indent=2)
+print({k:v for k,v in row.items() if k not in ('raw_response','answer')})

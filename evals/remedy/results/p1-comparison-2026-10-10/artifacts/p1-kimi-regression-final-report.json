@@ -1,0 +1,134 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 19,
+        "known_provider_attempts": 35,
+        "retried_completed": 7,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 0,
+        "breakdown": {
+          "bond|76869ed1994f|dallas-tx:bond|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "charter|denton-tx:unverified-source|denton-tx:charter|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "denton|denton-tx:unverified-source|denton-tx:denton|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "few|arlington-tx:unverified-source|arlington-tx:few|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "joint|76869ed1994f|dallas-tx:joint|seed": {
+            "abstained": 0,
+            "correct": 1,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "proposed|denton-tx:unverified-source|denton-tx:proposed|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "same|fort-worth-tx:unverified-source|fort-worth-tx:same|seed": {
+            "abstained": 0,
+            "correct": 1,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "sign|76869ed1994f|dallas-tx:sign|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "staff|6540eef2dc2e|fort-worth-tx:staff|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "tif|6540eef2dc2e|fort-worth-tx:tif|seed": {
+            "abstained": 0,
+            "correct": 4,
+            "incorrect": 0,
+            "known_truth": 4
+          },
+          "tif|76869ed1994f|dallas-tx:tif|seed": {
+            "abstained": 0,
+            "correct": 8,
+            "incorrect": 0,
+            "known_truth": 8
+          },
+          "tif|dallas-tx:unverified-source|dallas-tx:tif|seed": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "tif|fort-worth-tx:unverified-source|fort-worth-tx:tif|seed": {
+            "abstained": 1,
+            "correct": 0,
+            "incorrect": 0,
+            "known_truth": 1
+          },
+          "tv|6540eef2dc2e|fort-worth-tx:tv|seed": {
+            "abstained": 0,
+            "correct": 1,
+            "incorrect": 0,
+            "known_truth": 1
+          }
+        },
+        "counts": {
+          "abstained": 8,
+          "accepted": 5,
+          "accepted_correct": 5,
+          "correct": 17,
+          "critical_errors": 0,
+          "failed": 1,
+          "incorrect": 0,
+          "known_truth": 25,
+          "unattempted": 0,
+          "unknown_truth": 1
+        },
+        "gold_hash": "8db9e3e326c7482cbb683ea327485196ada6c2525496ed2475e0783d7a711f42",
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 0.7142857142857143
+      },
+      "results_hash": "5d7311388c0c035e64e31f3746291fb21396769e3a5c910508fa042b496d1c05",
+      "results_path": "/private/tmp/p1-kimi-regression-final.json"
+    }
+  ],
+  "version": 1
+}

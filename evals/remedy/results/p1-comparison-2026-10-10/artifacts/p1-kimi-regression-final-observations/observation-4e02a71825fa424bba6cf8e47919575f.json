@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-ethics",
+        "evidence_ref_ids": [
+          "provider-204610"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "include_recording",
+        "proposed_owner": "TIF Ethics Advisory Commission",
+        "rationale": "The supplied frozen provider evidence identifies a Dallas recording for \u201cTIF Ethics Advisory Commission\u201d with GUID 204610, canonical URL, agenda link, and publication date 2016-01-15. The family decision type is TIF and the referenced policy is approved. No existing feeds conflict with this assignment, so the recording should be included under the independently identified owner.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-ethics",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 17.960724084172398,
+      "prompt_case_id": "tif-ethics",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-ethics\",\"supported\":true,\"proposed_owner\":\"TIF Ethics Advisory Commission\",\"proposed_action\":\"include_recording\",\"evidence_ref_ids\":[\"provider-204610\"],\"missing_evidence\":[],\"rationale\":\"The supplied frozen provider evidence identifies a Dallas recording for \u201cTIF Ethics Advisory Commission\u201d with GUID 204610, canonical URL, agenda link, and publication date 2016-01-15. The family decision type is TIF and the referenced policy is approved. No existing feeds conflict with this assignment, so the recording should be included under the independently identified owner.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "We need answer JSON schema. Need assess claim. We have supplied data. Need supported? Claim: \"Include this TIF oversight recording in Dallas TIF.\" Evidence shows city dallas-tx, body_label TIF Ethics Advisory Commission, decision_type tif, evidence ref provider-204610 with source, recordings one same. Family policy approved. Existing feeds empty. Need select owner independently. Likely owner = body_label? Proposed action include recording in Dallas TIF? Need policy? It says use frozen evidence and approved policy. Official metadata immutable. Shared city/topic tokens do not establish identity. Abstain missing evidence. Cite only supplied evidence-ref IDs. Here evidence sufficient? Maybe body \"TIF Ethics Advisory Commission\" is TIF oversight? Claim candidate itself says TIF oversight, but need assess. Existing feed absent, seed evidence video label and TIF decision type, policy approved. So supported true, proposed owner perhaps \"TIF Ethics Advisory Commission\" (or dallas-tx:TIF Ethics Advisory Commission?). Proposed action \"include\". Evidence_ref_ids [\"provider-204610\"]. Missing evidence []. Rationale concise: supplied seed is official provider snapshot from dallastx.new.swagit, exact body/title/guid/recording URL, date; decision family tif policy approved; no conflicting feeds. Owner independently = body metadata. Action include link recording under Dallas TIF for that owner.\n\nCould \"supported\" null due seed-only and not complete archive? But 'Not complete source archive; not independently adjudicated' limitation doesn't mean missing for inclusion? The policy evidence provenance allows exact provider label from archive snapshot. evidence sufficient. Need include case_id (probably id \"tif-ethics\"). Proposed owner string maybe \"TIF Ethics Advisory Commission\". Proposed action maybe \"include_recording\". Let's formulate. Ensure JSON valid no markdown.",
+                "refusal": null
+              },
+              "reasoning_content": "We need answer JSON schema. Need assess claim. We have supplied data. Need supported? Claim: \"Include this TIF oversight recording in Dallas TIF.\" Evidence shows city dallas-tx, body_label TIF Ethics Advisory Commission, decision_type tif, evidence ref provider-204610 with source, recordings one same. Family policy approved. Existing feeds empty. Need select owner independently. Likely owner = body_label? Proposed action include recording in Dallas TIF? Need policy? It says use frozen evidence and approved policy. Official metadata immutable. Shared city/topic tokens do not establish identity. Abstain missing evidence. Cite only supplied evidence-ref IDs. Here evidence sufficient? Maybe body \"TIF Ethics Advisory Commission\" is TIF oversight? Claim candidate itself says TIF oversight, but need assess. Existing feed absent, seed evidence video label and TIF decision type, policy approved. So supported true, proposed owner perhaps \"TIF Ethics Advisory Commission\" (or dallas-tx:TIF Ethics Advisory Commission?). Proposed action \"include\". Evidence_ref_ids [\"provider-204610\"]. Missing evidence []. Rationale concise: supplied seed is official provider snapshot from dallastx.new.swagit, exact body/title/guid/recording URL, date; decision family tif policy approved; no conflicting feeds. Owner independently = body metadata. Action include link recording under Dallas TIF for that owner.\n\nCould \"supported\" null due seed-only and not complete archive? But 'Not complete source archive; not independently adjudicated' limitation doesn't mean missing for inclusion? The policy evidence provenance allows exact provider label from archive snapshot. evidence sufficient. Need include case_id (probably id \"tif-ethics\"). Proposed owner string maybe \"TIF Ethics Advisory Commission\". Proposed action maybe \"include_recording\". Let's formulate. Ensure JSON valid no markdown.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626607,
+        "id": "chatcmpl-04781a0c-b1aa-4919-8811-b7544c35cee1",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 509,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 383,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1014,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1523
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

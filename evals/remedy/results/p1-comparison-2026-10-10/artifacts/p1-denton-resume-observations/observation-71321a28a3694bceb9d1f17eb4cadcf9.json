@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "88b934478f270c5d644c6e9c840782be12df4a79e0c09e6516c3669fca4169c5",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:38:49.583582+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-library-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-library-board",
+        "rationale": "The official agenda shows that the convened body is the Library Board (Library Advisory Board). Under the approved identity policy, the meeting room ('Council Work Session Room') does not determine the owner, so the recording belongs to denton-tx-library-board rather than denton-tx-city-council.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-library-council",
+      "configuration_id": "db15c32828413fb5c73614b09a365840267887d5b0d92299efaee75bccd7b938",
+      "latency_seconds": 13.220023999921978,
+      "prompt_case_id": "denton-library-council",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-library-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-library-board\",\n  \"proposed_action\": null,\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda shows that the convened body is the Library Board (Library Advisory Board). Under the approved identity policy, the meeting room ('Council Work Session Room') does not determine the owner, so the recording belongs to denton-tx-library-board rather than denton-tx-city-council.\"\n}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791625167,
+        "id": "zwfKaobvMLHpz7IPr-3g8As",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 1604,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1456,
+            "text_tokens": 148
+          },
+          "prompt_tokens": 2656,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2656,
+            "video_tokens": null
+          },
+          "total_tokens": 4260
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

@@ -1,0 +1,27 @@
+import json, subprocess, time
+from pathlib import Path
+root=Path("/private/tmp/p0-feed-health-pr")
+base=Path("/private/tmp")
+initial=["p1-denton-resumed-batch3", "p1-denton-blind-batch1", "p1-regression-batch1"]
+stop=time.monotonic()+2700
+while not all((base/(n+".json")).exists() for n in initial):
+    if time.monotonic()>stop:
+        raise SystemExit("Initial batches did not finish within 45 minutes; no further calls launched")
+    time.sleep(10)
+stages=[
+ ("p1-denton-current-day-final", "holdout", "claim_support", "p1-denton-resumed-batch3",40),
+ ("p1-denton-blind-current-day-final", "holdout", "blind_owner", "p1-denton-blind-batch1",40),
+ ("p1-regression-current-day-final", "regression", "claim_support", "p1-regression-batch1",108),
+]
+for name,split,mode,prior,cap in stages:
+    manifest=root/("evals/remedy/holdout/p1-denton-2026-10-10/manifest.json" if split=="holdout" else "evals/remedy/manifest.json")
+    gold=manifest.with_name("gold.json")
+    out=base/(name+".json")
+    if out.exists(): raise SystemExit("Refusing to overwrite "+str(out))
+    command=["/usr/local/bin/citypods-env","env","R2_BUCKET=citypods-spike","PYTHONPATH=.","python","scripts/eval_remedy.py","run","--manifest",str(manifest),"--admission",str(base/("p1-four-route-"+split+"-"+mode+".yml")),"--role","proposer","--mode",mode,"--live","--max-cases",str(cap),"--resume-results",str(base/(prior+".json")),"--request-timeout","120","--case-deadline","150","--checkpoint-dir",str(base/(name+"-observations")),"--out",str(out)]
+    with (base/(name+".log")).open("x") as log:
+        subprocess.run(command,cwd=root,stdout=log,stderr=subprocess.STDOUT,check=True)
+    report=base/(name+"-report.json")
+    subprocess.run(["python","scripts/eval_remedy.py","report","--manifest",str(manifest),"--gold",str(gold),"--results",str(out),"--out",str(report)],cwd=root,env=__import__("os").environ|{"PYTHONPATH":"."},check=True)
+    data=json.loads(report.read_text())
+    print(name,[(r["configuration_id"][:8],r["report"]["counts"]) for r in data["reports"]],flush=True)

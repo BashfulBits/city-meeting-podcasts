@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-health-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign_recording_to_feed",
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "rationale": "official-agenda for recording_id 122398 identifies the officially convened body as the Health & Building Standards Commission of the City of Denton, meeting Thursday, June 3, 2021 at 3:00 p.m. This matches the recording body_label/provider_guid 122398 and the existing feed whose source includes that exact body and GUID. Under the approved identity policy, the owner is the convened body, not the meeting room; the distinct Library Board, TIRZ boards, and City Council feeds are not implicated. Shared Denton tokens alone were not used.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-health-own",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 29.673847542144358,
+      "prompt_case_id": "denton-health-own",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"assign_recording_to_feed\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"official-agenda for recording_id 122398 identifies the officially convened body as the Health & Building Standards Commission of the City of Denton, meeting Thursday, June 3, 2021 at 3:00 p.m. This matches the recording body_label/provider_guid 122398 and the existing feed whose source includes that exact body and GUID. Under the approved identity policy, the owner is the convened body, not the meeting room; the distinct Library Board, TIRZ boards, and City Council feeds are not implicated. Shared Denton tokens alone were not used.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "We need answer raw JSON matching schema. Need evaluate claim using supplied evidence and approved policy. We need decide owner. Claim: \"This recording belongs in denton-tx-health-building-standards-commission.\" Body label Health & Building Standards Commission on 2021-06-03 3:00 PM, city denton-tx. Evidence ref official-agenda has recording_id 122398, source span: Health & Building Standards Commission City of Denton Meeting Agenda ... Regular Meeting Thursday June 3 2021 at 3:00 p.m. ... That matches recording provider_guid 122398 and title. Existing feed slug denton-tx-health-building-standards-commission has source body_includes with exact body and provider_guid 122398. Family policy: use officially convened body; meeting room is not owner; distinct numbered boards stay distinct. Officially convened body is Health and Building Standards Commission of City of Denton. Owner independently: recording belongs to existing feed slug denton-tx-health-building-standards-commission. Supported true. proposed action likely assign to owner? Need infer enum? Proposed_action string|null. We can set \"assign_to_existing_feed\"? The schema doesn't define allowed values. Need likely answer fields. Use case_id id \"denton-health-own\". evidence_ref_ids cite only supplied evidence-reference IDs: [\"official-agenda\"]. Missing evidence: [] because sufficient. Rationale concise <=2000 citing evidence ref IDs. Mention metadata immutable? We can say official agenda for recording_id 122398 identifies Health & Building Standards Commission, City of Denton, regular meeting June 3 2021 3:00 PM; existing feed denton-tx-health-building-standards-commission includes same body/provider_guid. Policy says use officially convened body and keep distinct boards distinct; this is not Library/TIRZ/City Council. Therefore claim supported. proposed_owner slug exactly. proposed_action maybe \"assign_to_owner\". Need not overcomplicate.\n\nNeed ensure raw JSON only no markdown. Boolean true. case_id string. Missing evidence array strings. Good.\n\nCheck if any nuance: existing feed source body_includes includes recording with provider_guid \"122398\" under slug. That's strong. Evidence ref official-agenda recording_id matches recordings provider_guid. The claim says recording belongs in slug. Yes.\n\nNeed final only JSON. Ensure valid JSON with escaped ampersand okay. No citations format needed, evidence_ref_ids contains IDs. Rationale mention [official-agenda]. Fine.\n\nNeed be careful with \"Select an owner independently\" means don't just copy claim? We do independently evaluate; proposed_owner same as claim because evidence supports. Good.\n\nLet's craft final. Must match schema exactly no extra fields. Use null? Supported true, proposed_owner string, proposed_action string. If policy expects action maybe \"assign_to_feed\". The claim is owner_assignment decision_type. Proposed action could be \"assign_recording_to_feed\". There is no approved action enum. We can use descriptive. Keep stable.\n\nNeed raw JSON no code block. Ensure length fine.",
+                "refusal": null
+              },
+              "reasoning_content": "We need answer raw JSON matching schema. Need evaluate claim using supplied evidence and approved policy. We need decide owner. Claim: \"This recording belongs in denton-tx-health-building-standards-commission.\" Body label Health & Building Standards Commission on 2021-06-03 3:00 PM, city denton-tx. Evidence ref official-agenda has recording_id 122398, source span: Health & Building Standards Commission City of Denton Meeting Agenda ... Regular Meeting Thursday June 3 2021 at 3:00 p.m. ... That matches recording provider_guid 122398 and title. Existing feed slug denton-tx-health-building-standards-commission has source body_includes with exact body and provider_guid 122398. Family policy: use officially convened body; meeting room is not owner; distinct numbered boards stay distinct. Officially convened body is Health and Building Standards Commission of City of Denton. Owner independently: recording belongs to existing feed slug denton-tx-health-building-standards-commission. Supported true. proposed action likely assign to owner? Need infer enum? Proposed_action string|null. We can set \"assign_to_existing_feed\"? The schema doesn't define allowed values. Need likely answer fields. Use case_id id \"denton-health-own\". evidence_ref_ids cite only supplied evidence-reference IDs: [\"official-agenda\"]. Missing evidence: [] because sufficient. Rationale concise <=2000 citing evidence ref IDs. Mention metadata immutable? We can say official agenda for recording_id 122398 identifies Health & Building Standards Commission, City of Denton, regular meeting June 3 2021 3:00 PM; existing feed denton-tx-health-building-standards-commission includes same body/provider_guid. Policy says use officially convened body and keep distinct boards distinct; this is not Library/TIRZ/City Council. Therefore claim supported. proposed_owner slug exactly. proposed_action maybe \"assign_to_owner\". Need not overcomplicate.\n\nNeed ensure raw JSON only no markdown. Boolean true. case_id string. Missing evidence array strings. Good.\n\nCheck if any nuance: existing feed source body_includes includes recording with provider_guid \"122398\" under slug. That's strong. Evidence ref official-agenda recording_id matches recordings provider_guid. The claim says recording belongs in slug. Yes.\n\nNeed final only JSON. Ensure valid JSON with escaped ampersand okay. No citations format needed, evidence_ref_ids contains IDs. Rationale mention [official-agenda]. Fine.\n\nNeed be careful with \"Select an owner independently\" means don't just copy claim? We do independently evaluate; proposed_owner same as claim because evidence supports. Good.\n\nLet's craft final. Must match schema exactly no extra fields. Use null? Supported true, proposed_owner string, proposed_action string. If policy expects action maybe \"assign_to_feed\". The claim is owner_assignment decision_type. Proposed action could be \"assign_recording_to_feed\". There is no approved action enum. We can use descriptive. Keep stable.\n\nNeed raw JSON no code block. Ensure length fine.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628164,
+        "id": "chatcmpl-73f7f9c5-2bbb-46a4-ab7c-eaf62d9181e7",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 801,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 625,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2678,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3479
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

@@ -1,0 +1,1125 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "25fb4516b9c80be3bac2eda6a590d8fbc48c06c8",
+  "dry_run": true,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 0,
+  "observed_at": "2026-10-10T09:58:41.663428+00:00",
+  "plans": [
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-wrong-district",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"city\": \"dallas-tx\", \"claim\": \"Assign this recording to Fort Worth Avenue district as the same public body.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"367e1b57866d8b3c2a479ea9aa1f4cc9254c43c2aa15f9ae5c723fa736de88fa\", \"id\": \"provider-374872\", \"recording_id\": \"374872\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Dallas Downtown Connection TIF District Board of Directors Meeting\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/374872/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/374872\\\"}, \\\"provider_guid\\\": \\\"374872\\\", \\\"published\\\": \\\"2026-02-09T00:00:00+00:00\\\", \\\"title\\\": \\\"Dallas Downtown Connection TIF District Board of Directors Meeting \\\\u2013 Feb 09, 2026\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/374872\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/374872/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/374872\"}, \"provider_guid\": \"374872\", \"published\": \"2026-02-09T00:00:00+00:00\", \"title\": \"Dallas Downtown Connection TIF District Board of Directors Meeting \\u2013 Feb 09, 2026\"}}, \"id\": \"tif-wrong-district\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/374872\", \"date\": \"2026-02-09T00:00:00+00:00\", \"provider_guid\": \"374872\", \"title\": \"Dallas Downtown Connection TIF District Board of Directors Meeting \\u2013 Feb 09, 2026\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-wrong-district"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Dallas City Center TIF District Board of Directors Meeting\", \"city\": \"dallas-tx\", \"claim\": \"Assign this recording to Farmers Market district as the same public body.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"786efb146a68ee53f79b41e47af863d1f6c481f27afc6b0e3cffa2f1e473f334\", \"id\": \"provider-204708\", \"recording_id\": \"204708\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Dallas City Center TIF District Board of Directors Meeting\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/204708/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/204708\\\"}, \\\"provider_guid\\\": \\\"204708\\\", \\\"published\\\": \\\"2020-03-12T00:00:00+00:00\\\", \\\"title\\\": \\\"Dallas City Center TIF District Board of Directors Meeting \\\\u2013 Mar 12, 2020\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/204708\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Dallas City Center TIF District Board of Directors Meeting\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/204708/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/204708\"}, \"provider_guid\": \"204708\", \"published\": \"2020-03-12T00:00:00+00:00\", \"title\": \"Dallas City Center TIF District Board of Directors Meeting \\u2013 Mar 12, 2020\"}}, \"id\": \"tif-farmers-city-center\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Dallas City Center TIF District Board of Directors Meeting\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/204708\", \"date\": \"2020-03-12T00:00:00+00:00\", \"provider_guid\": \"204708\", \"title\": \"Dallas City Center TIF District Board of Directors Meeting \\u2013 Mar 12, 2020\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-farmers-city-center"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Reinvestment Zone 06 Board Grand Park South\", \"city\": \"dallas-tx\", \"claim\": \"The number proves that this is Farmers Market, so rename the official title.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"ca1ebf33d259031ce3392e6cd30297addbe88b110545f6bba4cc22018ca91876\", \"id\": \"provider-204775\", \"recording_id\": \"204775\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Reinvestment Zone 06 Board Grand Park South\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/204775/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/204775\\\"}, \\\"provider_guid\\\": \\\"204775\\\", \\\"published\\\": \\\"2022-03-03T00:00:00+00:00\\\", \\\"title\\\": \\\"Reinvestment Zone 06 Board Grand Park South \\\\u2013 Mar 03, 2022\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/204775\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Reinvestment Zone 06 Board Grand Park South\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/204775/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/204775\"}, \"provider_guid\": \"204775\", \"published\": \"2022-03-03T00:00:00+00:00\", \"title\": \"Reinvestment Zone 06 Board Grand Park South \\u2013 Mar 03, 2022\"}}, \"id\": \"tif-grand-park-zone06\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Reinvestment Zone 06 Board Grand Park South\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/204775\", \"date\": \"2022-03-03T00:00:00+00:00\", \"provider_guid\": \"204775\", \"title\": \"Reinvestment Zone 06 Board Grand Park South \\u2013 Mar 03, 2022\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-grand-park-zone06"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"city\": \"dallas-tx\", \"claim\": \"Include this TIF board recording in the Dallas TIF aggregate.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"367e1b57866d8b3c2a479ea9aa1f4cc9254c43c2aa15f9ae5c723fa736de88fa\", \"id\": \"provider-374872\", \"recording_id\": \"374872\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Dallas Downtown Connection TIF District Board of Directors Meeting\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/374872/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/374872\\\"}, \\\"provider_guid\\\": \\\"374872\\\", \\\"published\\\": \\\"2026-02-09T00:00:00+00:00\\\", \\\"title\\\": \\\"Dallas Downtown Connection TIF District Board of Directors Meeting \\\\u2013 Feb 09, 2026\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/374872\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/374872/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/374872\"}, \"provider_guid\": \"374872\", \"published\": \"2026-02-09T00:00:00+00:00\", \"title\": \"Dallas Downtown Connection TIF District Board of Directors Meeting \\u2013 Feb 09, 2026\"}}, \"id\": \"tif-dallas-aggregate\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/374872\", \"date\": \"2026-02-09T00:00:00+00:00\", \"provider_guid\": \"374872\", \"title\": \"Dallas Downtown Connection TIF District Board of Directors Meeting \\u2013 Feb 09, 2026\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-dallas-aggregate"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-zone-marker",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Reinvestment Zone 21 University Tax Increment Financing District\", \"city\": \"dallas-tx\", \"claim\": \"Include this in Dallas TIF without creating a University district feed.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"35a5f731cc518d28917c264f9037c33fab7341823339acf242837aba1cc9465a\", \"id\": \"provider-204712\", \"recording_id\": \"204712\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Reinvestment Zone 21 University Tax Increment Financing District\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/204712/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/204712\\\"}, \\\"provider_guid\\\": \\\"204712\\\", \\\"published\\\": \\\"2020-09-10T00:00:00+00:00\\\", \\\"title\\\": \\\"Reinvestment Zone 21 University Tax Increment Financing District \\\\u2013 Sep 10, 2020\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/204712\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Reinvestment Zone 21 University Tax Increment Financing District\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/204712/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/204712\"}, \"provider_guid\": \"204712\", \"published\": \"2020-09-10T00:00:00+00:00\", \"title\": \"Reinvestment Zone 21 University Tax Increment Financing District \\u2013 Sep 10, 2020\"}}, \"id\": \"tif-zone-marker\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Reinvestment Zone 21 University Tax Increment Financing District\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/204712\", \"date\": \"2020-09-10T00:00:00+00:00\", \"provider_guid\": \"204712\", \"title\": \"Reinvestment Zone 21 University Tax Increment Financing District \\u2013 Sep 10, 2020\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-zone-marker"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-ethics",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"TIF Ethics Advisory Commission\", \"city\": \"dallas-tx\", \"claim\": \"Include this TIF oversight recording in Dallas TIF.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"929658c793c77bedd7b87d881ca816f90f8fcda5351367aab3c9d34dcfcfbca2\", \"id\": \"provider-204610\", \"recording_id\": \"204610\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"TIF Ethics Advisory Commission\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/204610/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/204610\\\"}, \\\"provider_guid\\\": \\\"204610\\\", \\\"published\\\": \\\"2016-01-15T00:00:00+00:00\\\", \\\"title\\\": \\\"TIF Ethics Advisory Commission \\\\u2013 Jan 15, 2016\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/204610\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"TIF Ethics Advisory Commission\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/204610/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/204610\"}, \"provider_guid\": \"204610\", \"published\": \"2016-01-15T00:00:00+00:00\", \"title\": \"TIF Ethics Advisory Commission \\u2013 Jan 15, 2016\"}}, \"id\": \"tif-ethics\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"TIF Ethics Advisory Commission\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/204610\", \"date\": \"2016-01-15T00:00:00+00:00\", \"provider_guid\": \"204610\", \"title\": \"TIF Ethics Advisory Commission \\u2013 Jan 15, 2016\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-ethics"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-joint",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting\", \"city\": \"dallas-tx\", \"claim\": \"Include the joint recording once in Dallas TIF.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"5132662a17a87ec9eab85b689dc638266106ccb95a46e99564ea547bed7a272b\", \"id\": \"provider-393276\", \"recording_id\": \"393276\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting\\\", \\\"links\\\": {\\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/393276\\\"}, \\\"provider_guid\\\": \\\"393276\\\", \\\"published\\\": \\\"2026-06-22T00:00:00+00:00\\\", \\\"title\\\": \\\"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting \\\\u2013 Jun 22, 2026\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/393276\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting\", \"links\": {\"canonical_video\": \"https://dallastx.new.swagit.com/videos/393276\"}, \"provider_guid\": \"393276\", \"published\": \"2026-06-22T00:00:00+00:00\", \"title\": \"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting \\u2013 Jun 22, 2026\"}}, \"id\": \"tif-joint\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/393276\", \"date\": \"2026-06-22T00:00:00+00:00\", \"provider_guid\": \"393276\", \"title\": \"Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting \\u2013 Jun 22, 2026\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-joint"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-unmarked-joint",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA\", \"city\": \"dallas-tx\", \"claim\": \"Include verified Swagit recording 206541 by exact GUID in Dallas TIF.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"f383ae02cd1491dae69c64a4630378969ed181fc0acc2b77520351b3c96632cc\", \"id\": \"provider-206541\", \"recording_id\": \"206541\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA\\\", \\\"links\\\": {\\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/206541\\\"}, \\\"provider_guid\\\": \\\"206541\\\", \\\"published\\\": \\\"2023-01-12T00:00:00+00:00\\\", \\\"title\\\": \\\"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA \\\\u2013 Jan 12, 2023\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/206541\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA\", \"links\": {\"canonical_video\": \"https://dallastx.new.swagit.com/videos/206541\"}, \"provider_guid\": \"206541\", \"published\": \"2023-01-12T00:00:00+00:00\", \"title\": \"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA \\u2013 Jan 12, 2023\"}}, \"id\": \"tif-unmarked-joint\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/206541\", \"date\": \"2023-01-12T00:00:00+00:00\", \"provider_guid\": \"206541\", \"title\": \"Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA \\u2013 Jan 12, 2023\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-unmarked-joint"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-multifamily",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\", \"city\": \"fort-worth-tx\", \"claim\": \"Include this in TIF because its normalized title contains tif.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"c00fa5739488f65ef5a783cf90b3536465f3631daade3ecf8486b1aef4e28837\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2785\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\\\", \\\"published\\\": \\\"2017-09-14T00:00:00+00:00\\\", \\\"title\\\": \\\"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2785\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\", \"published\": \"2017-09-14T00:00:00+00:00\", \"title\": \"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\"}}, \"id\": \"tif-multifamily\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\", \"date\": \"2017-09-14T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785\", \"title\": \"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-multifamily"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-beautiful",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop\", \"city\": \"fort-worth-tx\", \"claim\": \"Include this in TIF because its normalized title contains tif.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"ba320ff7e84d32e6278ad81f58320f1ba7e4df23fb1b0cdc8fda7c5857c6649c\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2624\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\\\", \\\"published\\\": \\\"2017-01-07T00:00:00+00:00\\\", \\\"title\\\": \\\"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2624\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\", \"published\": \"2017-01-07T00:00:00+00:00\", \"title\": \"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017\"}}, \"id\": \"tif-beautiful\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\", \"date\": \"2017-01-07T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624\", \"title\": \"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-beautiful"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-woodhaven",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\", \"city\": \"fort-worth-tx\", \"claim\": \"Include in Fort Worth TIF and migrate the Woodhaven subscription to the aggregate.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"83385b0098c984cd082d553364fac8ae94a1b1b139e4550a8b4ded4c92ca9711\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4418\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\\\", \\\"published\\\": \\\"2021-06-09T00:00:00+00:00\\\", \\\"title\\\": \\\"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4418\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\", \"published\": \"2021-06-09T00:00:00+00:00\", \"title\": \"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\"}}, \"id\": \"tif-woodhaven\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\", \"date\": \"2021-06-09T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418\", \"title\": \"Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-woodhaven"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\", \"city\": \"fort-worth-tx\", \"claim\": \"Two archive views of the same clip prove this body met twice.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"c03df8682bb2d0e551c89d173a603871795cb3a91771e72b914f990585de6dfd\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=3727\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\\\", \\\"published\\\": \\\"2020-06-03T00:00:00+00:00\\\", \\\"title\\\": \\\"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=3727\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\", \"published\": \"2020-06-03T00:00:00+00:00\", \"title\": \"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\"}}, \"id\": \"tif-duplicate-views\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\", \"date\": \"2020-06-03T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727\", \"title\": \"TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-duplicate-views"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-cross-city",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\", \"city\": \"fort-worth-tx\", \"claim\": \"Include this recording in the Dallas TIF feed.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"36752817c57dab9e977c2b038e92e651e26b8101871ee7fb5a5265875ebdc282\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4153\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\\\", \\\"published\\\": \\\"2021-01-06T00:00:00+00:00\\\", \\\"title\\\": \\\"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4153\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\", \"published\": \"2021-01-06T00:00:00+00:00\", \"title\": \"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\"}}, \"id\": \"tif-cross-city\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\", \"date\": \"2021-01-06T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153\", \"title\": \"TIF 15 Stockyards Northside TIF 15 Stockyards Northside\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-cross-city"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-pid",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Fort Worth Public Improvement District No. 1 Advisory Board\", \"city\": \"fort-worth-tx\", \"claim\": \"Include this in TIF because both kinds of district finance improvements.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/tif-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"tif-pid\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"fort-worth-tx:unverified-source\", \"split_group\": \"fort-worth-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-pid"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-unmarked-neighborhood",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Deep Ellum Neighborhood Planning Workshop\", \"city\": \"dallas-tx\", \"claim\": \"District-name overlap alone proves TIF ownership.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Synthetic adversarial example; no observed recording is asserted.\", \"reference\": \"\", \"seed_evidence\": {}}, \"id\": \"tif-unmarked-neighborhood\", \"input_kind\": \"synthetic\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"dallas-tx:unverified-source\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-unmarked-neighborhood"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tif-topic-only",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"City Council briefing on TIF financing\", \"city\": \"dallas-tx\", \"claim\": \"This title proves it is a TIF district board meeting.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tif\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Synthetic adversarial example; no observed recording is asserted.\", \"reference\": \"\", \"seed_evidence\": {}}, \"id\": \"tif-topic-only\", \"input_kind\": \"synthetic\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"dallas-tx:unverified-source\", \"split_group\": \"dallas-tx:tif\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tif-topic-only"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "denton-dated-family",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Airport Advisory Board on 2021-05-13 10:00 AM\", \"city\": \"denton-tx\", \"claim\": \"A dated suffix establishes a new public body for every date.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"denton\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"denton-dated-family\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"denton-tx:unverified-source\", \"split_group\": \"denton-tx:denton\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "denton-dated-family"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "few-recordings",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Arlington Housing Finance Corporation Board Meeting\", \"city\": \"arlington-tx\", \"claim\": \"Only one surviving recording makes this a one-off Council meeting.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"few\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"few-recordings\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"arlington-tx:unverified-source\", \"split_group\": \"arlington-tx:few\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "few-recordings"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "bond-family",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"2024 Bond Critical Facilities Subcommittee Meeting\", \"city\": \"dallas-tx\", \"claim\": \"A different bond year alone requires a separate subscription.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"bond\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"d19a102c357153da7d70eeeb60d7d63301dadbbe7f352b5b35bb7b686ba2e2e1\", \"id\": \"provider-277833\", \"recording_id\": \"277833\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"2024 Bond Critical Facilities Subcommittee Meeting\\\", \\\"links\\\": {\\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/277833\\\"}, \\\"provider_guid\\\": \\\"277833\\\", \\\"published\\\": \\\"2023-10-30T00:00:00+00:00\\\", \\\"title\\\": \\\"2024 Bond Critical Facilities Subcommittee Meeting \\\\u2013 Oct 30, 2023\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/277833\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"2024 Bond Critical Facilities Subcommittee Meeting\", \"links\": {\"canonical_video\": \"https://dallastx.new.swagit.com/videos/277833\"}, \"provider_guid\": \"277833\", \"published\": \"2023-10-30T00:00:00+00:00\", \"title\": \"2024 Bond Critical Facilities Subcommittee Meeting \\u2013 Oct 30, 2023\"}}, \"id\": \"bond-family\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"2024 Bond Critical Facilities Subcommittee Meeting\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/277833\", \"date\": \"2023-10-30T00:00:00+00:00\", \"provider_guid\": \"277833\", \"title\": \"2024 Bond Critical Facilities Subcommittee Meeting \\u2013 Oct 30, 2023\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:bond\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "bond-family"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "charter-years",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Charter Review Committee on 2024-11-14 5:30 PM\", \"city\": \"denton-tx\", \"claim\": \"A charter-review subscription can span successive review programs while retaining years in titles.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"charter\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"charter-years\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"denton-tx:unverified-source\", \"split_group\": \"denton-tx:charter\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "charter-years"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "canceled-unknown",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Library Board on 2018-08-13 5:30 PM (No quorum; meeting not held)\", \"city\": \"denton-tx\", \"claim\": \"The label alone establishes that playable public proceedings exist.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"canceled\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"canceled-unknown\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"denton-tx:unverified-source\", \"split_group\": \"denton-tx:canceled\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "canceled-unknown"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "tv-show",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\", \"city\": \"fort-worth-tx\", \"claim\": \"Create a new deliberative-body meeting feed for this municipal TV show.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"tv\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"0b8a96f72a0693792ab13b27af39b28285e066d3fc56462a8ed07fa000a66304\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=5542\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\\\", \\\"published\\\": \\\"2024-05-29T00:00:00+00:00\\\", \\\"title\\\": \\\"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=5542\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\", \"published\": \"2024-05-29T00:00:00+00:00\", \"title\": \"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\"}}, \"id\": \"tv-show\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\", \"date\": \"2024-05-29T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542\", \"title\": \"Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:tv\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "tv-show"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "staff-training",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\", \"city\": \"fort-worth-tx\", \"claim\": \"Training recordings automatically belong to a new public meeting body.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"staff\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"408cab939702e8e8c3f31ed9eae02092cf81a703cb4dcc5022f7df932f7b15bc\", \"id\": \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\", \"recording_id\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2558\\\", \\\"canonical_video\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\\\"}, \\\"provider_guid\\\": \\\"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\\\", \\\"published\\\": \\\"2016-09-17T00:00:00+00:00\\\", \\\"title\\\": \\\"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\\\"}\", \"url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\", \"links\": {\"agenda\": \"https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2558\", \"canonical_video\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\"}, \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\", \"published\": \"2016-09-17T00:00:00+00:00\", \"title\": \"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\"}}, \"id\": \"staff-training\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\", \"canonical_url\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\", \"date\": \"2016-09-17T00:00:00+00:00\", \"provider_guid\": \"https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\", \"title\": \"Active Shooter Civilian Response Training Active Shooter Civilian Response Training\", \"uid\": null}], \"source_key\": \"6540eef2dc2e\", \"split_group\": \"fort-worth-tx:staff\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "staff-training"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "proposed-community",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Virtual Community Meeting - Warschun Road Traffic Safety Improvements\", \"city\": \"denton-tx\", \"claim\": \"Route a verified public-input proceeding to the city community aggregate.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"proposed\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"proposed-community\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"denton-tx:unverified-source\", \"split_group\": \"denton-tx:proposed\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "proposed-community"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "sign-distinct",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Arts District Sign Advisory Committee\", \"city\": \"dallas-tx\", \"claim\": \"Arts District Sign and Special Sign District committees are necessarily the same body.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"sign\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"8ede14422c4ba54cbcc2ee0087ced3240c277cf226002094221f8e00dd6335fe\", \"id\": \"provider-346308\", \"recording_id\": \"346308\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Arts District Sign Advisory Committee\\\", \\\"links\\\": {\\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/346308\\\"}, \\\"provider_guid\\\": \\\"346308\\\", \\\"published\\\": \\\"2025-06-17T00:00:00+00:00\\\", \\\"title\\\": \\\"Arts District Sign Advisory Committee \\\\u2013 Jun 17, 2025\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/346308\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Arts District Sign Advisory Committee\", \"links\": {\"canonical_video\": \"https://dallastx.new.swagit.com/videos/346308\"}, \"provider_guid\": \"346308\", \"published\": \"2025-06-17T00:00:00+00:00\", \"title\": \"Arts District Sign Advisory Committee \\u2013 Jun 17, 2025\"}}, \"id\": \"sign-distinct\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Arts District Sign Advisory Committee\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/346308\", \"date\": \"2025-06-17T00:00:00+00:00\", \"provider_guid\": \"346308\", \"title\": \"Arts District Sign Advisory Committee \\u2013 Jun 17, 2025\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:sign\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "sign-distinct"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "same-topic-not-body",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Capital Improvements Advisory Committee for Transportation Impact Fees\", \"city\": \"fort-worth-tx\", \"claim\": \"This must be the Water and Wastewater CIP Citizens Advisory Committee.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"same\", \"evidence_refs\": [], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {}}, \"id\": \"same-topic-not-body\", \"input_kind\": \"adapted\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [], \"source_key\": \"fort-worth-tx:unverified-source\", \"split_group\": \"fort-worth-tx:same\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "same-topic-not-body"
+    },
+    {
+      "admission": {
+        "aa": {
+          "date": "2026-10-10",
+          "score": 44,
+          "source": "https://artificialanalysis.ai/models/kimi-k3/",
+          "variant": "max",
+          "version": "4.3.2"
+        },
+        "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+        "gold_hash": null,
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "model_family": "kimi",
+        "physical_route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+        "reasoning_level": "max",
+        "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+        "reviewed_admission_ref": null,
+        "reviewed_result_paths": [],
+        "role": "reviewer",
+        "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+        "status": "candidate",
+        "upstream_model": "moonshotai/kimi-k3"
+      },
+      "candidate_status": "candidate",
+      "case_id": "joint-unowned",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "messages": [
+        {
+          "content": "Assess the supplied claim using only frozen evidence and approved policy. Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently and cite only supplied evidence-reference IDs.",
+          "role": "system"
+        },
+        {
+          "content": "{\"body_label\": \"Joint Board of Directors\", \"city\": \"dallas-tx\", \"claim\": \"Assign to Council without identifying the joint bodies.\", \"completeness\": {\"limitations\": \"Not a complete source archive; not independently adjudicated.\", \"status\": \"seed-only\"}, \"decision_type\": \"joint\", \"evidence_refs\": [{\"agenda_id\": null, \"content_hash\": \"a3383d14fcd498c6b9618bd635bc9796d9fd2d38c7671805db804c76ac2c4acf\", \"id\": \"provider-203292\", \"recording_id\": \"203292\", \"retrieved_at\": \"2026-10-02\", \"source_span\": \"{\\\"body\\\": \\\"Joint Board of Directors\\\", \\\"links\\\": {\\\"agenda\\\": \\\"https://dallastx.new.swagit.com/videos/203292/agenda\\\", \\\"canonical_video\\\": \\\"https://dallastx.new.swagit.com/videos/203292\\\"}, \\\"provider_guid\\\": \\\"203292\\\", \\\"published\\\": \\\"2015-12-10T00:00:00+00:00\\\", \\\"title\\\": \\\"Joint Board of Directors \\\\u2013 Dec 10, 2015\\\"}\", \"url\": \"https://dallastx.new.swagit.com/videos/203292\"}], \"existing_feeds\": [], \"family_policy\": {\"evidence_provenance\": \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\", \"original_source_url\": \"https://dallastx.new.swagit.com/views/113/city-council\", \"reference\": \"review/historical-feed-coverage-2026-10.md\", \"seed_evidence\": {\"body\": \"Joint Board of Directors\", \"links\": {\"agenda\": \"https://dallastx.new.swagit.com/videos/203292/agenda\", \"canonical_video\": \"https://dallastx.new.swagit.com/videos/203292\"}, \"provider_guid\": \"203292\", \"published\": \"2015-12-10T00:00:00+00:00\", \"title\": \"Joint Board of Directors \\u2013 Dec 10, 2015\"}}, \"id\": \"joint-unowned\", \"input_kind\": \"real\", \"policy_status\": \"approved\", \"policy_version\": \"2026-10-02\", \"recordings\": [{\"body\": \"Joint Board of Directors\", \"canonical_url\": \"https://dallastx.new.swagit.com/videos/203292\", \"date\": \"2015-12-10T00:00:00+00:00\", \"provider_guid\": \"203292\", \"title\": \"Joint Board of Directors \\u2013 Dec 10, 2015\", \"uid\": null}], \"source_key\": \"76869ed1994f\", \"split_group\": \"dallas-tx:joint\"}",
+          "role": "user"
+        }
+      ],
+      "prompt_case_id": "joint-unowned"
+    }
+  ],
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": true
+}

@@ -1757,3 +1757,6 @@ file/function/test contract is in review/51. No production activation.
 Approved 2026-10-10: evaluate existing free NVIDIA Kimi K3 at documented maximum reasoning,
 with shared quota accounting and frozen results. Bounded file/test plan in review/51; no
 production route selection, quota or admission change.
+
+P1 comparison diagnostics: approved bounded Gemini/DeepSeek diagnosis, GLM baseline and
+durable evaluation artifacts; see review/51. Production activation remains unchanged.

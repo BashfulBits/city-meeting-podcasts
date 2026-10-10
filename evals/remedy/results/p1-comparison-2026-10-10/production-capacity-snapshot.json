@@ -1,0 +1,23 @@
+{
+  "observed_at": 1791643312370,
+  "usage_today": [
+    {
+      "purpose": "chapter-locator",
+      "route_id": "nvidia_kimi_k3_free",
+      "calls": 10,
+      "measured_calls": 8,
+      "measured_input_calls": 8,
+      "over_reservation_calls": 1,
+      "slow_calls": 2,
+      "max_duration_ms": 720000,
+      "input_ratio_p50": 1.334,
+      "input_ratio_p90": 1.467,
+      "input_ratio_max": 1.467,
+      "output_tokens_p50": 973,
+      "output_tokens_p90": 2009,
+      "output_tokens_max": 2710,
+      "reserved_output_mean": 2509
+    }
+  ],
+  "note": "UTC-day Worker usage only; local evaluations use a separate CAS ledger. Not a combined capacity measurement."
+}

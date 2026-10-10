@@ -1,0 +1,1689 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 6,
+  "observed_at": "2026-10-10T11:41:22.281342+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-wrong-district",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "rationale": "Official metadata is immutable and explicitly designates the public body as Dallas Downtown Connection TIF District Board of Directors Meeting. Shared city or topic tokens do not establish identity with the Fort Worth Avenue district.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "latency_seconds": 108.69600379187614,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-wrong-district\",\"supported\":false,\"proposed_owner\":\"Dallas Downtown Connection TIF District Board of Directors Meeting\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-374872\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable and explicitly designates the public body as Dallas Downtown Connection TIF District Board of Directors Meeting. Shared city or topic tokens do not establish identity with the Fort Worth Avenue district.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EuM/CuA/AWkUfROlBcOZC+X0Nqy1heL4ZRvjooVJ4TVD350qYE0smMHqXfh9iuafrV+d9eedla5Ib2FTcC8kwOQ9xSL/+2KZz/SFa7vnaismlmmOnMRLLKxRRQqfKb9ISJdqemGZ/EpAnCpWpTxi+eLfqs1MXw6S4yjjKYrsH1FaYlt4whh1OKmQQiCYtkes46A+foNI+a2j9OKgTH6PmtiTwKjxsvWySpwcz78X7lidgq/euVzTWqAWdt35gJ3bwipvARq0STd3//u+OPTZapUzhEgSCgRAxWA671r7oihBa2oZd4ppb7Atf/bErvXeUfxmuo3aDPjlOetDF8Z8uUhqCJPbFcubT/bjWBqGHC6KPOy82x8XxGeIDiwJf+2ZjIXZZ5dmdgvMU8XJeFtwWs7KoNjW62Z8HXxf0RUMIBNC7RAkh42qjXPEh8QgN2FiJQsvjUJxvrgck1LnOEe0PwXchJS/MmeYsCpa73hNyZkujlLa99HEEvEqWdn5ZxEGari2swxyI0TITf6qBHG9XmZW6pEgRGoNNJBxTjtVUY9sa0/e+R0iH4u6KMZOSVhTf5hUNeIlFoGkZMibs/lktaqAIRyr9F8yQsXRsvb3u0uL+PmSewYUBC27ovU4s7vjiYOd6t10xshmakzDQkEN91qM455eTbz00jtDw9OmWfyaY87YFeIx8BxVW8EgtPRXUVGUt/5leRwAQDJsY/u0HANpNnqL9+fgy1xs+5/BWhu1/PyG6I+Ii3o61x9/si7ApA86n44bB/deRW/n1tV/bg+HnsNAgTjOBKrxMP7UAZpXvCk78ZHnd8sfwEKyT0yszL1FBNRNlLKPplxZqJ9a7OgZWyl80mBRcvTCeeehE4FQwunOiZG6ANBJ7iE/D8jwFpCLhXQZEcXhED1OHxFxHb2d+LTTqKjk5tZMp6tF854RNEedGJBvSbAGnoxpSYMsQUtg72GYcvfsVZ9UncYcYrpQvYKYvKGLpd2pyF2MG/YfXMzxg1tQQbgXO6TlMG/W3Kx649Dc3nV5Guw6k6CSTKrEPzgmixXe2uiSF5O4StQi6s60p9+KRHMiu1I63qVcybvpq254Lc1Kyb/8oclgwCVYXUYYN8jLll7dh1ajPfopna9THFvSQfvAlLMUGcAthaopsG3/uE6pcg15ImiKa36fT+GuJfSjiDqg6vUIDAkfQGKEoTLFYALI49FdlKw2hAcpfDmbeWonaGLkSyOcafIWixWle1MDzK72/o/jjNB6dVqjXJEpMaEwoE4jCo+kNkqIvo/PMTfCdUn+CxUcvfISl2vb+LqWRTgb5VYTltjGkmEoXYyogiRXEZHJ/R+7B61KrUN2fboI+Non4ekuvz0E7hC2luG10PhODQhOIjFWgr2akAipChAHFlPqb6JWyuW9CEjnse4bDHKWNL4yt0NO1AUm30AZwSwmZskBfr5RuJpbu0dPfZuLw3gamgeLL7XrbdNsLwlrbUSuZNCyu9RzXeX/qoO2iAGNaQxwB4Kw3VZD821b4YVeRUCgAt4wM7cb4LqWfjtEdtxb5R6XCw98LLYRf2rQv60dXanfYPHLc2IuhqPUxivCxo3CSlYAkgeT/lqf7Ufz712os7ui8xAbti0WGFKpdQMj64lKkMRBEFO3f+wbQCkE4D7vYFKyKCvMg2/ITq22p12fqa212WeH1tT1PVf0IuzjKHpTrAa4AHCVrArQsxcnRU+w6qhGMZm0Dqze26xktD8LmzH+/tFlsiZUSjak/AzbbCu1utvQZ7VvM46vlJoIn1CYGagDERr0reFQNHmb4ksIhwowcTTMtT2/Wdefs2yYDjp7SO7Dg/IYShCV8dnspMFDpqmS6JzX973MN1LPYlGiUP3LsuheuLHbM/DQ6d2Zuh2Z0qlmwgCoBBkeyrE34rK91Iu+Eve6IyIxu51Po/LXQW1iQfoUPrkImlXBgD2DPVNYpHSUnZBQqn3smDJKao+ZpxMjhpwvzfZeFs6nONhy9q65jpngYB8vm2BjNeZ0K5zCNnzf6rPK1xkveWv67nve8BKTlblXjbSnKXe8OXNisbYbbHfPlO9seozQXOEbY4R36lrhCOgtto54zC1UkneeNnTPI6HydGBDfWSET5LCv8Mx9bvCKnXrB6stxxrWKheys1phTy69jGyLIPp+xA1oO8YQ3HdgRWmsqpQVZxCD1yJto8XJhbbVme0vCelX4Ymha+F4n+b8uHbMC/jBCUHjSQBVr9zRYmWAUFY+R2DsvACGOcMbnMFd7vku9EFBwbMIc/G7s0JvcxhGd6qvqZVS1o2F3wET9x/NIzisAxu00ONl2ybhbIyyBnqVMFcJ/dTKIBX6kTB0jHABwRrAbilKFGYGL8V6TzPm21cTPjqdn9YJcRG0CTmMZdqQNRX88I+n7RzTB80/hsQWYwHseLLuX70bQtLdG3/FduCJk+xUzfvT1xXI6SuZtglUWn9Lh5lJOO1Kp4iaOl9dVXeD7gjcx8afQ27bRLf8mZjhqRH5FToqeP1GzpXwtiLopq3b57Go/mbTp1J8nJCtI2E7Egr9evWILjvsVD5Z+U2fosj+fwxlmWOWysxCc5UA4M1Sa7Runy1iE1/j42OTws+RLiw3Q6hjQjSKcS05t6/vJjSwBlBKLbIifKVF6ZxTJLxJUL2apZeQkcN39kJo7I2JTuoZV6HuyJ3dF3uKgNAKcCxgtrzXL66YHTYGQyZ9Q0iTY6TodC3apUsRPCz/fZmXPQGeQk1Pj9INnM0x6fePB61h/uIgLxK3jwnX3HUN++ZWCCbVdOygvxbeksIy3oOKnpQ40NgQCLLpoTIEOPxZ3byr5kkcTLfk9/iR1FYqv7P7us02BJRbrTG4ApmoYdzjEImXi0/EELaE/X6FbFCobYLXWqXze6QRdYL7OICiHP9rYlcoTJQPES5ZwaLvDOr2J2bKeU4NcUoDhhiqno7QGq1zFJ+dmH49FSugu6VW0PUoYxAPniDjaSyhpy+kwQ5KAqAN0zymKAcFv4Ty6aiU14yKpi3KNKQ7VVHA37vP0TytSPKuTpBAt8TEu37DxcVU2yavsh46iEC7lDMpG/HsGAcKwlxVYfZrUs9wscqXRXcZLvA2z7BM/GUZLSIKsi2v0zCZzRo1SMQua5fp6xYmnJQojkPumupRO1RNisLRXVMvllWSxI7nPxYcB2zKPyYhkrot09A529xHgUFNm25D73iEDlBMHUgtHQBIXREtzeGbqzmRudP6LMFrcFBl5f+HruhxloolZMsuM/OgVnIZQePoKFFIIsGnO1fux590xYzQKNKgfFExuabHdSVtDhrgZWmjcgRA8aM7BnKb9c7czYbu9J5FY6woxDw2DVyi+8atTCVQOs4kJrWCd0mA1Zzo0irKU3SBVoXFqcHGAIjvnvs1OMuRQ7HtbHZlKuZLsMvy4FLWL+YY9MG5opV0l4j55ZSZUZ8UX/i+H0WeX0NF5IgGDvj8WPzA1TT2xhEYD6expr6tqtvUkVgQXVRSbg1zTsdu4UGwFdCPgDKM1CJoCU+buvTU5PtOBru6wbGE4zMGZqaNbo8w7/GWN+dPg9DPO+IbFWSO3obsHRe2gDKnP5mAm5IjvP4eNbR3X2O/X+sqgKZ24iW/35LI99Mbbi0F3hzizBfN2Ghh+6BTyZ8ROUHUWjiH1MeWPr0krc6aX7Vi83fhDenjmHTvmMkPVdSW/qaFkOnHEE/yYVAr/VZsrO5kzQxJFYTjqYSorEiIws343RVm3ZkddmQa+ZFr+gQf3OX5aM+aw15PYTPoupnYtNb+zEt0/HldEWbBxSWuXT/Ohs1w0Qpjt5HRAoXoVtrJiMBJqT9ffSGi9qcTHTIXCe0fErVY4KcQbElMvMPYQ5J7BHQJxEngQt6Ow0EmAcS85QQB1ykBwwQSgVzlFk5aTso1Vr6zmawjvelTT3XNjKwtGWEfKjvh0PYuLV8MAF5MLnWgbxNWd8tetlir03n6Jkk9dG9MlsraopJU26DB6/nHvxQVNJr5HmzIs8sbkb0PMDcX5+kEVYoZkSE3aindZ8MMcZI7+SjHZ4yGMlXCHYlZhwGMQhYL14qz+OB8SWddGPG+52ko9cUZPc53sn1jDJa0tojq37x2ndY2rDe2u/hvCNvFayIYl9bc5S1WSqXkWSinv6pmE39ci9n9v7R5unfm5jV2QGF4cNmJ3hDrnjnzoqVPzrnB6oo9oqBEWUY/yjqoFLMLGwBWsyMLPDQgWetFmJE0PhvFk+U/29+lmgoq5NhfE5zqtG6v2xS2WznkEGvb6kqM+hCm5bVOjjiMD82WlLLqUavNdA4Hmkcm/DsSQ0BSZow3oAgZ932DZR00/NUrGVAKJUinNLpE4/pZBUCAgiPXj3zr/GhBw9Tkc4vZLs6h/ujFPO1/8AqqgwronfCKICCjhZwekwnrj0TLjO2ttBi1CmAyZ73aTUWDBCnc+WeAUoawKEee+E1gQHMY6/DVBip8rXv1DuxsgqhMh8mhU08RitBucfy00twcVItA2/fvsXjWK4hibwleyy1KPW0Su3lpFxiE+eqKobJvrP9v4VQFxjQIE+8cedGIa8noi2cYWA45afaqEDAMFzn8odZGmcLr1nmZG0l8K9W/WrPbs9iB0isnn8JwzbnS9WEHVrqzzLpMqJpUqdnPbylYhPmzc1I6tt0qQp+T6VaPamGfRWEiMoRwFHMclDLuXrPtVzbuP7+pdqrSwFx801tu/7fzBzf2CVmTWXiV22cICyvIVmzOiubsOHSAHrNbaqsX/mAaT4vIC2kpVlsSxBEueYRe7BsYzJ6Nwq0NpG5K7fxZatAJLfgRsntF/Hgef+uFdJfSP9AK9tMfwhSXqAMqeWAYnBD//IockIhUvOh+3vYBNv6eIIOacrwOgv+Slap4qLxPcAwd6qfm1T5pBc8gQNyi5VDpGMBiLVj+v+/Im+zTkD3AzT1Lfw7hTjzOi87IzglLTQkfixI/VIMJnA/Px7xv2wpMh9AToILIQF4D+TLSXFd4BwmANnCBbbEqQ+OCDAT4FI0hv4wbq4vLoD4d5H/2pZGz4c0CKXGF2M7aHo5XiYRp0AqmyFDv7RvMhfO9nwc9y12QMod5vnU+dZGB11dhAVr43OBlm+0JWhcoy5kN7blTG4RUERoqeQyiQU2vRNu2vmRLLVOQDSjEphBom2u5qbJpy1FFCKCegAzFt9GVqz3e+vrqpNhTySaLLF5U2FI8Z2hozjZBV+N7NKN2C5bxKM5uuA9fDpRLg11LBPVaNhscyBoXLz3gGOO5wtbZLNmi5gsGxvXwiDhP+wHlmqSnN2egtDRCzcEXn9vxnkr8thIAM/G5+oVxPRPncW1X6bOoHPEKiCKV/Kzt31B0Z/mDlwZFlKNEYzyEDSuSBtnECvjHy6I8LyyJX0I7v/XtxRCeZeDgXR3I/WB9Wzy5A5jcLZl2JuQDhKF3WU9y7oaaIlSamWl3kAzbl9+1ZLqWyaHoTuTyxs85X3whNJpLJBtkaNu+npK6ZxHG8GQot4zui/Or+lY8GIUb/9UP5KU66NPJUsrQ2f22yav5/skTZfT63kZ/vKG6wU7kVhhp2v2ucs/ThTr1w/kRBOZ4AF4KtqcRYoH/c6/GxpvsWb1gXk9IxZfHoTS6lLeCJAmiWJUVQ7rU2X2QxCIywx4XeW6mUuf3SsuEy5CyO8BFRM/gataH+d+3ZJGOobCWK6DsTpIsVLf4/pLdX1j9gfiFS9w6VUj88wdGL199nuBLNhulG/B2+8cFXaNRnrJDi/xYzPsYFbJzTam6sXt1VSvMPLZp73MKuJbv0A0G6ANf176BNea9miAvyJZayYPFYw0jQMb8TOigCzZTbzD2GpHLVYjX+yl0f/ka5XaV6OrX5sZ29+k4ZP5Mm9wCi+3gUHBkji4eERdSCFOjMBTGFnIQBUZTyYflGg3zQBmhbP1KvVGyofSn0lR1yMJqarM+EvcsBVK8mk8nwd/7+KKneEEgAi7rv7SEDvTo2wFLy7c5xwmMANx35BogD9AYYEvnMwjE+Z4v/pQsHnOfx4+THi12IJOE1oOD8rWFPhhAYLPD2r1JwmyNPjRQ46JmnLZ0c777JVi0E1E5huIYecjIWaG4Xw8KIE2nbkxd8KNSYaEBi3uBv9ZbQzWyLw2JAItcUsDXAStpcJz+ffhC3gpU9fSMMNxfx36KPrgNbVHbGZX8z7gImPr6YTFH4bRkadhMAdvBc2lAMrVNUe6wKCIh1C3UG+t3uxlkpHOO8KPTlBIQJWumeaPy8yg4/K1euaLt43vXyC3dV/G6FisjdjZ0AkbPYC1KgHhU8GET2I3Aoz2EMoT8TwAxzS4usbfd+7vZtIyk1l8PcbiDkCJLTqAo0MWaiBZoZ8usetY475g+NMcjDVjSMPOBrhGus2kPxjg0sJ0y3EvCndgHiH6Z3DpXas2kFdhB6ow4OYQqPiDMP8iOSz9rigfkEbu0+wUkXmZRvvUHE3xMvgtGQ9V1tQDQ9O0rtKXHo+r7zBukZkj0hcDosYXJcZKcWtuqGfh1YeZkBNYR5H3u4QD3g63ltbwbiSUgxJPx5aO0J9xQvCE2V27otRuQAhpYxxQ1C7NWShyUVdQziN1lHlMo2wpBThKezYLJq1vM15yBYZT2qAG74VyzrPj/iK5oSSP3znf2z/bT5krcVfGd6ccPJ4fn//CXwRQ73uvstVfD2AYSoAWR7ScSPg0HoaUQnBmmwBVr6f1p+Ip1epul4KtM8AqrSx/UujNy9SX0V1SDIgRNeABaPthqaOQM4h10EB3ClB9VFbLq5QbMV9TBS/X+SuhZp/kZT1UGN8GoP2sui//95PIvWIyFkKt/IehxPGvmO71UzHtSb2nKucl539JkgjvqpBaI+w3ntU20JS70See5WPKurjACEBIuNB8mvVfwuppp+GWqFjyFHxuFYTL6LrzAYwtODvrS0BaIJaqj5epdWzcZmMRIlPZklSOj32zJ2Tvpy5tKAQn5uIA5TfBu2Ol0xIISzz5/FyCB4cLThbwZ/iq1ZTRiXboiBBD+UNgiIr6BsUkLFXAUfENZKuvU78VyY5ZeJooYNzKVcESABAi12VYUhLIZYIvumBPtdOraScWc1R19lq1wGLNdHGCyg9ML9pHH6b7TyuTYsewYuVNsfAV//afP+fpMeIY92fipM2iroruV+xaLWX3i2l6+09lzEDxX93jlOo3q1JWq4a/q5RHj1VP6qg6ACjoprXUciQsXuJ7bpaK2HYOugPW9nbXy0Dpcg5ShI+N/aMi/dftgXFHws2RddN/8ah1g3Og/XosmVWe2X7QGvygWs5aSnerkba0F6XDIhpyQZgz8bpk1iIsppYyMHakcVIHGdzS9jwAH4EhWOc/LQL30pwspEOZQucxka574PtgoXovWjnHI0YtkbcPabU9XELqIPCSTL0UDUhlH51wmCB2KqksAX5NdPa2OIbUVHQf7d/VgVtUfS9mnmvxoFNFbVPR2YztJ+OzErShR6dOoEuVtOTXft7YXBnQ3QRBBmTog3PeEBvdCowqxhWmByaxxWBF6Fofn6VrQTcGK48tq223DXGg1iPF5IlcyeTNXSuV7NkNKOR0XtwHHnLEG/CqhGt26ZN+qqvDPvtrnA8h/wpnq7bh+dkktWra0NoBLJzOkcx6k5pABeleNgy7G2vpOpF3g+OLsLxRUb4T815Oyzot2AUx4uK0JGRIc1a2BRYqZYCKPTK1xeAPshHMrZkBp3Prv5PdThwPhEiPwJMBVXLDjdJ7vhADvtrW61z9Ra6zHLQrpBd0xZXOibbf641wPC9NwGBYTwPwnGMy1RMH8sC5JXGJQJ4xT6J1ChvsqTW45qVAjGtEvfR6IN2KymLga3K3aKtC+sa7igSeGBqHdCVvyFuJU8ZGAIaYViDoDz6CSdWdYbhcgFq7qIUvVZhawpKVJ/EQGVIHpoJbHKdfctBmqzpYDhqIp/nJeBJNFpHDceoJ4rYEZlHLZWFUODuZ58hENPkh7dPJTOSBN9JVUtvMXCNSEyf48WOTLYe+CJDylFPV3ILxFrHm1QV2EP/cvIlHzurNODChVKLCgELFCDfFvfm0NWYHka7gF0YhW2BOM6bnLAc9AA2DgoWLPD8UA51/3L1lVyfnojrKyHBftUHpY6U6wqjPyVY7nDNsutxPEabj5Upu0U/UNCYO5+Gko0TfJprLkVi383YN0Usva6kZacvA77bHBq1UFuYVfWci9kD9ExRfvNUimNKeD8+5TYMP11kLeFkQBNRul5ccwv+kFtmpuqApRiEIuIvjIujQpgGlJ/cGpqdT/l6GYJOHgAR2AoZCqR1nXgIUPfgHmzYXGd5udQd0wFctZ0YbRO0VBZEypIQWAGQxF3exxR1pAahMH3j1fU7TzJohiU3TGtYh9VML5GZGiWxnF+UBu18UY8Bqb/S3KnI1kZv25qpHbCpPcYT0HDHXLC4qj4eXUW4QTT+p/knIs7dcPsc1MMBn8DoGPfpbkSrF664stCXVA7sT1fQ99PoGuqf+dUTJMSV6Ty3ekngrOShmpLCBsrFeCjNYCl+2pmKTUJetYJ6ovpE7h9TvG9aow8iLefC9MmDyYyQxtcsJICOYw5al94DB8yt6+JJS+jKgvS/A3y/hhbrQEmBqbhW1q4bDmaP3Jd/83noMY1qtLN/d+HIdoIy/pcQR9yCBYaOjYpXhEQ9wnsrmMmDYby6/Nb8Wv9xdj8FD4sBjQ5mkqey3MnldLfU7jW+DHU6OJr3pxo3CHiwxG9TCXOk/bwGED1qgqhPPWZ9CrHzKXzHm5hC6bF43+CG/2pDuviQguOSCN5TJ1gozyd9JLOAcMGR1LK8IRW7IHZk2VChwP3n1ruK4uK/K27Bb4XR5kpbf4iQrEtYV9Spdr/fH6/HazKcSohXMsbcEDMUw0ic+RBt5wGG2Y3vUHngnC8iu47DAPgP5NaTJxrA1/4UROPbLwg8wpKgpBZUYJZRPgRccu60ahGJGVeM3Q4iKKNXN11siXPMF+zVTmDAYbIrDZ/miT18oBKlDAyvz8Eb470V+Pw1Vz2Ug9mwggNQjC6v1CjNd87q1TJQtKE5bI+4Urqmxx0oSIXAqDr9fanOdQM789hIJ/QZcFYhXBpHn0Fe7KM1FSSvUlC6vxIR1Z44JYDhV7HnBicfhVIv8u4RKRGuj01jl2xLU+rW5uxKWgmvmG8Lfwdn5Oh66xn/PEV4BPM1RxAv7WkzPPkZeTfo99BhbMNOXc+XG6L78iaKevSiWrazlGrcbMSPSL3Eae4NlAVjp6NHsVmAs9K2f4I+hrA2+8pTI/DF6XcscUsQszw4xVZWn4rsWKxZU9wlecEDP40wYFJJ/cjPwd5nJl34F5LsQvGahSpOLtd5aDxEEhg6FnOpHZ+tRmP1lN/3eULrcesBUaBxRFb5jGw3Gt5yxgLeq8ueA0Gm3a17af8U667rRRVUkhxLNeui515tvbah/v2f0naQJv8q/HHa2Kv/EVmmANjo2DoXaMaMw1ltU/KqKAmhu0JykTRfd8jTV8P9sIWA7on/fhzc+39v/TqIyhnA3j1miZGdKoCUnPy805P4xnC5ccMZqLxePnH3DRgU6BjaMAYDI3eVGi8Y0ArkFnK1QjaDi2JubDzxQJ/YFkaZohUlPPgMOmWdT9YjMnoqB+jRXKkMRZg7i9v5YeLse/3BJSEV3BOEKAuU5gYQKJtg1CLCWIhuz5wVKfK53/p+s9j0fH7V5HJtCz1ZIzJG5I5vU8dbU4ud7mMhV9GHZlUAG4gd7occAPMi6/MWmq1VHVrGc/6dVLrxEGk4992jVrEVYUFX+7dPtzDb0qXz+CBULNk6Vr8s6eT58PhR1pk/hmSs9hrkcWQUAAnnsZ9CU+DuC8FF4+g4aL1gwE1UhQD8Wvu+TsbUgmHW2DqFp2THInTTpOSgUMz33SrS5FePIqcDNP4AWYwiPQfYjpcJVcQJoeeV0YQelOjD/nabCW8qlwsn7IxH/P74oPcxdwvbY299c3IDyR3J9juq9TkE2WFOWm8/KoYGsQ8RBd5byKZatSC5oXCZO7yN9EWrKLGkeHlAJNKwWLuIIul+OrGRoA4466a+HSqLcp01jmVCCUyPfvsc67nnllIberq8iWzJiARJbX2Jx+T0VWKybRizqqZ3RtHWmNFzS5/Dj3m32grxG8aDf9khIZOQ6nxCdfe5AVM1GFFD/k/9aqBXIv7QL8fcFLoxpJN/ZSM2c87T/dcro5VkqoyyIGZdzDzrkZ/0BwSDOzbV6N5+uJlCONurpoDZctpahH6d/6DUkVyvQlMQDpRXtznfQ0uQ/A9XYbUurqJGOP6gBXm4I6jReywSCOchJJZju37u/WXyg9/x8sKH5Rgb8mfoeedcIgMOUGvx3YHD0z9idx0UpJd9g212Gfyncc8W83pDyiDjO/2OmqpluPVj8r3wiVpqwsbf90WpONKHzawSx7mOrT/FqUHZU1R75MzZL6rVOFktt6NBm4x/5hVIxQL7qbQ1MPfZZ5KyJYBuJeqat3te4TYR0Z4pY1GJpmMWmrgZ4yci1FpRG8I6tp5CoVz4D2tLHjtluc8B/eQRfyPPWfxdc0m04TDQaUvpLPMxpDrOqn88xr+uUl2IDSh/T+h6ZIo0VBu5cxjDAnarV8M4gStYa9K+JJPeACpTxM4h9v7VGLhGXYLii+JJ3cJdvXPDfYag8mzXg6K0XRnFe+AZjUibwP3a2lSY3PGdxSWpxyVvZfztm5CAcy12W1gXQ7zq7Mc6D2aud48p0j8qfg9IksZoZWJe2qto9QFRgzHayFzn55TATPax4HgRb1rQh2BSOM4tUeGeYn3ztChvQS5HIBJKhf3LcOpeKNMRVfrh3XJRzry4njn7KQF9BcDllMjGblVQsi"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626009,
+        "id": "LAvKaqHqLNLrz7IPsf3nmQM",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2016,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1918,
+            "text_tokens": 98
+          },
+          "prompt_tokens": 882,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 882,
+            "video_tokens": null
+          },
+          "total_tokens": 2898
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    },
+    {
+      "answer": {
+        "case_id": "tif-wrong-district",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "rationale": "The official metadata in provider-374872 confirms the meeting is for the Dallas Downtown Connection TIF District Board of Directors Meeting. Under the approved policy, official metadata is immutable and separate TIF districts cannot be treated as the same public body.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 84.01603191718459,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"tif-wrong-district\", \"supported\": false, \"proposed_owner\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"proposed_action\": \"reject\", \"evidence_ref_ids\": [\"provider-374872\"], \"missing_evidence\": [], \"rationale\": \"The official metadata in provider-374872 confirms the meeting is for the Dallas Downtown Connection TIF District Board of Directors Meeting. Under the approved policy, official metadata is immutable and separate TIF districts cannot be treated as the same public body.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626116,
+        "id": "hAvKav3GNfHoz7IP79ztoQk",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 1354,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1231,
+            "text_tokens": 123
+          },
+          "prompt_tokens": 882,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 882,
+            "video_tokens": null
+          },
+          "total_tokens": 2236
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 93.67448379239067,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.4678411250934,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "answer": {
+        "case_id": "tif-farmers-city-center",
+        "evidence_ref_ids": [
+          "provider-204708"
+        ],
+        "missing_evidence": [
+          "Evidence demonstrating that Dallas City Center TIF District and Farmers Market TIF District are the same public body."
+        ],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas City Center TIF District Board of Directors Meeting",
+        "rationale": "Official metadata designates the body as Dallas City Center TIF District Board of Directors Meeting. Under policy, official metadata is immutable and shared tokens do not establish identity.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "latency_seconds": 126.5382605837658,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-farmers-city-center\",\"supported\":false,\"proposed_owner\":\"Dallas City Center TIF District Board of Directors Meeting\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204708\"],\"missing_evidence\":[\"Evidence demonstrating that Dallas City Center TIF District and Farmers Market TIF District are the same public body.\"],\"rationale\":\"Official metadata designates the body as Dallas City Center TIF District Board of Directors Meeting. Under policy, official metadata is immutable and shared tokens do not establish identity.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626582,
+        "id": "Vg3KatCpOb3oz7IP__rFmAk",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2883,
+          "completion_tokens_details": {
+            "reasoning_tokens": 735,
+            "text_tokens": 115
+          },
+          "prompt_tokens": 1869,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 984,
+            "video_tokens": null
+          },
+          "total_tokens": 4752
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    },
+    {
+      "answer": {
+        "case_id": "tif-farmers-city-center",
+        "evidence_ref_ids": [
+          "provider-204708"
+        ],
+        "missing_evidence": [
+          "Evidence establishing that Dallas City Center TIF District and Farmers Market district are the same public body."
+        ],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas City Center TIF District Board of Directors Meeting",
+        "rationale": "The frozen evidence explicitly designates the body as Dallas City Center TIF District Board of Directors Meeting. Shared municipal or TIF categorization does not establish identity with the Farmers Market district.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 67.64973270799965,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-farmers-city-center\",\"supported\":false,\"proposed_owner\":\"Dallas City Center TIF District Board of Directors Meeting\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204708\"],\"missing_evidence\":[\"Evidence establishing that Dallas City Center TIF District and Farmers Market district are the same public body.\"],\"rationale\":\"The frozen evidence explicitly designates the body as Dallas City Center TIF District Board of Directors Meeting. Shared municipal or TIF categorization does not establish identity with the Farmers Market district.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626683,
+        "id": "uw3KapqzKN2ez7IP28CemAw",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2950,
+          "completion_tokens_details": {
+            "reasoning_tokens": 800,
+            "text_tokens": 116
+          },
+          "prompt_tokens": 1868,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 983,
+            "video_tokens": null
+          },
+          "total_tokens": 4818
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "BadRequestError",
+      "latency_seconds": 91.81979274982587,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.23584858328104,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "answer": {
+        "case_id": "tif-grand-park-zone06",
+        "evidence_ref_ids": [
+          "provider-204775"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Reinvestment Zone 06 Board Grand Park South",
+        "rationale": "Official metadata is immutable, and the supplied frozen evidence demonstrates the entity is Reinvestment Zone 06 Board Grand Park South rather than Farmers Market.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "latency_seconds": 23.969550875015557,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-grand-park-zone06\",\"supported\":false,\"proposed_owner\":\"Reinvestment Zone 06 Board Grand Park South\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204775\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable, and the supplied frozen evidence demonstrates the entity is Reinvestment Zone 06 Board Grand Park South rather than Farmers Market.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626954,
+        "id": "yg7KaofCEdLrz7IPwYnomQM",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2771,
+          "completion_tokens_details": {
+            "reasoning_tokens": 644,
+            "text_tokens": 93
+          },
+          "prompt_tokens": 1867,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 982,
+            "video_tokens": null
+          },
+          "total_tokens": 4638
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    },
+    {
+      "answer": {
+        "case_id": "tif-grand-park-zone06",
+        "evidence_ref_ids": [
+          "provider-204775"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Reinvestment Zone 06 Board Grand Park South",
+        "rationale": "Official metadata is immutable, and the verified provider record explicitly identifies the body as Reinvestment Zone 06 Board Grand Park South, providing no support for renaming to Farmers Market.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 50.10507966578007,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-grand-park-zone06\",\"supported\":false,\"proposed_owner\":\"Reinvestment Zone 06 Board Grand Park South\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204775\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable, and the verified provider record explicitly identifies the body as Reinvestment Zone 06 Board Grand Park South, providing no support for renaming to Farmers Market.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626972,
+        "id": "9g7Kau_bF8Drz7IPwubeuAk",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 3406,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1273,
+            "text_tokens": 99
+          },
+          "prompt_tokens": 1868,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 983,
+            "video_tokens": null
+          },
+          "total_tokens": 5274
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.1280964165926,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.27453954191878,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.0287135830149,
+      "prompt_case_id": "tif-dallas-aggregate",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.25408891681582,
+      "prompt_case_id": "tif-dallas-aggregate",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.52565629221499,
+      "prompt_case_id": "tif-dallas-aggregate",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.25903925020248,
+      "prompt_case_id": "tif-dallas-aggregate",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-zone-marker",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.02509879181162,
+      "prompt_case_id": "tif-zone-marker",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-zone-marker",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.9920569169335,
+      "prompt_case_id": "tif-zone-marker",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-zone-marker",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.21573770791292,
+      "prompt_case_id": "tif-zone-marker",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-zone-marker",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.97997412504628,
+      "prompt_case_id": "tif-zone-marker",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-ethics",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.0985484579578,
+      "prompt_case_id": "tif-ethics",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-ethics",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.22560291690752,
+      "prompt_case_id": "tif-ethics",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-ethics",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.87260683299974,
+      "prompt_case_id": "tif-ethics",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-ethics",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.167726167012,
+      "prompt_case_id": "tif-ethics",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-joint",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.18122041691095,
+      "prompt_case_id": "tif-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-joint",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.05991004221141,
+      "prompt_case_id": "tif-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-joint",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.4143143328838,
+      "prompt_case_id": "tif-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-joint",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.97536729089916,
+      "prompt_case_id": "tif-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-joint",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 87.30763266701251,
+      "prompt_case_id": "tif-unmarked-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-joint",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.0549732921645,
+      "prompt_case_id": "tif-unmarked-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-joint",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.0600699163042,
+      "prompt_case_id": "tif-unmarked-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-joint",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.86046633310616,
+      "prompt_case_id": "tif-unmarked-joint",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-multifamily",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.16103400010616,
+      "prompt_case_id": "tif-multifamily",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-multifamily",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.13497058302164,
+      "prompt_case_id": "tif-multifamily",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-multifamily",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.58191108331084,
+      "prompt_case_id": "tif-multifamily",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-multifamily",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.51105450000614,
+      "prompt_case_id": "tif-multifamily",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-beautiful",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.2384534580633,
+      "prompt_case_id": "tif-beautiful",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-beautiful",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.33257716707885,
+      "prompt_case_id": "tif-beautiful",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-beautiful",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.01111962506548,
+      "prompt_case_id": "tif-beautiful",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-beautiful",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.31766054173931,
+      "prompt_case_id": "tif-beautiful",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-woodhaven",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.2870569578372,
+      "prompt_case_id": "tif-woodhaven",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-woodhaven",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.02450500009581,
+      "prompt_case_id": "tif-woodhaven",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-woodhaven",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.9294912503101,
+      "prompt_case_id": "tif-woodhaven",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-woodhaven",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.01979141728953,
+      "prompt_case_id": "tif-woodhaven",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.4054086250253,
+      "prompt_case_id": "tif-duplicate-views",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.79677062481642,
+      "prompt_case_id": "tif-duplicate-views",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.10080591635779,
+      "prompt_case_id": "tif-duplicate-views",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-duplicate-views",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.95874849986285,
+      "prompt_case_id": "tif-duplicate-views",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-cross-city",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "BadRequestError",
+      "latency_seconds": 91.54795229202136,
+      "prompt_case_id": "tif-cross-city",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-cross-city",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "BadRequestError",
+      "latency_seconds": 16.073448250070214,
+      "prompt_case_id": "tif-cross-city",
+      "provider_attempts": 1,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-cross-city",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "BadRequestError",
+      "latency_seconds": 16.072007916867733,
+      "prompt_case_id": "tif-cross-city",
+      "provider_attempts": 1,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-cross-city",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "BadRequestError",
+      "latency_seconds": 16.02327699959278,
+      "prompt_case_id": "tif-cross-city",
+      "provider_attempts": 1,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-pid",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.10798262478784,
+      "prompt_case_id": "tif-pid",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-pid",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.18065554182976,
+      "prompt_case_id": "tif-pid",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-pid",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.11224729195237,
+      "prompt_case_id": "tif-pid",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-pid",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.16138874972239,
+      "prompt_case_id": "tif-pid",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-neighborhood",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.08210087521002,
+      "prompt_case_id": "tif-unmarked-neighborhood",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-neighborhood",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.35392312519252,
+      "prompt_case_id": "tif-unmarked-neighborhood",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-neighborhood",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.99702920904383,
+      "prompt_case_id": "tif-unmarked-neighborhood",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-unmarked-neighborhood",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.15480000013486,
+      "prompt_case_id": "tif-unmarked-neighborhood",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-topic-only",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.09623458376154,
+      "prompt_case_id": "tif-topic-only",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-topic-only",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.02747379103675,
+      "prompt_case_id": "tif-topic-only",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-topic-only",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.95666070887819,
+      "prompt_case_id": "tif-topic-only",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-topic-only",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.40835725003853,
+      "prompt_case_id": "tif-topic-only",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-dated-family",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.04855533409864,
+      "prompt_case_id": "denton-dated-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-dated-family",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.51227041566744,
+      "prompt_case_id": "denton-dated-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-dated-family",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.25420529209077,
+      "prompt_case_id": "denton-dated-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-dated-family",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.22398250037804,
+      "prompt_case_id": "denton-dated-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "few-recordings",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.5953531251289,
+      "prompt_case_id": "few-recordings",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "few-recordings",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.32330545829609,
+      "prompt_case_id": "few-recordings",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "few-recordings",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.4867840828374,
+      "prompt_case_id": "few-recordings",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "few-recordings",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.04196187481284,
+      "prompt_case_id": "few-recordings",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "bond-family",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.2927428339608,
+      "prompt_case_id": "bond-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "bond-family",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.37745074974373,
+      "prompt_case_id": "bond-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "bond-family",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.50921137491241,
+      "prompt_case_id": "bond-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "bond-family",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.02216370776296,
+      "prompt_case_id": "bond-family",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "charter-years",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.35494729178026,
+      "prompt_case_id": "charter-years",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "charter-years",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.54504174971953,
+      "prompt_case_id": "charter-years",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "charter-years",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.00063975015655,
+      "prompt_case_id": "charter-years",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "charter-years",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.44968249974772,
+      "prompt_case_id": "charter-years",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "canceled-unknown",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.11527770804241,
+      "prompt_case_id": "canceled-unknown",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "canceled-unknown",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.47203429229558,
+      "prompt_case_id": "canceled-unknown",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "canceled-unknown",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.23210375010967,
+      "prompt_case_id": "canceled-unknown",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "canceled-unknown",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.34755766624585,
+      "prompt_case_id": "canceled-unknown",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tv-show",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.02537437481806,
+      "prompt_case_id": "tv-show",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tv-show",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.17342012515292,
+      "prompt_case_id": "tv-show",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tv-show",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.98595462506637,
+      "prompt_case_id": "tv-show",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tv-show",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.23158104205504,
+      "prompt_case_id": "tv-show",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "staff-training",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.16638841666281,
+      "prompt_case_id": "staff-training",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "staff-training",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.15236945776269,
+      "prompt_case_id": "staff-training",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "staff-training",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 91.93692200025544,
+      "prompt_case_id": "staff-training",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "staff-training",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.14257433265448,
+      "prompt_case_id": "staff-training",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "proposed-community",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 93.06243499973789,
+      "prompt_case_id": "proposed-community",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "proposed-community",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.42513491632417,
+      "prompt_case_id": "proposed-community",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "proposed-community",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.38651245785877,
+      "prompt_case_id": "proposed-community",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "proposed-community",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.21105649974197,
+      "prompt_case_id": "proposed-community",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "sign-distinct",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.00793266668916,
+      "prompt_case_id": "sign-distinct",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "sign-distinct",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.1962693752721,
+      "prompt_case_id": "sign-distinct",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "sign-distinct",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.1483898749575,
+      "prompt_case_id": "sign-distinct",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "sign-distinct",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.3473910833709,
+      "prompt_case_id": "sign-distinct",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "same-topic-not-body",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.00153316697106,
+      "prompt_case_id": "same-topic-not-body",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "same-topic-not-body",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.12770708324388,
+      "prompt_case_id": "same-topic-not-body",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "same-topic-not-body",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.27473337529227,
+      "prompt_case_id": "same-topic-not-body",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "same-topic-not-body",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.35358470818028,
+      "prompt_case_id": "same-topic-not-body",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "joint-unowned",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.12777899997309,
+      "prompt_case_id": "joint-unowned",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "joint-unowned",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.63595516700298,
+      "prompt_case_id": "joint-unowned",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "joint-unowned",
+      "configuration_id": "7c1da156c22a4ce58db89a13b4f7eec2426567386af617a44ff8a3ea1fa9967a",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.26022408297285,
+      "prompt_case_id": "joint-unowned",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    },
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "joint-unowned",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.30062554217875,
+      "prompt_case_id": "joint-unowned",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

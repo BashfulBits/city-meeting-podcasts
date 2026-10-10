@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-dallas-aggregate",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "include_recording",
+        "proposed_owner": "dallas-tx:tif",
+        "rationale": "The recording is attested in the frozen 2026-10-02 archive snapshot by evidence_ref provider-374872, which carries the exact provider label 'Dallas Downtown Connection TIF District Board of Directors Meeting', verified provider_guid 374872, published 2026-02-09, and the dallastx.new.swagit.com canonical URL. This satisfies the family policy's provenance requirement (exact provider label or verified GUID from the snapshot, per review/tif-coverage-2026-10.md). Identity rests on the official provider metadata, not shared city/topic tokens: the body label explicitly identifies a Dallas TIF district board, consistent with city dallas-tx and decision_type tif. existing_feeds is empty, so there is no ownership conflict; the seed-only completeness status is a stated limitation but does not contradict inclusion under the approved policy. Evidence is sufficient; abstention is not warranted.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-dallas-aggregate",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 24.37995974998921,
+      "prompt_case_id": "tif-dallas-aggregate",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"tif-dallas-aggregate\", \"supported\": true, \"proposed_owner\": \"dallas-tx:tif\", \"proposed_action\": \"include_recording\", \"evidence_ref_ids\": [\"provider-374872\"], \"missing_evidence\": [], \"rationale\": \"The recording is attested in the frozen 2026-10-02 archive snapshot by evidence_ref provider-374872, which carries the exact provider label 'Dallas Downtown Connection TIF District Board of Directors Meeting', verified provider_guid 374872, published 2026-02-09, and the dallastx.new.swagit.com canonical URL. This satisfies the family policy's provenance requirement (exact provider label or verified GUID from the snapshot, per review/tif-coverage-2026-10.md). Identity rests on the official provider metadata, not shared city/topic tokens: the body label explicitly identifies a Dallas TIF district board, consistent with city dallas-tx and decision_type tif. existing_feeds is empty, so there is no ownership conflict; the seed-only completeness status is a stated limitation but does not contradict inclusion under the approved policy. Evidence is sufficient; abstention is not warranted.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Include this TIF board recording in the Dallas TIF aggregate.\"\n- body_label: \"Dallas Downtown Connection TIF District Board of Directors Meeting\"\n- city: dallas-tx\n- decision_type: tif\n- The recording is from the Dallas TX Swagit provider, GUID 374872, published 2026-02-09.\n- Policy: family_policy approved, version 2026-10-02. Evidence provenance: \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\" Seed evidence matches the evidence_refs.\n- evidence_refs contains provider-374872 with content hash, retrieved at 2026-10-02, source_span containing the body label and links.\n- The seed_evidence in the family policy matches the recording: body \"Dallas Downtown Connection TIF District Board of Directors Meeting\", GUID 374872.\n- existing_feeds is empty, so no conflict.\n\nAssessment: The recording is a Dallas body (dallastx.new.swagit.com), the label is a TIF District Board of Directors Meeting, matching decision_type tif, and identity is established via exact provider label and GUID in the seed snapshot. The claim to include it in the Dallas TIF aggregate is supported.\n\nProposed owner: Something like \"dallas-tif-aggregate\" or the board owner. The id is \"tif-dallas-aggregate\". Owner selection independently\u2014maybe \"dallas-tx:tif\" split group, or owner as the aggregate feed. I'll propose owner \"tif-dallas-aggregate\" and action \"include\" / \"add_recording\".\n\nsupported: true. evidence_ref_ids: [\"provider-374872\"]. missing_evidence: [].\n\nRationale: concise, citing only supplied IDs.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Include this TIF board recording in the Dallas TIF aggregate.\"\n- body_label: \"Dallas Downtown Connection TIF District Board of Directors Meeting\"\n- city: dallas-tx\n- decision_type: tif\n- The recording is from the Dallas TX Swagit provider, GUID 374872, published 2026-02-09.\n- Policy: family_policy approved, version 2026-10-02. Evidence provenance: \"Exact provider label or verified GUID from the 2026-10-02 archive snapshot.\" Seed evidence matches the evidence_refs.\n- evidence_refs contains provider-374872 with content hash, retrieved at 2026-10-02, source_span containing the body label and links.\n- The seed_evidence in the family policy matches the recording: body \"Dallas Downtown Connection TIF District Board of Directors Meeting\", GUID 374872.\n- existing_feeds is empty, so no conflict.\n\nAssessment: The recording is a Dallas body (dallastx.new.swagit.com), the label is a TIF District Board of Directors Meeting, matching decision_type tif, and identity is established via exact provider label and GUID in the seed snapshot. The claim to include it in the Dallas TIF aggregate is supported.\n\nProposed owner: Something like \"dallas-tif-aggregate\" or the board owner. The id is \"tif-dallas-aggregate\". Owner selection independently\u2014maybe \"dallas-tx:tif\" split group, or owner as the aggregate feed. I'll propose owner \"tif-dallas-aggregate\" and action \"include\" / \"add_recording\".\n\nsupported: true. evidence_ref_ids: [\"provider-374872\"]. missing_evidence: [].\n\nRationale: concise, citing only supplied IDs.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626490,
+        "id": "chatcmpl-8f69387f-49c7-4b25-b6b8-a25cfbf3e60e",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 629,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 374,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1064,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1693
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

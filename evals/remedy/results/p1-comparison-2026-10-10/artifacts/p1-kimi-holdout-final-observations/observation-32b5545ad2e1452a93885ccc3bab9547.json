@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "Assign recording 122084 to denton-tx-tirz-1-board; do not place it in denton-tx-city-council.",
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The claim that this recording belongs in denton-tx-city-council is not supported. Recording 122084 is labeled 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM', and the supplied official agenda (evidence ref: official-agenda) confirms the officially convened body: 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, May 26, 2021'. The agenda's reference to the 'Council Work Session Room' is only a meeting location, and per the approved identity policy the meeting room is not the owner. The existing feed denton-tx-tirz-1-board ('Meetings of Denton TIRZ No. 1 Board') already includes this exact recording (provider_guid 122084) among its matching items, while denton-tx-city-council's matching items contain no TIRZ No. 1 recordings. Distinct numbered boards stay distinct, so the correct owner is denton-tx-tirz-1-board.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-council",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 22.605819542426616,
+      "prompt_case_id": "denton-zone1-council",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"denton-zone1-council\", \"supported\": false, \"proposed_owner\": \"denton-tx-tirz-1-board\", \"proposed_action\": \"Assign recording 122084 to denton-tx-tirz-1-board; do not place it in denton-tx-city-council.\", \"evidence_ref_ids\": [\"official-agenda\"], \"missing_evidence\": [], \"rationale\": \"The claim that this recording belongs in denton-tx-city-council is not supported. Recording 122084 is labeled 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM', and the supplied official agenda (evidence ref: official-agenda) confirms the officially convened body: 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, May 26, 2021'. The agenda's reference to the 'Council Work Session Room' is only a meeting location, and per the approved identity policy the meeting room is not the owner. The existing feed denton-tx-tirz-1-board ('Meetings of Denton TIRZ No. 1 Board') already includes this exact recording (provider_guid 122084) among its matching items, while denton-tx-city-council's matching items contain no TIRZ No. 1 recordings. Distinct numbered boards stay distinct, so the correct owner is denton-tx-tirz-1-board.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The claim: \"This recording belongs in denton-tx-city-council.\" The recording body is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\" with provider_guid 122084. There's an existing feed \"denton-tx-tirz-1-board\" whose body_includes includes this exact recording. The family policy says \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nSo the claim that it belongs to city council is not supported. Instead it belongs to denton-tx-tirz-1-board. The official agenda confirms it's the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board.\n\nRecordings: only one recording listed (122084). The existing feed for tirz-1-board already includes others but that's recording-specific proof.\n\nProposed action: assign to denton-tx-tirz-1-board. Evidence refs: official-agenda.\n\nCase id: \"denton-zone1-council\".\n\nSupported: false (claim not supported). Proposed owner: denton-tx-tirz-1-board. Proposed action: assign recording 122084 to denton-tx-tirz-1-board (remove from denton-tx-city-council). missing_evidence: none needed, or note limitations.\n\nRationale: cite evidence.",
+                "refusal": null
+              },
+              "reasoning_content": "The claim: \"This recording belongs in denton-tx-city-council.\" The recording body is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\" with provider_guid 122084. There's an existing feed \"denton-tx-tirz-1-board\" whose body_includes includes this exact recording. The family policy says \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nSo the claim that it belongs to city council is not supported. Instead it belongs to denton-tx-tirz-1-board. The official agenda confirms it's the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board.\n\nRecordings: only one recording listed (122084). The existing feed for tirz-1-board already includes others but that's recording-specific proof.\n\nProposed action: assign to denton-tx-tirz-1-board. Evidence refs: official-agenda.\n\nCase id: \"denton-zone1-council\".\n\nSupported: false (claim not supported). Proposed owner: denton-tx-tirz-1-board. Proposed action: assign recording 122084 to denton-tx-tirz-1-board (remove from denton-tx-city-council). missing_evidence: none needed, or note limitations.\n\nRationale: cite evidence.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628274,
+        "id": "chatcmpl-d2670c67-f740-45b3-a2dd-b5ddd2c38b9a",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 623,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 290,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2732,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3355
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

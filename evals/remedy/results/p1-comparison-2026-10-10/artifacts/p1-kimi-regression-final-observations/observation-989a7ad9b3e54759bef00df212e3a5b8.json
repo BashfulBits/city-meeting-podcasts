@@ -1,0 +1,87 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-dated-family",
+        "evidence_ref_ids": [],
+        "missing_evidence": [
+          "recordings",
+          "evidence_refs",
+          "complete authoritative source archive",
+          "independent adjudication"
+        ],
+        "proposed_action": null,
+        "proposed_owner": null,
+        "rationale": "No recordings or evidence_refs are supplied, and the package is seed-only rather than a complete archive. A date/time suffix in a meeting label describes an instance of the Airport Advisory Board and does not by itself establish a new public body; identity also cannot be inferred from shared city/topic tokens. Because admission requires recording evidence and none is frozen here, the claim is not assessed as supported.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-dated-family",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 136.34843387501314,
+      "prompt_case_id": "denton-dated-family",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-dated-family\",\"supported\":null,\"proposed_owner\":null,\"proposed_action\":null,\"evidence_ref_ids\":[],\"missing_evidence\":[\"recordings\",\"evidence_refs\",\"complete authoritative source archive\",\"independent adjudication\"],\"rationale\":\"No recordings or evidence_refs are supplied, and the package is seed-only rather than a complete archive. A date/time suffix in a meeting label describes an instance of the Airport Advisory Board and does not by itself establish a new public body; identity also cannot be inferred from shared city/topic tokens. Because admission requires recording evidence and none is frozen here, the claim is not assessed as supported.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "We need answer valid JSON only per schema. Need assess supplied claim using frozen evidence and approved policy. Input claim: \"A dated suffix establishes a new public body for every date.\" Body label Airport Advisory Board on 2021-05-13 10:00 AM, city denton-tx, no evidence_refs, no recordings, seed-only, limitations. Policy says abstain when evidence missing; shared city/topic tokens do not establish identity; official metadata immutable; select owner independently and cite only supplied evidence-reference IDs. We need produce fields: case_id likely id from input \"denton-dated-family\". supported? The claim asserts every dated suffix establishes new public body. With no evidence, and policy likely rejects date suffix as identity? Need decide supported false/null? Schema supported boolean or null. Abstain when evidence missing: probably supported=null, proposed_owner=null, proposed_action=null? But also claim is false based on approved policy? Let's parse: \"Select an owner independently\" means don't inherit owner from shared tokens. We have no owner candidates. proposed_owner null. proposed_action maybe \"reject\"? But schema allows string/null, no enum. Need perhaps use null for action due abstain. Evidence_ref_ids must cite only supplied evidence-reference IDs: empty. missing_evidence list include recordings/evidence_refs/source archive etc. Rationale concise: no supplied evidence refs/recordings; seed-only incomplete; date/time suffix in body_label is metadata for a meeting instance, not evidence of a distinct public body; identity cannot be inferred from city/topic tokens; abstain. supported: false or null? \"Abstain when evidence is missing\" implies supported null rather than false, because not adjudicated. However the claim is a broad universal and conflicts with policy? Let's inspect wording: Official metadata immutable. Shared city/topic tokens do not establish identity. A dated suffix? There is no explicit policy text but likely family_policy seed evidence empty. We can say not supported due missing evidence, not affirm false. Use supported null. proposed_action maybe \"abstain\" even though proposed_action string/null allowed. The instruction says Abstain when evidence is missing; proposed_action could be \"abstain\". But structured outputs often expect proposed_action null when abstain. Which is safer? They ask \"Select an owner independently\" -> proposed_owner null. \"cite only supplied evidence-reference IDs\" -> empty. For action, maybe set \"abstain\" to comply. Schema doesn't constrain. But if grader expects null for unsupported? Need infer from RemedyEvalAnswer schema: proposed_action anyOf string/null. In these tasks, actions might be like \"create\", \"merge\", \"reject\", \"abstain\". Since no approved enum, use null? The user demanded corrected JSON only. I can include proposed_action:null to avoid inventing action. Rationale can state abstention. But field supported null, owner null, action null may look all null. Is that acceptable? Missing evidence list nonempty.\n\nNeed final raw JSON matching schema. No markdown. Ensure rationale <=2000 chars. Case id string. Use id \"denton-dated-family\". missing_evidence entries can be strings; cite missing recording evidence, evidence_refs, authoritative source. Avoid evidence refs not supplied. Should I include policy reference as evidence? No, family policy reference is not evidence-reference IDs? It is supplied in input but evidence_refs empty. They said cite only supplied evidence-reference IDs; policy reference can be mentioned in rationale? Maybe not cite as evidence. OK.\n\nNeed final. Ensure valid JSON; no trailing commas. Use supported null. Proposed_action null. Rationale maybe: \"No recordings or evidence_refs are supplied, and the package is seed-only/not a complete archive. A date/time suffix in a meeting label describes an instance of the Airport Advisory Board and does not by itself establish a new public body; identity also cannot be inferred from shared city/topic tokens. Because admission requires recording evidence and none is frozen here, the claim is not assessed as supported.\" Good.\n\nNeed final only JSON.",
+                "refusal": null
+              },
+              "reasoning_content": "We need answer valid JSON only per schema. Need assess supplied claim using frozen evidence and approved policy. Input claim: \"A dated suffix establishes a new public body for every date.\" Body label Airport Advisory Board on 2021-05-13 10:00 AM, city denton-tx, no evidence_refs, no recordings, seed-only, limitations. Policy says abstain when evidence missing; shared city/topic tokens do not establish identity; official metadata immutable; select owner independently and cite only supplied evidence-reference IDs. We need produce fields: case_id likely id from input \"denton-dated-family\". supported? The claim asserts every dated suffix establishes new public body. With no evidence, and policy likely rejects date suffix as identity? Need decide supported false/null? Schema supported boolean or null. Abstain when evidence missing: probably supported=null, proposed_owner=null, proposed_action=null? But also claim is false based on approved policy? Let's parse: \"Select an owner independently\" means don't inherit owner from shared tokens. We have no owner candidates. proposed_owner null. proposed_action maybe \"reject\"? But schema allows string/null, no enum. Need perhaps use null for action due abstain. Evidence_ref_ids must cite only supplied evidence-reference IDs: empty. missing_evidence list include recordings/evidence_refs/source archive etc. Rationale concise: no supplied evidence refs/recordings; seed-only incomplete; date/time suffix in body_label is metadata for a meeting instance, not evidence of a distinct public body; identity cannot be inferred from city/topic tokens; abstain. supported: false or null? \"Abstain when evidence is missing\" implies supported null rather than false, because not adjudicated. However the claim is a broad universal and conflicts with policy? Let's inspect wording: Official metadata immutable. Shared city/topic tokens do not establish identity. A dated suffix? There is no explicit policy text but likely family_policy seed evidence empty. We can say not supported due missing evidence, not affirm false. Use supported null. proposed_action maybe \"abstain\" even though proposed_action string/null allowed. The instruction says Abstain when evidence is missing; proposed_action could be \"abstain\". But structured outputs often expect proposed_action null when abstain. Which is safer? They ask \"Select an owner independently\" -> proposed_owner null. \"cite only supplied evidence-reference IDs\" -> empty. For action, maybe set \"abstain\" to comply. Schema doesn't constrain. But if grader expects null for unsupported? Need infer from RemedyEvalAnswer schema: proposed_action anyOf string/null. In these tasks, actions might be like \"create\", \"merge\", \"reject\", \"abstain\". Since no approved enum, use null? The user demanded corrected JSON only. I can include proposed_action:null to avoid inventing action. Rationale can state abstention. But field supported null, owner null, action null may look all null. Is that acceptable? Missing evidence list nonempty.\n\nNeed final raw JSON matching schema. No markdown. Ensure rationale <=2000 chars. Case id string. Use id \"denton-dated-family\". missing_evidence entries can be strings; cite missing recording evidence, evidence_refs, authoritative source. Avoid evidence refs not supplied. Should I include policy reference as evidence? No, family policy reference is not evidence-reference IDs? It is supplied in input but evidence_refs empty. They said cite only supplied evidence-reference IDs; policy reference can be mentioned in rationale? Maybe not cite as evidence. OK.\n\nNeed final. Ensure valid JSON; no trailing commas. Use supported null. Proposed_action null. Rationale maybe: \"No recordings or evidence_refs are supplied, and the package is seed-only/not a complete archive. A date/time suffix in a meeting label describes an instance of the Airport Advisory Board and does not by itself establish a new public body; identity also cannot be inferred from shared city/topic tokens. Because admission requires recording evidence and none is frozen here, the claim is not assessed as supported.\" Good.\n\nNeed final only JSON.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791627350,
+        "id": "chatcmpl-2bdb00bd-9e45-48b3-9c3a-12d4f169acde",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 3016,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 831,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1270,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 4286
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

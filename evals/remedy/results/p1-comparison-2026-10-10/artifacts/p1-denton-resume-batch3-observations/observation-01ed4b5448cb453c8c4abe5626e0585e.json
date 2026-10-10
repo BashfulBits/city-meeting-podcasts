@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "88b934478f270c5d644c6e9c840782be12df4a79e0c09e6516c3669fca4169c5",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:50:04.614892+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The official agenda demonstrates that the meeting was convened by the Downtown Denton Tax Increment Financing Zone No. 1 Board. Under the applicable identity policy, distinct numbered boards must remain distinct; therefore, this recording belongs in denton-tx-tirz-1-board rather than denton-tx-tirz-2-board.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-wrong-zone",
+      "configuration_id": "5f3c4f594f3df3087c5cb71320145cd53aaef5c1d41f7094df5ea90c2e4aa846",
+      "latency_seconds": 48.09575524972752,
+      "prompt_case_id": "denton-zone1-wrong-zone",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":null,\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda demonstrates that the meeting was convened by the Downtown Denton Tax Increment Financing Zone No. 1 Board. Under the applicable identity policy, distinct numbered boards must remain distinct; therefore, this recording belongs in denton-tx-tirz-1-board rather than denton-tx-tirz-2-board.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626994,
+        "id": "8w7KasDyCcrBqtsP7oy_2QU",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 1349,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1222,
+            "text_tokens": 127
+          },
+          "prompt_tokens": 2792,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2792,
+            "video_tokens": null
+          },
+          "total_tokens": 4141
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_secondary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

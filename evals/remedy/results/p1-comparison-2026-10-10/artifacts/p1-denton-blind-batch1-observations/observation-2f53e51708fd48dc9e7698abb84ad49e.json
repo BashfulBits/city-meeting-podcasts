@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "912ef3ce65a4f769d579402e5f269d9fedbfcd9cd8b5818c911d2de844af6652",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:51:53.496285+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-health-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "rationale": "The official agenda confirms the meeting of the Health and Building Standards Commission on June 3, 2021 at 3:00 PM in Denton, Texas, matching the existing feed denton-tx-health-building-standards-commission.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-health-council",
+      "configuration_id": "91ace3b0eace1c1cc449c8ad49ebed192806667ce0e76d254dba91656df66af3",
+      "latency_seconds": 69.09380566701293,
+      "prompt_case_id": "case-5a9bffdb8b1a44e186edac01",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5a9bffdb8b1a44e186edac01\",\"supported\":null,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":null,\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda confirms the meeting of the Health and Building Standards Commission on June 3, 2021 at 3:00 PM in Denton, Texas, matching the existing feed denton-tx-health-building-standards-commission.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626609,
+        "id": "cg3KavrXB6TVz7IPk6jTwQ0",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2939,
+          "completion_tokens_details": {
+            "reasoning_tokens": 781,
+            "text_tokens": 125
+          },
+          "prompt_tokens": 5218,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2658,
+            "video_tokens": null
+          },
+          "total_tokens": 8157
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

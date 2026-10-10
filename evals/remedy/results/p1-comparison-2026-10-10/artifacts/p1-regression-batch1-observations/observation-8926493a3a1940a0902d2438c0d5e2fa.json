@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:53:26.967380+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-wrong-district",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "rationale": "Official metadata is immutable and explicitly designates the public body as Dallas Downtown Connection TIF District Board of Directors Meeting. Shared city or topic tokens do not establish identity with the Fort Worth Avenue district.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "latency_seconds": 108.69600379187614,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-wrong-district\",\"supported\":false,\"proposed_owner\":\"Dallas Downtown Connection TIF District Board of Directors Meeting\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-374872\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable and explicitly designates the public body as Dallas Downtown Connection TIF District Board of Directors Meeting. Shared city or topic tokens do not establish identity with the Fort Worth Avenue district.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626009,
+        "id": "LAvKaqHqLNLrz7IPsf3nmQM",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2016,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1918,
+            "text_tokens": 98
+          },
+          "prompt_tokens": 882,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 882,
+            "video_tokens": null
+          },
+          "total_tokens": 2898
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

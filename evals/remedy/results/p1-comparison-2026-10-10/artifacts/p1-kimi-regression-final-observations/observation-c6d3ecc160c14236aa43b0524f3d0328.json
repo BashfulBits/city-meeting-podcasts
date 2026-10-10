@@ -1,0 +1,88 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "bond-family",
+        "evidence_ref_ids": [
+          "provider-277833"
+        ],
+        "missing_evidence": [
+          "Recordings from any other bond year (e.g., 2023 or 2025 bond bodies) in the 2026-10-02 archive snapshot",
+          "Official provider or municipal documentation describing subscription/feed structure for bond subcommittees",
+          "Any verified GUIDs linking multiple bond years to shared or separate feeds"
+        ],
+        "proposed_action": "create_feed",
+        "proposed_owner": "2024 Bond Critical Facilities Subcommittee Meeting",
+        "rationale": "Abstention is required: the frozen evidence (provider-277833) contains exactly one seed recording, labeled by immutable official metadata as '2024 Bond Critical Facilities Subcommittee Meeting' (published 2023-10-30, GUID 277833). No evidence of any other bond year exists in the snapshot, and existing_feeds is empty, so there is no comparison set to test whether a different bond year alone necessitates a separate subscription. Seed-only completeness status and the absence of any subscription-structure documentation mean the claim rests on an unstated generalization. Per policy, shared city/topic tokens (dallas-tx, bond) do not establish identity, and evidence missing on both the comparison entity and the subscription rule requires abstention rather than affirmation or denial. The owner is selected independently from the immutable official body label in the provider record, not inferred from tokens; with no existing feeds, the appropriate action for this evidence is to create a feed under that exact label. This owner proposal is independent of the claim's truth value and cites only the supplied reference ID.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "bond-family",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 42.965806665830314,
+      "prompt_case_id": "bond-family",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"bond-family\", \"supported\": null, \"proposed_owner\": \"2024 Bond Critical Facilities Subcommittee Meeting\", \"proposed_action\": \"create_feed\", \"evidence_ref_ids\": [\"provider-277833\"], \"missing_evidence\": [\"Recordings from any other bond year (e.g., 2023 or 2025 bond bodies) in the 2026-10-02 archive snapshot\", \"Official provider or municipal documentation describing subscription/feed structure for bond subcommittees\", \"Any verified GUIDs linking multiple bond years to shared or separate feeds\"], \"rationale\": \"Abstention is required: the frozen evidence (provider-277833) contains exactly one seed recording, labeled by immutable official metadata as '2024 Bond Critical Facilities Subcommittee Meeting' (published 2023-10-30, GUID 277833). No evidence of any other bond year exists in the snapshot, and existing_feeds is empty, so there is no comparison set to test whether a different bond year alone necessitates a separate subscription. Seed-only completeness status and the absence of any subscription-structure documentation mean the claim rests on an unstated generalization. Per policy, shared city/topic tokens (dallas-tx, bond) do not establish identity, and evidence missing on both the comparison entity and the subscription rule requires abstention rather than affirmation or denial. The owner is selected independently from the immutable official body label in the provider record, not inferred from tokens; with no existing feeds, the appropriate action for this evidence is to create a feed under that exact label. This owner proposal is independent of the claim's truth value and cites only the supplied reference ID.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this claim assessment task.\n\nThe claim: \"A different bond year alone requires a separate subscription.\"\n\nEvidence: A single recording \"2024 Bond Critical Facilities Subcommittee Meeting\" from Dallas TX, dated 2023-10-30. There's only one evidence ref (provider-277833). Existing feeds: empty.\n\nThe claim asserts that a different bond year alone requires a separate subscription. The evidence only contains one bond year (2024). There is no evidence of any other bond year or of subscription structures. So we cannot support the claim with frozen evidence. Also, the completeness status is \"seed-only\".\n\nPer policy: \"Shared city/topic tokens do not establish identity. Abstain when evidence is missing.\" The single seed recording doesn't establish that a different bond year requires separate subscription. No comparison set exists. So supported = null (abstain).\n\nProposed owner: We need to select an owner independently. Since existing_feeds are empty, the proposed owner would presumably be the body label itself - \"2024 Bond Critical Facilities Subcommittee Meeting\" as a feed owner's identity based on official metadata. But careful: the guidance says shared city/topic tokens do not establish identity; we select owner independently. With only one recording and no existing feeds, the owner for this evidence would be the exact body label \"2024 Bond Critical Facilities Subcommittee Meeting\". Proposed action could be \"create_feed\" or... Hmm. The schema: proposed_owner string, proposed_action string. This looks like a feed-coverage evaluation: decide whether a recording belongs to an existing feed or creates a new one. Given no existing feeds, propose owner = \"2024 Bond Critical Facilities Subcommittee Meeting\" and action = \"create\" (create new feed). But since claim unsupported, maybe we still propose owner based on the single recording's immutable metadata.\n\nActually the task: \"Assess the supplied claim using only frozen evidence and approved policy.\" The claim is about subscription separation by bond year. We cannot verify. So supported = null, missing evidence: recordings from a different bond year (e.g., 2023 or 2025) and any documentation about subscription structure. Evidence ref ids: cite the supplied evidence we're relying on \u2014 provider-277833, since it shows only one bond year.\n\nProposed owner: independent selection \u2014 the body label itself. Proposed action: \"create_feed\" for that owner? Or action \"none/abstain\"? Given abstention on the claim, but we still propose an owner for the recording. I'll propose owner \"2024 Bond Critical Facilities Subcommittee Meeting\" and action \"create_feed\" (since no existing feeds). Rationale within 2000 chars.\n\nLet me write rationale: Single seed recording for 2024 Bond Critical Facilities Subcommittee; no evidence of other bond years or subscription configuration; city/topic tokens alone insufficient; claim cannot be evaluated -> abstain. Owner selected from immutable official metadata (exact provider body label), not from tokens. Missing: recordings from other bond years; official subscription/feed structure docs.\n\nOutput JSON only.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this claim assessment task.\n\nThe claim: \"A different bond year alone requires a separate subscription.\"\n\nEvidence: A single recording \"2024 Bond Critical Facilities Subcommittee Meeting\" from Dallas TX, dated 2023-10-30. There's only one evidence ref (provider-277833). Existing feeds: empty.\n\nThe claim asserts that a different bond year alone requires a separate subscription. The evidence only contains one bond year (2024). There is no evidence of any other bond year or of subscription structures. So we cannot support the claim with frozen evidence. Also, the completeness status is \"seed-only\".\n\nPer policy: \"Shared city/topic tokens do not establish identity. Abstain when evidence is missing.\" The single seed recording doesn't establish that a different bond year requires separate subscription. No comparison set exists. So supported = null (abstain).\n\nProposed owner: We need to select an owner independently. Since existing_feeds are empty, the proposed owner would presumably be the body label itself - \"2024 Bond Critical Facilities Subcommittee Meeting\" as a feed owner's identity based on official metadata. But careful: the guidance says shared city/topic tokens do not establish identity; we select owner independently. With only one recording and no existing feeds, the owner for this evidence would be the exact body label \"2024 Bond Critical Facilities Subcommittee Meeting\". Proposed action could be \"create_feed\" or... Hmm. The schema: proposed_owner string, proposed_action string. This looks like a feed-coverage evaluation: decide whether a recording belongs to an existing feed or creates a new one. Given no existing feeds, propose owner = \"2024 Bond Critical Facilities Subcommittee Meeting\" and action = \"create\" (create new feed). But since claim unsupported, maybe we still propose owner based on the single recording's immutable metadata.\n\nActually the task: \"Assess the supplied claim using only frozen evidence and approved policy.\" The claim is about subscription separation by bond year. We cannot verify. So supported = null, missing evidence: recordings from a different bond year (e.g., 2023 or 2025) and any documentation about subscription structure. Evidence ref ids: cite the supplied evidence we're relying on \u2014 provider-277833, since it shows only one bond year.\n\nProposed owner: independent selection \u2014 the body label itself. Proposed action: \"create_feed\" for that owner? Or action \"none/abstain\"? Given abstention on the claim, but we still propose an owner for the recording. I'll propose owner \"2024 Bond Critical Facilities Subcommittee Meeting\" and action \"create_feed\" (since no existing feeds). Rationale within 2000 chars.\n\nLet me write rationale: Single seed recording for 2024 Bond Critical Facilities Subcommittee; no evidence of other bond years or subscription configuration; city/topic tokens alone insufficient; claim cannot be evaluated -> abstain. Owner selected from immutable official metadata (exact provider body label), not from tokens. Missing: recordings from other bond years; official subscription/feed structure docs.\n\nOutput JSON only.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791627540,
+        "id": "chatcmpl-f851e38c-3957-438f-8478-ede56384812f",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 974,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 627,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 990,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1964
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

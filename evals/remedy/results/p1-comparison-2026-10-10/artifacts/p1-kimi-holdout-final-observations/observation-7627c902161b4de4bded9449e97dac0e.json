@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-health-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject_claim_and_assign_to_existing_feed",
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "rationale": "The official agenda identifies the convening body as the City of Denton Health and Building Standards Commission and confirms the June 3, 2021, 3:00 PM regular meeting. The recording label and existing-feed entry exactly match that body and provider GUID 122398. The Council Work Session Room is only the meeting location and cannot establish City Council ownership under the identity policy. The existing Denton Health & Building Standards Commission feed is therefore the appropriate owner.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-health-council",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 14.37349695758894,
+      "prompt_case_id": "denton-health-council",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"reject_claim_and_assign_to_existing_feed\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the City of Denton Health and Building Standards Commission and confirms the June 3, 2021, 3:00 PM regular meeting. The recording label and existing-feed entry exactly match that body and provider GUID 122398. The Council Work Session Room is only the meeting location and cannot establish City Council ownership under the identity policy. The existing Denton Health & Building Standards Commission feed is therefore the appropriate owner.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "We need answer JSON. Need assess claim \"This recording belongs in denton-tx-city-council.\" Need decide supported? Existing feed exact matches HBSC including guid 122398. Official agenda says commission. Policy distinct named body, room is not owner. Claim assigning council not supported. Proposed owner independent slug denton-tx-health-building-standards-commission. proposed_action likely reject claim / assign to that feed. Need cite supplied evidence ref IDs only. Evidence_refs has id official-agenda. Existing feeds aren't evidence-reference IDs? Prompt says cite only supplied evidence-reference IDs, probably only \"official-agenda\". Rationale can mention feed provenance? Evidence IDs array only official-agenda. We need output schema exact. case_id id. supported false. proposed_action string maybe \"assign_to_existing_feed\". Missing evidence [] because enough to reject and assign. Need be cautious: official agenda truncates at end but sufficient. Body label and existing feed establish exact body. Shared council work session room doesn't establish council. We should mention agenda identifies HBSC. Official metadata immutable. Claim false.\n\nFormat raw JSON no markdown. Must ensure rationale <=2000. \"evidence_ref_ids\":[\"official-agenda\"]. Proposed owner slug. Action perhaps \"assign_to denton-tx-health-building-standards-commission; reject denton-tx-city-council\". The schema does not constrain. Use concise.",
+                "refusal": null
+              },
+              "reasoning_content": "We need answer JSON. Need assess claim \"This recording belongs in denton-tx-city-council.\" Need decide supported? Existing feed exact matches HBSC including guid 122398. Official agenda says commission. Policy distinct named body, room is not owner. Claim assigning council not supported. Proposed owner independent slug denton-tx-health-building-standards-commission. proposed_action likely reject claim / assign to that feed. Need cite supplied evidence ref IDs only. Evidence_refs has id official-agenda. Existing feeds aren't evidence-reference IDs? Prompt says cite only supplied evidence-reference IDs, probably only \"official-agenda\". Rationale can mention feed provenance? Evidence IDs array only official-agenda. We need output schema exact. case_id id. supported false. proposed_action string maybe \"assign_to_existing_feed\". Missing evidence [] because enough to reject and assign. Need be cautious: official agenda truncates at end but sufficient. Body label and existing feed establish exact body. Shared council work session room doesn't establish council. We should mention agenda identifies HBSC. Official metadata immutable. Claim false.\n\nFormat raw JSON no markdown. Must ensure rationale <=2000. \"evidence_ref_ids\":[\"official-agenda\"]. Proposed owner slug. Action perhaps \"assign_to denton-tx-health-building-standards-commission; reject denton-tx-city-council\". The schema does not constrain. Use concise.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628192,
+        "id": "chatcmpl-c18900e4-3d2e-4b80-8f38-7b7ef9e2fa45",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 442,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 286,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2675,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3117
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

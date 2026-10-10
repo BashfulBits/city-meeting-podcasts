@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "27d9cbe60b929129f6733ff10c63c73e89f01dc5483864f19b7a3e46eebe42a4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:34:14.164501+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "add_to_existing_feed",
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The recording (provider_guid 122084, body 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM', Denton, TX) matches exactly a body/provider_guid pair already listed in the existing feed 'Denton: TIRZ No. 1 Board' (slug denton-tx-tirz-1-board), whose body_includes includes provider_guid 122084 with the identical body label. The official agenda (recording_id 122084) confirms the convening body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton on 2021-05-26 at 12:00 PM, matching the feed's board identity (TIRZ No. 1) and distinguishing it from TIRZ No. 2 and other Denton feeds. Identity is established by exact body name, matching provider GUID, and official agenda text, not shared city words alone. City and provider match; ownership is established.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-council",
+      "configuration_id": "cfed5340c776b744aacdc9b06384f896f61cd27877e910d8f3df8751a1550770",
+      "latency_seconds": 25.751755207777023,
+      "prompt_case_id": "case-58b25d3f8189b9da8dde30e9",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"case-58b25d3f8189b9da8dde30e9\", \"supported\": true, \"proposed_owner\": \"denton-tx-tirz-1-board\", \"proposed_action\": \"add_to_existing_feed\", \"evidence_ref_ids\": [\"official-agenda\"], \"missing_evidence\": [], \"rationale\": \"The recording (provider_guid 122084, body 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM', Denton, TX) matches exactly a body/provider_guid pair already listed in the existing feed 'Denton: TIRZ No. 1 Board' (slug denton-tx-tirz-1-board), whose body_includes includes provider_guid 122084 with the identical body label. The official agenda (recording_id 122084) confirms the convening body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton on 2021-05-26 at 12:00 PM, matching the feed's board identity (TIRZ No. 1) and distinguishing it from TIRZ No. 2 and other Denton feeds. Identity is established by exact body name, matching provider GUID, and official agenda text, not shared city words alone. City and provider match; ownership is established.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The case: body label \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\", recording provider_guid 122084. Existing feed \"Denton: TIRZ No. 1 Board\" includes body matching exactly with provider_guid 122084. So evidence establishes ownership. No supplied evidence-reference IDs cite? The evidence_refs include \"official-agenda\" with recording_id 122084. Proposed owner = slug \"denton-tx-tirz-1-board\". supported=true. evidence_ref_ids: cite supplied evidence-reference IDs \u2014 probably \"official-agenda\". Missing evidence: none, or maybe empty.",
+                "refusal": null
+              },
+              "reasoning_content": "The case: body label \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM\", recording provider_guid 122084. Existing feed \"Denton: TIRZ No. 1 Board\" includes body matching exactly with provider_guid 122084. So evidence establishes ownership. No supplied evidence-reference IDs cite? The evidence_refs include \"official-agenda\" with recording_id 122084. Proposed owner = slug \"denton-tx-tirz-1-board\". supported=true. evidence_ref_ids: cite supplied evidence-reference IDs \u2014 probably \"official-agenda\". Missing evidence: none, or maybe empty.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628631,
+        "id": "chatcmpl-b2616073-c47b-4dd5-ba83-8eb8d2be9881",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 440,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 142,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2586,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3026
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}
