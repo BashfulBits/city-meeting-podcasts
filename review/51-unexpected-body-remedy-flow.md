@@ -3540,3 +3540,10 @@ one bounded regression probe; expand only after valid physical identity/effort o
 claim-support regression and approved Denton holdout, including blind owner selection. Never
 send gold to models. Keep results separate by route/catalog/mode hashes; no automatic admission.
 Record failures and unattempted cases honestly; final qualification requires reviewed evidence.
+
+#2253 capability validation: 74 compiler tests and 5,766 offline tests passed
+(16 deselected); whole Ruff/format clean across 511 files. CodeRabbit CLI review of
+a5a13ccc completed with zero findings. One quota-accounted NVIDIA probe returned the
+requested Kimi K3 model/max controls and a valid correct wrong-district rejection.
+This verifies transport/control provenance, not admission. Broader local evaluations are
+running; no production admission or alias automation is enabled.
