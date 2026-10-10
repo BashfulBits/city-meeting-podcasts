@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
+  routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
+  charges across reruns and outages; provider quota and existing activation remain binding.
+  Failed manual runs retain diagnostic artifacts and preserve the original error if cleanup
+  also fails. Manual evidence cannot enter scheduled cap-offer history. No automatic cap changes or backfill.
+  
 - **Fix: recovery test injection stays synchronous (#2258 follow-up).** The isolated harness
   computes its catalog digest before installing its fault wrapper, preventing other requests
   from encountering that wrapper across an async yield. Production coordinator behavior and

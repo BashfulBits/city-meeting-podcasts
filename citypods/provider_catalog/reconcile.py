@@ -1291,13 +1291,14 @@ def _measure_context_routes(
             report.observations.append(f"{rid}: context deferred (disabled or unknown quota scope)")
             continue
         key = None
-        for dimension in ("input", "output"):
+        for dimension in context_run.get("dimensions", ("input", "output")):
             observed = None
-            for _ in range(6):
+            for _ in range(8 if context_run.get("manual") else 6):
                 if context_run.get("abandoned"):
                     return
                 budget = context_run["budget"]
                 budget["route_requests"] = context_run.setdefault("route_counts", {}).get(rid, 0)
+                budget["route_limit"] = 12 if context_run.get("manual") else 6
                 budget["remaining_seconds"] = min(
                     (context_run["deadline_ms"] - time.time() * 1000) / 1000,
                     900 - (time.monotonic() - runner.start_time) - cooldown,
@@ -1369,6 +1370,13 @@ def _measure_context_routes(
                 except ValueError as exc:
                     report.observations.append(f"{rid}/{dimension}: context deferred ({exc})")
                     break
+                if request.reserved_input > context_run.get("per_call_input", 524288) or (
+                    request.requested_output > context_run.get("per_call_output", 32768)
+                ):
+                    report.observations.append(
+                        f"{rid}/{dimension}: manual per-call ceiling; deferred"
+                    )
+                    break
                 if request.reserved_input > budget["remaining_input"] or (
                     request.requested_output > budget["remaining_output"]
                 ):
@@ -1395,7 +1403,12 @@ def _measure_context_routes(
                         sleep(rules.canary_interval_seconds)
                     pause.renew()
                     report.context_attempted_routes.add(rid)
-                    admitted = control.client.reserve_context(
+                    reserve = (
+                        control.client.reserve_manual_context
+                        if context_run.get("manual")
+                        else control.client.reserve_context
+                    )
+                    admitted = reserve(
                         run_id=context_run["run_id"],
                         catalog_digest=context_run["catalog_digest"],
                         route_id=rid,

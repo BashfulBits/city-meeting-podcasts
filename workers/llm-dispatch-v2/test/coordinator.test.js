@@ -3241,3 +3241,100 @@ test("reviewed input pilot admits six bounded calls and excludes output and othe
   assert.equal(row.input_used, 6 * 8192);
   assert.equal(row.output_used, 6 * 256);
 });
+
+function manualStart(start, overrides = {}) {
+  return { ...start, operation: "context_manual_start", route_ids: ["probe"],
+    dimensions: ["input"], max_requests: 8, max_input: 2097152, max_output: 131072,
+    per_call_input: 8192, per_call_output: 256, purpose: "#2221 offline test", ...overrides };
+}
+
+test("manual context reruns retain charges, fence old runners and isolate scheduled pool", async t => {
+  const { coordinator: c, sql, storage, env, now, start, admit } = await contextFixture(t);
+  const opened = manualStart(start, { max_requests: 2 });
+  assert.equal((await c.reserveRouteRequests(opened, now)).remaining_requests, 2);
+  const call = { ...admit, operation: "context_manual_admit" };
+  assert.equal((await c.reserveRouteRequests(call, now)).ok, true);
+  assert.equal((await c.reserveRouteRequests(call, now)).error, "already_consumed");
+  assert.equal((await c.reserveRouteRequests({ ...opened, run_id: "12346" }, now)).error,
+    "session_expired");
+  assert.equal((await c.reserveRouteRequests({ ...call, attempt_id: "c".repeat(64) }, now)).ok, true);
+  assert.equal((await c.reserveRouteRequests({ ...call, attempt_id: "d".repeat(64) }, now)).error,
+    "budget_exhausted");
+  const finished = await c.reserveRouteRequests({ ...start, operation: "context_manual_finish" }, now + 1);
+  assert.equal(finished.weekly_requests_used, 2);
+  assert.equal(finished.remaining_requests, 0);
+  const recreated = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const later = { ...opened, run_id: "12346" };
+  assert.equal((await recreated.reserveRouteRequests(later, now + 2)).remaining_requests, 2);
+  assert.equal((await recreated.reserveRouteRequests({ ...call, attempt_id: "d".repeat(64) }, now + 2)).error,
+    "session_expired");
+  assert.equal((await recreated.reserveRouteRequests({ ...call, run_id: "12346",
+    attempt_id: "d".repeat(64) }, now + 2)).ok, true);
+  const row = [...sql.exec("SELECT * FROM context_manual_weeks")][0];
+  assert.equal(row.requests_used, 3);
+  assert.equal(row.input_used, 3000);
+  assert.equal(row.run_requests_used, 1);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")].length, 0);
+  assert.equal((await recreated.reserveRouteRequests(start, now + 2)).remaining_requests, 24);
+});
+
+test("manual context enforces per-route 12 and weekly 24 without refunds or pool borrowing", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t, { ids: ["probe", "other"] });
+  for (let run = 0; run < 4; run++) {
+    const run_id = String(12345 + run);
+    const route_id = run < 2 ? "probe" : "other";
+    const open = manualStart({ ...start, run_id }, { route_ids: [route_id] });
+    assert.equal((await c.reserveRouteRequests(open, now + run * 100)).ok, true);
+    for (let i = 0; i < 6; i++) assert.equal((await c.reserveRouteRequests({ ...admit,
+      operation: "context_manual_admit", run_id, route_id,
+      attempt_id: String(run * 6 + i).padStart(64, "0") }, now + run * 100)).ok, true);
+    if (run === 1) assert.equal((await c.reserveRouteRequests({ ...admit,
+      operation: "context_manual_admit", run_id, route_id, attempt_id: "f".repeat(64) }, now + 100)).error,
+      "budget_exhausted");
+    await c.reserveRouteRequests({ ...start, run_id, operation: "context_manual_finish" }, now + run * 100);
+  }
+  assert.equal([...sql.exec("SELECT * FROM context_manual_weeks")][0].requests_used, 24);
+  const open = manualStart({ ...start, run_id: "12349" }, { route_ids: ["other"] });
+  assert.equal((await c.reserveRouteRequests(open, now + 400)).remaining_requests, 0);
+  assert.equal((await c.reserveRouteRequests({ ...admit, operation: "context_manual_admit",
+    run_id: "12349", route_id: "other", attempt_id: "f".repeat(64) }, now + 400)).error,
+    "budget_exhausted");
+});
+
+test("manual context denies unknown selections, invalid limits and unsupported authority before writes", async t => {
+  const { coordinator: c, sql, now, start } = await contextFixture(t);
+  for (const [change, error] of [
+    [{ route_ids: ["unknown"] }, "disabled"],
+    [{ max_requests: 9 }, "invalid_request"],
+    [{ max_input: 2097153 }, "invalid_request"],
+    [{ route_ids: ["probe", "probe"] }, "invalid_request"],
+    [{ dimensions: ["input", "input"] }, "invalid_request"],
+    [{ per_call_output: 257 }, "budget_exhausted"],
+  ]) assert.equal((await c.reserveRouteRequests(manualStart(start, change), now)).error, error);
+  assert.equal([...sql.exec("SELECT * FROM context_manual_weeks")].length, 0);
+});
+
+test("manual session token ceilings, finish idempotency and expiry preserve weekly totals", async t => {
+  const { coordinator: c, now, start, admit, sql } = await contextFixture(t);
+  const opened = manualStart(start, { max_input: 1000, max_output: 256 });
+  assert.equal((await c.reserveRouteRequests(opened, now)).ok, true);
+  const call = { ...admit, operation: "context_manual_admit" };
+  assert.equal((await c.reserveRouteRequests({ ...call, input_tokens: 1001 }, now)).error,
+    "budget_exhausted");
+  assert.equal((await c.reserveRouteRequests(call, now)).ok, true);
+  assert.equal((await c.reserveRouteRequests({ ...call, attempt_id: "c".repeat(64) }, now)).error,
+    "budget_exhausted");
+  const finish = { ...start, operation: "context_manual_finish" };
+  assert.equal((await c.reserveRouteRequests(finish, now + 1)).ok, true);
+  const writes = c._readRowsWrittenToday();
+  assert.equal((await c.reserveRouteRequests(finish, now + 2)).ok, true);
+  assert.equal(c._readRowsWrittenToday(), writes);
+  assert.equal((await c.reserveRouteRequests(opened, now + 2)).error, "session_expired");
+  await c.reserveRouteRequests({ ...opened, run_id: "12346" }, now + 2);
+  assert.equal((await c.reserveRouteRequests({ ...opened, run_id: "12347" }, now + 3600003)).ok,
+    true);
+  assert.equal([...sql.exec("SELECT * FROM context_manual_weeks")][0].requests_used, 1);
+  const next = await c.reserveRouteRequests({ ...opened, run_id: "12348" }, now + 7 * 86400000);
+  assert.equal(next.weekly_requests_used, 0);
+  assert.equal([...sql.exec("SELECT * FROM context_manual_weeks")].length, 2);
+});

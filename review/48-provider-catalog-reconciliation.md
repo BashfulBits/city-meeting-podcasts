@@ -1911,3 +1911,32 @@ producer estimator margins, production cap choices or paid policy. This trigger 
 activate additional routes or output, perform manual deployments or authorize test execution.
 After contract approval, implement and review the trigger PR, merge/deploy normally, then the
 maintainer may select an approved manual canary. Failed evidence remains charged and deferred.
+
+### Manual trigger implementation checkpoint — #2221, prepared 2026-10-10
+
+The approved L3 manual contract is implemented through the existing reservation handler and
+workflow. Dispatch exposes an explicit context-canary switch, exact route IDs, dimensions, call
+ceilings, per-call input/output ceilings, aggregate token ceilings and purpose. Manual mode performs
+only context measurement, authenticates the current in-progress main dispatch run and verifies
+deployed catalog/scope/parser authority before pause or admission. Existing scheduled execution
+and scheduled cap-offer history remain separate. Manual evidence is authenticated independently.
+
+Manual week/attempt tables are additive, clustered and bounded; startup readiness adds only these
+tables to existing production objects. A finish or expired session permits a monotonically newer
+run without resetting consumed weekly charges. Old runners and consumed attempts remain fenced.
+The server enforces 24 calls/2,097,152 input/131,072 output weekly, eight/run, twelve/route/week
+and current route/dimension authority. Groq pilot input remains capped at 8,192, output false.
+Manual inputs cannot increase provider quota or widen route authority. No live run or manual
+deployment was performed as implementation acceptance. #2221 remains open for explicit canary
+execution/evidence; #2222/#2223 remain separately gated.
+
+Real local workerd acceptance: three writes at start, seven per admission, zero on replay and
+recreation; five injected SQL-mutation failures plus the accounting-flush boundary restore the
+exact snapshot. A newer run preserves charges. Current-week attempt reads are exactly 24 among
+192 retained attempts, with zero writes. No provider I/O, production data or credentials.
+
+**Manual diagnostic evidence follow-up — CodeRabbit CLI review, 2026-10-10.** A measurement
+exception must not skip the partial artifact, and a cleanup/status failure must not replace
+the original measurement error. Manual dispatch uploads diagnostic artifacts even after failure;
+records contain only error stage/type, attempted routes, available observations and accounting.
+Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.

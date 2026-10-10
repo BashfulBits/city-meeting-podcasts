@@ -595,6 +595,14 @@ main schedule checks deployed catalog identity and exact quota scope before star
 Output and broader recurring activation remain separately approved gates
 (review/48 §8.11).
 
+Manual context canaries use explicit main-only workflow dispatch and perform context measurement
+only. Separate clustered manual week/attempt tables enforce 24 calls/2,097,152 input/131,072 output
+per UTC week, eight per run and twelve per route weekly. Finished/expired sessions permit newer
+runs without resetting charges; old runners and attempt replays cannot spend again. Typed
+start/admit/finish operations use the existing reservation handler and read-only pause status.
+Manual artifacts authenticate dispatch provenance independently and remain outside scheduled
+cap-offer history. Route/dimension and provider quota approval remain mandatory.
+
 Context calibration uses provider-reported token counts for fixture-local prompt correction and
 separate input/output success/rejection intervals. Input fixtures check unpredictable sentinels at
 three positions; output proof requires counted generation, an ordered sequence and length
