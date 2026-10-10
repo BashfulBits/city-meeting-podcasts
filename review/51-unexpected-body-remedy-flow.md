@@ -3474,3 +3474,8 @@ CodeRabbit CLI review of #2248 at 84ec7e13 completed: one valid minor rationale 
 The two wrong-zone holdout explanations now identify the official numbered TIRZ board and
 explain that Zone 1/2 are distinct. Approved truth/owner, case inputs and runtime are unchanged.
 Raw review retained locally at /private/tmp/2248-cli-review.ndjson.
+
+GitHub full review of #2248 at 52af2c90 completed with one valid minor documentation finding.
+The parent holdout README now identifies the independently approved Denton ten-case dataset
+and its explicit manifest/gold paths; nested datasets are never discovered implicitly.
+Reviewed compiler/runtime, model-visible inputs and approved truth remain unchanged.
