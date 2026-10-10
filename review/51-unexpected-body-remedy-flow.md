@@ -3596,7 +3596,9 @@ Default reasoning is a baseline until exact maximum controls are verified. Prese
 returned model identity and separate content-only scores from admission gates.
 
 Use shared CAS quota accounting and the Worker operator pause/drain/reservation API
-around each provider evaluation call so production usage includes the attempted call.
+around each provider evaluation call so production usage includes the attempted call
+on existing routes. Full GLM has no production route to reserve: retain its distinct
+CAS ledger usage and provider-exclusive pause, without inventing a Worker route.
 BeatAPI calls are serialized, wait at least 65 seconds between attempts and defer
 while its production work is in flight. NVIDIA calls likewise wait for provider drain.
 Pauses expire after at most one hour and are resumed on exit. No activation, paid
