@@ -16,6 +16,9 @@ source:
       body: Environmental Task Force Meeting
     - provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3479
       body: Environmental Task Force Meeting
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 2293 days ago; environmental task force concluded mandate"
 podcast_title: 'Arlington: Environmental Task Force'
 podcast_author: City of Arlington, TX
 podcast_email: ''

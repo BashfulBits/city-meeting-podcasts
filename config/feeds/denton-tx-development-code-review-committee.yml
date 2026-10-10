@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: 'Development Code Review Committee'
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1984 days ago; code review committee concluded mandate"
 podcast_title: 'Denton: Development Code Review Committee'
 podcast_author: 'City of Denton, TX'
 podcast_email: ''

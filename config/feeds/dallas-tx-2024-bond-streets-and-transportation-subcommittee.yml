@@ -8,6 +8,9 @@ source:
     - 2024 Capital Bond Streets & Transportation Subcommittee Meeting
     - 2024 Capital Bond Streets and Transportation Meeting
     - 2024 Capital Bond Streets and Transportation Subcommittee Meeting
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1079 days ago; 2024 bond subcommittee concluded mandate"
 podcast_title: 'Dallas: 2024 Bond Streets and Transportation Subcommittee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Agenda Committee on *"
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 2908 days ago; agenda committee dissolved/discontinued"
 podcast_title: "Denton: Agenda Committee"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

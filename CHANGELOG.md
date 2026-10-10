@@ -21,6 +21,26 @@ Once 1.0 ships, entries move under semver tags.
   (every lane model must have a family), `judging` switches (disabled), lane `eligible_models` and
   `slots`. Chat-only tooling (catalog health canary, context scan, rate probe, live gateway probe)
   now skips non-chat routes so it never sends JEV a chat completion.
+  
+- **Coverage verification counting correction.** Post-merge retained replay uses actual CLI
+  defaults: 28,594 placements and 1,189 unassigned entries, rather than the old helper’s
+  29,384 / 411. Global bid/purchasing exclusions were missing from that helper. No production
+  rules, records, identity, stage version or backfill changed.
+
+- **Historical evidence closeout.** All six carried Fort Worth/Dallas cases have explicit
+  maintainer-approved limited-evidence dispositions. Raw records, audio and feed assignments
+  are unchanged; missing independent proof remains documented and new evidence can reopen them.
+
+- **Batch feed lifecycle dispositions for 50 inactive and historical feeds.** Marks 33 concluded
+  temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
+  standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
+  review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
+  
+- **Complete source body-coverage report (#2216; PR #2215).** Opt-in audit JSON includes retained
+  recordings and current observations, exact source-local identities, selector matches, policy
+  proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,
+  timeline/audio diagnostics and GitHub reconciliation. Existing alerts and feeds are unchanged;
+  persistent reviewed dispositions and activation follow separately. No stage versions changed.
 
 - **Provider catalog Slice 5 adaptive context calibration (#2209; PR #2218).** Adds offline-tested
   provider-count search, bounded weekly orchestration, authenticated 90-day histories and exact
@@ -7751,3 +7771,6 @@ P2a review hardening: supplied source recording inclusions use the existing shar
 including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
 remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
 legacy configuration behavior are unchanged; no feed or source-record changes.
+
+Review/51 P2a shipped in PR #2213 (2026-10-09), including lightweight-render compatibility
+and validated hand-built recording inclusions. Final head passed all CI; no templates activated.

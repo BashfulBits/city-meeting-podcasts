@@ -606,3 +606,155 @@ def resolve_owner(label, source_key, policies):
         tuple(sorted({p.owner_slug for p in holding})),
         tuple(sorted({reason for p in contradictions for reason in p.proof_diagnostics})),
     )
+
+
+@dataclass(frozen=True)
+class CoverageRow:
+    source_key: str
+    uid: str | None
+    provider_guid: str | None
+    body: Any
+    title: Any
+    date: Any
+    observation_refs: tuple[str, ...]
+    configured_owner_slugs: tuple[str, ...]
+    verified_owner_slugs: tuple[str, ...]
+    holding_owner_slugs: tuple[str, ...]
+    policy_ids: tuple[str, ...]
+    policy_statuses: tuple[tuple[str, str], ...]
+    evidence_refs: tuple[str, ...]
+    status: str
+    diagnostics: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CoverageReplay:
+    rows: tuple[CoverageRow, ...]
+    totals: tuple[tuple[str, int], ...]
+
+
+def material_evidence_hash(evidence):
+    """Hash supplied material, with collection order and report clocks excluded."""
+
+    def canonical(value):
+        if isinstance(value, dict):
+            return {
+                key: canonical(item) for key, item in sorted(value.items()) if key != "observed_at"
+            }
+        if isinstance(value, (list, tuple)):
+            return sorted((canonical(item) for item in value), key=lambda item: json.dumps(item))
+        return value
+
+    return canonical_hash(canonical(evidence))
+
+
+def replay_coverage(recordings, feeds, policies=None):
+    """Replay every supplied observation without guessing identity or editing assignments."""
+    from citypods.bodies import record_matches_body, source_body_filter
+
+    policies = policies or PolicyIndex()
+    feeds = tuple(feeds)
+    instances = (
+        policies.instances
+        if isinstance(policies, PolicyIndex)
+        else policies.resolved + policies.unresolved
+    )
+    observations = [dict(item) for item in recordings]
+    guid_uids: dict[tuple[str, str], set[str]] = {}
+    for item in observations:
+        if item.get("uid") and item.get("provider_guid"):
+            guid_uids.setdefault((item["source_key"], item["provider_guid"]), set()).add(
+                item["uid"]
+            )
+    grouped: dict[tuple, list[dict]] = {}
+    for number, item in enumerate(observations):
+        source = item["source_key"]
+        uid = item.get("uid")
+        guid = item.get("provider_guid")
+        known = guid_uids.get((source, guid), set())
+        if not uid and len(known) == 1:
+            uid = next(iter(known))
+        item["uid"] = uid
+        identity = (
+            ("uid", uid)
+            if uid
+            else ("guid", guid)
+            if guid and len(known) < 2
+            else ("unknown", number)
+        )
+        grouped.setdefault((source, *identity), []).append(item)
+    rows = []
+    for identity, items in grouped.items():
+        variants: dict[str, list[dict]] = {}
+        for item in items:
+            key = json.dumps(
+                {key: item.get(key) for key in ("provider_guid", "body", "title", "date")},
+                sort_keys=True,
+            )
+            variants.setdefault(key, []).append(item)
+        for copies in variants.values():
+            item = copies[0]
+            source, label = item["source_key"], item.get("body")
+            diagnostics = []
+            if len(variants) > 1:
+                diagnostics.append("identity-conflict")
+            if identity[1] == "unknown":
+                diagnostics.append("uniqueness-unknown")
+            if not isinstance(label, str) or not label.strip():
+                diagnostics.append("missing-or-malformed-label")
+            owners = []
+            for feed in feeds:
+                if recording_source_key(feed) != source:
+                    continue
+                try:
+                    selector = source_body_filter(feed.source)
+                    inclusions = source_body_inclusions(feed.source)
+                    safe_item = {**item, "body": label if isinstance(label, str) else None}
+                    if record_matches_body(safe_item, selector, inclusions):
+                        owners.append(feed.slug)
+                except ValueError:
+                    diagnostics.append("invalid-feed-selector:" + feed.slug)
+            resolution = resolve_owner(label if isinstance(label, str) else "", source, policies)
+            configured = tuple(sorted(set(owners)))
+            if configured != resolution.owner_slugs:
+                diagnostics.append("configured-verified-owners-differ")
+            status = (
+                "ambiguous"
+                if "identity-conflict" in diagnostics or resolution.status == "ambiguous"
+                else "selected"
+                if configured
+                else "unknown"
+            )
+            rows.append(
+                CoverageRow(
+                    source,
+                    item.get("uid"),
+                    item.get("provider_guid"),
+                    label,
+                    item.get("title"),
+                    item.get("date"),
+                    tuple(
+                        sorted({ref for copy in copies for ref in copy.get("observation_refs", [])})
+                    ),
+                    configured,
+                    resolution.owner_slugs,
+                    resolution.holding_owner_slugs,
+                    resolution.policy_ids,
+                    tuple(
+                        sorted((p.policy_id, p.status) for p in instances if p.source_key == source)
+                    ),
+                    resolution.evidence_refs,
+                    status,
+                    tuple(sorted(set(diagnostics))),
+                )
+            )
+    rows.sort(key=lambda row: json.dumps(row.__dict__, sort_keys=True))
+    totals = {"observations": len(observations), "rows": len(rows)}
+    totals.update(
+        {
+            status: sum(row.status == status for row in rows)
+            for status in ("selected", "unknown", "ambiguous")
+        }
+    )
+    totals["verified_policy"] = sum(bool(row.verified_owner_slugs) for row in rows)
+    return CoverageReplay(tuple(rows), tuple(sorted(totals.items())))

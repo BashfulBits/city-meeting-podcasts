@@ -22,6 +22,9 @@ source:
       body: "2024 Capital Bond CBTF Meeting"
     - provider_guid: "272005"
       body: "2024 Capital Bond Program CBTF Meeting"
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1071 days ago; 2024 community bond task force concluded mandate"
 podcast_title: 'Dallas: 2024 Community Bond Task Force'
 podcast_author: City of Dallas, TX
 podcast_email: ''

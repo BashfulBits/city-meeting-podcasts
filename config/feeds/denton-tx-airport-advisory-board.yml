@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: 'Airport Advisory Board'
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1976 days ago; standing advisory board inactive in provider feed"
 podcast_title: 'Denton: Airport Advisory Board'
 podcast_author: 'City of Denton, TX'
 podcast_email: ''

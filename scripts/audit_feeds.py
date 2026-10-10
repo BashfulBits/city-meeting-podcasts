@@ -1891,7 +1891,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
+    ap.add_argument("--body-coverage-report", help="write retained/current body coverage only")
     args = ap.parse_args(argv)
+    if args.body_coverage_report and (
+        args.persist_timeline_integrity
+        or args.timeline_diagnostics
+        or args.issue
+        or args.unexpected_body_evidence
+        or args.enclosures
+        or args.meetings_urls
+    ):
+        ap.error("--body-coverage-report cannot combine with other audit/action modes")
     if args.persist_timeline_integrity and not args.timeline_diagnostics:
         ap.error("--persist-timeline-integrity requires --timeline-diagnostics")
     if args.persist_timeline_integrity and args.timeline_repair_min_delta is None:
@@ -1940,6 +1950,62 @@ def main(argv: list[str] | None = None) -> int:
     # pipeline's history and file a false-positive timeline-duration-mismatch/
     # timeline-short-coverage finding.
     output_dir = "docs"
+    if args.body_coverage_report:
+        from citypods.remedy_policy import material_evidence_hash
+        from citypods.state import resolve_state_dir
+
+        local_state = resolve_state_dir(site_config, Path(output_dir))
+        snapshot_notice = (
+            f"local-state-snapshot:{local_state}; canonical state was not synchronized; "
+            "locally available state may omit retained history; completeness remains unknown"
+        )
+        evidence = []
+        now = datetime.now(UTC)
+        audit_all(
+            cities,
+            site_config=site_config,
+            output_dir=output_dir,
+            now=now,
+            body_coverage_evidence=evidence,
+            body_coverage_only=True,
+        )
+        for source in evidence:
+            source["diagnostics"].append(snapshot_notice)
+        evidence.sort(key=lambda source: source["source_key"])
+        selectors = [
+            {"slug": city.slug, "source_key": source_key(city), "source": city.source}
+            for city in cities
+        ]
+        policies = [
+            {"slug": city.slug, "policy": city.extra.get("remedy_policy")} for city in cities
+        ]
+        catalog = [observation for source in evidence for observation in source["observations"]]
+        totals = {}
+        for source in evidence:
+            for name, value in source["totals"].items():
+                totals[name] = totals.get(name, 0) + value
+        payload = {
+            "schema_version": 1,
+            "observed_at": now.isoformat(),
+            "config_hash": material_evidence_hash(selectors),
+            "policy_hash": material_evidence_hash(policies),
+            "catalog_hash": material_evidence_hash(catalog),
+            "material_hash": material_evidence_hash(
+                {
+                    "selectors": selectors,
+                    "policies": policies,
+                    "catalog": catalog,
+                }
+            ),
+            "sources": evidence,
+            "totals": totals,
+        }
+        path = Path(args.body_coverage_report)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        print(f"body coverage: {snapshot_notice}")
+        print(f"body coverage: wrote {len(evidence)} source(s) to {path}")
+        return 0
     state_dir = pull_canonical_state(site_config, output_dir)
 
     unexpected_evidence_only = bool(args.unexpected_body_evidence and args.dry_run)

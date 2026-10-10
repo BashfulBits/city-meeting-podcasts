@@ -5,6 +5,9 @@ source:
   list_url: https://addisontx.new.swagit.com/views/128
   body_exact:
   - Community Partnership Committee
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 86 days ago; advisory committee meets on intermittent schedule"
 podcast_title: 'Addison: Community Partnership Committee'
 podcast_author: City of Addison, TX
 podcast_email: ''
