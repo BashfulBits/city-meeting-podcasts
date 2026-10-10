@@ -3115,7 +3115,7 @@ in b9ca5053, regression tested, replied and resolved; the bot confirmed the fix.
 automatic review is not a separate substantive review. This stamp freezes P2c1 only. P2c remains
 incomplete: persistence, trusted mutations and scan integration are not active.
 
-### P2c2a source-scoped event persistence — L3, approved
+### P2c2a source-scoped event persistence — frozen, implemented in PR #2237
 
 The event path remains the previously approved B2 path:
 `state/remedy/events/<source_key>/<decision_id>/<event_id>.json`. Do not request approval of
@@ -3181,3 +3181,103 @@ backend failures propagate. Validation uses fake storage/leases only; production
 P2c2a verification: 65 targeted ledger/persistence checks and 5,649 offline tests passed
 (16 deselected); whole Ruff/format passed across 497 files. Human merge and code review remain
 required; no deployment or production storage verification is claimed.
+
+
+P2c2a shipped in PR #2237, merged 2026-10-10T04:23:55Z, merge 2763036e.
+Final head b92f7d55 passed tests, dependencies, preview and CodeQL. Its ledger code/tests were
+unchanged from tested 9a008308 (5,649 offline tests, 16 deselected; 65 targeted checks).
+The maintainer merged before a substantive CodeRabbit review; the rate-limited/skipped status
+is not review coverage. This explicit review gap does not imply a production storage check.
+Only persistence is frozen here: trusted actions, recovery coordination and scan integration
+remain disconnected. The temporary #2237 review monitor is paused; no closed-PR review request.
+
+### P2c2b trusted decision actions and recovery — L2 proposal
+
+The maintainer authorized this next step after #2237. A lease alone cannot authenticate a
+maintainer, and an approval URL alone cannot show what that person approved. Bind an explicit
+structured action to a freshly retrieved GitHub comment and its author's current repository
+permission. Recommend a dedicated decision command, separate from the legacy `/remedy` command,
+which dispatches model-based remediation and must not be reused for recording decisions.
+The command transport and exact command syntax require a maintainer decision before L3/code.
+
+Recommended action payload: schema_version 1, action (`decide` or `reopen`), decision_id,
+expected_parent_event_ids, city, source_key, policy_id, normalized_label, state, disposition,
+evidence_hash, config_hash, policy_hash, recording_refs and rationale. These use existing ledger
+validation; no second disposition vocabulary. `reopen` records an explicit maintainer action,
+never a changed count or a clock. The trusted caller supplies original comment ID/time/author,
+repository identity and permission from fresh API responses, not fields claimed by the payload.
+The approval reference and external delivery ID derive from that exact comment. Reject actor,
+repository, approval-content or parent mismatches. Reject stale/missing evidence before writes.
+
+Proposed implementation files: new `citypods/remedy_actions.py` and
+`tests/test_remedy_actions.py`, existing `citypods/remedy_ledger.py` and its tests only for recovery
+integration, lifecycle docs. Reuse `github_permissions.require_repository_write` unchanged.
+Do not modify existing commands, feeds, records, providers, models, dependencies or workflows.
+The first PR exposes callable validation/recovery interfaces; scheduled activation is separate.
+
+Proposed interfaces:
+
+- `validate_decision_action(action, *, comment, permission, repository, evidence, decisions)`:
+  validate the exact source/city and current parent tips; authenticate the author against a trusted
+  fresh GitHub snapshot; verify the structured comment agrees with the proposed action; construct
+  the existing immutable event using the original delivery timestamp. No network or writes here.
+- `record_decision_action(storage, action, *, lease, trusted_snapshot, evidence)`:
+  reread the relevant source's immutable events under the existing lease, validate against current
+  history and fresh evidence, then append using the shipped helper. A retry of an already stored
+  comment returns that event without manufacturing a new parent or processing timestamp.
+  A conflicting retry or another intervening decision blocks and asks for an explicit refresh.
+
+This step records decisions only; it does not create issues or PRs. Therefore recovery can use
+immutable events and stable comment delivery IDs without introducing publication reservations.
+The R2 coordinator and intent/completion recovery for future GitHub publication remain separate
+P2/P4 work; do not claim that recording a decision implements all publication crash recovery.
+
+Tests: write-permission allowed/denied; wrong author/repository/comment content; unknown fields;
+wrong source/city; stale evidence/config; current versus stale parents; explicit reopen;
+duplicate delivery after lost upload acknowledgment; damaged history; lost lease; concurrent
+intervening decision. Fake API snapshots/storage only, full offline and whole Ruff/format.
+No production writes or inferred import of historical chat decisions.
+
+### P2c3a remembered-decision comparison report — L2 proposal
+
+The maintainer authorized report-only comparison before changes to recurring alerts. Recommend
+an explicit local decision snapshot input alongside the existing body-coverage report. No live
+storage reads or approval import during audit; snapshots must preserve complete event history,
+and trust validation remains the previous step's responsibility. An empty snapshot is valid and
+must be reported as no saved decisions, not as complete historical coverage.
+
+Proposed files: `citypods/remedy_ledger.py`, `citypods/audit.py`, `scripts/audit_feeds.py`,
+`tests/test_remedy_ledger.py`, existing audit/script tests and lifecycle docs. Do not change
+`collect_unexpected_bodies`, issue reconciliation, workflows, feeds, records, models or providers.
+Keep coverage schema v2 intact; add a separate decision-comparison report, not hidden alert
+suppression. The existing `dispositions` argument is not enabled until its exact shape is L3.
+
+Recommended report outcomes:
+
+| Outcome | Meaning and recommendation |
+|---|---|
+| unchanged | Same pending case and evidence; recommend no repeated question. |
+| related_recordings_added | New proven related UID/source pairs; retain the pending case and show additions. |
+| material_change | Changed official identity proof, approved policy or identity contradiction; request review. |
+| history_blocked | Missing/conflicting parents or unusable history; show the failure, suppress nothing. |
+| no_saved_decision | Retain ordinary unmatched review; do not invent an outcome. |
+
+Use exact city/source/policy binding and reviewed body identity rules to group additions.
+Never use a shared topic, count threshold, fuzzy title or cross-provider GUID rewrite.
+Retain the union of known recording references in the report without writing a new event.
+Report clock, model route, ordering and additional dates alone are not material evidence.
+A new meeting under an approved assignment/exclusion rule changes coverage without reopening
+that rule; an explicit contradiction stays visible even if a broad selector matches it.
+Changed config requires a fresh replay, not an assumed contradiction or silent suppression.
+
+Proposed interface `compare_decisions(coverage, decisions, *, evidence, config_hash, policy_hash)`
+returns deterministic source-local rows with decision ID, previous outcome, observed/new recording
+refs, material-change reasons and recommended review status. It must reject incomplete identity
+inputs rather than silently attach a meeting to a neighboring case. Exact report schema and
+input option will be committed at L3 after the trusted-action transport decision.
+
+Tests: unchanged watch stays pending/quiet recommendation; new related meeting joins same case;
+wrong-city/source/topic does not join; contradictory identity requires review; changed date/count
+alone does not reopen; assigned/excluded rule receives new recordings without policy reopening;
+conflicting history remains visible; deterministic ordering; no network/storage/GitHub/state writes.
+Verify reports on frozen local fixtures before proposing any scheduled alert activation.

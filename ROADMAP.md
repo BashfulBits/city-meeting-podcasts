@@ -666,3 +666,8 @@ All six historical evidence cases have approved closeout dispositions (169 resol
 Recently shipped review/51: P2c1 pure decision-event validation/reconstruction (#2231).
 Next: source-scoped decision persistence, then trusted entrypoints and report-only scan integration.
 Durable storage/trusted mutation and audit activation follow as separately bounded PRs.
+
+
+Recently shipped review/51: P2c2a guarded source-local decision persistence (#2237).
+Next authorized: authenticate explicit maintainer decisions and recover retries, then compare saved
+cases with current coverage in inspectable reports. Recurring alerts remain unchanged until verified.
