@@ -26,6 +26,7 @@ from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
 from citypods.publication_selection import load_selection_index, select_search_publication
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.site import _clean_body_label
 from citypods.tags import chapter_id
 
 SEARCH_SCHEMA_VERSION = 3
@@ -258,7 +259,8 @@ def _record_to_document(
         return None
     city_key = city.city_entity or city.slug
     city_label = city.podcast_author or city.city_entity or city.slug
-    body = ep.body or city.source.get("body") or city.podcast_title
+    raw_body = ep.body or city.source.get("body") or city.podcast_title
+    body = _clean_body_label(raw_body, city)
     availability, withheld = _availability(ep)
     chapters: list[dict[str, Any]] = []
     chapter_annotations = {
@@ -556,7 +558,15 @@ def build_search_index(
             manifest.append(cached["manifest"])
             continue
 
+        base_path = urlsplit(base_url).path.rstrip("/")
         partial_hash = _shard_hash(
+            {},
+            candidates,
+            base_path,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
+        legacy_partial_hash = _shard_hash(
             {},
             candidates,
             base_url,
@@ -567,7 +577,7 @@ def build_search_index(
         if (
             not isinstance(partial, dict)
             or partial.get("version") != SEARCH_CACHE_VERSION
-            or partial.get("hash") != partial_hash
+            or partial.get("hash") not in {partial_hash, legacy_partial_hash}
             or not isinstance(partial.get("records"), dict)
         ):
             partial = {"version": SEARCH_CACHE_VERSION, "hash": partial_hash, "records": {}}
@@ -583,6 +593,16 @@ def build_search_index(
             str(record["uid"]): _shard_hash(
                 {str(record["uid"]): record},
                 candidates,
+                base_path,
+                selection=plan,
+                archive_hash=archive_policy_hash(archive_index, src_key),
+            )
+            for record in public_records
+        }
+        legacy_record_hashes = {
+            str(record["uid"]): _shard_hash(
+                {str(record["uid"]): record},
+                candidates,
                 base_url,
                 selection=plan,
                 archive_hash=archive_policy_hash(archive_index, src_key),
@@ -594,7 +614,7 @@ def build_search_index(
             if (
                 uid not in record_hashes
                 or not isinstance(item, dict)
-                or item.get("hash") != record_hashes[uid]
+                or item.get("hash") not in {record_hashes[uid], legacy_record_hashes[uid]}
             ):
                 del processed[uid]
         for record in public_records:
@@ -602,6 +622,12 @@ def build_search_index(
             if uid in processed:
                 document = processed[uid]["document"]
                 if document:
+                    owner_city = _city_for_record(
+                        candidates, record, owner=plan.owner_by_uid.get(uid)
+                    )
+                    document["page_url"] = meeting_page_url(
+                        owner_city, record_to_episode(record), base_url
+                    )
                     documents.append(document)
                 continue
             if stop is not None and stop():
@@ -644,7 +670,7 @@ def build_search_index(
             "source_key": src_key,
             "city": city_key,
             "city_label": city_label,
-            "body": city.source.get("body") or city.podcast_title,
+            "body": _clean_body_label(city.source.get("body") or city.podcast_title, city),
             "fields": list(SEARCH_FIELDS),
             "documents": documents,
         }
@@ -658,6 +684,9 @@ def build_search_index(
             if gzip_bytes > SHARD_SOFT_GZIP_BYTES
             else None
         )
+        shard_rel_url = (
+            f"{base_path}/data/search/{filename}" if base_path else f"/data/search/{filename}"
+        )
         entry = {
             "source_key": src_key,
             "city": city_key,
@@ -665,7 +694,7 @@ def build_search_index(
             "body": shard["body"],
             "bodies": sorted({document["body"] for document in documents if document["body"]}),
             "tags": sorted({tag for document in documents for tag in document["tags"]}),
-            "shard_url": f"{base_url.rstrip('/')}/data/search/{filename}",
+            "shard_url": shard_rel_url,
             **coverage,
             "transcript_coverage_pct": transcript_coverage_pct,
             "body_coverage": body_coverage,

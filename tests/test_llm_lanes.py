@@ -54,8 +54,8 @@ DISPATCHING_PURPOSES = frozenset(
         "tournament:tag-judge",
         "r5-benchmark:tag",
         "r5-benchmark:judge",
-        # review/53: registered in PR2, dispatched by the judge stage from PR3. Until judging is
-        # enabled (PR4) they reserve nothing -- see PENDING_DISPATCH_PURPOSES below.
+        # review/53: registered in PR2; anchor and sibling dispatched by the judge stage since PR4,
+        # the adjudicator from PR5 -- see PENDING_DISPATCH_PURPOSES below.
         "judge:anchor",
         "judge:sibling",
         "judge:adjudicator",
@@ -64,7 +64,7 @@ DISPATCHING_PURPOSES = frozenset(
 # Purposes whose producer is not enabled yet. A reservation is subtracted from every other lane's
 # headroom, so a lane nothing dispatches to must reserve zero; PR4 moves these out and sets the
 # review/53 reservations in the same change that turns judging on.
-PENDING_DISPATCH_PURPOSES = frozenset({"judge:anchor", "judge:sibling", "judge:adjudicator"})
+PENDING_DISPATCH_PURPOSES = frozenset({"judge:adjudicator"})  # dispatched from PR5
 
 
 def _lane(**overrides):

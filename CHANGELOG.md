@@ -22,15 +22,40 @@ Once 1.0 ships, entries move under semver tags.
   Interrupted delivery retries reuse the stored event; conflicting commands/history fail closed.
   No production runner, workflow activation, feed changes or alert suppression.
 
+- **Judge stack shadow on (review/53 PR4).** `judging.enabled: true`: the two-hourly judge lane
+  now judges tag and moment candidates with JEV and one independent sibling and records judgments
+  only (no display, admission or publication change). Reserves 920 ingress units for
+  `judge:anchor` and 2,400 for `judge:sibling` (total 16,506 of 25,600); the adjudicator's
+  reservation follows with PR5.
+
+- **Search index HTTPS enforcement, origin-relative shards, and client pacing (#2205).**
+  Enforces HTTPS for the production custom domain `www.citymeetings.fyi` while preserving
+  HTTP for local development. Emits origin-relative shard URLs (`/data/search/{city}.json`)
+  in `manifest.json` and decouples search checkpoint hashes from hosting scheme and hostname,
+  allowing full checkpoint reuse across base URL protocol transitions without re-extracting
+  sidecars. Sanitizes feed and committee labels in search dropdowns and records by stripping
+  selector wildcard syntax (`*`, `on *`) and city name prefixes. Paces client-side search shard
+  downloads to 4 concurrent workers, debounces result rendering with `requestAnimationFrame`,
+  and dynamically scopes the body filter dropdown to bodies present in the selected city.
+
 - **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
   reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
   for writes; existing events and uploaded content are verified. Corrupt history fails closed,
   identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
   workflow activation, scan suppression, feed/audio change or historical decision import.
-  
+
 - **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
   canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
   configuration errors and unblocking the Dependency Dashboard.
+
+- **Agenda PDF character map and corrupted glyph recovery (#2061).** Adds structural detection
+  for corrupted PDF native text extractions caused by missing or damaged ToUnicode font encodings
+  (e.g. literal glyph-name sequences like `/i255`, repeated replacement characters `\ufffd`/`ÿ`,
+  and low alpha-word ratios). Corrupted native extractions are flagged suspicious, bypass
+  false-positive short notice acceptance, trigger OCR fallback, and reject with durable diagnostic
+  `corrupted-native-text` if OCR is unavailable. Strips stray bullet glyphs (such as corrupted `Å`
+  prefixes) from candidate titles while preserving genuine Unicode names. Pipeline version
+  remains stable (`AGENDA_TEXT_QUALITY_VERSION = "3"`).
 
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
@@ -43,7 +68,7 @@ Once 1.0 ships, entries move under semver tags.
   `inputs.systemone` through the Python dispatch path. The capacity calculator gains
   `--judging`. Nothing runs until `judging.enabled` (PR4); shadow mode changes no display,
   admission or publication field.
-  
+
 - **Decision memory foundation (review/51 P2c1, #2231).** Adds strict immutable, source-local
   decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
   parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
@@ -59,7 +84,7 @@ Once 1.0 ships, entries move under semver tags.
   (every lane model must have a family), `judging` switches (disabled), lane `eligible_models` and
   `slots`. Chat-only tooling (catalog health canary, context scan, rate probe, live gateway probe)
   now skips non-chat routes so it never sends JEV a chat completion.
-  
+
 - **Coverage verification counting correction.** Post-merge retained replay uses actual CLI
   defaults: 28,594 placements and 1,189 unassigned entries, rather than the old helper’s
   29,384 / 411. Global bid/purchasing exclusions were missing from that helper. No production
@@ -73,7 +98,7 @@ Once 1.0 ships, entries move under semver tags.
   temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
   standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
   review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
-  
+
 - **Complete source body-coverage report (#2216; PR #2215).** Opt-in audit JSON includes retained
   recordings and current observations, exact source-local identities, selector matches, policy
   proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,
@@ -209,7 +234,7 @@ Once 1.0 ships, entries move under semver tags.
   yield and backup terms stay out of the structural fit, judge lanes declare no backups, judge
   packets recover by rebatching, and retirements cancel queued work before removing routes.
   review/49 records the approved judge and adjudicator split. Design only.
-  
+
 - **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
   reviewed conservative output caps and sequences calibration after bounded rate maintenance.
   Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
