@@ -674,3 +674,6 @@ cases with current coverage in inspectable reports. Recurring alerts remain unch
 
 Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
 route and immediate first-run evidence review. Output and broader rotation remain separately gated.
+
+Review/48 manual canary follow-up: prepare reusable main-only dispatch for approved routes,
+with separately bounded durable manual budgets; contract review precedes implementation.
