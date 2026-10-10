@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Verified isolated rescue recovery (#2220).** The unchanged production coordinator repaired
+  legacy indexes, rolled back an injected mutation failure and resumed across a real Cloudflare
+  instance reset with retry counters preserved. Temporary resources were deleted. Combined with
+  ordinary-run audit evidence, this records the approved recovery acceptance; removal activation
+  remains separately reviewed. No production behavior change or backfill.
+
 - **Prepared independent remedy reviewer candidate (#2253).** The existing free NVIDIA Kimi K3
   route exposes explicit maximum-reasoning controls for evaluation. Production defaults, routing,
   quotas and admissions are unchanged; qualification remains evidence-gated. No backfill.
