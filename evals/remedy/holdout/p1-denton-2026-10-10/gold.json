@@ -93,7 +93,7 @@
     },
     "denton-zone1-wrong-zone": {
       "supported": false,
-      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "rationale": "The retained dated official agenda convenes the Tax Increment Reinvestment Zone No. 1 Board. The numbered TIRZ boards are distinct bodies and must not be interchanged.",
       "evidence_refs": [
         "official-agenda"
       ],
@@ -138,7 +138,7 @@
     },
     "denton-zone2-wrong-zone": {
       "supported": false,
-      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "rationale": "The retained dated official agenda convenes the Tax Increment Reinvestment Zone No. 2 Board. The numbered TIRZ boards are distinct bodies and must not be interchanged.",
       "evidence_refs": [
         "official-agenda"
       ],

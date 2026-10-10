@@ -3469,3 +3469,8 @@ R2_BUCKET override rather than the retired wrapper bucket. Two 30-second native 
 out. Maintainer approved a local-only two-request diagnostic with 120-second requests and
 150-second case deadlines; production/evaluator defaults remain unchanged. Quota unification
 is tracked separately in #2249. No admission or feed change.
+
+CodeRabbit CLI review of #2248 at 84ec7e13 completed: one valid minor rationale issue.
+The two wrong-zone holdout explanations now identify the official numbered TIRZ board and
+explain that Zone 1/2 are distinct. Approved truth/owner, case inputs and runtime are unchanged.
+Raw review retained locally at /private/tmp/2248-cli-review.ndjson.
