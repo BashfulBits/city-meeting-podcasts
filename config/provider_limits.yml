@@ -527,7 +527,9 @@ routes:
     # Explicit evaluation requests only; production lane defaults are unchanged.
     reasoning_controls:
       high:
-        reasoning_effort: high
+        generationConfig:
+          thinkingConfig:
+            thinkingLevel: HIGH
     observed_on: "2026-09-12"
     observed_burst: 0
     observed_input_ceiling: 218875
@@ -548,7 +550,9 @@ routes:
     # Explicit evaluation requests only; production lane defaults are unchanged.
     reasoning_controls:
       high:
-        reasoning_effort: high
+        generationConfig:
+          thinkingConfig:
+            thinkingLevel: HIGH
     observed_on: "2026-09-12"
     observed_burst: 0
     observed_input_ceiling: 218875
@@ -569,7 +573,9 @@ routes:
     # Explicit evaluation requests only; production lane defaults are unchanged.
     reasoning_controls:
       high:
-        reasoning_effort: high
+        generationConfig:
+          thinkingConfig:
+            thinkingLevel: HIGH
     observed_on: "2026-09-12"
     observed_burst: 7
     observed_input_ceiling: 234437
@@ -589,7 +595,9 @@ routes:
     # Explicit evaluation requests only; production lane defaults are unchanged.
     reasoning_controls:
       high:
-        reasoning_effort: high
+        generationConfig:
+          thinkingConfig:
+            thinkingLevel: HIGH
     observed_on: "2026-09-12"
     observed_burst: 7
     observed_input_ceiling: 234437

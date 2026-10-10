@@ -1111,5 +1111,7 @@ def test_explicit_high_max_controls_preserve_default_request_parameters():
         "gemini_3_8_flash_secondary",
     ):
         route = worker[route_id]
-        assert route["reasoning_controls"] == {"high": {"reasoning_effort": "high"}}
+        assert route["reasoning_controls"] == {
+            "high": {"generationConfig": {"thinkingConfig": {"thinkingLevel": "HIGH"}}}
+        }
         assert route["request_params"] is None

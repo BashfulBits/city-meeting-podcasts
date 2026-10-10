@@ -454,7 +454,11 @@
       "free": true,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       },
       "observed_on": "2026-09-12",
@@ -500,7 +504,11 @@
       "free": true,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       },
       "observed_on": "2026-09-12",
@@ -546,7 +554,11 @@
       "free": true,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       },
       "observed_on": "2026-09-12",
@@ -591,7 +603,11 @@
       "free": true,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       },
       "observed_on": "2026-09-12",

@@ -698,7 +698,11 @@
       "request_params": null,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       }
     },
@@ -749,7 +753,11 @@
       "request_params": null,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       }
     },
@@ -800,7 +808,11 @@
       "request_params": null,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       }
     },
@@ -851,7 +863,11 @@
       "request_params": null,
       "reasoning_controls": {
         "high": {
-          "reasoning_effort": "high"
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
         }
       }
     },

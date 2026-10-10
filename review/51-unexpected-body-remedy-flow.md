@@ -3462,3 +3462,10 @@ generateContent transport. Replace the rejected OpenAI-only reasoning_effort fie
 generationConfig.thinkingConfig.thinkingLevel=HIGH in the four Gemini capability entries.
 No runtime transport, default lane, quota or production admission changes. Verify compiled
 catalogs and bounded provider acceptance before accuracy evaluation.
+
+Native mapping correction verification: 73 compiler checks and 5,754 offline tests passed
+(16 deselected), whole Ruff/format clean. Read access to citypods-spike succeeds; use a local
+R2_BUCKET override rather than the retired wrapper bucket. Two 30-second native probes timed
+out. Maintainer approved a local-only two-request diagnostic with 120-second requests and
+150-second case deadlines; production/evaluator defaults remain unchanged. Quota unification
+is tracked separately in #2249. No admission or feed change.

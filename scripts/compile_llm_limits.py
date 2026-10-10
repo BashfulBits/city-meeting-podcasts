@@ -234,7 +234,9 @@ def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str
 # Provider-specific request parameters a route may always send. Deliberately small: each key is
 # a documented provider control (thinking/reasoning), never a way to override what the pipeline
 # sends (model, messages, response_format, max_tokens ...), which the Worker owns.
-_ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
+_ALLOWED_REQUEST_PARAMS = frozenset(
+    {"chat_template_kwargs", "reasoning_effort", "generationConfig"}
+)
 
 
 # Reasoning levels a lane may request (llm_lanes[...].reasoning); a route maps each level it

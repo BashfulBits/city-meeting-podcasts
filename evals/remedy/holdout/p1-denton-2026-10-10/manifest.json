@@ -2,7 +2,7 @@
   "version": 2,
   "frozen_at": "2026-10-10T06:10:07.919095+00:00",
   "split": "holdout",
-  "provenance": "Draft grounded holdout; independent truth approval pending. Official retained agenda excerpts and unchanged recording fixtures.",
+  "provenance": "Grounded holdout; independent truth approved by maintainer on 2026-10-10. Official retained agenda excerpts and unchanged recording fixtures.",
   "cases": [
     {
       "id": "denton-health-own",
