@@ -193,7 +193,10 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 # DEFAULT_METADATA_RETENTION_EPISODES (imported above from citypods.models, the single source of
 # truth) remain a code fallback only for lightweight direct-call tests and orchestration doubles.
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
-_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
+# Stages that run once per source over its whole retained episode list instead of once per episode.
+# The judge stage (review/53) is here so its packets can span a source's episodes and its run caps
+# are spent once per run, not re-created for every episode.
+_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text", "judge"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
 _RECORD_BACKED_LANES = frozenset(
     {
@@ -206,6 +209,7 @@ _RECORD_BACKED_LANES = frozenset(
         "chapter-agenda",
         "chapter-locator",
         "chapter",
+        "judge",
     }
 )
 
@@ -3249,6 +3253,18 @@ def _build_impl(
                     "(+ yield if quota exhausted or superseded)"
                 )
             tag_llm_deadline = None
+        elif lane == "judge":
+            # The judge lane reads persisted candidates and enqueues queue-only v2 packets; its run
+            # caps bound the work, and this window bounds a pass over a large backlog.
+            judge_window_min = float(defaults.get("judge_run_time_budget_minutes", 90))
+            judge_deadline_secs = judge_window_min * 60 * safety
+            remaining_secs = max(0.0, judge_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if judge_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: {lane} window {judge_window_min:.0f}m x {safety} (+ yield if superseded)"
+            )
+            tag_llm_deadline = None
         elif lane == "moments":
             # Moments lane only prepares queue-only v2 requests and is count-bounded.
             stop = StopSignal(superseded=_newer_run_queued)
@@ -3593,7 +3609,7 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag", "moments")
+                and lane not in ("audio", "tag", "moments", "judge")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
@@ -4050,7 +4066,7 @@ def _build_impl(
             if lane in {"transcribe", "align"}:
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
-            elif lane in {"tag", "moments"}:
+            elif lane in {"tag", "moments", "judge"}:
                 budget_key = f"{lane}_run_time_budget_minutes"
                 _history_window_min = float(defaults.get(budget_key, 240))
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:

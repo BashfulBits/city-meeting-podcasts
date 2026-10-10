@@ -320,6 +320,10 @@ class StageContext:
     # review/53: the judge lane's dispatch backend and the site config `judging` block.
     judge_backend: object | None = None
     judging_config: dict = field(default_factory=dict)
+    # Packets left this run per judge purpose, shared by every source the run visits (the judge
+    # stage runs once per source); filled from the lanes' max_dispatches_per_run on first use.
+    judge_run_caps: dict = field(default_factory=dict)
+    judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
     moment_evaluation_state_path: Path | None = None
     moment_evaluation_config: dict = field(default_factory=dict)
     moment_max_dispatches: int = 40
@@ -1662,7 +1666,7 @@ class JudgeStage(LLMProducerStage):
         from citypods.compute.llm_deferred import look_up_deferred
         from citypods.compute.llm_lanes import lane_for, load_families
         from citypods.judging import runner
-        from citypods.judging.tasks import EpisodeTexts
+        from citypods.judging.tasks import EpisodeTexts, transcript_identity
         from citypods.moments import parse_transcript_segments
         from citypods.tags import chapter_id, load_taxonomy
 
@@ -1692,7 +1696,10 @@ class JudgeStage(LLMProducerStage):
                     (chapter_id(ep, chapter, index), str(chapter.get("title") or ""), start, end)
                 )
             return EpisodeTexts(
-                segments=segments, chapters=tuple(chapters), definitions=definitions
+                segments=segments,
+                chapters=tuple(chapters),
+                definitions=definitions,
+                identity=transcript_identity(ep),
             )
 
         backend = ctx.judge_backend
@@ -1708,6 +1715,9 @@ class JudgeStage(LLMProducerStage):
 
         anchor = lane_for("judge:anchor")
         sibling = lane_for("judge:sibling")
+        with ctx.judge_run_caps_lock:
+            ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
+            ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
         config = ctx.judging_config or {}
         judging = runner.JudgingContext(
             tasks=self._tasks(ctx),
@@ -1719,10 +1729,8 @@ class JudgeStage(LLMProducerStage):
             submit=submit,
             all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
             stop=ctx.stop,
-            run_caps={
-                "judge:anchor": anchor.max_dispatches_per_run,
-                "judge:sibling": sibling.max_dispatches_per_run,
-            },
+            run_caps=ctx.judge_run_caps,
+            run_caps_lock=ctx.judge_run_caps_lock,
             dry_run=dry_run,
         )
         result = runner.run(episodes, judging)

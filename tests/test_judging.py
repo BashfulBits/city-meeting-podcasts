@@ -307,17 +307,23 @@ def test_chat_judge_parses_valid_partial_and_malformed_replies():
 # ---- ledger ------------------------------------------------------------------------------------
 
 
-def test_ledger_is_append_only_and_deduplicated():
-    candidate = {}
+def test_ledger_is_append_only_deduplicated_and_outside_the_candidate():
+    candidate = {"id": "zoning-reform"}
+    store = {}
+    subject = Subject("tag", "s1", "ep", None, None, candidate, store)
     row = {k: "x" for k in ledger.KEY_FIELDS}
-    assert ledger.append_judgment(candidate, row)
-    assert not ledger.append_judgment(candidate, dict(row))
-    assert len(ledger.judgments(candidate)) == 1
-    ledger.add_pending(candidate, {**row, "evidence_digest": "y"})
-    ledger.add_pending(candidate, {**row, "evidence_digest": "y"})
-    assert len(ledger.pending(candidate)) == 1
-    ledger.drop_pending(candidate, {**row, "evidence_digest": "y"})
-    assert "judge_pending" not in candidate
+    assert ledger.append_judgment(subject, row)
+    assert not ledger.append_judgment(subject, dict(row))
+    assert len(ledger.judgments(subject)) == 1
+    ledger.add_pending(subject, {**row, "evidence_digest": "y"})
+    ledger.add_pending(subject, {**row, "evidence_digest": "y"})
+    assert len(ledger.pending(subject)) == 1
+    ledger.drop_pending(subject, {**row, "evidence_digest": "y"})
+    assert "pending" not in store["subjects"]["s1"]
+    # Judgments live in the episode's judging block, never in the candidate other lanes own.
+    assert candidate == {"id": "zoning-reform"}
+    ledger.mark_unbuildable(subject, "q|m|1|T2", "t.vtt:abc")
+    assert ledger.unbuildable(subject) == {"q|m|1|T2": "t.vtt:abc"}
 
 
 # ---- runner ------------------------------------------------------------------------------------
@@ -389,8 +395,20 @@ def _ctx(dispatch, tasks=("tag",), **extra):
     )
 
 
+def _subjects(ep, name="tag"):
+    return task(name).subjects(ep)
+
+
 def _tag_judgments(ep):
-    return [row for tag in [*ep.tags, *ep.llm_tag_candidates] for row in ledger.judgments(tag)]
+    return [row for subject in _subjects(ep) for row in ledger.judgments(subject)]
+
+
+def _all_pending(ep, name="tag"):
+    return all(ledger.pending(subject) for subject in _subjects(ep, name))
+
+
+def _any_pending(ep, name="tag"):
+    return any(ledger.pending(subject) for subject in _subjects(ep, name))
 
 
 def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
@@ -399,7 +417,7 @@ def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
     before = copy.deepcopy(ep)
     first = runner.run([ep], _ctx(dispatch))
     assert first.counts["packets:anchor"] == 1 and first.counts["packets:sibling"] == 2
-    assert all(ledger.pending(tag) for tag in [*ep.tags, *ep.llm_tag_candidates])
+    assert _all_pending(ep)
     dispatch.answer(anchor_p=0.9)
     second = runner.run([ep], _ctx(dispatch))
     rows = _tag_judgments(ep)
@@ -407,17 +425,15 @@ def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
     by_model = {(row["judge_role"], row["judge_model"]) for row in rows}
     assert ("sibling", "google/gemma-4-31b-it") in by_model  # the rule candidate
     # The Gemini-produced LLM tag is judged by the non-Google sibling.
-    llm_rows = ledger.judgments(ep.llm_tag_candidates[0])
+    [llm_subject] = [x for x in _subjects(ep) if x.payload is ep.llm_tag_candidates[0]]
+    llm_rows = ledger.judgments(llm_subject)
     assert {r["judge_model"] for r in llm_rows if r["judge_role"] == "sibling"} == {
         "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
     }
     assert ep.uid in second.episodes_complete
-    # Shadow: nothing but judgments changed on any candidate.
-    for after, original in zip(
-        [*ep.tags, *ep.llm_tag_candidates], [*before.tags, *before.llm_tag_candidates], strict=True
-    ):
-        stripped = {k: v for k, v in after.items() if k not in ("judgments", "judge_pending")}
-        assert stripped == original
+    # Shadow: every candidate is byte-for-byte unchanged; judgments live in ep.judging only.
+    assert ep.tags == before.tags and ep.llm_tag_candidates == before.llm_tag_candidates
+    assert set(ep.judging) == {"subjects"}
     # A third pass has nothing to do.
     third = runner.run([ep], _ctx(dispatch))
     assert third.counts["items_submitted"] == 0
@@ -452,7 +468,7 @@ def test_a_failed_or_lost_packet_writes_nothing_and_is_replanned():
     ep = _episode()
     result = runner.run([ep], _ctx(dispatch))
     assert result.counts["errored"] == 3 and not _tag_judgments(ep)
-    assert not any(ledger.pending(t) for t in [*ep.tags, *ep.llm_tag_candidates])
+    assert not _any_pending(ep)
     # A submitted packet whose record disappears (cancelled, structurally blocked) is re-planned.
     dispatch.fail = False
     runner.run([ep], _ctx(dispatch))
@@ -485,7 +501,12 @@ def test_moments_are_judged_per_meeting_with_both_choose_orders():
     }
     dispatch.answer()
     runner.run([ep], _ctx(dispatch, tasks=("moment",)))
-    best = [r for m in moments for r in ledger.judgments(m) if r["question_id"] == "best"]
+    best = [
+        r
+        for x in _subjects(ep, "moment")
+        for r in ledger.judgments(x)
+        if r["question_id"] == "best"
+    ]
     assert len(best) == 4  # two subjects x (anchor, sibling)
 
 
@@ -595,7 +616,7 @@ def test_the_judge_stage_submits_shadow_packets_and_records_markers():
     JudgeStage().process(None, SimpleNamespace(slug="x"), [ep], ctx)
     purposes = sorted(job.inputs["llm_policy"].purpose for job in ctx.judge_backend.jobs)
     assert purposes == ["judge:anchor", "judge:sibling", "judge:sibling"]
-    assert all(ledger.pending(tag) for tag in [*ep.tags, *ep.llm_tag_candidates])
+    assert _all_pending(ep)
     assert ep.tags[0]["display"] is True and ep.llm_tag_candidates[0]["display"] is False
 
 
@@ -615,20 +636,25 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
             "judged_at": "2026-10-09T00:00:00+00:00",
         }
 
-    agree = {"id": "a", "judgments": [row("anchor", 0.9), row("sibling", True)]}
-    disagree = {
-        "id": "b",
-        "judgments": [
-            row("anchor", 0.4),
-            row("sibling", True),
-            row("anchor", 0.8, "T2", "escalation"),
-        ],
+    judging = {
+        "subjects": {
+            "a": {"task": "tag", "judgments": [row("anchor", 0.9), row("sibling", True)]},
+            "b": {
+                "task": "tag",
+                "judgments": [
+                    row("anchor", 0.4),
+                    row("sibling", True),
+                    row("anchor", 0.8, "T2", "escalation"),
+                ],
+            },
+        }
     }
-    untouched = {"id": "c"}
-    report = summarize(
-        [{"published": "2026-10-01", "tags": [agree, disagree, untouched]}],
-        now=datetime(2026, 10, 9, tzinfo=UTC),
-    )
+    record = {
+        "published": "2026-10-01",
+        "tags": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+        "judging": judging,
+    }
+    report = summarize([record], now=datetime(2026, 10, 9, tzinfo=UTC))
     assert report["agreement"]["tag:supported@T1"] == {"agree": 1, "pairs": 2, "rate": 0.5}
     assert report["escalation_rate"] == 0.5
     assert report["backfill_last_90_days"] == {
@@ -706,7 +732,7 @@ def test_two_run_stages_passes_submit_then_keep_collecting(monkeypatch):
     )
     run_stages(None, _city(), [ep], [JudgeStage()], ctx, quiet=True)
     first = len(ctx.judge_backend.jobs)
-    assert first == 3 and all(ledger.pending(t) for t in [*ep.tags, *ep.llm_tag_candidates])
+    assert first == 3 and _all_pending(ep)
     # The second pass must visit the episode again (answers are pending), not skip it as done.
     assert judge_dirty(ep)
     for job in ctx.judge_backend.jobs:
@@ -723,3 +749,97 @@ def judge_dirty(ep):
     from citypods.stages import judge_episode_dirty
 
     return judge_episode_dirty(ep, {"enabled": True, "tasks": {"tag": {"mode": "shadow"}}})
+
+
+# ---- record ownership, unbuildable evidence, choose completeness, shared caps ----------------
+
+
+def test_judgments_are_their_own_record_block_owned_only_by_the_judge_lane():
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.records import episode_to_record, protected_blocks_for_lane, record_to_episode
+    from citypods.run import _RECORD_BACKED_LANES, _SOURCE_STAGE_NAMES
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 10, 1, tzinfo=UTC),
+        video_url="https://example.test/v",
+        uid="u",
+    )
+    ep.judging = {"subjects": {"s": {"task": "tag", "judgments": [{"value": 0.9}]}}}
+    assert record_to_episode(episode_to_record(ep)).judging == ep.judging
+    # The judge lane writes only its own block; the tag/moments lanes never write it.
+    assert "judging" not in protected_blocks_for_lane("judge")
+    assert {"tags", "llm_tag_candidates", "moments", "audio"} <= protected_blocks_for_lane("judge")
+    assert "judging" in protected_blocks_for_lane("tag")
+    assert "judging" in protected_blocks_for_lane("moments")
+    # Source-scoped (packets span a source's episodes; caps spent once per run), record-backed.
+    assert "judge" in _SOURCE_STAGE_NAMES and "judge" in _RECORD_BACKED_LANES
+
+
+def test_unbuildable_evidence_is_not_revisited_until_the_transcript_changes():
+    from citypods.judging.runner import episode_needs_judging
+
+    no_anchor = _rule_tag(evidence=[{"where": "agenda", "span": "rezoning"}], chapter_id=None)
+    ep = _episode(tags=[no_anchor], llm=[])
+    ep.transcript_key, ep.transcript_spec_hash = "t.vtt", "v1"
+    texts = EpisodeTexts(segments=_segments(), chapters=(), identity="t.vtt:v1")
+    dispatch = FakeDispatch()
+    ctx = _ctx(dispatch)
+    ctx.texts_for = lambda _ep: texts
+    runner.run([ep], ctx)  # T1 has no time to centre on and no chapter: unbuildable
+    kwargs = {
+        "anchor": LANES["judge:anchor"],
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert not dispatch.submitted
+    assert not episode_needs_judging(ep, [task("tag")], **kwargs)
+    ep.transcript_spec_hash = "v2"  # a new transcript re-opens it
+    assert episode_needs_judging(ep, [task("tag")], **kwargs)
+
+
+def test_a_meeting_is_not_complete_until_the_sibling_has_chosen_too():
+    from citypods.judging.runner import episode_needs_judging
+
+    moments = [_moment("We will fix the bridge", 600), _moment("Taxes will not rise", 900)]
+    ep = _episode(tags=[], llm=[], moments=moments)
+    ep.transcript_key = "t.vtt"
+    dispatch = FakeDispatch()
+    runner.run([ep], _ctx(dispatch, tasks=("moment",)))
+    dispatch.answer()
+    runner.run([ep], _ctx(dispatch, tasks=("moment",)))
+    kwargs = {
+        "anchor": LANES["judge:anchor"],
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert not episode_needs_judging(ep, [task("moment")], **kwargs)
+    # Drop the sibling's choose answers: the meeting is incomplete again.
+    first = task("moment").subjects(ep)[0]
+    entry = ep.judging["subjects"][first.subject_id]
+    entry["judgments"] = [
+        r
+        for r in entry["judgments"]
+        if not (r["judge_role"] == "sibling" and r["question_id"].startswith("best"))
+    ]
+    assert episode_needs_judging(ep, [task("moment")], **kwargs)
+
+
+def test_run_caps_are_shared_across_sources_in_one_run():
+    import threading
+
+    caps = {"judge:anchor": 1, "judge:sibling": 100}
+    lock = threading.Lock()
+    first = runner.run(
+        [_episode(uid="a", llm=[])], _ctx(FakeDispatch(), run_caps=caps, run_caps_lock=lock)
+    )
+    second = runner.run(
+        [_episode(uid="b", llm=[])], _ctx(FakeDispatch(), run_caps=caps, run_caps_lock=lock)
+    )
+    assert first.counts["packets:anchor"] == 1 and second.counts["packets:anchor"] == 0
+    assert second.counts["run_cap:judge:anchor"] == 1 and caps["judge:anchor"] == 0

@@ -35,7 +35,9 @@ class Subject:
     episode_uid: str
     group: str | None
     producer_model: str | None  # None for deterministic rule candidates
-    payload: dict[str, Any] = field(compare=False, hash=False, repr=False)
+    payload: dict[str, Any] = field(compare=False, hash=False, repr=False)  # read only
+    # The episode's ``judging`` block, where this subject's judgments live (ledger.py).
+    store: dict[str, Any] = field(default_factory=dict, compare=False, hash=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -53,9 +55,26 @@ class EpisodeTexts:
     # (chapter_id, title, start_seconds, end_seconds or None for the last chapter)
     chapters: Sequence[tuple[str, str, float, float | None]] = ()
     definitions: Mapping[str, str] = field(default_factory=dict)
+    # The transcript the evidence came from; an "unbuildable" tier is retried when it changes.
+    identity: str = ""
 
 
 EVIDENCE_BUILDER_VERSION = "1"
+
+
+def judging_store(ep: Any) -> dict[str, Any]:
+    """The episode's ``judging`` block, created empty on first use."""
+    store = getattr(ep, "judging", None)
+    if not isinstance(store, dict):
+        store = {}
+        ep.judging = store
+    return store
+
+
+def transcript_identity(ep: Any) -> str:
+    return (
+        f"{getattr(ep, 'transcript_key', '') or ''}:{getattr(ep, 'transcript_spec_hash', '') or ''}"
+    )
 
 
 def make_evidence(tier: ContextTier, text: str) -> Evidence:

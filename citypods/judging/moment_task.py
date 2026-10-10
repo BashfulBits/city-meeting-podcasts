@@ -12,6 +12,7 @@ from citypods.judging.tasks import (
     QuestionSpec,
     Subject,
     TaskSpec,
+    judging_store,
     make_evidence,
     register,
 )
@@ -66,6 +67,7 @@ def _subjects(ep: Any) -> list[Subject]:
                 group=uid,
                 producer_model=str(producer) if producer else None,
                 payload=candidate,
+                store=judging_store(ep),
             )
         )
     return subjects

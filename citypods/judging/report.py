@@ -15,8 +15,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from citypods.judging import ledger
-
 CANDIDATE_LISTS = {
     "tag": ("tags", "llm_tag_candidates"),
     "moment": ("moment_pullquote_candidates",),
@@ -52,40 +50,42 @@ def summarize(records: Iterable[Mapping[str, Any]], *, now: datetime | None = No
     for record in records:
         published = _published(record)
         recent = published is not None and now - published <= timedelta(days=BACKFILL_DAYS)
-        for task, fields in CANDIDATE_LISTS.items():
-            for field in fields:
-                for candidate in record.get(field) or []:
-                    if not isinstance(candidate, dict):
-                        continue
-                    rows = ledger.judgments(candidate)
-                    for row in rows:
-                        day = str(row.get("judged_at") or "")[:10]
-                        per_day[(day, row.get("judge_role"), task, row.get("context_tier"))] += 1
-                    by_tier: dict[tuple[str, str], dict[str, bool]] = defaultdict(dict)
-                    for row in rows:
-                        if row.get("kind") != "validate":
-                            continue
-                        verdict = _binary(row)
-                        if verdict is not None and row.get("judge_role") in ("anchor", "sibling"):
-                            key = (str(row.get("question_id")), str(row.get("context_tier")))
-                            by_tier[key][str(row["judge_role"])] = verdict
-                    for (question, tier), votes in by_tier.items():
-                        if {"anchor", "sibling"} <= set(votes):
-                            cell = agreement[(task, f"{question}@{tier}")]
-                            cell[0] += votes["anchor"] == votes["sibling"]
-                            cell[1] += 1
-                    anchor_first = any(
-                        r.get("judge_role") == "anchor" and r.get("context_tier") == FIRST_TIER
-                        for r in rows
-                    )
-                    first_tier_anchor += anchor_first
-                    escalated += any(r.get("sample") == "escalation" for r in rows)
-                    if recent:
-                        recent_total += 1
-                        roles = {
-                            r.get("judge_role") for r in rows if r.get("context_tier") == FIRST_TIER
-                        }
-                        recent_done += {"anchor", "sibling"} <= roles
+        if recent:
+            recent_total += sum(
+                len(record.get(field) or [])
+                for fields in CANDIDATE_LISTS.values()
+                for field in fields
+            )
+        subjects = ((record.get("judging") or {}).get("subjects") or {}).values()
+        for entry in subjects:
+            if not isinstance(entry, dict):
+                continue
+            task = str(entry.get("task") or "")
+            rows = [row for row in entry.get("judgments") or [] if isinstance(row, dict)]
+            for row in rows:
+                day = str(row.get("judged_at") or "")[:10]
+                per_day[(day, row.get("judge_role"), task, row.get("context_tier"))] += 1
+            by_tier: dict[tuple[str, str], dict[str, bool]] = defaultdict(dict)
+            for row in rows:
+                if row.get("kind") != "validate":
+                    continue
+                verdict = _binary(row)
+                if verdict is not None and row.get("judge_role") in ("anchor", "sibling"):
+                    key = (str(row.get("question_id")), str(row.get("context_tier")))
+                    by_tier[key][str(row["judge_role"])] = verdict
+            for (question, tier), votes in by_tier.items():
+                if {"anchor", "sibling"} <= set(votes):
+                    cell = agreement[(task, f"{question}@{tier}")]
+                    cell[0] += votes["anchor"] == votes["sibling"]
+                    cell[1] += 1
+            first_tier_anchor += any(
+                r.get("judge_role") == "anchor" and r.get("context_tier") == FIRST_TIER
+                for r in rows
+            )
+            escalated += any(r.get("sample") == "escalation" for r in rows)
+            if recent:
+                roles = {r.get("judge_role") for r in rows if r.get("context_tier") == FIRST_TIER}
+                recent_done += {"anchor", "sibling"} <= roles
     return {
         "judgments_per_day": [
             {"day": d, "role": r, "task": t, "tier": tier, "count": n}

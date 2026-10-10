@@ -35,6 +35,7 @@ from citypods.judging.tasks import (
     Subject,
     TaskSpec,
     make_evidence,
+    transcript_identity,
 )
 
 ANCHOR_PURPOSE = "judge:anchor"
@@ -64,7 +65,10 @@ class JudgingContext:
     submit: Callable[[Packet, Any], Any]
     all_tiers_sample_rate: float = 0.05
     stop: Callable[[], bool] | None = None
-    run_caps: dict[str, int] = field(default_factory=dict)  # purpose -> packets left this run
+    # purpose -> packets left this run. Shared across every source the run visits (the stage passes
+    # the StageContext's dict and lock), so the lane's per-run cap binds the whole run.
+    run_caps: dict[str, int] = field(default_factory=dict)
+    run_caps_lock: Any = None
     # Plan and pack only: count what would be sent and submit nothing (the PR4 rehearsal).
     dry_run: bool = False
 
@@ -74,6 +78,34 @@ class JudgingStats:
     counts: Counter = field(default_factory=Counter)
     episodes_complete: set[str] = field(default_factory=set)
     episodes_with_work: set[str] = field(default_factory=set)
+
+
+def _take_run_slot(ctx: JudgingContext, purpose: str) -> bool:
+    def take() -> bool:
+        left = ctx.run_caps.get(purpose)
+        if left is None:
+            return True
+        if left <= 0:
+            return False
+        ctx.run_caps[purpose] = left - 1
+        return True
+
+    if ctx.run_caps_lock is None:
+        return take()
+    with ctx.run_caps_lock:
+        return take()
+
+
+def _return_run_slot(ctx: JudgingContext, purpose: str) -> None:
+    def give() -> None:
+        if purpose in ctx.run_caps:
+            ctx.run_caps[purpose] += 1
+
+    if ctx.run_caps_lock is None:
+        give()
+    else:
+        with ctx.run_caps_lock:
+            give()
 
 
 def in_sample(subject_id: str, rate: float) -> bool:
@@ -111,7 +143,7 @@ def _backend_for(role: str, model: str):
 
 def _record(packet: Packet, rows, stats: JudgingStats) -> None:
     for subject, row in rows:
-        if ledger.append_judgment(subject.payload, row):
+        if ledger.append_judgment(subject, row):
             stats.counts["judgments_appended"] += 1
 
 
@@ -121,7 +153,7 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
 
     outputs: dict[str, Any] = {}
     for subject in subjects:
-        for marker in ledger.pending(subject.payload):
+        for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
             if recipe not in outputs:
                 outputs[recipe] = ctx.look_up(recipe) if recipe else None
@@ -129,7 +161,7 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
             if isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
                 continue
-            ledger.drop_pending(subject.payload, marker)
+            ledger.drop_pending(subject, marker)
             if not isinstance(record, JobResult):
                 # No record (a failed submission, a cancelled or structurally blocked packet): the
                 # question becomes due again and is re-planned for the current judges. This is the
@@ -172,8 +204,7 @@ def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext)
             if question.kind != "validate":
                 continue
             value = ledger.anchor_value(
-                subject.payload,
-                subject.subject_id,
+                subject,
                 question.id,
                 spec.first_tier,
                 ctx.anchor.primary_model,
@@ -212,6 +243,17 @@ def plan(
                     for tier, sample in _due_tiers(subject, spec, role, ctx):
                         evidence = spec.evidence(subject, tier, texts)
                         if evidence is None:
+                            # Recorded so an unchanged episode is not revisited for it every pass
+                            # (episode_needs_judging); a new transcript re-opens it.
+                            if texts.identity and not ctx.dry_run:
+                                for question in per_question:
+                                    ledger.mark_unbuildable(
+                                        subject,
+                                        ledger.unbuildable_key(
+                                            question.id, model, question.prompt_version, tier
+                                        ),
+                                        texts.identity,
+                                    )
                             continue
                         for question in per_question:
                             key = (
@@ -222,7 +264,7 @@ def plan(
                                 tier,
                                 evidence.digest,
                             )
-                            if ledger.has_key(subject.payload, key):
+                            if ledger.has_key(subject, key):
                                 continue
                             item = Item(question, tier, evidence, (subject,), sample)
                             stats.episodes_with_work.add(subject.episode_uid)
@@ -237,16 +279,20 @@ def plan(
     return units
 
 
+def choose_sibling(
+    subjects: Sequence[Subject], sibling: LaneConfig, families: Mapping[str, str]
+) -> str | None:
+    """One sibling for a whole meeting's choose question: independent of every producer in it."""
+    producer_families = {family_of(s.producer_model, families) for s in subjects}
+    return next((m for m in sibling.models if families.get(m) not in producer_families), None)
+
+
 def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     choose = [q for q in spec.questions if q.kind == "choose"]
     if not choose or len(subjects) < 2:
         return
     question = choose[0]
-    # One sibling for the whole meeting: independent of every producer in it, or none.
-    producer_families = {family_of(s.producer_model, ctx.families) for s in subjects}
-    sibling = next(
-        (m for m in ctx.sibling.models if ctx.families.get(m) not in producer_families), None
-    )
+    sibling = choose_sibling(subjects, ctx.sibling, ctx.families)
     judges = [("anchor", ctx.anchor.primary_model)] + ([("sibling", sibling)] if sibling else [])
     for reverse, order in ((False, ""), (True, "_r")):
         options = choose_options(subjects, reverse=reverse)
@@ -263,7 +309,7 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
                 spec.first_tier,
                 evidence.digest,
             )
-            if ledger.has_key(key_subject.payload, key):
+            if ledger.has_key(key_subject, key):
                 continue
             group_units.setdefault((role, model), []).append(
                 Item(
@@ -305,18 +351,16 @@ def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                     estimate_tokens(item.text()) for item in packet.items
                 )
                 continue
-            left = ctx.run_caps.get(purpose)
-            if left is not None and left <= 0:
+            if not _take_run_slot(ctx, purpose):
                 stats.counts[f"run_cap:{purpose}"] += 1
                 break
             try:
                 outcome = ctx.submit(packet, backend.build(packet))
             except Exception as exc:  # noqa: BLE001 -- a failed submission writes no marker
+                _return_run_slot(ctx, purpose)
                 stats.counts["errored"] += 1
                 stats.counts[f"errored:{type(exc).__name__}"] += 1
                 continue
-            if left is not None:
-                ctx.run_caps[purpose] = left - 1
             stats.counts[f"packets:{role}"] += 1
             stats.counts["items_submitted"] += len(packet.items)
             if isinstance(outcome, JobResult):
@@ -324,7 +368,7 @@ def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
             elif isinstance(outcome, JobHandle):
                 for item in packet.items:
                     for subject in item.subjects:
-                        ledger.add_pending(subject.payload, _marker(packet, item, subject))
+                        ledger.add_pending(subject, _marker(packet, item, subject))
             else:
                 stats.counts["errored"] += 1
     return _finish(ordered, ctx, stats)
@@ -345,7 +389,7 @@ def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:
         subjects = [s for spec in ctx.tasks for s in spec.subjects(ep)]
         if not subjects or uid in due_episodes:
             continue
-        if any(ledger.pending(s.payload) for s in subjects):
+        if any(ledger.pending(s) for s in subjects):
             continue
         stats.episodes_complete.add(uid)
     return stats
@@ -370,13 +414,15 @@ def episode_needs_judging(
     """
     if not getattr(ep, "transcript_key", None):
         return False
+    identity = transcript_identity(ep)
     anchor_model = anchor.primary_model
     for spec in tasks:
         subjects = spec.subjects(ep)
         for subject in subjects:
-            if ledger.pending(subject.payload):
+            if ledger.pending(subject):
                 return True
-            rows = ledger.judgments(subject.payload)
+            rows = ledger.judgments(subject)
+            skipped = ledger.unbuildable(subject)
             present = {
                 (
                     r.get("question_id"),
@@ -405,16 +451,24 @@ def episode_needs_judging(
                     for question in spec.questions:
                         if question.kind == "choose":
                             continue
-                        if (question.id, model, question.prompt_version, tier) not in present:
-                            return True
+                        if (question.id, model, question.prompt_version, tier) in present:
+                            continue
+                        key = ledger.unbuildable_key(
+                            question.id, model, question.prompt_version, tier
+                        )
+                        if skipped.get(key) == identity:
+                            continue
+                        return True
         choose = [q for q in spec.questions if q.kind == "choose"]
         if choose and len(subjects) >= 2:
             first = subjects[0]
-            asked = {
-                (r.get("question_id"), r.get("judge_model"))
-                for r in ledger.judgments(first.payload)
-            }
-            for order in ("", "_r"):
-                if (f"{choose[0].id}{order}", anchor_model) not in asked:
-                    return True
+            asked = {(r.get("question_id"), r.get("judge_model")) for r in ledger.judgments(first)}
+            judges = [anchor_model]
+            meeting_sibling = choose_sibling(subjects, sibling, families)
+            if meeting_sibling:
+                judges.append(meeting_sibling)
+            for model in judges:
+                for order in ("", "_r"):
+                    if (f"{choose[0].id}{order}", model) not in asked:
+                        return True
     return False
