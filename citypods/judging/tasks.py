@@ -75,6 +75,8 @@ class TaskSpec:
     consensus_policy: str  # implemented in PR7/PR8; recorded only until then
     selection_policy: Literal["all_admitted", "top_k_per_group"]
     top_k: int | None = None
+    # Tiers this task's evidence builder can produce; the all-tier sample asks only these.
+    tiers: tuple[ContextTier, ...] = ("T0", "T1", "T2")
 
     def question(self, question_id: str) -> QuestionSpec:
         return next(q for q in self.questions if q.id == question_id)

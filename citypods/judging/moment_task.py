@@ -107,5 +107,6 @@ MOMENT_TASK = register(
         consensus_policy="moment-gate-validate-choose",
         selection_policy="top_k_per_group",
         top_k=3,
+        tiers=("T1", "T2"),
     )
 )

@@ -342,33 +342,37 @@ class FakeDispatch:
         return handle
 
     def answer(self, anchor_p=0.9, sibling=True):
-        for recipe, (packet, job) in self.submitted.items():
-            if packet.role == "anchor":
-                answers = {}
-                for qid, question in job.inputs["systemone"]["questions"].items():
-                    if question["type"] == "noul":
-                        answers[qid] = {"type": "noul", "noul": anchor_p}
-                    elif question["type"] == "score":
-                        answers[qid] = {"type": "score", "score": 2.0}
-                    else:
-                        answers[qid] = {"type": "choice", "choice": "A"}
-                output = {"answers": answers}
-            else:
-                items = json.loads(job.inputs["messages"][1]["content"])["items"]
-                answers = []
-                for entry in items:
-                    kind = entry["kind"]
-                    answer = {"id": entry["id"], "reason": "quoted"}
-                    if kind in ("validate", "gate"):
-                        answer["verdict"] = sibling if kind == "validate" else False
-                    elif kind == "grade":
-                        answer["level"] = 1
-                    else:
-                        answer["choice"] = "A"
-                    answers.append(answer)
-                output = {"choices": [{"message": {"content": json.dumps({"answers": answers})}}]}
+        for recipe, (_packet, job) in self.submitted.items():
+            output = answer_job(job, anchor_p=anchor_p, sibling=sibling)
             self.records[recipe] = JobResult(task="judge", recipe_hash=recipe, output=output)
         self.submitted.clear()
+
+
+def answer_job(job, *, anchor_p=0.9, sibling=True):
+    """A plausible reply to one judge job: JEV answers keyed by qid, or a sibling chat reply."""
+    if "systemone" in job.inputs:
+        answers = {}
+        for qid, question in job.inputs["systemone"]["questions"].items():
+            if question["type"] == "noul":
+                answers[qid] = {"type": "noul", "noul": anchor_p}
+            elif question["type"] == "score":
+                answers[qid] = {"type": "score", "score": 2.0}
+            else:
+                answers[qid] = {"type": "choice", "choice": "A"}
+        return {"answers": answers}
+    items = json.loads(job.inputs["messages"][1]["content"])["items"]
+    answers = []
+    for entry in items:
+        kind = entry["kind"]
+        answer = {"id": entry["id"], "reason": "quoted"}
+        if kind in ("validate", "gate"):
+            answer["verdict"] = sibling if kind == "validate" else False
+        elif kind == "grade":
+            answer["level"] = 1
+        else:
+            answer["choice"] = "A"
+        answers.append(answer)
+    return {"choices": [{"message": {"content": json.dumps({"answers": answers})}}]}
 
 
 def _ctx(dispatch, tasks=("tag",), **extra):
@@ -525,6 +529,8 @@ class _Storage:
         return key in self.files
 
     def get_file(self, key, path):
+        if key not in self.files:
+            return False
         Path(path).write_bytes(self.files[key])
         return True
 
@@ -533,10 +539,13 @@ class _Backend:
     def __init__(self, storage):
         self.storage = storage
         self.jobs = []
+        self.records = {}  # the deferred registry: recipe -> pending handle
 
     def run_inference(self, job):
         self.jobs.append(job)
-        return JobHandle(task="judge", recipe_hash=job.recipe_hash, backend="v2", ref="r")
+        handle = JobHandle(task="judge", recipe_hash=job.recipe_hash, backend="v2", ref="r")
+        self.records[job.recipe_hash] = handle
+        return handle
 
 
 def _vtt(segments):
@@ -627,3 +636,90 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
         "judged_by_both_at_first_tier": 2,
         "share": round(2 / 3, 4),
     }
+
+
+# ---- dirtiness (the judge stage must be revisited while answers are pending) -------------------
+
+
+def _city():
+    return SimpleNamespace(slug="x", provider="granicus", extra={})
+
+
+def test_the_judge_stage_is_dirty_only_while_it_has_work():
+    from citypods.judging.runner import episode_needs_judging
+    from citypods.stages import judge_episode_dirty
+
+    config = {"enabled": True, "tasks": {"tag": {"mode": "shadow"}}, "all_tiers_sample_rate": 0.0}
+    ep = _episode()
+    ep.transcript_key = "t.vtt"
+    assert judge_episode_dirty(ep, config)
+    assert not judge_episode_dirty(ep, {**config, "enabled": False})
+    no_transcript = _episode()
+    no_transcript.transcript_key = None
+    assert not judge_episode_dirty(no_transcript, config)
+
+    dispatch = FakeDispatch()
+    runner.run([ep], _ctx(dispatch))
+    assert judge_episode_dirty(ep, config)  # answers pending
+    dispatch.answer(anchor_p=0.95)
+    runner.run([ep], _ctx(dispatch))
+    assert not judge_episode_dirty(ep, config)  # everything judged, nothing in flight
+    kwargs = {
+        "anchor": LANES["judge:anchor"],
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert not episode_needs_judging(ep, [task("tag")], **kwargs)
+    # A new candidate on the same episode makes it dirty again.
+    ep.tags.append(_rule_tag(id="new-tag"))
+    assert episode_needs_judging(ep, [task("tag")], **kwargs)
+
+
+def test_two_run_stages_passes_submit_then_keep_collecting(monkeypatch):
+    """Integration (CodeRabbit, 2026-10-09): the stage runs again on the next pass, never cached."""
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.stages import JudgeStage, run_stages
+
+    ep = Episode(
+        guid="ep-1",
+        title="Council",
+        published=datetime(2026, 10, 1, tzinfo=UTC),
+        video_url="https://example.test/v",
+        uid="ep-1",
+    )
+    ep.tags, ep.llm_tag_candidates = [_rule_tag()], [_llm_tag()]
+    ep.chapters = [{"start": 0, "title": "Rezoning"}, {"start": 1200, "title": "Budget"}]
+    ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+    disabled = _stage_ctx(enabled=False)
+    disabled.lane = "judge"
+    run_stages(None, _city(), [ep], [JudgeStage()], disabled, quiet=True)
+    assert disabled.judge_backend.jobs == []
+
+    ctx = _stage_ctx(enabled=True)
+    ctx.lane = "judge"
+    monkeypatch.setattr(
+        "citypods.compute.llm_deferred.look_up_deferred",
+        lambda storage, recipe: ctx.judge_backend.records.get(recipe),
+    )
+    run_stages(None, _city(), [ep], [JudgeStage()], ctx, quiet=True)
+    first = len(ctx.judge_backend.jobs)
+    assert first == 3 and all(ledger.pending(t) for t in [*ep.tags, *ep.llm_tag_candidates])
+    # The second pass must visit the episode again (answers are pending), not skip it as done.
+    assert judge_dirty(ep)
+    for job in ctx.judge_backend.jobs:
+        ctx.judge_backend.records[job.recipe_hash] = JobResult(
+            task="judge", recipe_hash=job.recipe_hash, output=answer_job(job, anchor_p=0.95)
+        )
+    run_stages(None, _city(), [ep], [JudgeStage()], ctx, quiet=True)
+    # Visited again: the answers became judgments and nothing new was submitted.
+    assert len(_tag_judgments(ep)) == 4 and len(ctx.judge_backend.jobs) == first
+    assert not judge_dirty(ep)
+
+
+def judge_dirty(ep):
+    from citypods.stages import judge_episode_dirty
+
+    return judge_episode_dirty(ep, {"enabled": True, "tasks": {"tag": {"mode": "shadow"}}})

@@ -30,7 +30,6 @@ from citypods.judging.backends import (
 from citypods.judging.families import family_of, sibling_for
 from citypods.judging.packing import pack
 from citypods.judging.tasks import (
-    TIERS,
     EpisodeTexts,
     Evidence,
     Subject,
@@ -183,7 +182,7 @@ def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext)
                 tiers.append((tier, "escalation"))
                 break
     if in_sample(subject.subject_id, ctx.all_tiers_sample_rate):
-        tiers.extend((tier, "all_tiers") for tier in TIERS if tier != spec.first_tier)
+        tiers.extend((tier, "all_tiers") for tier in spec.tiers if tier != spec.first_tier)
     seen: set[str] = set()
     return [(t, s) for t, s in tiers if not (t in seen or seen.add(t))]
 
@@ -350,3 +349,72 @@ def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:
             continue
         stats.episodes_complete.add(uid)
     return stats
+
+
+def episode_needs_judging(
+    ep: Any,
+    tasks: Sequence[TaskSpec],
+    *,
+    anchor: LaneConfig,
+    sibling: LaneConfig,
+    families: Mapping[str, str],
+    all_tiers_sample_rate: float,
+) -> bool:
+    """Whether a pass would find work for this episode, from stored judgments alone.
+
+    This is the judge stage's dirtiness check (``stages.stage_is_dirty``). It reads no transcript,
+    so an unchanged, fully judged episode costs nothing on the two-hourly cadence: a judgment is
+    "present" when a row exists for the (subject, question, judge model, prompt version, tier),
+    whatever its evidence digest. An episode without a transcript is never dirty -- every tier
+    but a tag's matched spans needs one.
+    """
+    if not getattr(ep, "transcript_key", None):
+        return False
+    anchor_model = anchor.primary_model
+    for spec in tasks:
+        subjects = spec.subjects(ep)
+        for subject in subjects:
+            if ledger.pending(subject.payload):
+                return True
+            rows = ledger.judgments(subject.payload)
+            present = {
+                (
+                    r.get("question_id"),
+                    r.get("judge_model"),
+                    r.get("prompt_version"),
+                    r.get("context_tier"),
+                )
+                for r in rows
+            }
+            judge_model = sibling_for(subject.producer_model, sibling, families)
+            judges = [("anchor", anchor_model)] + (
+                [("sibling", judge_model)] if judge_model else []
+            )
+            ctx = JudgingContext(
+                tasks=tasks,
+                anchor=anchor,
+                sibling=sibling,
+                families=families,
+                texts_for=lambda _ep: EpisodeTexts(),
+                look_up=lambda _recipe: None,
+                submit=lambda _packet, _job: None,
+                all_tiers_sample_rate=all_tiers_sample_rate,
+            )
+            for role, model in judges:
+                for tier, _sample in _due_tiers(subject, spec, role, ctx):
+                    for question in spec.questions:
+                        if question.kind == "choose":
+                            continue
+                        if (question.id, model, question.prompt_version, tier) not in present:
+                            return True
+        choose = [q for q in spec.questions if q.kind == "choose"]
+        if choose and len(subjects) >= 2:
+            first = subjects[0]
+            asked = {
+                (r.get("question_id"), r.get("judge_model"))
+                for r in ledger.judgments(first.payload)
+            }
+            for order in ("", "_r"):
+                if (f"{choose[0].id}{order}", anchor_model) not in asked:
+                    return True
+    return False

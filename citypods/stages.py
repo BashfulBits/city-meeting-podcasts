@@ -981,6 +981,27 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
     return False
 
 
+def judge_episode_dirty(ep: Episode, judging_config: Mapping[str, Any] | None) -> bool:
+    """Whether the judge stage has work for ``ep`` under the given ``judging`` config."""
+    config = judging_config or {}
+    if not (config.get("enabled") or os.environ.get("CITYPODS_JUDGE_DRY_RUN") == "1"):
+        return False
+    from citypods.compute.llm_lanes import lane_for, load_families
+    from citypods.judging.runner import episode_needs_judging
+    from citypods.judging.tasks import task
+
+    configured = config.get("tasks") or {}
+    tasks = [task(name) for name in sorted(configured) if isinstance(configured[name], Mapping)]
+    return episode_needs_judging(
+        ep,
+        tasks,
+        anchor=lane_for("judge:anchor"),
+        sibling=lane_for("judge:sibling"),
+        families=load_families(),
+        all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
+    )
+
+
 def stage_is_dirty(
     stage: EnrichmentStage,
     ep: Episode,
@@ -988,7 +1009,13 @@ def stage_is_dirty(
     *,
     speaker_config: Mapping[str, Any] | None = None,
     evaluation_config: Mapping[str, Any] | None = None,
+    judging_config: Mapping[str, Any] | None = None,
 ) -> bool:
+    # review/53: the judge stage's state is its candidates' judgments, not an input fingerprint.
+    # A completion marker would stop it after one visit and strand every in-flight answer, so it
+    # is dirty exactly while an answer is pending or a judgment is missing (no transcript read).
+    if stage.name == "judge":
+        return judge_episode_dirty(ep, judging_config)
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
     # transcript/media mutation before it can take effect.
@@ -10028,6 +10055,7 @@ def run_stages(
                 evaluation_config=(
                     ctx.llm_evaluation_config if ctx.tag_backend is not None else None
                 ),
+                judging_config=ctx.judging_config,
             )
         ]
         clean = len(episodes) - len(dirty)
