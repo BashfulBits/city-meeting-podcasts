@@ -3456,3 +3456,9 @@ one case for each Gemini configuration but both failed with NoSuchBucket before 
 permission is denied. No quota bypass, new bucket, credential mutation or production admission.
 Local evidence is retained as /private/tmp/p1-capability-{dryrun,live}.json. Correct shared quota
 storage configuration is required before live evaluation; this prerequisite is not P1 completion.
+
+P1 transport correction approved in chat on 2026-10-10: preserve the existing native Gemini
+generateContent transport. Replace the rejected OpenAI-only reasoning_effort field with native
+generationConfig.thinkingConfig.thinkingLevel=HIGH in the four Gemini capability entries.
+No runtime transport, default lane, quota or production admission changes. Verify compiled
+catalogs and bounded provider acceptance before accuracy evaluation.
