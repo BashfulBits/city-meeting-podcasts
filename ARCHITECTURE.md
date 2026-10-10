@@ -1663,7 +1663,7 @@ counts or official proof. Retained exclusions and publication filters are separa
 ### Decision memory foundation (review/51 P2c1, shipped #2231)
 
 `citypods/remedy_ledger.py` validates immutable source-local decision events and reconstructs
-causal histories offline. These pure helpers perform no IO. The prepared P2c2a persistence
+causal histories offline. These pure helpers perform no IO. The shipped P2c2a persistence (#2237)
 helpers append verified events under the existing remedy maintenance lease and reconstruct only
 explicit source prefixes through the existing storage API. They are not wired into scans or
 production callers. Existing objects are validated rather than overwritten; invalid history or
