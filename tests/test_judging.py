@@ -486,7 +486,8 @@ def test_run_caps_and_stop_are_honoured():
     capped = runner.run([ep], _ctx(dispatch, run_caps={"judge:sibling": 0}))
     assert capped.counts["packets:sibling"] == 0 and capped.counts["packets:anchor"] == 1
     stopped = runner.run([_episode(uid="ep-2")], _ctx(FakeDispatch(), stop=lambda: True))
-    assert stopped.counts["stopped"] == 1 and stopped.counts["items_submitted"] == 0
+    # A stop that is already set ends the pass while planning, before any transcript is read.
+    assert stopped.counts["plan_stopped"] == 1 and stopped.counts["items_submitted"] == 0
 
 
 def test_moments_are_judged_per_meeting_with_both_choose_orders():
@@ -920,3 +921,43 @@ def test_a_pass_restores_the_contexts_texts_reader():
     assert ctx.texts_for is texts_for
     runner.run([ep], ctx)
     assert calls == [ep.uid, ep.uid]
+
+
+def test_planning_stops_at_the_item_budget_and_reads_no_further_transcripts(monkeypatch):
+    """A cold backlog: the first PR4 dry run read every candidate's transcript before submitting
+    anything and overran its window. Planning now stops once a pass's worth of items is planned;
+    later episodes are not read, not complete, and stay dirty for the next pass."""
+    dispatch = FakeDispatch()
+    episodes = [_episode(uid=f"ep-{i}", published=f"2026-10-0{i + 1}") for i in range(4)]
+    read = []
+
+    def texts_for(ep):
+        read.append(ep.uid)
+        return TEXTS
+
+    monkeypatch.setattr(
+        runner, "_item_budget", lambda _ctx: {"judge:anchor": 1, "judge:sibling": 1}
+    )
+    ctx = _ctx(dispatch)
+    ctx.texts_for = texts_for
+    stats = runner.run(episodes, ctx)
+    assert read == ["ep-3"]  # newest first; one episode fills both budgets
+    assert stats.counts["plan_budget_reached"] == 1
+    assert stats.episodes_planned == {"ep-3"}
+    assert stats.episodes_complete == set()
+    assert _all_pending(episodes[3]) and not _any_pending(episodes[0])
+
+    read.clear()
+    ctx = _ctx(FakeDispatch())
+    ctx.texts_for = texts_for
+    ctx.stop = lambda: bool(read)
+    stats = runner.run([_episode(uid=f"s-{i}") for i in range(3)], ctx)
+    assert len(read) == 1 and stats.counts["plan_stopped"] == 1
+
+
+def test_the_item_budget_is_run_cap_packets_times_the_fullest_packet():
+    ctx = _ctx(FakeDispatch(), run_caps={"judge:anchor": 2, "judge:sibling": 3})
+    budget = runner._item_budget(ctx)
+    sibling_items = max(runner._sibling_backend(m).max_items for m in ctx.sibling.models)
+    assert budget == {"judge:anchor": 120, "judge:sibling": 3 * sibling_items}
+    assert runner._item_budget(_ctx(FakeDispatch())) is None  # uncapped: no bound

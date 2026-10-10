@@ -1747,7 +1747,7 @@ class JudgeStage(LLMProducerStage):
         for key, count in sorted(result.counts.items()):
             # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
             # quality/volume counters for the run log.
-            if key.startswith(("run_cap", "stopped")) or key in {
+            if key.startswith(("run_cap", "stopped", "plan_")) or key in {
                 "still_pending",
                 "texts_unavailable",
             }:

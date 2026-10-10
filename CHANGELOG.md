@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Fix: judge planning is bounded by the run caps (review/53 PR4 dry run).** A pass planned
+  every candidate episode, reading each transcript, before submitting anything; on the cold
+  backlog the dry run overran the lane window. Planning now stops (recent first) once the run
+  caps' worth of items is planned (packets left times the fullest packet) or the stop signal
+  fires; episodes it did not reach stay dirty and are never counted complete.
 - **Fix: `enrich --lane judge` rejected as an unknown lane (review/53 PR4 dry run).** `build()`
   kept a hand-written lane allowlist beside `LANE_STAGES` and missed `judge` (the same bug `tag`
   once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
