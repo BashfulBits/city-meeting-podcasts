@@ -295,9 +295,12 @@ text below, all deliberate:
   blocks would have made two lanes owners of one block (concurrent pushes overwrite each other),
   and the tag lane rebuilds its candidate lists when it re-tags, which would drop judgments. An
   unregistered lane would also have owned every block. Candidates are now byte-for-byte unchanged.
-- **Source-scoped and record-backed.** `judge` runs once per source over its retained episodes
-  (`_SOURCE_STAGE_NAMES`), not once per episode in the global queue, so packets span a source's
-  episodes and the lanes' run caps (kept on `StageContext`, shared and locked) bind the whole run.
+- **One pass across sources, record-backed.** `judge` is a source-scoped stage
+  (`_SOURCE_STAGE_NAMES`), not run once per episode in the global queue. Since the capped PR4 dry
+  run (2026-10-10), where judging source by source let the alphabetically first sources spend the
+  whole run's caps, it runs once over every source's retained episodes
+  (`run_judge_across_sources`). Planning is newest first across the catalog, bounded by the run
+  caps, and packets span sources. The lanes' run caps live on `StageContext`, shared and locked.
   The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
   preload and has its own window (`judge_run_time_budget_minutes`, default 90).
 - **Tag subjects come only from the canonical ledger** `Episode.llm_tag_candidates` (rule and LLM
@@ -404,7 +407,11 @@ no row and an `answer_missing` count.
 an item or truncates evidence; an item over the ceiling alone is counted `payload-too-large` (the
 existing blocked outcome) and skipped. Ceilings: JEV 58,000 total and 28,000 state-plus-largest, 60
 questions; Gemma 10,000 tokens, 25 items; Nemotron 3 Super 24,000 tokens, 25 items; adjudicators
-20 questions and their route ceiling. Moment questions for one meeting stay in one packet.
+20 questions and their route ceiling. Moment questions for one meeting stay in one packet when
+they fit. A meeting too large for the judge is split, not skipped (decided 2026-10-10 after the PR4
+dry run, where every meeting over 7 candidates lost its sibling and over 19 lost both judges): its
+two `choose` items stay together, since each lists every option in its own text, and each
+candidate's items stay together (`units_split` counts it).
 
 **Stage** `JudgeStage` (`citypods/stages.py`, an `LLMProducerStage`, name `judge`) in
 `LANE_STAGES["judge"]` only. Per episode and enabled task: build subjects and due evidence, choose
@@ -599,8 +606,9 @@ authority, measured by the audit and the reliability tripwires.
 1. Registry rules; both tasks register; `subject_id` stable across pre-labeler and display changes.
 2. Evidence caps per tier; None without chapter or transcript.
 3. Families: every active and eligible model has one; sibling and adjudicator choice per subject.
-4. Packing ceilings, no split or truncation, oversize skipped and counted, one packet per meeting
-   for moments.
+4. Packing ceilings, no item split or truncation, an item oversize alone skipped and counted; one
+   packet per meeting for moments when it fits, otherwise split by candidate with both choose
+   items together.
 5. Backends against fixtures: JEV `noul`/`score`/`choice`; chat contracts, including malformed and
    partial replies.
 6. Ledger append-only and dedup; no row on failure.
