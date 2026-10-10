@@ -1220,6 +1220,11 @@
       "hard_input_ceiling": 234437,
       "concurrency": 1,
       "free": true,
+      "reasoning_controls": {
+        "max": {
+          "reasoning_effort": "max"
+        }
+      },
       "input_per_token": 0.0,
       "output_per_token": 0.0,
       "observed_on": "2026-09-12",

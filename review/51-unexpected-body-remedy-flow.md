@@ -3517,3 +3517,33 @@ whole Ruff/format clean across 511 files. CLI dry-run accepts the two prior immu
 result files with four physical candidate configurations. Completed pairs are skipped; the
 failed primary observation remains retryable. Secondary batch completed six correct answers
 with zero errors/timeouts, three per route. These partial runs do not complete admission.
+
+### P1 independent Kimi reviewer capability — L3, approved 2026-10-10 (#2253)
+
+The maintainer approved evaluating the existing free NVIDIA Kimi K3 physical route as an
+independent reviewer. AA Intelligence Index v4.3.2 reports max reasoning at 44, exceeding the
+Gemini 3.7/3.8 high baselines of 39/41. NVIDIA’s endpoint documents reasoning_effort=max.
+Sources: https://artificialanalysis.ai/models/kimi-k3/ and
+https://docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3-infer.
+
+Permitted capability files: config/provider_limits.yml, existing compiler tests, compiled
+citypods/compute/llm_routes.json and workers/llm-dispatch-v2/src/dispatch_limits.json. Add only
+nvidia_kimi_k3_free reasoning_controls.max.reasoning_effort=max. Existing production request
+parameters, lane defaults, routes, quotas, storage, credentials and admissions remain unchanged.
+Tests prove compiled Python/Worker parity and absent default request parameters. Run targeted
+and full offline tests plus whole Ruff/format before push. Update review/11, CHANGELOG and
+ARCHITECTURE. No pipeline version change or backfill.
+
+Use candidate-only local configurations, shared CAS quota accounting, explicit 120-second
+request timeout /150-second case deadline and immutable resumable observations. Begin with
+one bounded regression probe; expand only after valid physical identity/effort output. Then run
+claim-support regression and approved Denton holdout, including blind owner selection. Never
+send gold to models. Keep results separate by route/catalog/mode hashes; no automatic admission.
+Record failures and unattempted cases honestly; final qualification requires reviewed evidence.
+
+#2253 capability validation: 74 compiler tests and 5,766 offline tests passed
+(16 deselected); whole Ruff/format clean across 511 files. CodeRabbit CLI review of
+a5a13ccc completed with zero findings. One quota-accounted NVIDIA probe returned the
+requested Kimi K3 model/max controls and a valid correct wrong-district rejection.
+This verifies transport/control provenance, not admission. Broader local evaluations are
+running; no production admission or alias automation is enabled.

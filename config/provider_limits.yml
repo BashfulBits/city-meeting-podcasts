@@ -1003,6 +1003,10 @@ routes:
     # overflow calls could otherwise hold every NVIDIA slot for ten minutes at a time.
     concurrency: 1
     free: true
+    # Explicit evaluation only; default production requests remain unchanged.
+    reasoning_controls:
+      max:
+        reasoning_effort: max
     input_per_token: 0.0
     output_per_token: 0.0
     observed_on: "2026-09-12"
