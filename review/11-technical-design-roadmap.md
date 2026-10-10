@@ -1722,3 +1722,6 @@ before human merge and is explicitly recorded in review/51. No production caller
 Next authorized review/51 work: P2c2b trusted decision actions/retry recovery, then P2c3a
 remembered-decision comparison reports. Both are L2 proposals in review/51 pending the exact
 maintainer-command transport; recurring alert activation and publication coordinator remain gated.
+
+P2c2b command transport approved: dedicated `/citypods-decision` JSON comment. Exact callable
+contract in review/51 is L3; production command runner/activation remains separate.

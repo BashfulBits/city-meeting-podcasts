@@ -3191,14 +3191,14 @@ is not review coverage. This explicit review gap does not imply a production sto
 Only persistence is frozen here: trusted actions, recovery coordination and scan integration
 remain disconnected. The temporary #2237 review monitor is paused; no closed-PR review request.
 
-### P2c2b trusted decision actions and recovery — L2 proposal
+### P2c2b trusted decision actions and recovery — L3 approved
 
 The maintainer authorized this next step after #2237. A lease alone cannot authenticate a
 maintainer, and an approval URL alone cannot show what that person approved. Bind an explicit
 structured action to a freshly retrieved GitHub comment and its author's current repository
 permission. Recommend a dedicated decision command, separate from the legacy `/remedy` command,
 which dispatches model-based remediation and must not be reused for recording decisions.
-The command transport and exact command syntax require a maintainer decision before L3/code.
+The maintainer approved the dedicated structured comment command in chat on 2026-10-10.
 
 Recommended action payload: schema_version 1, action (`decide` or `reopen`), decision_id,
 expected_parent_event_ids, city, source_key, policy_id, normalized_label, state, disposition,
@@ -3281,3 +3281,33 @@ wrong-city/source/topic does not join; contradictory identity requires review; c
 alone does not reopen; assigned/excluded rule receives new recordings without policy reopening;
 conflicting history remains visible; deterministic ordering; no network/storage/GitHub/state writes.
 Verify reports on frozen local fixtures before proposing any scheduled alert activation.
+
+
+#### P2c2b exact callable contract, approved transport
+
+Command body is exactly `/citypods-decision` followed by a newline and one JSON object containing
+only the action fields listed above. Reject duplicate JSON keys. No free-form prose parsing.
+The action field `expected_parent_event_ids` becomes the existing event parent list. Provenance is
+empty for a human-only action. `reopen` must use proposed state and null disposition; a terminal
+history can only leave its existing outcome through this explicit action. Diagnostic/conflicting
+histories cannot be changed by this first command; explicit multi-parent reconciliation is later.
+
+Trusted snapshot contains repository (`owner/name`), comment (id, html_url, created_at, user.login,
+body), permission (the existing GitHub response including user.login), and checked_at. It must
+come from fresh authenticated GitHub API calls in a trusted caller; submitted JSON is never a
+trusted snapshot. This callable slice validates bindings, not HTTP authenticity. The caller
+supplies an aware UTC `now`; permission check age must be between zero and five minutes.
+Comment URL must exactly match `https://github.com/<repository>/issues/<number>#issuecomment-<id>`.
+Derive actor_id from comment user, approval/artifact references from its URL, delivery ID from
+repository/comment ID, and occurred_at from original created_at. Permission user must equal author.
+
+Evidence input has exactly city, source_key, policy_id, normalized_label, evidence_hash,
+config_hash, policy_hash, recording_refs, observed_at. It is a fresh deterministic replay context,
+not command-supplied evidence. All identity/hash/ref fields must equal the action. Evidence age is
+zero to 24 hours. Use now only for freshness, never event identity. A future timestamp fails closed.
+The recorder requires the existing lease before source load and immediately before append.
+Repeated delivery validates the original event against content and succeeds even though current
+parent tips have advanced; conflicting content or a damaged history fails closed. Never fabricate
+new events for retries. Return the existing/new event storage key. No production runner is connected.
+Additional permitted parameter: `now` on both proposed interfaces. Snapshot is unpacked only into
+the validator after current source history has been loaded. No additional files or dependencies.
