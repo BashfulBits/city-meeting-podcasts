@@ -1949,9 +1949,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
-  // Disabled until separately reviewed live activation. Tests exercise the same code with
-  // class-owned allowances; no HTTP body or environment flag can enable experiments.
-  static CONTEXT_PROBE_ROUTE_IDS = Object.freeze([]);
+  // Reviewed input pilot (#2221): six weekly attempts on one verified free quota scope.
+  // No HTTP body or environment flag can widen the server-owned authority.
+  static CONTEXT_PROBE_ROUTE_IDS = Object.freeze(["groq_gpt_oss_120b_primary"]);
+  static CONTEXT_INPUT_CEILINGS = Object.freeze({ groq_gpt_oss_120b_primary: 8192 });
   static CONTEXT_OUTPUT_ENABLED = false;
 
   _contextWeek(now) {
@@ -2087,7 +2088,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const output = body.dimension === "output";
     if (!LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(body.route_id) ||
       (output && !LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED)) return { ok: false, error: "disabled" };
-    if (body.input_tokens > (output ? 2048 : 524288) ||
+    if (body.input_tokens > (output ? 2048 :
+      (LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[body.route_id] ?? 524288)) ||
       body.output_tokens > (output ? 32768 : 256) ||
       row.input_used + body.input_tokens > 2097152 ||
       row.output_used + body.output_tokens > 131072 || row.requests_used >= 24) {

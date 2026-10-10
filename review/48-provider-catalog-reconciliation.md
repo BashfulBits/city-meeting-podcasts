@@ -1768,10 +1768,12 @@ Live context input/output canaries and recurring calibration remain independent 
 
 ### Proposed input-canary activation contract — #2221, 2026-10-10
 
-Prepare the activation PR before requesting approval to enable live measurement. The proposed
-server-enforced one-week window is an extension of §8.11.E: the existing allowlist alone would
-permit repeated weekly scans and six attempts, which exceeds this canary's scope. No provider calls
-are authorized while this proposal is under review.
+**Maintainer approval — 2026-10-10.** Permit the existing six-call per-route weekly limit
+on the single verified free Groq route, with no one-week expiry. This intentionally replaces
+§8.11.E's two-call input canary and the proposed expiring window. The maintainer judged the
+volume small and approved reviewing evidence immediately after the first scheduled run,
+without a week-long waiting period. Wider route activation remains a separately reviewed
+change after that evidence passes; output remains disabled.
 
 **Route and identity.** Select `groq_gpt_oss_120b_primary`, upstream `openai/gpt-oss-120b`,
 free account `primary`. Physical quota scope is `groq:primary:openai/gpt-oss-120b`; the deployed
@@ -1785,20 +1787,18 @@ This is verified configured scope, not proof that unrelated applications never u
 Existing quota admission and provider pause/drain remain mandatory. Fresh checkout/deployed digest
 equality is required at run time; a mismatch defers, never bypasses the check.
 
-**Proposed bounded authority.** Permit only the UTC week beginning 2026-10-12, ending exclusively
-on 2026-10-19. At most two durably consumed input admissions across that week, including lost
-responses or process restarts; no output admissions. Each call reserves at most 8,192 input and
-256 output tokens. These are ceilings, not required payload sizes or new production route limits.
-Use the existing 7,125-token configured input baseline and fixture-local count correction. The
-first call's reservation must fit current quota; the next adaptive target may exceed this small
-canary allowance, in which case defer it rather than shrinking/repeating the measurement. One
-verified observation can satisfy count/tail feedback; this is not a maximum-cap proof.
+**Approved bounded authority.** At most six durably consumed input admissions per UTC week,
+including lost responses or process restarts; no output admissions. Each call reserves at most
+8,192 input and 256 output tokens. Use the existing 7,125-token input baseline and fixture-local
+count correction. Quota admission remains binding; an oversized adaptive target defers rather
+than shrinking/repeating the measurement. Six is a ceiling, not a promise of six observations.
+One verified observation can satisfy count/tail feedback; this is not a maximum-cap proof.
 
-Only the existing full weekly scheduled main workflow may initiate measurement, within its
-existing shared request, pause, time and durable weekly budgets. No quota top-up if regular probes
-consume the allowance. The earliest scheduled opportunity is 2026-10-12 10:17 UTC, contingent
-on review, approval, merge and successful normal Worker deployment. A missed window expires;
-another week requires a newly reviewed change. No manual workflow, provider call or deployment.
+Only the existing full weekly scheduled main workflow initiates measurement within its shared
+request, pause, time and durable weekly budgets. No top-up if regular probes consume the allowance.
+The earliest opportunity is 2026-10-12 10:17 UTC, contingent on review, merge and successful
+normal Worker deployment. No manual workflow, provider call or deployment. Review first-run
+evidence immediately when available; no mandatory week-long wait before proposing expansion.
 
 **Evidence and acceptance.** Preserve the successful-main context artifact's authenticated run,
 head, catalog digest, route identity, estimated/reserved/provider-reported input counts, parser
@@ -1810,19 +1810,15 @@ Unsupported, truncated, conflicting-count, missing-tail or outage observations a
 Do not force a production restart to obtain recreation evidence; if it has not been observed,
 keep that acceptance item open rather than claiming it happened. No cap changes from this canary.
 
-**Disable and rollback.** The week boundary disables new context sessions/admissions without a
-follow-up deployment, while retaining evidence and charges. For an earlier stop, clear the
-server-owned allowlist in a reviewed revert delivered through normal deployment. Existing
-provider-pause cleanup still runs; do not erase tables, refund attempts or change production
-limits. Verify read-only status disabled and later weekly runs make no context provider calls.
-Input acceptance precedes #2222 output-canary planning; #2223 recurring activation remains
-separately approved. This plan does not enable removal automation.
+**Disable and rollback.** Clear the server-owned allowlist in a reviewed revert through normal
+deployment. Existing provider-pause cleanup still runs; retain tables, evidence and charges.
+Verify status disabled and later weekly runs make no context calls. The approved single-route
+input pilot may recur until disabled; #2223 broader fair rotation remains separately approved.
+Input acceptance precedes #2222 output planning. No removal automation is enabled.
 
-**Proposed file plan.** Worker `src/coordinator.js` adds code-owned canary week and hard two-call/
-8,192-input ceilings alongside the existing route/output authorities, using current durable
-summary/attempt rows and existing disabled/budget dispositions. No schema or endpoint is added.
-Worker coordinator tests prove before/after-window disable, output/other-route rejection, third
-attempt denial, oversized input denial, rollback/replay/recreation preservation and unchanged
-ordinary admissions. Canonical lifecycle documents record the plan and activation gate. If
-client changes are needed to avoid futile output/oversized admissions, obtain approval for that
-additional scope before implementing them.
+**Activation file plan.** Worker `src/coordinator.js` enables this one route and a server-owned
+8,192 input ceiling, keeping output false and the existing durable six-call limit. No schema,
+endpoint, client, workflow or production catalog changes. Coordinator tests verify the exact
+allowlist, output/other-route rejection, oversized input denial, six successful admissions and
+seventh denial. Existing rollback/replay/recreation and ordinary admission tests remain binding.
+Lifecycle documents record the revised approval; #2221 remains open for live evidence.

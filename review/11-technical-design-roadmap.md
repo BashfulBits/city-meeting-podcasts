@@ -1761,4 +1761,5 @@ production route selection, quota or admission change.
 <!-- review/48 activation checkpoint -->
 Input calibration canary #2221 has a concrete proposed one-route, one-week plan in
 [review/48](48-provider-catalog-reconciliation.md#proposed-input-canary-activation-contract--2221-2026-10-10).
-The two-call expiring server authority requires maintainer approval before implementation/activation.
+The maintainer approved six weekly input calls on one verified Groq route; output and broader
+rotation remain gated on separately reviewed evidence.

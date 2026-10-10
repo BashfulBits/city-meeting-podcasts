@@ -589,9 +589,10 @@ and current rate/token headroom. Groq and Gemini scope mappings are supported; u
 mappings defer. Google charges input-only TPM, while other supported routes charge full input plus
 requested output. Context-only exploration may stretch measured caps; ordinary job guards remain.
 `GET /v2/dispatch:pause-status?context=1` is advisory and read-only. The typed pause client has no
-admission retry. Committed route activation is empty and output is disabled; no workflow makes
-context calls. The weekly reconciliation path reads this disabled authority without starting a session or making
-context calls. Separately approved input/output canaries and recurring activation remain gates
+admission retry. The reviewed input pilot enables only `groq_gpt_oss_120b_primary`, at most six weekly
+input admissions with 8,192 input/256 output ceilings. Output remains disabled. The weekly
+main schedule checks deployed catalog identity and exact quota scope before starting a session.
+Output and broader recurring activation remain separately approved gates
 (review/48 §8.11).
 
 Context calibration uses provider-reported token counts for fixture-local prompt correction and
