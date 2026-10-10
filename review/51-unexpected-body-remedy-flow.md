@@ -3311,3 +3311,6 @@ parent tips have advanced; conflicting content or a damaged history fails closed
 new events for retries. Return the existing/new event storage key. No production runner is connected.
 Additional permitted parameter: `now` on both proposed interfaces. Snapshot is unpacked only into
 the validator after current source history has been loaded. No additional files or dependencies.
+
+Validator also takes explicit `checked_at` from the trusted snapshot for the five-minute permission
+freshness check. This is a caller context parameter, never a submitted command field.
