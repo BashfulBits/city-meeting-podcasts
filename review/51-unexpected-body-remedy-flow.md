@@ -3413,3 +3413,27 @@ changed. Raw review output is retained locally at /private/tmp/2245-cli-review.n
 
 CLI finding fix verification: 209 targeted checks and 5,747 offline tests passed (16 deselected);
 whole Ruff/format passed across 511 files. The prior complete report survives simulated failure.
+
+### P1 admission completion: reasoning capability prerequisite — L3, approved 2026-10-10
+
+The maintainer authorized finishing P1 before the P2 connection, and explicitly approved a scoped
+capability update for existing Gemini 3.7/3.8 Flash and DeepSeek V4.1 Flash free direct routes.
+Local live execution uses /usr/local/bin/citypods-env and the existing shared CAS quota accounting.
+No additional evaluation workflow is authorized or needed. Holdout truth and final admission are
+reviewed separately; successful transport alone never qualifies a model.
+
+Permitted prerequisite files: config/provider_limits.yml, scripts/compile_llm_limits.py,
+its existing tests, compiled citypods/compute/llm_routes.json and
+workers/llm-dispatch-v2/src/dispatch_limits.json, and lifecycle docs. Extend the compiler's closed
+reasoning-level set with high/max only. Add high controls for Gemini 3.7/3.8 direct accounts from
+Google's documented OpenAI reasoning_effort mapping. Preserve defaults, aliases, route selection,
+quotas, existing off/low controls and production lane settings. No lane currently sets a reasoning
+level; absent explicit requests continue sending no newly added controls. NVIDIA max mapping must
+be supported by that endpoint's documentation and a bounded probe; absent proof leaves it held.
+
+Sources: https://ai.google.dev/gemini-api/docs/openai and
+https://ai.google.dev/gemini-api/docs/thinking; NVIDIA endpoint documentation:
+https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash-1.
+Tests prove compiler acceptance/rejection, compiled consistency and unchanged default behavior.
+Whole Ruff/format and full offline checks precede the prerequisite PR. No production admission,
+feed, audio, storage routing, Worker runtime or stage-version change is included.
