@@ -1730,3 +1730,6 @@ contract in review/51 is L3; production command runner/activation remains separa
 P2c2b implementation prepared under #2242: trusted-snapshot command binding, permission/evidence
 freshness and lease-protected retry recovery. No scheduled entrypoint connected. P2c3a local
 comparison report contract is L3 under #2243; activation remains separate from report validation.
+
+P2c3a implementation prepared under #2243: pure comparison and local report CLI. Reviewed case
+projections are explicit inputs; automatic coverage projection and alert activation are not enabled.

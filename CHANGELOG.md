@@ -23,6 +23,12 @@ Once 1.0 ships, entries move under semver tags.
   runs one pass across every source (newest dirty episodes anywhere first) instead of one per
   source, which let the alphabetically first sources spend the whole run's caps.
 
+- **Prepared remembered-decision report (review/51 P2c3a).** Adds an explicit local comparison
+  mode for saved histories and reviewed case projections. Unchanged watch cases recommend quiet;
+  newly related recordings stay pending in the same case. Material proof changes, missing evidence,
+  conflicting history and changed config remain visible. Local report publication is atomic,
+  preserving the prior complete report if replacement fails. No scheduled alerts or feeds change.
+  
 - **State restore path confinement and scoped tombstone hardening (#1972).** Hardens
   `citypods.statesync` to strictly confine state file downloads, replacements, and tombstone
   deletions within `state_dir`. Validates that all remote and local manifest object keys and

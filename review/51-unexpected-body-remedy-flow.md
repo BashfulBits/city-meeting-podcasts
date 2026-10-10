@@ -3365,6 +3365,26 @@ P2c2b prepared verification: 87 ledger/action tests and 5,702 offline tests pass
 (16 deselected), with whole Ruff/format across 511 files. No production caller was enabled.
 
 
+P2c3a synthetic end-to-end report verification (local fixtures, no historical decision import):
+
+| Fixture | Report outcome | Ask again? |
+|---|---|---|
+| Unchanged pending watch | unchanged | No; retain pending case. |
+| New related recording under watch | related_recordings_added | Yes; review the same case. |
+| New related recording under exclusion | related_recordings_added | No; retain approved outcome. |
+| New official identity contradiction | material_change | Yes; show conflicting evidence. |
+
+Local usage from the repository root:
+`PYTHONPATH=. python scripts/audit_feeds.py --decision-comparison-input INPUT.json
+--decision-comparison-report REPORT.json` (the command is one line).
+Input is the explicit reviewed-case/history bundle specified above, not a raw coverage file.
+Automatic coverage projection, trusted API retrieval and weekly alert activation remain subsequent
+bounded work. Do not describe these local fixture results as deployed scan suppression.
+
+P2c3a prepared verification: 209 targeted ledger/action/audit-script checks and 5,724 offline
+tests passed (16 deselected); whole Ruff/format passed across 511 files. Four synthetic local
+case reports matched the recommendations above. No production reads/writes or alert activation.
+
 CLI review of #2244 completed 2026-10-10 against main with three low-severity findings.
 The stale-parent error-order suggestion is not adopted: the early terminal-parent guard also
 checks retry semantics before returning an existing delivery; moving it solely to current tips
@@ -3383,3 +3403,13 @@ Two report-contract clarifications are recorded here; runtime behavior remains u
 
 Raw CLI output retained locally as /private/tmp/2244-cli-review.ndjson. Code/tests are unchanged
 from the previously verified implementation; conflict carry preserves merged main features.
+
+CLI review of #2245 completed 2026-10-10 against its parent implementation, now merged into main.
+One valid trivial finding: direct report writes could leave truncated JSON after interruption.
+The local report now writes a temporary sibling and atomically replaces the destination after
+closing it, cleaning up on failure. A simulated publication failure verifies that the prior report
+remains intact and no temporary file remains. No comparison semantics or production activation
+changed. Raw review output is retained locally at /private/tmp/2245-cli-review.ndjson.
+
+CLI finding fix verification: 209 targeted checks and 5,747 offline tests passed (16 deselected);
+whole Ruff/format passed across 511 files. The prior complete report survives simulated failure.
