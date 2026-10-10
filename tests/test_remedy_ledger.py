@@ -221,3 +221,259 @@ def test_excluded_state_requires_approval_even_without_disposition():
     assert parse_event(event(state="resolved", disposition=None, approval_ref=None)).state == (
         "resolved"
     )
+
+
+class FakeEventStorage:
+    def __init__(self):
+        self.objects = {}
+        self.calls = []
+        self.paths = []
+        self.error = None
+        self.drop_writes = False
+        self.extra_listed = []
+
+    def get_file(self, key, path):
+        self.calls.append(("read", key))
+        self.paths.append(path)
+        if self.error == "read":
+            raise OSError("read failed")
+        if key not in self.objects:
+            return False
+        path.write_bytes(self.objects[key])
+        return True
+
+    def put_file(self, key, path, content_type):
+        self.calls.append(("write", key))
+        self.paths.append(path)
+        assert content_type == "application/json"
+        if self.error == "write":
+            raise OSError("write failed")
+        if not self.drop_writes:
+            self.objects[key] = path.read_bytes()
+        return "https://unused.example/" + key
+
+    def list_objects(self, prefix):
+        self.calls.append(("list", prefix))
+        if self.error == "list":
+            raise OSError("list failed")
+        return [(key, None) for key in reversed(self.objects) if key.startswith(prefix)] + [
+            (key, None) for key in self.extra_listed
+        ]
+
+
+class FakeRemedyLease:
+    key = "maintenance-leases/remedy.json"
+
+    def __init__(self):
+        from types import SimpleNamespace
+
+        self.storage = SimpleNamespace(cas_capable=True)
+        self.checked = 0
+        self.lose_at = None
+
+    def assert_held(self):
+        self.checked += 1
+        if self.lose_at is not None and self.checked >= self.lose_at:
+            raise RuntimeError("lease lost")
+
+
+def test_append_and_reconstruct_is_idempotent_and_cleans_temporary_files():
+    from citypods.remedy_ledger import append_event, event_key, load_decisions
+
+    storage, lease = FakeEventStorage(), FakeRemedyLease()
+    payload = event()
+    key = append_event(storage, payload, lease=lease)
+    assert key == event_key(payload)
+    assert key.startswith("state/remedy/events/source-a/")
+    assert append_event(storage, payload, lease=lease) == key
+    assert sum(call[0] == "write" for call in storage.calls) == 1
+    decisions = load_decisions(storage, source_keys=["source-a"])
+    assert decisions[payload["decision_id"]].disposition == "watch"
+    assert not any(path.exists() for path in storage.paths)
+    assert all(key.startswith("state/remedy/events/source-a/") for _, key in storage.calls)
+
+
+@pytest.mark.parametrize("source", ["../source", "source/a", "", "/source", "source\\a"])
+def test_unsafe_path_and_invalid_event_rejected_before_backend_calls(source):
+    from citypods.remedy_ledger import append_event, load_decisions
+
+    storage = FakeEventStorage()
+    payload = event(
+        source_key=source,
+        decision_id=decision_id("example-tx", source or "valid", "committee", "committee"),
+        recording_refs=[],
+    )
+    with pytest.raises(ValueError):
+        append_event(storage, payload, lease=FakeRemedyLease())
+    with pytest.raises(ValueError):
+        load_decisions(storage, source_keys=[source])
+    assert not storage.calls
+
+
+@pytest.mark.parametrize("problem", ["missing", "wrong_key", "no_cas", "lost", "lost_before_write"])
+def test_append_requires_owned_correct_cas_lease(problem):
+    from citypods.remedy_ledger import append_event
+
+    storage, lease = FakeEventStorage(), FakeRemedyLease()
+    if problem == "missing":
+        lease = None
+    elif problem == "wrong_key":
+        lease.key = "maintenance-leases/other.json"
+    elif problem == "no_cas":
+        lease.storage.cas_capable = False
+    else:
+        lease.lose_at = 1 if problem == "lost" else 2
+    with pytest.raises((ValueError, RuntimeError)):
+        append_event(storage, event(), lease=lease)
+    assert not storage.objects
+    assert not any(call[0] == "write" for call in storage.calls)
+    assert not any(path.exists() for path in storage.paths)
+
+
+@pytest.mark.parametrize("problem", ["corrupt", "different", "duplicate_key"])
+def test_existing_bad_history_is_never_overwritten(problem):
+    import json
+
+    from citypods.remedy_ledger import append_event, event_key, load_decisions
+
+    storage = FakeEventStorage()
+    payload = event()
+    key = event_key(payload)
+    content = {
+        "corrupt": b"not json",
+        "different": json.dumps(event(rationale="different")).encode(),
+        "duplicate_key": b'{"city":"one","city":"two"}',
+    }[problem]
+    storage.objects[key] = content
+    with pytest.raises(ValueError):
+        append_event(storage, payload, lease=FakeRemedyLease())
+    with pytest.raises(ValueError):
+        load_decisions(storage, source_keys=["source-a"])
+    assert storage.objects[key] == content
+    assert not any(call[0] == "write" for call in storage.calls)
+    assert not any(path.exists() for path in storage.paths)
+
+
+@pytest.mark.parametrize("problem", ["read", "write", "readback"])
+def test_backend_failures_are_not_success_and_clean_files(problem):
+    from citypods.remedy_ledger import append_event
+
+    storage = FakeEventStorage()
+    if problem == "readback":
+        storage.drop_writes = True
+    else:
+        storage.error = problem
+    with pytest.raises((OSError, ValueError)):
+        append_event(storage, event(), lease=FakeRemedyLease())
+    assert not any(path.exists() for path in storage.paths)
+
+
+def test_source_scoped_load_preserves_conflicts_without_mutating():
+    from citypods.remedy_ledger import append_event, load_decisions
+
+    storage, lease = FakeEventStorage(), FakeRemedyLease()
+    root = event()
+    left = event(parent_event_ids=[root["event_id"]], rationale="left")
+    right = event(parent_event_ids=[root["event_id"]], rationale="right")
+    for payload in (root, left, right):
+        append_event(storage, payload, lease=lease)
+    other = event(
+        source_key="source-b",
+        decision_id=decision_id("example-tx", "source-b", "committee", "committee"),
+        recording_refs=[],
+    )
+    append_event(storage, other, lease=lease)
+    storage.calls.clear()
+    result = load_decisions(storage, source_keys=["source-a"])
+    assert len(result) == 1
+    assert result[root["decision_id"]].state == "blocked"
+    assert "multiple or absent tips" in result[root["decision_id"]].diagnostics
+    assert all(call[0] != "write" and "source-b" not in call[1] for call in storage.calls)
+    assert load_decisions(storage, source_keys=["absent"]) == {}
+    assert load_decisions(storage, source_keys=[]) == {}
+
+
+@pytest.mark.parametrize("problem", ["outside_prefix", "traversal", "missing", "list_failure"])
+def test_reconstruction_rejects_bad_listing_or_disappearing_read(problem):
+    from citypods.remedy_ledger import event_key, load_decisions
+
+    storage = FakeEventStorage()
+    storage.extra_listed = [
+        {
+            "outside_prefix": event_key(event()).replace("source-a/", "source-b/"),
+            "traversal": "state/remedy/events/source-a/../event.json",
+            "missing": event_key(event()),
+            "list_failure": event_key(event()),
+        }[problem]
+    ]
+    if problem == "list_failure":
+        storage.error = "list"
+    with pytest.raises((ValueError, OSError)):
+        load_decisions(storage, source_keys=["source-a"])
+    assert not any(call[0] == "write" for call in storage.calls)
+    assert not any(path.exists() for path in storage.paths)
+
+
+def test_successful_upload_with_lost_acknowledgement_retries_without_overwrite():
+    from citypods.remedy_ledger import append_event, event_key
+
+    class LostAcknowledgement(FakeEventStorage):
+        def put_file(self, key, path, content_type):
+            super().put_file(key, path, content_type)
+            raise OSError("acknowledgement lost")
+
+    storage, lease = LostAcknowledgement(), FakeRemedyLease()
+    payload = event()
+    with pytest.raises(OSError, match="acknowledgement"):
+        append_event(storage, payload, lease=lease)
+    assert append_event(storage, payload, lease=lease) == event_key(payload)
+    assert sum(call[0] == "write" for call in storage.calls) == 1
+    assert not any(path.exists() for path in storage.paths)
+
+
+def test_readback_corruption_fails_without_repairing_object():
+    from citypods.remedy_ledger import append_event, event_key
+
+    class CorruptUpload(FakeEventStorage):
+        def put_file(self, key, path, content_type):
+            super().put_file(key, path, content_type)
+            self.objects[key] = b"corrupt"
+
+    storage = CorruptUpload()
+    with pytest.raises(ValueError, match="invalid stored"):
+        append_event(storage, event(), lease=FakeRemedyLease())
+    assert storage.objects[event_key(event())] == b"corrupt"
+    assert sum(call[0] == "write" for call in storage.calls) == 1
+    assert not any(path.exists() for path in storage.paths)
+
+
+def test_reconstruction_folds_delivery_retries_and_orders_decisions():
+    from citypods.remedy_ledger import append_event, load_decisions
+
+    storage, lease = FakeEventStorage(), FakeRemedyLease()
+    original = event(external_delivery_id="one")
+    retry = event(external_delivery_id="one", occurred_at="2026-10-11T00:00:00Z")
+    another = event(
+        policy_id="other", decision_id=decision_id("example-tx", "source-a", "other", "committee")
+    )
+    for payload in (retry, original, another):
+        append_event(storage, payload, lease=lease)
+    result = load_decisions(storage, source_keys=["source-a"])
+    assert list(result) == sorted(result)
+    assert not result[original["decision_id"]].diagnostics
+    assert len(result[original["decision_id"]].events) == 2
+    assert result[original["decision_id"]].disposition == "watch"
+
+
+def test_reconstruction_read_error_is_not_empty_history():
+    import json
+
+    from citypods.remedy_ledger import event_key, load_decisions
+
+    storage = FakeEventStorage()
+    payload = event()
+    storage.objects[event_key(payload)] = json.dumps(payload).encode()
+    storage.error = "read"
+    with pytest.raises(OSError, match="read failed"):
+        load_decisions(storage, source_keys=["source-a"])
+    assert not any(path.exists() for path in storage.paths)

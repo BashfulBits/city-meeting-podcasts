@@ -18,6 +18,25 @@ Once 1.0 ships, entries move under semver tags.
   `judge:anchor` and 2,400 for `judge:sibling` (total 16,506 of 25,600); the adjudicator's
   reservation follows with PR5.
 
+- **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
+  reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
+  for writes; existing events and uploaded content are verified. Corrupt history fails closed,
+  identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
+  workflow activation, scan suppression, feed/audio change or historical decision import.
+  
+- **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
+  canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
+  configuration errors and unblocking the Dependency Dashboard.
+
+- **Agenda PDF character map and corrupted glyph recovery (#2061).** Adds structural detection
+  for corrupted PDF native text extractions caused by missing or damaged ToUnicode font encodings
+  (e.g. literal glyph-name sequences like `/i255`, repeated replacement characters `\ufffd`/`ÿ`,
+  and low alpha-word ratios). Corrupted native extractions are flagged suspicious, bypass
+  false-positive short notice acceptance, trigger OCR fallback, and reject with durable diagnostic
+  `corrupted-native-text` if OCR is unavailable. Strips stray bullet glyphs (such as corrupted `Å`
+  prefixes) from candidate titles while preserving genuine Unicode names. Pipeline version
+  remains stable (`AGENDA_TEXT_QUALITY_VERSION = "3"`).
+
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
@@ -30,7 +49,7 @@ Once 1.0 ships, entries move under semver tags.
   `--judging`. Nothing runs until `judging.enabled` (PR4); shadow mode changes no display,
   admission or publication field.
   
-- **Decision memory foundation (review/51 P2c1, prepared).** Adds strict immutable, source-local
+- **Decision memory foundation (review/51 P2c1, #2231).** Adds strict immutable, source-local
   decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
   parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
   recording references. No storage writes, scan suppression, model admission, feed changes or
