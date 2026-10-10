@@ -2824,18 +2824,9 @@ def _build_impl(
         raise ValueError("search handoff options require render phase")
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
-    if lane is not None and lane not in (
-        "audio",
-        "transcribe",
-        "align",
-        "tag",
-        "moments",
-        "diarize",
-        "speaker-identity",
-        "chapter-agenda",
-        "chapter-locator",
-        "chapter",
-    ):
+    # LANE_STAGES is the one lane registry: a second hand-kept allowlist here rejected `tag` and
+    # later `judge` (review/53 PR4 dry run) after both were fully wired everywhere else.
+    if lane is not None and lane not in LANE_STAGES:
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
         raise ValueError("shard_plan_path requires shard=(K, N)")
@@ -2876,6 +2867,7 @@ def _build_impl(
             "chapter-agenda",
             "chapter-locator",
             "chapter",
+            "judge",
         }
     )
     if source:
@@ -3616,8 +3608,8 @@ def _build_impl(
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
-                # mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, `speaker-identity`, `judge`) have no
+                # free mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -3708,7 +3700,7 @@ def _build_impl(
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
                         _lane_checkpoint_push
-                        if lane in {"tag", "diarize", "speaker-identity"}
+                        if lane in {"tag", "diarize", "speaker-identity", "judge"}
                         and persist_records
                         and not dry_run
                         and storage is not None

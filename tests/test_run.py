@@ -3029,6 +3029,49 @@ def test_tag_lane_is_accepted(tmp_path, fake_provider):
     assert [r.status for r in results] == ["built"]
 
 
+@pytest.mark.parametrize("lane", sorted(run.LANE_STAGES))
+def test_every_registered_lane_is_accepted(tmp_path, fake_provider, lane):
+    """review/53 PR4 dry run: `enrich --lane judge` died with "unknown lane 'judge'" because
+    _build_impl kept its own allowlist beside LANE_STAGES (the `tag` bug above, again). Every lane
+    LANE_STAGES registers must pass validation; the allowlist is now LANE_STAGES itself."""
+    cities = _setup(tmp_path)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane=lane, dry_run=True)
+
+
+def test_judge_lane_uses_merged_scoped_push_without_full_reconcile(
+    tmp_path, fake_provider, monkeypatch
+):
+    """`judge.yml` runs unsharded, like `tag.yml`. Unscoped, it would push its whole stale snapshot
+    over concurrent lanes' records and run the full-run reconcile sweep; it owns only the
+    `judging` block, so it must take the foreign-block-preserving merged push."""
+    cities = _setup(tmp_path)
+    captured = {}
+
+    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, lane=None, **_k):
+        captured["lane"] = lane
+        captured["protected"] = set(protected_blocks)
+        return len(set(source_keys))
+
+    def _reconcile(*_a, full_run=True, **_k):
+        captured["full_run"] = full_run
+        return 0
+
+    def _push(*_a, only_prefixes=None, only_paths=None, **_k):
+        # Scoped runs still push their own append-only run_events by path; never the whole tree.
+        assert only_prefixes is not None or only_paths is not None, "whole-snapshot push_state"
+        return 0
+
+    monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "reconcile_state", _reconcile)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
+
+    assert captured["lane"] == "judge"
+    assert captured["protected"] and "judging" not in captured["protected"]
+    assert captured["full_run"] is False
+
+
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------
 
 _NOW = datetime(2026, 6, 12, tzinfo=UTC)

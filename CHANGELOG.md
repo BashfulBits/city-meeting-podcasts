@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Fix: `enrich --lane judge` rejected as an unknown lane (review/53 PR4 dry run).** `build()`
+  kept a hand-written lane allowlist beside `LANE_STAGES` and missed `judge` (the same bug `tag`
+  once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
+  takes the foreign-block-preserving merged push and skips the full-run reconcile, and gets the
+  mid-run checkpoint push like `tag`.
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
