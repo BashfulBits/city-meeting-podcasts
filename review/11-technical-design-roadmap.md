@@ -1751,3 +1751,9 @@ use shared quota accounting and bounded batches.
 P1 evaluation continuation #2251 — L3 approved: local immutable per-job checkpoints, explicit
 resume and physical-route daily-cap preflight, with evaluation-only timeout controls. Exact
 file/function/test contract is in review/51. No production activation.
+
+### review/51 independent reviewer capability — L3 (#2253)
+
+Approved 2026-10-10: evaluate existing free NVIDIA Kimi K3 at documented maximum reasoning,
+with shared quota accounting and frozen results. Bounded file/test plan in review/51; no
+production route selection, quota or admission change.
