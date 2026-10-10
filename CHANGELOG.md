@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Guarded decision persistence (review/51 P2c2a, prepared).** Adds source-scoped append and
+  reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
+  for writes; existing events and uploaded content are verified. Corrupt history fails closed,
+  identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
+  workflow activation, scan suppression, feed/audio change or historical decision import.
+
 - **Decision memory foundation (review/51 P2c1, #2231).** Adds strict immutable, source-local
   decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
   parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
