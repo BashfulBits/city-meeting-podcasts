@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Civil Service Commission on *"
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1961 days ago; standing commission inactive in provider feed"
 podcast_title: 'Denton: Civil Service Commission'
 podcast_author: City of Denton, TX
 podcast_email: ''

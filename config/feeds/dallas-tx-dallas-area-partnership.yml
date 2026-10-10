@@ -10,6 +10,9 @@ source:
     - "Dallas Area Partnership to End and Prevent Homelessness Local Government Corporation"
     - "Dallas Area Partnership to End and Prevent Homelessness LGC"
     - "Dallas Area Partnership"
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 800 days ago; local government corporation inactive in provider feed"
 podcast_title: 'Dallas: Dallas Area Partnership'
 podcast_author: City of Dallas, TX
 podcast_email: ''

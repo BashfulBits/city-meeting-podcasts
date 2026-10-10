@@ -7,6 +7,9 @@ source:
   body_any:
     - Community Partnership Committee
     - Hotel Occupancy Tax and Sponsorship Committee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1997 days ago; partnership committee concluded mandate"
 podcast_title: 'Denton: Community Partnership Committee'
 podcast_author: City of Denton, TX
 podcast_email: ''

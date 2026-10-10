@@ -28,6 +28,9 @@ source:
   body_any:
     - "*Bond*"
     - "*CBTF*"
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1071 days ago; 2024 capital bond program meetings concluded mandate"
 podcast_title: "Dallas: Bond Program Meetings"
 podcast_author: "City of Dallas, TX"
 podcast_email: ''

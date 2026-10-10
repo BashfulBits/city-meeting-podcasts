@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Batch feed lifecycle dispositions for 50 inactive and historical feeds.** Marks 33 concluded
+  temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
+  standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
+  review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
+  
 - **Complete source body-coverage report (#2216, prepared).** Opt-in audit JSON includes retained
   recordings and current observations, exact source-local identities, selector matches, policy
   proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,

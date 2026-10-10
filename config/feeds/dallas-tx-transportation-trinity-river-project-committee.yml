@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Transportation & Trinity River Project Committee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 3407 days ago; council committee restructured"
 podcast_title: 'Dallas: Transportation & Trinity River Project Committee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

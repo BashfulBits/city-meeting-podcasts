@@ -7,6 +7,9 @@ source:
   body_exact:
     - Charter Review Commission
     - Charter Review Commission Inaugural Meeting
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 912 days ago; charter review commission concluded mandate"
 podcast_title: 'Dallas: Charter Review Commission'
 podcast_author: City of Dallas, TX
 podcast_email: ''

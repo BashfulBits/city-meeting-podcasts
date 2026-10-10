@@ -13,6 +13,9 @@ source:
   - Housing and Economic Development Committee Housing and Economic Development Committee
   - "Housing and Economic Development Committee #1 Housing and Economic Development Committee #1"
   - "Housing and Economic Development Committee #2 Housing and Economic Development Committee #2"
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 4267 days ago; council committee dissolved/restructured"
 podcast_title: 'Fort Worth: Housing and Economic Development Committee'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

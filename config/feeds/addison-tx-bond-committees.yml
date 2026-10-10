@@ -6,6 +6,9 @@ source:
   list_url: https://addisontx.new.swagit.com/views/128
   body_exact:
     - Bond Advisory Committee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 275 days ago; bond advisory committees concluded mandate"
 podcast_title: 'Addison: Bond Committees'
 podcast_author: City of Addison, TX
 podcast_email: ''
