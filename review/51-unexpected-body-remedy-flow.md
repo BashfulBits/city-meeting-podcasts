@@ -3614,3 +3614,11 @@ use LiteLLM's OpenAI-compatible adapter locally for BeatAPI's documented chat
 endpoint while preserving exact free upstream model and physical quota identity.
 The generated `beatapi/` direct-model prefix is rejected by local LiteLLM before
 HTTP; retain that failed setup observation and do not change production catalogs.
+
+Patient comparison retry extension — approved by maintainer 2026-10-10:
+add an explicit --retry-from results argument to the evaluation-only script.
+Validate model/route and frozen manifest identity before requests; select only
+previously deferred mode/case pairs, never repeat completed cases. Retain originals
+and save retry observations separately. Existing request/output, pause/drain and
+quota bounds stay unchanged. Combine latest retry rows with originals only in an
+explicit derived scoring file; never rewrite original observations.
