@@ -1952,7 +1952,13 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = "docs"
     if args.body_coverage_report:
         from citypods.remedy_policy import material_evidence_hash
+        from citypods.state import resolve_state_dir
 
+        local_state = resolve_state_dir(site_config, Path(output_dir))
+        snapshot_notice = (
+            f"local-state-snapshot:{local_state}; canonical state was not synchronized; "
+            "locally available state may omit retained history; completeness remains unknown"
+        )
         evidence = []
         now = datetime.now(UTC)
         audit_all(
@@ -1963,6 +1969,8 @@ def main(argv: list[str] | None = None) -> int:
             body_coverage_evidence=evidence,
             body_coverage_only=True,
         )
+        for source in evidence:
+            source["diagnostics"].append(snapshot_notice)
         evidence.sort(key=lambda source: source["source_key"])
         selectors = [
             {"slug": city.slug, "source_key": source_key(city), "source": city.source}
@@ -1995,6 +2003,7 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.body_coverage_report)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        print(f"body coverage: {snapshot_notice}")
         print(f"body coverage: wrote {len(evidence)} source(s) to {path}")
         return 0
     state_dir = pull_canonical_state(site_config, output_dir)
