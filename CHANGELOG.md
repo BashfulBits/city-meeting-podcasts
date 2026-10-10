@@ -22,6 +22,15 @@ Once 1.0 ships, entries move under semver tags.
   canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
   configuration errors and unblocking the Dependency Dashboard.
 
+- **Agenda PDF character map and corrupted glyph recovery (#2061).** Adds structural detection
+  for corrupted PDF native text extractions caused by missing or damaged ToUnicode font encodings
+  (e.g. literal glyph-name sequences like `/i255`, repeated replacement characters `\ufffd`/`ÿ`,
+  and low alpha-word ratios). Corrupted native extractions are flagged suspicious, bypass
+  false-positive short notice acceptance, trigger OCR fallback, and reject with durable diagnostic
+  `corrupted-native-text` if OCR is unavailable. Strips stray bullet glyphs (such as corrupted `Å`
+  prefixes) from candidate titles while preserving genuine Unicode names. Pipeline version
+  remains stable (`AGENDA_TEXT_QUALITY_VERSION = "3"`).
+
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
