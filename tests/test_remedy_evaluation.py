@@ -1139,3 +1139,129 @@ def test_policy_template_default_preserves_existing_remedy_config():
     model = RemedyConfig.model_validate(config)
     assert model.policy_templates == []
     assert load_policy_templates(model).entries == ()
+
+
+def test_incremental_checkpoint_survives_interrupt_and_resume_skips_completed(
+    dataset, monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+
+    import citypods.compute.llm_policy as policy_module
+    from citypods.compute.base import JobResult
+
+    route = capable_route()
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    import yaml
+
+    values = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    values["admissions"] = [candidate()]
+    config = RemedyConfig.model_validate(values)
+    module = cli()
+    calls = []
+
+    def complete(job):
+        calls.append(job)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        case = dataset.manifest.cases[0]
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            route_id=route.route_id,
+            upstream_model=route.upstream_model,
+            reasoning_level="high",
+            request_params_hash=candidate()["request_params_hash"],
+            provider_attempts=1,
+            output={
+                "model": route.upstream_model,
+                "choices": [{"message": {"content": json.dumps(answer(case, False))}}],
+            },
+        )
+
+    with pytest.raises(KeyboardInterrupt):
+        module.run_cases(
+            dataset.manifest,
+            config,
+            "proposer",
+            dry_run=False,
+            max_cases=2,
+            backend=SimpleNamespace(run_immediate=complete),
+            checkpoint=lambda value: module.publish_checkpoint(tmp_path, value),
+            request_timeout=120,
+            case_deadline=150,
+        )
+    paths = list(tmp_path.glob("observation-*.json"))
+    assert len(paths) == 1
+    prior = json.loads(paths[0].read_text())
+    assert prior["results"][0]["status"] == "completed"
+    assert prior["results"][0]["request_timeout_seconds"] == 120
+    assert len(list(tmp_path.iterdir())) == 1
+    resumed = module.run_cases(
+        dataset.manifest,
+        config,
+        "proposer",
+        dry_run=False,
+        max_cases=1,
+        backend=SimpleNamespace(run_immediate=lambda job: pytest.fail("quota blocked")),
+        prior_results=[prior],
+        quota_preflight=lambda route: False,
+    )
+    assert resumed["results"][0] == prior["results"][0]
+    assert resumed["results"][1]["reason"] == "daily quota headroom"
+    invalid = copy.deepcopy(prior)
+    invalid["catalog_hash"] = "changed"
+    with pytest.raises(ValueError, match="context mismatch"):
+        module.run_cases(
+            dataset.manifest,
+            config,
+            "proposer",
+            dry_run=True,
+            max_cases=None,
+            prior_results=[invalid],
+        )
+    conflict = copy.deepcopy(prior)
+    conflict["results"][0]["latency_seconds"] += 1
+    with pytest.raises(ValueError, match="conflicting"):
+        module.run_cases(
+            dataset.manifest,
+            config,
+            "proposer",
+            dry_run=True,
+            max_cases=None,
+            prior_results=[prior, conflict],
+        )
+
+
+def test_daily_preflight_retry_headroom_and_reset(monkeypatch):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    import citypods.compute.llm_budget as quota_module
+
+    route = replace(capable_route(), quota=QuotaPolicy(rpd=20, reset_timezone="UTC"))
+    ledger = SimpleNamespace(requests_day=19, requests_day_key="2026-10-10")
+    budget = SimpleNamespace(routes={route.route_id: ledger})
+    monkeypatch.setattr(quota_module, "load_llm_budget_cas", lambda storage: (budget, "etag"))
+    module = cli()
+    now = datetime(2026, 10, 10, tzinfo=UTC)
+    assert not module.route_daily_capacity(object(), route, now)
+    ledger.requests_day = 18
+    assert module.route_daily_capacity(object(), route, now)
+    ledger.requests_day = 20
+    assert module.route_daily_capacity(object(), route, datetime(2026, 10, 11, tzinfo=UTC))
+
+
+@pytest.mark.parametrize("timeout,deadline", [(0, 60), (121, 150), (120, 119), (30, 151)])
+def test_evaluation_timeout_bounds(dataset, timeout, deadline):
+    import yaml
+
+    with pytest.raises(ValueError, match="bounds"):
+        cli().run_cases(
+            dataset.manifest,
+            RemedyConfig.model_validate(yaml.safe_load((ROOT / "config/remedy.yml").read_text())),
+            "proposer",
+            dry_run=True,
+            max_cases=None,
+            request_timeout=timeout,
+            case_deadline=deadline,
+        )

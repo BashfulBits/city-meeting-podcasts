@@ -3511,3 +3511,9 @@ Tests: interruption persistence, resume skipping, context/conflict rejection, re
 retry headroom, failed quota read, timeout bounds, unchanged defaults and no gold in prompts.
 Run targeted/full offline and whole Ruff/format before push. Do not change model/catalog/
 production storage routing, scheduler, feeds, workflows, dependencies or other runtime modules.
+
+#2251 prepared validation: 134 targeted tests and 5,765 offline tests passed (16 deselected);
+whole Ruff/format clean across 511 files. CLI dry-run accepts the two prior immutable Denton
+result files with four physical candidate configurations. Completed pairs are skipped; the
+failed primary observation remains retryable. Secondary batch completed six correct answers
+with zero errors/timeouts, three per route. These partial runs do not complete admission.
