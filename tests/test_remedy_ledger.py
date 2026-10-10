@@ -211,3 +211,13 @@ def test_new_evidence_does_not_infer_reopening():
     )
     assert fold_events([later, initial]).state == "covered"
     assert fold_events([later, initial]).disposition == "assigned"
+
+
+def test_excluded_state_requires_approval_even_without_disposition():
+    with pytest.raises(ValueError, match="approval_ref"):
+        parse_event(event(state="excluded", disposition=None, approval_ref=None))
+    assert fold_events([event(state="excluded", disposition=None)]).state == "excluded"
+    # Resolved can describe completion without an approved publication disposition.
+    assert parse_event(event(state="resolved", disposition=None, approval_ref=None)).state == (
+        "resolved"
+    )

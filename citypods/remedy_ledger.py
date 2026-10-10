@@ -184,7 +184,8 @@ def parse_event(payload: dict) -> RemedyEvent:
             _policy_approval(p[name])
     outcome = p["disposition"]
     if (
-        p["state"] == "covered" or outcome in {"assigned", "excluded", "not_pursued", "watch"}
+        p["state"] in {"covered", "excluded"}
+        or outcome in {"assigned", "excluded", "not_pursued", "watch"}
     ) and (p["approval_ref"] is None):
         raise ValueError("approval_ref: required for approved outcome")
     if (p["state"] == "covered" or outcome == "assigned") and not refs:

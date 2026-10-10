@@ -3099,3 +3099,10 @@ assertion that weekly suppression is active in this foundation PR.
 P2c1 verification: 5,618 offline tests passed (16 deselected), then 38 final ledger checks
 passed including additional cycle/terminal tests; whole Ruff/format passed across 497 files.
 No current production behavior changed. Human merge remains required.
+
+CodeRabbit review on #2231 identified one valid approval-gate gap: excluded state with null
+disposition still requires approval_ref. The fix validates both state and disposition, preserves
+nullable resolved outcomes, and adds a regression test. No scan or feed entrypoint is enabled.
+
+Review-fix verification: 39 targeted tests and 5,623 offline tests passed (16 deselected);
+whole Ruff/format passed across 497 files.
