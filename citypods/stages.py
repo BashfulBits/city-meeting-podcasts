@@ -1615,9 +1615,9 @@ class MomentJudgeStage(LLMProducerStage):
 class JudgeStage(LLMProducerStage):
     """Shadow judging of tag and moment candidates by JEV plus one sibling (review/53 PR3).
 
-    Reads persisted candidates and writes only each candidate's ``judgments`` and
-    ``judge_pending`` lists; display, admission and publication are untouched in ``shadow`` mode.
-    Packets may span the city's episodes: each candidate records the recipe that will answer it.
+    Reads persisted candidates and writes only the episode's own ``judging`` block (per subject:
+    judgments, pending recipe pointers, unbuildable tiers); candidates, display, admission and
+    publication are never touched. Runs once per source, so packets span a source's episodes.
     """
 
     name = "judge"

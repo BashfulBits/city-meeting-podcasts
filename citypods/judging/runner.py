@@ -1,11 +1,13 @@
 """One judge pass over a city's episodes (review/53 PR3), driven by :class:`JudgeStage`.
 
-A pass first collects answers for questions already in flight (each candidate's ``judge_pending``
-markers name the recipe that will answer them, so a packet may span episodes), then plans what is
+A pass first collects answers for questions already in flight (each subject's ``pending`` pointers
+in the episode's ``judging`` block name the recipe that will answer them, so a packet may span a
+source's episodes), then plans what is
 due -- every subject at the task's first tier by the anchor (JEV) and one sibling chosen per entry
 for independence, the anchor again at the escalation tier when its first-tier probability is in the
-band, and every tier for a deterministic sample -- then packs, submits and records markers. In
-``shadow`` mode nothing but ``judgments``/``judge_pending`` is ever written to a candidate.
+band, and every tier for a deterministic sample -- then packs, submits and records pointers. All
+state lives in ``Episode.judging`` (per subject: judgments, pending, unbuildable); candidates
+themselves are never written, in shadow mode or otherwise.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from citypods.judging.backends import (
     choose_options,
     estimate_tokens,
 )
-from citypods.judging.families import family_of, sibling_for
+from citypods.judging.families import UNKNOWN_FAMILY, family_of, sibling_for
 from citypods.judging.packing import pack
 from citypods.judging.tasks import (
     EpisodeTexts,
@@ -238,6 +240,8 @@ def plan(
                 sibling = sibling_for(subject.producer_model, ctx.sibling, ctx.families)
                 if sibling is None:
                     stats.counts["no_independent_sibling"] += 1
+                    if family_of(subject.producer_model, ctx.families) == UNKNOWN_FAMILY:
+                        stats.counts["unknown_producer_family"] += 1
                 judges = [("anchor", anchor_model)] + ([("sibling", sibling)] if sibling else [])
                 for role, model in judges:
                     for tier, sample in _due_tiers(subject, spec, role, ctx):
@@ -284,6 +288,8 @@ def choose_sibling(
 ) -> str | None:
     """One sibling for a whole meeting's choose question: independent of every producer in it."""
     producer_families = {family_of(s.producer_model, families) for s in subjects}
+    if UNKNOWN_FAMILY in producer_families:
+        return None
     return next((m for m in sibling.models if families.get(m) not in producer_families), None)
 
 

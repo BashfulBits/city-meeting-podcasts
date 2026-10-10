@@ -35,28 +35,40 @@ SUPPORTED = QuestionSpec(id="supported", kind="validate", instruction=TAG_RUBRIC
 
 
 def _subjects(ep: Any) -> list[Subject]:
+    """Tag subjects from the canonical candidate ledger, ``Episode.llm_tag_candidates``.
+
+    It holds rule and LLM candidates alike; ``Episode.tags`` is only the projected visible list
+    derived from it, so reading both would judge a tag twice. Superseded ``historical`` rows are
+    kept in the ledger for audit and are not judged, matching the tag stage's own projection.
+    """
     uid = str(getattr(ep, "uid", None) or getattr(ep, "guid", "") or "")
     if not uid:
         return []
     subjects: list[Subject] = []
-    for source in (getattr(ep, "tags", None) or [], getattr(ep, "llm_tag_candidates", None) or []):
-        for candidate in source:
-            if not isinstance(candidate, dict) or not candidate.get("id"):
-                continue
-            producer = (
-                None if candidate.get("source_kind") == "rule" else candidate.get("provider_model")
+    seen: set[str] = set()
+    for candidate in getattr(ep, "llm_tag_candidates", None) or []:
+        if not isinstance(candidate, dict) or not candidate.get("id"):
+            continue
+        if candidate.get("candidate_state") == "historical":
+            continue
+        subject_id = tag_subject_id(uid, candidate)
+        if subject_id in seen:
+            continue
+        seen.add(subject_id)
+        producer = (
+            None if candidate.get("source_kind") == "rule" else candidate.get("provider_model")
+        )
+        subjects.append(
+            Subject(
+                task="tag",
+                subject_id=subject_id,
+                episode_uid=uid,
+                group=None,
+                producer_model=str(producer) if producer else None,
+                payload=candidate,
+                store=judging_store(ep),
             )
-            subjects.append(
-                Subject(
-                    task="tag",
-                    subject_id=tag_subject_id(uid, candidate),
-                    episode_uid=uid,
-                    group=None,
-                    producer_model=str(producer) if producer else None,
-                    payload=candidate,
-                    store=judging_store(ep),
-                )
-            )
+        )
     return subjects
 
 

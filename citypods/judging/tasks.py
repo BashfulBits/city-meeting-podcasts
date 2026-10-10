@@ -28,7 +28,8 @@ class QuestionSpec:
 
 @dataclass(frozen=True)
 class Subject:
-    """One producer output to judge. ``payload`` is the stored candidate (mutated by the ledger)."""
+    """One producer output to judge. ``payload`` is the stored candidate, read only; judgments go
+    to ``store`` (the episode's ``judging`` block)."""
 
     task: str
     subject_id: str

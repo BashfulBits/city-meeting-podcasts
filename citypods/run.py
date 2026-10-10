@@ -2171,6 +2171,19 @@ def _run_enrich_global_queue(
     # Links/documents are source-scoped rather than materialization-scoped.  In addition to
     # avoiding repeated document downloads for shared source views, this provides AgendaTextStage
     # the complete source archive it needs for conservative prior-meeting minutes inheritance.
+    judge_batcher = None
+    original_judge_backend = ctx.judge_backend
+    # Set up before the source-stage pass below, which is where the judge stage runs.
+    if any(stage.name == "judge" for stage in source_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.judge_backend, LiteLLMBackend)
+            and ctx.judge_backend.config.dispatch_v2_url
+        ):
+            judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
+            ctx.judge_backend = judge_batcher
+
     if source_stages:
         for st in prepared.values():
             stats = run_stages(
@@ -2315,18 +2328,6 @@ def _run_enrich_global_queue(
     # with only a printed `errors=N` to distinguish them, so a lane that dispatched none of its
     # work still reported success. Collected here and turned into a real error result below.
     llm_submission_failures: list[str] = []
-
-    judge_batcher = None
-    original_judge_backend = ctx.judge_backend
-    if any(stage.name == "judge" for stage in audio_stages):
-        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
-
-        if (
-            isinstance(ctx.judge_backend, LiteLLMBackend)
-            and ctx.judge_backend.config.dispatch_v2_url
-        ):
-            judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
-            ctx.judge_backend = judge_batcher
 
     moment_batcher = None
     original_moment_backend = ctx.moment_backend
