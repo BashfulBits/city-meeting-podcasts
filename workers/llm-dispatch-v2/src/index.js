@@ -1063,6 +1063,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       gateway_correlation_id: response.correlationId,
       failure_class: cls.failure_class,
       rule_id: cls.rule_id,
+      scope: cls.scope,
     },
   };
 }

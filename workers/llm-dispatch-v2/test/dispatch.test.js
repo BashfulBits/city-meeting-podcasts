@@ -1241,6 +1241,55 @@ test("a 410 requeues the job and stands the whole route down", async () => {
   assert.ok(indexed.n > 0, "a requeued job must be re-indexed so a sibling route can take it");
 });
 
+test("a 401 invalid credentials requeues the job and blocks account routes", async () => {
+  const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "3600" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  const job = plan.jobs[0];
+  assert.equal(job.route_id, "route-a");
+
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: "a1",
+      planned_at: job.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "retryable_error",
+      provider_status_code: 401,
+      failure_class: "route_unavailable",
+      rule_id: "http-401-invalid-credentials",
+      scope: "account",
+    },
+  ]);
+
+  const jobRow = [...sql.exec("SELECT state, transient_retry_count FROM jobs WHERE id = 'j1'")][0];
+  assert.equal(jobRow.state, "queued");
+  assert.equal(jobRow.transient_retry_count, 1);
+
+  // Both route-a and sibling route-b (same gemini provider) must be blocked
+  const routeA = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id = 'route-a'"
+  )][0];
+  assert.ok(routeA.blocked_until >= now + 3_600_000 - 1000);
+  assert.equal(routeA.last_failure_class, "route_unavailable");
+
+  const routeB = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id = 'route-b'"
+  )][0];
+  assert.ok(routeB.blocked_until >= now + 3_600_000 - 1000);
+  assert.equal(routeB.last_failure_class, "route_unavailable");
+
+  // route-c (mistral) must remain unblocked
+  const routeC = [...sql.exec(
+    "SELECT blocked_until FROM routes WHERE route_id = 'route-c'"
+  )][0];
+  assert.equal(routeC?.blocked_until ?? null, null);
+});
+
+
 test("purgePendingBatch and confirmPurge clean up old terminal jobs idempotently", async () => {
   const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
   await coordinator.enqueueBatch([makeJob("j1")]);

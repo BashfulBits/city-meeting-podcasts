@@ -622,7 +622,49 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
 
 
 
-  // 9. Any other status -> request_defect
+  // 9. HTTP 401 Unauthorized or HTTP 403 Forbidden -> route_unavailable: the provider or gateway
+  //    has rejected the API key or authentication token (e.g. SambaNova #2027). A credential
+  //    error is never this job's fault and retrying immediately fails identically. Classifying
+  //    it as route_unavailable ensures the coordinator refunds reserved capacity, stands down
+  //    the affected provider/account routes for hours, and requeues the job so healthy candidate
+  //    providers can drain it.
+  if (status === 401) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "http-401-invalid-credentials",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+  if (status === 403) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "http-403-forbidden",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+
+  // Also catch explicit authentication error payloads regardless of HTTP status code.
+  const rawMsg = providerFailureMessage(body);
+  const errCode = String(body?.error?.code || body?.code || "").toLowerCase();
+  const errType = String(body?.error?.type || body?.type || "").toLowerCase();
+  if (
+    errCode === "invalid_api_key" ||
+    errType === "authentication_error" ||
+    rawMsg.includes("incorrect api key") ||
+    rawMsg.includes("invalid api key") ||
+    rawMsg.includes("invalid token")
+  ) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "auth-credential-invalid",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+
+  // 10. Any other status -> request_defect
   return {
     failure_class: "request_defect",
     rule_id: "http-4xx",

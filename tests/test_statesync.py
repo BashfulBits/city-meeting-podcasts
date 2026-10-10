@@ -1316,3 +1316,205 @@ def test_push_records_merged_skips_unchanged_sources(tmp_path):
     # Third push: only src1 is dirty -> pushes 1
     pushed3 = push_records_merged(bucket, state_dir, ["src1", "src2"], protected_blocks=())
     assert pushed3 == 1
+
+
+def test_manifest_validation_rejects_escaping_and_absolute_paths():
+    """#1972: _validate_manifest rejects manifests containing escaping or absolute paths."""
+    from citypods.statesync import _validate_manifest
+
+    valid_manifest = {
+        "version": 1,
+        "generation": 1,
+        "objects": {"sources/denton/episodes.json": {"size": 10, "digest": "abc"}},
+        "tombstones": ["sources/old/episodes.json"],
+    }
+    assert _validate_manifest(valid_manifest) is not None
+
+    for bad_path in (
+        "/etc/passwd.json",
+        "\\windows\\system.json",
+        "../../outside.json",
+        "sources/../../evil.json",
+        "./episodes.json",
+        "catalog/manifest.json",
+        ".dirty.json",
+        ".tombstones.json",
+        "file.txt",
+        "",
+        123,
+    ):
+        bad_obj_manifest = dict(valid_manifest)
+        bad_obj_manifest["objects"] = {bad_path: {"size": 10, "digest": "abc"}}
+        assert _validate_manifest(bad_obj_manifest) is None
+
+        bad_tomb_manifest = dict(valid_manifest)
+        bad_tomb_manifest["tombstones"] = [bad_path]
+        assert _validate_manifest(bad_tomb_manifest) is None
+
+
+def test_pull_state_rejects_absolute_and_escaping_only_paths(tmp_path):
+    """#1972: pull_state rejects only_paths entries that are absolute or escape."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    dest = tmp_path / "dest"
+    for bad_path in ("/etc/passwd.json", "../outside.json", "sources/../../outside.json"):
+        with pytest.raises(ValueError):
+            pull_state(bucket, dest, only_paths=[bad_path])
+
+
+def test_pull_state_confinement_protects_external_sentinels_from_manifest_escapes(tmp_path):
+    """#1972: Malicious manifest entries cannot overwrite or delete files outside state_dir."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.json"
+    sentinel.write_text("external-sentinel-data")
+
+    state_dir = tmp_path / "state"
+
+    # Malicious manifest with absolute path and traversal path
+    malicious_manifest = {
+        "version": 1,
+        "generation": 1,
+        "objects": {
+            str(sentinel): {"size": 100, "digest": "fake"},
+            "../../outside/sentinel.json": {"size": 100, "digest": "fake"},
+        },
+        "tombstones": [str(sentinel), "../../outside/sentinel.json"],
+    }
+    (tmp_path / "bucket" / "state" / "catalog").mkdir(parents=True)
+    (tmp_path / "bucket" / "state" / "catalog" / "manifest.json").write_text(
+        json.dumps(malicious_manifest)
+    )
+
+    warnings = []
+    restored = pull_state(bucket, state_dir, log=warnings.append)
+    assert restored == 0
+    # The external sentinel must remain untouched
+    assert sentinel.read_text() == "external-sentinel-data"
+
+
+def test_pull_state_confinement_protects_against_existing_symlinks(tmp_path):
+    """#1972: Existing symlinks in state_dir cannot be used to escape or modify external files."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.json"
+    sentinel.write_text("sentinel-safe-bytes")
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    # Create symlink pointing directly to external sentinel
+    (state_dir / "symlink.json").symlink_to(sentinel)
+
+    # Create symlinked directory pointing to outside
+    (state_dir / "ext_dir").symlink_to(outside)
+
+    # 1. Attempt tombstone deletion via symlink
+    manifest_tomb = {
+        "version": 1,
+        "generation": 1,
+        "objects": {},
+        "tombstones": ["symlink.json", "ext_dir/sentinel.json"],
+    }
+    (tmp_path / "bucket" / "state" / "catalog").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "bucket" / "state" / "catalog" / "manifest.json").write_text(
+        json.dumps(manifest_tomb)
+    )
+
+    warnings = []
+    pull_state(bucket, state_dir, log=warnings.append)
+    # Sentinel was not deleted
+    assert sentinel.exists()
+    assert sentinel.read_text() == "sentinel-safe-bytes"
+
+    # 2. Attempt download overwrite via symlink
+    (tmp_path / "bucket" / "state" / "symlink.json").write_text('{"pwned": 1}')
+    (tmp_path / "bucket" / "state" / "ext_dir").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "bucket" / "state" / "ext_dir" / "new_file.json").write_text('{"pwned": 2}')
+
+    manifest_obj = {
+        "version": 1,
+        "generation": 2,
+        "objects": {
+            "symlink.json": {"size": 12, "digest": "xyz"},
+            "ext_dir/new_file.json": {"size": 12, "digest": "xyz"},
+        },
+        "tombstones": [],
+    }
+    (tmp_path / "bucket" / "state" / "catalog" / "manifest.json").write_text(
+        json.dumps(manifest_obj)
+    )
+
+    pull_state(bucket, state_dir, log=warnings.append)
+    # External sentinel was not overwritten, and new_file.json was not created in outside dir
+    assert sentinel.read_text() == "sentinel-safe-bytes"
+    assert not (outside / "new_file.json").exists()
+
+
+def test_pull_state_scoped_restore_never_unlinks_unrelated_tombstones(tmp_path):
+    """#1972: Scoped pull_state (only_paths/only_prefixes) does not unlink unrelated files."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    (state_dir / "sources" / "denton").mkdir(parents=True)
+    (state_dir / "sources" / "dallas").mkdir(parents=True)
+    (state_dir / "sources" / "denton" / "episodes.json").write_text('{"city": "denton"}')
+    (state_dir / "sources" / "dallas" / "episodes.json").write_text('{"city": "dallas"}')
+
+    # Remote manifest has a tombstone for denton and valid object for dallas
+    manifest = {
+        "version": 1,
+        "generation": 1,
+        "objects": {
+            "sources/dallas/episodes.json": {"size": 16, "digest": "dallas_digest"},
+        },
+        "tombstones": ["sources/denton/episodes.json"],
+    }
+    (tmp_path / "bucket" / "state" / "catalog").mkdir(parents=True)
+    (tmp_path / "bucket" / "state" / "catalog" / "manifest.json").write_text(json.dumps(manifest))
+    (tmp_path / "bucket" / "state" / "sources" / "dallas").mkdir(parents=True)
+    (tmp_path / "bucket" / "state" / "sources" / "dallas" / "episodes.json").write_text(
+        '{"city": "dallas", "updated": true}'
+    )
+
+    # 1. Scoped pull by only_paths: denton is unrelated and must NOT be unlinked
+    pull_state(bucket, state_dir, only_paths=["sources/dallas/episodes.json"])
+    assert (state_dir / "sources" / "denton" / "episodes.json").exists()
+    assert (state_dir / "sources" / "dallas" / "episodes.json").exists()
+
+    # 2. Scoped pull by only_prefixes: denton must NOT be unlinked
+    pull_state(bucket, state_dir, only_prefixes=["sources/dallas/"])
+    assert (state_dir / "sources" / "denton" / "episodes.json").exists()
+
+    # 3. Download-only restore with apply_tombstones=False: denton is preserved even on full pull
+    pull_state(bucket, state_dir, apply_tombstones=False)
+    assert (state_dir / "sources" / "denton" / "episodes.json").exists()
+
+
+def test_pull_state_fallback_listing_drops_escaping_keys(tmp_path):
+    """#1972: Absent-manifest fallback restore filters out any escaping keys in storage."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.json"
+    sentinel.write_text("sentinel-original")
+
+    # Seed bucket directly without a manifest
+    (tmp_path / "bucket" / "state" / "valid").mkdir(parents=True)
+    (tmp_path / "bucket" / "state" / "valid" / "episodes.json").write_text('{"valid": true}')
+
+    # Fake listing to simulate malicious/corrupt keys returned by storage
+    def list_with_escapes(prefix):
+        yield f"{STATE_PREFIX}/valid/episodes.json", 16
+        yield f"{STATE_PREFIX}/../../outside/sentinel.json", 16
+        yield f"{STATE_PREFIX}//outside/sentinel.json", 16
+
+    bucket.list_objects = list_with_escapes
+
+    dest = tmp_path / "dest"
+    warnings = []
+    restored = pull_state(bucket, dest, log=warnings.append)
+    assert restored == 1
+    assert (dest / "valid" / "episodes.json").exists()
+    # Sentinel was not modified
+    assert sentinel.read_text() == "sentinel-original"

@@ -17,6 +17,24 @@ Once 1.0 ships, entries move under semver tags.
   newly related recordings stay pending in the same case. Material proof changes, missing evidence,
   conflicting history and changed config remain visible. Local report publication is atomic,
   preserving the prior complete report if replacement fails. No scheduled alerts or feeds change.
+  
+- **State restore path confinement and scoped tombstone hardening (#1972).** Hardens
+  `citypods.statesync` to strictly confine state file downloads, replacements, and tombstone
+  deletions within `state_dir`. Validates that all remote and local manifest object keys and
+  tombstones are normalized, non-escaping relative paths with approved JSON/JSONL suffixes,
+  rejecting invalid manifests during sync. Enforces resolved filesystem containment and blocks
+  symlink traversal so existing symlinks cannot be used to escape or modify files outside
+  `state_dir`. Restricts tombstones during scoped restores (`only_paths` / `only_prefixes`) to
+  exact requested scopes, and introduces an `apply_tombstones: bool = True` parameter to support
+  clean download-only contracts for read-only reporting consumers.
+
+- **LLM dispatch: quarantine routes on authentication and credential failures (#2027).** Classifies
+  HTTP 401 Unauthorized, HTTP 403 Forbidden, and invalid API token bodies as `route_unavailable`
+  with account scope in `workers/llm-dispatch-v2`. Rather than falsely blaming queued jobs as
+  request defects and permanently failing them, the coordinator refunds reserved capacity, requeues
+  the jobs under the upstream capacity retry budget, and stands down all sibling routes sharing
+  the provider and account for six hours so healthy providers drain the queue while the credential
+  is investigated.
 
 - **Prepared trusted decision actions (review/51 P2c2b).** Validates the dedicated approval
   command against trusted author/permission snapshots, fresh evidence and current history.
