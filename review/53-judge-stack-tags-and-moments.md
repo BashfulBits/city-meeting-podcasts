@@ -440,9 +440,9 @@ reservations anchor 920 and sibling 2,400 (reserved total 16,506 of 25,600). The
 moves to PR5, when adjudication first dispatches, under the same "no reservation without a
 producer" rule. Not to merge until the dry run below has run on production state after PR3 merges.
 
-Set `judging.enabled: true` with both tasks in `shadow`, set the judge lanes' reservations
-(anchor 920, sibling 2,400, adjudicator 920 units) and remove them from
-`PENDING_DISPATCH_PURPOSES` in `tests/test_llm_lanes.py`. Acceptance, recorded in this document:
+Set `judging.enabled: true` with both tasks in `shadow`, set the anchor and sibling reservations
+(920 and 2,400 units) and remove those two lanes from `PENDING_DISPATCH_PURPOSES` in
+`tests/test_llm_lanes.py`; `judge:adjudicator` stays pending at 0 until PR5. Acceptance, recorded in this document:
 a dry run within every ceiling; then three days with judgments appended for both tasks and both
 judges every day; zero change to `display`, `admission` or moment publication (before/after
 comparison of sampled records); no JEV `request_defect` except genuine oversize; BeatAPI chat
