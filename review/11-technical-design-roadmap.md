@@ -1706,10 +1706,10 @@ model calls or feed changes. Implemented in #2231; exact schema and unchanged-wa
 follow with source-event persistence and report-only audit integration as separate slices.
 
 
-### review/51 P2c2a decision event persistence — L2
+### review/51 P2c2a decision event persistence — L3
 
 Source-local memory validation shipped in #2231. Next proposed contract in review/51 adds
 immutable B2 event append under the existing remedy lease and strict source-scoped reconstruction.
-No storage adapter/routing changes, coordinator, workflow activation or scan suppression. Obtain
-approval of the exact append/strict-load interface, then promote this slice to L3. Later trusted
+No storage adapter/routing changes, coordinator, workflow activation or scan suppression. The maintainer
+approved the exact append/strict-load interface in chat on 2026-10-09; implement this slice. Later trusted
 entrypoints and audit integration preserve pending-watch grouping and quiet unchanged scans.

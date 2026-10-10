@@ -3115,7 +3115,7 @@ in b9ca5053, regression tested, replied and resolved; the bot confirmed the fix.
 automatic review is not a separate substantive review. This stamp freezes P2c1 only. P2c remains
 incomplete: persistence, trusted mutations and scan integration are not active.
 
-### P2c2a source-scoped event persistence — L2, proposed contract
+### P2c2a source-scoped event persistence — L3, approved
 
 The event path remains the previously approved B2 path:
 `state/remedy/events/<source_key>/<decision_id>/<event_id>.json`. Do not request approval of
@@ -3129,7 +3129,7 @@ Use existing storage `get_file`, `put_file`, `list_objects` and the existing mai
 The event namespace already routes to B2 by default. The approved coordinator remains separate
 future work on R2; do not move authoritative events to R2 to gain conditional writes.
 
-Proposed interfaces:
+Approved interfaces:
 
 - `event_key(event) -> str`: validates the complete event and constructs only the approved path.
   Source must be a safe single segment matching `[a-z0-9][a-z0-9_-]*`; decision/event IDs already
@@ -3170,6 +3170,6 @@ objects and repeated deliveries; source isolation; outside-prefix/path-content m
 JSON keys; absent requested source; conflicts remain blocked; temporary-file cleanup. Whole
 Ruff/format and full offline suite before push. No production storage writes in validation.
 
-Pending narrow decision: approve the lease-required append interface and strict reconstruction
-failure behavior above. The source path, pending-watch behavior and overall P2 sequence are
-already approved. Once approved, commit the L3 promotion before implementation.
+Maintainer approved permanent decision history, lease-required writes and strict reconstruction
+failure behavior in chat on 2026-10-09 America/Chicago. The source path, pending-watch behavior
+and overall P2 sequence remain approved. This L3 contract is committed before implementation.
