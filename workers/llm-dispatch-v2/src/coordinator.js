@@ -5738,17 +5738,47 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.lease_route_id
             );
           } else if (isRouteUnavailable) {
-            // A retired model does not come back on a 5xx-style minute scale. Block the route for
-            // ROUTE_UNAVAILABLE_BLOCK_SECONDS so every sibling job stops being admitted onto it;
-            // once the block lapses a single attempt re-probes it.
-            sql.exec(
-              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
-                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
-              now + this._routeUnavailableBlockMs(),
-              result.provider_status_code ?? null,
-              result.failure_class,
-              job.lease_route_id
-            );
+            // A retired model or invalid credential does not come back on a 5xx minute scale.
+            // Block the route for ROUTE_UNAVAILABLE_BLOCK_SECONDS so sibling jobs stop being
+            // admitted onto it; once the block lapses a single attempt re-probes it.
+            const blockedUntil = now + this._routeUnavailableBlockMs();
+            const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const provider = catalogRoute?.provider;
+            const accountId = catalogRoute?.account_id;
+            const isAccountScope =
+              result.scope === "account" ||
+              result.provider_status_code === 401 ||
+              result.provider_status_code === 403;
+
+            if (isAccountScope && provider) {
+              for (const [otherRouteId, otherRoute] of Object.entries(
+                this._dispatchLimits()?.routes_by_id || {}
+              )) {
+                if (
+                  otherRoute.provider === provider &&
+                  (!accountId || otherRoute.account_id === accountId)
+                ) {
+                  this._getOrCreateRouteLedger(otherRouteId, now, {});
+                  sql.exec(
+                    "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
+                      "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
+                    blockedUntil,
+                    result.provider_status_code ?? null,
+                    result.failure_class,
+                    otherRouteId
+                  );
+                }
+              }
+            } else {
+              sql.exec(
+                "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
+                  "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
+                blockedUntil,
+                result.provider_status_code ?? null,
+                result.failure_class,
+                job.lease_route_id
+              );
+            }
           } else if (isPromptCap) {
             // A rejected size is an upper bound, not an exact published limit. Keep short
             // traffic alive and stop admitting this size or larger on the affected route.

@@ -28,7 +28,7 @@ import threading
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from posixpath import normpath
 
 STATE_PREFIX = "state"
@@ -104,6 +104,54 @@ def _digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _is_safe_rel_state_path(rel: str) -> bool:
+    """Establish syntactic safety and containment for relative state keys.
+
+    Rejects non-string types, leading slashes or Windows drives, traversal components
+    ('.' or '..'), unapproved suffixes, and reserved system journal names.
+    """
+    if not isinstance(rel, str) or not rel:
+        return False
+    if rel.startswith(("/", "\\")):
+        return False
+    if rel != normpath(rel):
+        return False
+    if rel in {".", ".."} or rel.startswith("../"):
+        return False
+    candidate = PurePosixPath(rel)
+    if candidate.is_absolute():
+        return False
+    if any(part in {".", ".."} for part in candidate.parts):
+        return False
+    if candidate.suffix not in _SUFFIXES:
+        return False
+    if rel in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}:
+        return False
+    return True
+
+
+def _safe_state_destination(state_dir: Path, rel: str) -> Path | None:
+    """Resolve and verify that relative state path ``rel`` is safely confined within ``state_dir``.
+
+    Protects against absolute path overrides, traversal escapes, and symlink hijacking
+    targeting external files or directories outside ``state_dir``. Returns the verified
+    ``Path`` object within ``state_dir``, or ``None`` if containment is violated.
+    """
+    if not _is_safe_rel_state_path(rel):
+        return None
+    state_root = Path(state_dir).resolve()
+    # Join parts explicitly from PurePosixPath to prevent truediv root overrides
+    dest = state_root.joinpath(*PurePosixPath(rel).parts)
+    try:
+        resolved = dest.resolve()
+        # Ensure the destination resolves inside state_root and is not an existing symlink
+        if dest.is_symlink() or not resolved.is_relative_to(state_root):
+            return None
+    except (OSError, ValueError):
+        return None
+    return dest
 
 
 def _manifest_path(state_dir: Path) -> Path:
@@ -213,6 +261,8 @@ def _validate_manifest(manifest: object) -> dict | None:
         or not isinstance(manifest.get("objects"), dict)
         or not isinstance(manifest.get("tombstones", []), list)
         or not all(isinstance(value, dict) for value in manifest["objects"].values())
+        or not all(_is_safe_rel_state_path(rel) for rel in manifest["objects"])
+        or not all(_is_safe_rel_state_path(rel) for rel in manifest.get("tombstones", []))
     ):
         return None
     return manifest
@@ -318,23 +368,36 @@ def _full_state_keys(storage):
         key
         for key, _ in storage.list_objects(f"{STATE_PREFIX}/")
         if (rel := key[len(STATE_PREFIX) + 1 :])
-        and rel not in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}
-        and Path(rel).suffix in _SUFFIXES
+        and _is_safe_rel_state_path(rel)
         and not _is_cas_managed(storage, key)
     ]
 
 
-def pull_state(storage, state_dir: Path, *, only_paths=None, only_prefixes=None, log=None) -> int:
+def pull_state(
+    storage,
+    state_dir: Path,
+    *,
+    only_paths=None,
+    only_prefixes=None,
+    apply_tombstones: bool = True,
+    log=None,
+) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
     Returns the number of files restored. No-op for backends without sync support.
 
     ``only_paths`` (optional): when given, restrict the pull to the listed relative paths (e.g.
-    ``["llm_evaluation.json"]``). Useful for commands that only need one file and do not want to
-    pay the cost of downloading the full snapshot.
+    ``["llm_evaluation.json"]``). Must be valid relative paths confined to ``state_dir``.
 
     ``only_prefixes`` (optional): when given, restrict the pull to relative paths starting with
     any of the listed prefixes (e.g. ``["sources/denton-tx/"]``). Mutually exclusive with
     ``only_paths``.
+
+    ``apply_tombstones`` (default True): whether to delete local files matching remote tombstones.
+    When False, provides a download-only restore contract for reporting/read-only consumers.
+
+    All restored objects and tombstones are strictly confined to ``state_dir``. Any malicious,
+    absolute, escaping ('..'), or symlinked paths targeting files outside ``state_dir`` are
+    safely rejected before filesystem operations.
 
     A single key that keeps failing with a transient storage read error (timeout, dropped
     connection, transient S3 response, or known botocore parser failure — see
@@ -353,7 +416,21 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, only_prefixes=None,
     prefixes = tuple(only_prefixes) if only_prefixes is not None else None
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
-    requested_paths = frozenset(only_paths) if only_paths is not None else None
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if only_paths is not None:
+        exact_paths = set()
+        for raw_path in only_paths:
+            path_obj = Path(raw_path)
+            if path_obj.is_absolute():
+                raise ValueError(f"only_paths entry must be relative: {raw_path!r}")
+            rel_norm = normpath(path_obj.as_posix())
+            if rel_norm in {".", ".."} or rel_norm.startswith("../"):
+                raise ValueError(f"only_paths entry is not a valid relative file: {raw_path!r}")
+            exact_paths.add(rel_norm)
+        requested_paths = frozenset(exact_paths)
+    else:
+        requested_paths = None
+
     manifest = _load_manifest(storage, state_dir, log=emit)
     if manifest is not None:
         objects = manifest["objects"]
@@ -361,19 +438,24 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, only_prefixes=None,
         keys = [f"{STATE_PREFIX}/{rel}" for rel in objects if rel not in tombstones]
         # A valid manifest is authoritative for remote state. Do not remove local files here:
         # unpushed local writes may be present after an interrupted run. Tombstones are applied
-        # only to files that are not locally dirty.
-        try:
-            dirty = set(json.loads((state_dir / DIRTY_JOURNAL_NAME).read_text()))
-        except (OSError, ValueError, TypeError):
-            dirty = set()
-        for rel in tombstones - dirty:
-            if prefixes is not None and not rel.startswith(prefixes):
-                continue
-            if requested_paths is not None and rel not in requested_paths:
-                continue
-            (state_dir / rel).unlink(missing_ok=True)
+        # only to files that are not locally dirty, and respect requested scope.
+        if apply_tombstones:
+            try:
+                dirty = set(json.loads((state_dir / DIRTY_JOURNAL_NAME).read_text()))
+            except (OSError, ValueError, TypeError):
+                dirty = set()
+            for rel in tombstones - dirty:
+                if prefixes is not None and not rel.startswith(prefixes):
+                    continue
+                if requested_paths is not None and rel not in requested_paths:
+                    continue
+                dest = _safe_state_destination(state_dir, rel)
+                if dest is None:
+                    emit(f"state: WARNING skipping unconfined tombstone {rel}")
+                    continue
+                dest.unlink(missing_ok=True)
     elif requested_paths is not None:
-        # A scoped consumer already knows its exact keys.  Do not list the whole snapshot merely
+        # A scoped consumer already knows its exact keys. Do not list the whole snapshot merely
         # because an older deployment has not published a manifest yet: that fallback can contain
         # thousands of unrelated objects and defeats the purpose of the narrow restore.
         keys = [f"{STATE_PREFIX}/{rel}" for rel in requested_paths]
@@ -395,15 +477,13 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, only_prefixes=None,
         keys = [k for k in keys if (k[len(STATE_PREFIX) + 1 :]).startswith(prefixes)]
 
     # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object
-    # GETs out
-    # across a bounded pool: the listing is cheap and sequential, the downloads are the expensive,
-    # parallelizable part. Filtering here keeps the pool doing only real work.
+    # GETs out across a bounded pool. Filtering here keeps the pool doing only real work.
     if manifest is not None:
 
         def _needs_restore(rel: str) -> bool:
             entry = manifest["objects"].get(rel, {})
-            local = state_dir / rel
-            if not local.is_file():
+            local = _safe_state_destination(state_dir, rel)
+            if local is None or not local.is_file():
                 return True
             size = entry.get("size")
             if isinstance(size, int) and local.stat().st_size != size:
@@ -418,8 +498,12 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, only_prefixes=None,
 
     def _restore_one(key: str) -> bool:
         rel = key[len(STATE_PREFIX) + 1 :]
+        dest = _safe_state_destination(state_dir, rel)
+        if dest is None:
+            emit(f"state: WARNING skipping unconfined key {key}")
+            return False
         try:
-            return bool(storage.get_file(key, state_dir / rel))
+            return bool(storage.get_file(key, dest))
         except Exception as exc:
             if not is_transient_storage_error(exc):
                 raise

@@ -1682,3 +1682,11 @@ Prepared review/51 trusted actions validate dedicated structured comments agains
 trusted GitHub author/permission responses and source-local replay context. Their recorder loads
 history under the existing remedy lease and retries the original delivery without duplicate
 writes. No workflow invokes these helpers; API authenticity belongs to the trusted caller.
+
+
+Prepared remembered-decision comparison is a local report mode in `scripts/audit_feeds.py`.
+It reads complete events, explicit reviewed city/source/body case projections and baseline/current
+proof packets. It recommends review for new pending recordings or substantive proof changes;
+unchanged watch cases recommend quiet. Missing evidence/history remains visible. The mode runs
+before config/provider/storage/GitHub setup and writes only its requested report. It neither
+projects aliases automatically nor changes recurring alerts; both integrations remain separate.
