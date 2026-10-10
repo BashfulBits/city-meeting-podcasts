@@ -9,6 +9,7 @@ import pytest
 
 from citypods.models import AgendaRecord, City, Episode
 from citypods.records import (
+    ARTIFACT_BLOCKS,
     _capped_exponential_backoff,
     assign_uids,
     attach_auxiliary_agenda_links,
@@ -1700,6 +1701,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
@@ -1724,6 +1726,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
@@ -1748,6 +1751,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
@@ -1773,6 +1777,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
@@ -1799,6 +1804,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
@@ -1817,9 +1823,12 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
+    # review/53: the judge lane owns only its judging block and preserves every other artifact.
+    assert protected_blocks_for_lane("judge") == ARTIFACT_BLOCKS - {"judging"}
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
     assert protected_blocks_for_lane(None) == frozenset()
     assert protected_blocks_for_lane("mystery") == frozenset()

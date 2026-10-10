@@ -317,6 +317,13 @@ class StageContext:
     # R6 uses a separate backend/policy so council routes can be restricted to the two configured
     # free Gemini pools without changing the established R5 tag route.
     moment_backend: object | None = None
+    # review/53: the judge lane's dispatch backend and the site config `judging` block.
+    judge_backend: object | None = None
+    judging_config: dict = field(default_factory=dict)
+    # Packets left this run per judge purpose, shared by every source the run visits (the judge
+    # stage runs once per source); filled from the lanes' max_dispatches_per_run on first use.
+    judge_run_caps: dict = field(default_factory=dict)
+    judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
     moment_evaluation_state_path: Path | None = None
     moment_evaluation_config: dict = field(default_factory=dict)
     moment_max_dispatches: int = 40
@@ -978,6 +985,27 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
     return False
 
 
+def judge_episode_dirty(ep: Episode, judging_config: Mapping[str, Any] | None) -> bool:
+    """Whether the judge stage has work for ``ep`` under the given ``judging`` config."""
+    config = judging_config or {}
+    if not (config.get("enabled") or os.environ.get("CITYPODS_JUDGE_DRY_RUN") == "1"):
+        return False
+    from citypods.compute.llm_lanes import lane_for, load_families
+    from citypods.judging.runner import episode_needs_judging
+    from citypods.judging.tasks import task
+
+    configured = config.get("tasks") or {}
+    tasks = [task(name) for name in sorted(configured) if isinstance(configured[name], Mapping)]
+    return episode_needs_judging(
+        ep,
+        tasks,
+        anchor=lane_for("judge:anchor"),
+        sibling=lane_for("judge:sibling"),
+        families=load_families(),
+        all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
+    )
+
+
 def stage_is_dirty(
     stage: EnrichmentStage,
     ep: Episode,
@@ -985,7 +1013,13 @@ def stage_is_dirty(
     *,
     speaker_config: Mapping[str, Any] | None = None,
     evaluation_config: Mapping[str, Any] | None = None,
+    judging_config: Mapping[str, Any] | None = None,
 ) -> bool:
+    # review/53: the judge stage's state is its candidates' judgments, not an input fingerprint.
+    # A completion marker would stop it after one visit and strand every in-flight answer, so it
+    # is dirty exactly while an answer is pending or a judgment is missing (no transcript read).
+    if stage.name == "judge":
+        return judge_episode_dirty(ep, judging_config)
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
     # transcript/media mutation before it can take effect.
@@ -1575,6 +1609,154 @@ class MomentJudgeStage(LLMProducerStage):
                 for model in models
             ):
                 work.consumed(reused=stats.ran == consumed_before)
+        return stats
+
+
+class JudgeStage(LLMProducerStage):
+    """Shadow judging of tag and moment candidates by JEV plus one sibling (review/53 PR3).
+
+    Reads persisted candidates and writes only the episode's own ``judging`` block (per subject:
+    judgments, pending recipe pointers, unbuildable tiers); candidates, display, admission and
+    publication are never touched. Runs once per source, so packets span a source's episodes.
+    """
+
+    name = "judge"
+    version = "1"
+    PURPOSES = ("judge:anchor", "judge:sibling")
+
+    @staticmethod
+    def _dry_run() -> bool:
+        # The judge workflow's dry_run input: plan and pack every packet, submit nothing. It runs
+        # even while `judging.enabled` is false, so PR4 can rehearse before turning judging on.
+        return os.environ.get("CITYPODS_JUDGE_DRY_RUN") == "1"
+
+    def _enabled(self, ctx) -> bool:
+        if self._dry_run():
+            return True
+        config = ctx.judging_config or {}
+        return bool(config.get("enabled")) and ctx.judge_backend is not None
+
+    def telemetry_purposes(self, ctx):
+        return self.PURPOSES if self._enabled(ctx) else ()
+
+    def _tasks(self, ctx):
+        from citypods.judging.tasks import task
+
+        configured = (ctx.judging_config or {}).get("tasks") or {}
+        return [task(name) for name in sorted(configured) if isinstance(configured[name], dict)]
+
+    def work_items(self, city, episodes, ctx):
+        if not self._enabled(ctx):
+            return
+        tasks = self._tasks(ctx)
+        for ep in episodes:
+            uid = ep.uid or ep.guid
+            if not uid or not any(spec.subjects(ep) for spec in tasks):
+                continue
+            for purpose in self.PURPOSES:
+                yield purpose, uid, "ready"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
+        if not self._enabled(ctx) or ctx.storage is None:
+            return stats
+        from citypods.compute.llm_deferred import look_up_deferred
+        from citypods.compute.llm_lanes import lane_for, load_families
+        from citypods.judging import runner
+        from citypods.judging.tasks import EpisodeTexts, transcript_identity
+        from citypods.moments import parse_transcript_segments
+        from citypods.tags import chapter_id, load_taxonomy
+
+        taxonomy = load_taxonomy()
+        definitions = {
+            tag_id: f"{tag.label}: {tag.description}".strip(": ")
+            for tag_id, tag in taxonomy.by_id.items()
+        }
+
+        def texts_for(ep: Episode) -> EpisodeTexts:
+            raw = (
+                _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+                if ep.transcript_key
+                else None
+            )
+            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
+            chapters = []
+            served = [c for c in ep.chapters or [] if isinstance(c, dict)]
+            for index, chapter in enumerate(served):
+                start = float(chapter.get("start") or 0.0)
+                end = (
+                    float(served[index + 1].get("start") or 0.0)
+                    if index + 1 < len(served)
+                    else None
+                )
+                chapters.append(
+                    (chapter_id(ep, chapter, index), str(chapter.get("title") or ""), start, end)
+                )
+            return EpisodeTexts(
+                segments=segments,
+                chapters=tuple(chapters),
+                definitions=definitions,
+                identity=transcript_identity(ep),
+            )
+
+        backend = ctx.judge_backend
+        storage = getattr(getattr(backend, "_backend", backend), "storage", None) or ctx.storage
+        dry_run = self._dry_run() or backend is None
+        uids = {ep.uid or ep.guid for ep in episodes if ep.uid or ep.guid}
+
+        def submit(packet, job):
+            first = packet.items[0].subjects[0].episode_uid
+            identity = first if first in uids else next(iter(uids))
+            work = ctx.llm_work.item(packet.purpose, identity, producer=self.name)
+            return work.backend(backend).run_inference(job)
+
+        anchor = lane_for("judge:anchor")
+        sibling = lane_for("judge:sibling")
+        with ctx.judge_run_caps_lock:
+            ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
+            ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
+        config = ctx.judging_config or {}
+        judging = runner.JudgingContext(
+            tasks=self._tasks(ctx),
+            anchor=anchor,
+            sibling=sibling,
+            families=load_families(),
+            texts_for=texts_for,
+            look_up=lambda recipe: look_up_deferred(storage, recipe),
+            submit=submit,
+            all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
+            stop=ctx.stop,
+            run_caps=ctx.judge_run_caps,
+            run_caps_lock=ctx.judge_run_caps_lock,
+            dry_run=dry_run,
+        )
+        result = runner.run(episodes, judging)
+        for key, count in sorted(result.counts.items()):
+            # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
+            # quality/volume counters for the run log.
+            if key.startswith(("run_cap", "stopped")) or key == "still_pending":
+                stats.defer("llm-pending" if key == "still_pending" else f"judge-{key}", count)
+            else:
+                stats.quality(f"judge-{key}", count)
+        stats.ran += result.counts.get("judgments_appended", 0)
+        for ep in episodes:
+            uid = ep.uid or ep.guid
+            if not uid:
+                continue
+            for purpose in self.PURPOSES:
+                work = ctx.llm_work.item(purpose, uid, producer=self.name)
+                if uid in result.episodes_complete:
+                    work.consumed(reused=uid not in result.episodes_with_work)
+                elif uid in result.episodes_with_work:
+                    work.defer("queued")
+        print(
+            f"[judge] {city.slug if hasattr(city, 'slug') else ''}: "
+            + " ".join(f"{k}={v}" for k, v in sorted(result.counts.items())),
+            flush=True,
+        )
         return stats
 
 
@@ -9792,6 +9974,11 @@ def enrich_stages() -> list[EnrichmentStage]:
     ]
 
 
+def judge_stages() -> list[EnrichmentStage]:
+    """review/53: the judge lane's only stage."""
+    return [JudgeStage()]
+
+
 def r6_stages() -> list[EnrichmentStage]:
     """R6's opt-in stages, kept separate so legacy stage ordering remains stable."""
     return [MomentsStage(), MomentJudgeStage(), MomentAdmissionStage(), VideoClipsStage()]
@@ -9832,6 +10019,8 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
+    # review/53: the judge stack runs in its own lane and only reads persisted candidates.
+    "judge": frozenset({"judge"}),
 }
 
 
@@ -9874,6 +10063,7 @@ def run_stages(
                 evaluation_config=(
                     ctx.llm_evaluation_config if ctx.tag_backend is not None else None
                 ),
+                judging_config=ctx.judging_config,
             )
         ]
         clean = len(episodes) - len(dirty)

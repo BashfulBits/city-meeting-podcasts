@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -189,6 +190,68 @@ def consensus_plan(*, meetings: int = 800, packed: bool = True) -> dict:
     }
 
 
+def judging_demand(
+    *,
+    meetings: int = 800,
+    tag_eligible_fraction: float = 0.75,
+    tag_pairs_per_episode: int = 12,
+    llm_tag_share: float = 0.25,
+    moment_fraction: float = 0.10,
+    escalation_share: float = 0.26,
+    all_tiers_sample_rate: float = 0.05,
+    probe_share: float = 0.10,
+    jev_items: Mapping[str, int] | None = None,
+    gemma_items: Mapping[str, int] | None = None,
+    nemotron_tag_items: int = 25,
+    jev_meetings_per_packet: int = 4,
+    sibling_meetings_per_packet: int = 1,
+) -> dict:
+    """Routine judge packets per day (review/53 "Capacity and reservations"), per lane and model.
+
+    Inputs are the review/53 assumptions, not measurements; PR4's shadow run measures them. Only
+    JEV escalates to T2; the sibling judges T1 plus the all-tier sample. LLM tags are assumed to be
+    produced by the Gemini tagger primary, so they go to the non-Google sibling (Nemotron 3 Super),
+    as do moments (Gemini primaries); rule candidates go to Gemma. Items per packet come from the
+    measured tokens per item (T0 241, T1 506, T2 2,140) against each judge's packet ceiling.
+    """
+    jev = {"T0": 232, "T1": 110, "T2": 26, **(jev_items or {})}
+    gemma = {"T0": 25, "T1": 25, "T2": 4, **(gemma_items or {})}
+    subjects = meetings * tag_eligible_fraction * tag_pairs_per_episode
+    sampled = subjects * all_tiers_sample_rate
+    moment_meetings = meetings * moment_fraction
+    anchor = (
+        subjects / jev["T1"]
+        + subjects * escalation_share / jev["T2"]
+        + sampled / jev["T0"]
+        + sampled / jev["T2"]
+        + moment_meetings / jev_meetings_per_packet
+    ) * (1 + probe_share)
+    rule = subjects * (1 - llm_tag_share)
+    gemma_packets = rule / gemma["T1"] + sampled / gemma["T0"] + sampled / gemma["T2"]
+    nemotron_packets = (
+        subjects * llm_tag_share / nemotron_tag_items
+        + moment_meetings / sibling_meetings_per_packet
+    )
+    lanes = {
+        "judge:anchor": math.ceil(anchor),
+        "judge:sibling": math.ceil(gemma_packets) + math.ceil(nemotron_packets),
+    }
+    return {
+        "proposed_not_deployed": True,
+        "source": "review/53-judge-stack-tags-and-moments.md",
+        "meetings": meetings,
+        "tag_subjects": round(subjects),
+        "moment_meetings": round(moment_meetings),
+        "packets": lanes,
+        "sibling_by_model": {
+            "google/gemma-4-*": math.ceil(gemma_packets),
+            "openrouter/nvidia/nemotron-3-super-120b-a12b:free": math.ceil(nemotron_packets),
+        },
+        # reserved = routine jobs x 4 ingress units (per_model) x 1.2 margin
+        "reserved_write_units": {lane: math.ceil(jobs * 4 * 1.2) for lane, jobs in lanes.items()},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--meetings", type=int, default=800)
@@ -204,7 +267,15 @@ def main() -> None:
     ):
         parser.add_argument("--" + name, type=float, default=default)
     parser.add_argument("--no-shadow", action="store_true")
+    parser.add_argument(
+        "--judging",
+        action="store_true",
+        help="print the review/53 judge-lane packet demand and reservations instead",
+    )
     args = parser.parse_args()
+    if args.judging:
+        print(json.dumps(judging_demand(meetings=args.meetings), indent=2))
+        return
     values = vars(args)
     for name in ("chapter_fraction", "tag_fraction", "moment_fraction", "retry_fraction"):
         if not 0 <= values[name] <= 1:

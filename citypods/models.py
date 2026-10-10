@@ -143,6 +143,10 @@ class Episode:
     moment_summary_candidates: list[dict] = field(default_factory=list)
     moment_pullquote_candidates: list[dict] = field(default_factory=list)
     moment_decision_candidates: list[dict] = field(default_factory=list)
+    # review/53: the judge stack's own artifact block, owned only by the `judge` lane. Keyed by the
+    # judged subject's id ({"subjects": {id: {"judgments": [...], "pending": [...]}}}), never
+    # written into the tag/moment candidate dicts that other lanes own and rebuild.
+    judging: dict = field(default_factory=dict)
     moments_llm_recipe_hash: str | None = None
     moments_llm_call_attempts: list[dict] = field(default_factory=list)
     # The selected admitted quote and rendered social-video artifact are projections of the

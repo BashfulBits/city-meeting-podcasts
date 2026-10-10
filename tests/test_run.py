@@ -2755,6 +2755,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
