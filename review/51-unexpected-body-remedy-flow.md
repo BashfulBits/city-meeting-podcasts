@@ -2990,7 +2990,7 @@ next P2 work. P3–P5 and model admission remain gated.
 P2b retained-snapshot post-merge verification is complete; see
 [evidence and corrected projection counts](evidence/p2b-postmerge-verification-2026-10-10.md).
 
-### P2c1 decision event and fold foundation — proposed L3, schema approval pending
+### P2c1 decision event and fold foundation — L3, approved
 
 Predecessors: P2a #2213 and report-only P2b #2215 are shipped. Historical case closeout and
 post-merge verification shipped in #2227. This is the next deterministic slice, not live model
@@ -3003,7 +3003,7 @@ Permitted implementation files: new `citypods/remedy_ledger.py`, new
 Do not modify audit/report schemas, feed config, providers, records, storage/routing, workflows,
 leases, models, dependencies, evaluation gold or GitHub mutation scripts. No remote IO.
 
-#### Proposed schema, requiring specific approval before code
+#### Approved schema
 
 Strict immutable `RemedyEvent`, schema_version integer 1, rejects unknown keys and coercions:
 
@@ -3080,3 +3080,10 @@ freeze only this slice after human merge. Next P2c2 specifies immutable event st
 lease/coordinator integration. P2c3 wires current evidence/dispositions to audit/remedy in
 report-only mode, including v1 refresh and suppression/reopening rules. Alert activation follows
 verified report behavior. Neither later slice is implicitly enabled by P2c1.
+
+Maintainer approved this schema in chat on 2026-10-10. A keep-watching decision remains
+pending for the same city/source/body case. Newly related recordings join that disposition;
+an unchanged weekly scan must not request another decision. Only new related meetings or
+material related evidence warrants renewed review. Similarity must use reviewed identity rules,
+not a model guess, cross-source UID inference or count threshold. P2c3 implements that behavior;
+P2c1 records the pending outcome without suppressing any current scan.

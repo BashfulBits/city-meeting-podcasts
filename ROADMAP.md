@@ -663,5 +663,5 @@ Recently shipped: P2b report-only retained/current coverage in #2215. Post-merge
 uses an explicitly local snapshot. Persistent reviewed dispositions and audit activation follow.
 All six historical evidence cases have approved closeout dispositions (169 resolved, zero open).
 
-Next review/51: P2c1 pure decision-event validation/reconstruction, after exact schema approval.
+Next review/51: P2c1 pure decision-event validation/reconstruction, with exact schema approved.
 Durable storage/trusted mutation and audit activation follow as separately bounded PRs.
