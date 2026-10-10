@@ -1738,3 +1738,16 @@ P1 completion prerequisite (2026-10-10): maintainer approved scoped existing-rou
 capability metadata and local credential-wrapper evaluation. Exact prerequisite contract is in
 review/51; holdout truth and final production admissions remain evidence-gated. Complete P1
 before the authorized P2 production connection. No new evaluation workflow is required.
+
+### review/51 P1 capability prerequisite — Shipped (#2248)
+
+Merged 2026-10-10 at 855cc593. Native Gemini high-thinking capability metadata, compiler
+high/max support and the independently approved Denton holdout are shipped. Production
+admissions remain empty; P1 live model qualification is still pending. Both CLI and GitHub
+reviews completed; valid documentation findings were fixed and all final-head CI passed.
+Primary and secondary candidate routes each have a 20-request daily cap; local evaluations
+use shared quota accounting and bounded batches.
+
+P1 evaluation continuation #2251 — L3 approved: local immutable per-job checkpoints, explicit
+resume and physical-route daily-cap preflight, with evaluation-only timeout controls. Exact
+file/function/test contract is in review/51. No production activation.

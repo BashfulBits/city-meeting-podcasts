@@ -1698,3 +1698,8 @@ in the compiled catalog; controls are applied only when a job explicitly request
 level. Current production lanes do not set those levels. The evaluation lane keeps strict physical
 route allowlists and shared CAS quota accounting; missing storage prevents provider calls.
 Grounded holdout answers remain separate from model-visible inputs and do not activate admissions.
+
+Local review/51 qualification CLI (prepared #2251) can publish immutable per-job observation
+files and explicitly resume matching completed case/configuration pairs. Frozen input context
+is checked before reuse. Read-only daily-cap preflight reserves retry headroom conceptually;
+actual reservations remain owned by the existing CAS scheduler. No model activation is implied.

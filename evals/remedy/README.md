@@ -78,3 +78,23 @@ routing change. Never send `gold.json` to a model.
 examples for source-local instantiation, topic negatives and an unseen-city transfer. These
 are tested as policy contracts, not appended to the independent model-admission manifest or
 gold. Policy instantiation never reads this directory implicitly.
+
+### Resuming bounded local qualification
+
+Keep each raw result file immutable. Use `--checkpoint-dir /tmp/remedy-observations` to
+publish a complete observation immediately after each attempted job; interruptions preserve
+already-published observations. Pass those JSON files explicitly through `--resume-results`
+in a later run with a new `--out` path. Matching completed case/configuration pairs are carried
+forward without another provider call. Failed and unattempted pairs can retry; conflicting
+completed observations or changed manifest, prompt, schema, catalog or mode are rejected.
+Gold is used only by `report`/`rescore`, never by execution or resume.
+
+The default request timeout remains 30 seconds and the case deadline 60 seconds. For the
+approved high-reasoning evaluation use `--request-timeout 120 --case-deadline 150`.
+The CLI bounds requests to 120 seconds and case deadlines to 150 seconds. These are local
+evaluation controls, not production model or workflow limits.
+
+Each live job checks the shared quota ledger for at least two remaining daily requests on
+its allowed physical routes, accounting for the route's reset timezone. This preserves room
+for the existing maximum of two provider attempts. Insufficient capacity or a failed quota
+read defers the job; the shared CAS scheduler still enforces limits under concurrent usage.

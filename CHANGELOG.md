@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared resumable local remedy evaluations (#2251).** Publishes immutable per-job
+  checkpoints, explicitly resumes completed observations, and preflights physical-route daily
+  capacity with retry headroom. Local timeout controls preserve existing defaults; production
+  limits, admissions, feeds, records and audio are unchanged. No backfill.
+
 - **Prepared review/51 P1 capability prerequisite (#2247).** Allows explicit high/max compiler
   levels and Gemini 3.7/3.8 high-effort controls without changing default requests or route choices.
   Adds ten grounded, maintainer-reviewed Denton holdout cases. No model is admitted; local live

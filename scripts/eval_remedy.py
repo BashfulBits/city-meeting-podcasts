@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import tempfile
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -35,10 +38,63 @@ def write_new(path: Path, value) -> None:
         handle.write("\n")
 
 
-def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode="claim_support"):
+def publish_checkpoint(directory: Path, value) -> None:
+    """Publish a complete immutable observation, never a partial JSON file."""
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / f"observation-{uuid.uuid4().hex}.json"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=directory, delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(value, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.link(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def route_daily_capacity(storage, route, now=None) -> bool:
+    """Read-only retry-headroom check; scheduler CAS reservations remain authoritative."""
+    from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas
+
+    budget, _ = load_llm_budget_cas(storage)
+    if route.quota.rpd is None:
+        return True
+    now = now or datetime.now(UTC)
+    ledger = budget.routes.get(route.route_id) or budget.routes.get(route.model)
+    used = 0
+    if ledger is not None and ledger.requests_day_key == daily_reset_key(
+        now, route.quota.reset_timezone
+    ):
+        used = ledger.requests_day
+    if not isinstance(used, int) or used < 0:
+        raise ValueError("invalid daily quota usage")
+    return route.quota.rpd - used >= 2
+
+
+def run_cases(
+    manifest,
+    config,
+    role,
+    *,
+    dry_run,
+    max_cases,
+    backend=None,
+    mode="claim_support",
+    request_timeout=30,
+    case_deadline=60,
+    prior_results=(),
+    checkpoint=None,
+    quota_preflight=None,
+):
     """Candidates are execution-only: no publication or production-admission API exists here."""
     from citypods.compute.llm_policy import ROUTE_REGISTRY, LLMRequestPolicy
 
+    if not 1 <= request_timeout <= 120 or not request_timeout <= case_deadline <= 150:
+        raise ValueError("invalid evaluation timeout/deadline bounds")
     entries = [entry for entry in config.admissions if entry.role == role]
     rows, plans = [], []
     holds = []
@@ -74,6 +130,29 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
     plans.sort(key=lambda plan: case_order[plan["case_id"]])
     if not entries:
         holds.append("policy hold: no configured admissions for role")
+    completed = {}
+    valid_pairs = {(p["case_id"], p["configuration_id"]): p for p in plans}
+    for prior in prior_results:
+        if (
+            prior.get("dry_run")
+            or prior.get("mode") != mode
+            or any(prior.get(key) != value for key, value in context.items())
+        ):
+            raise ValueError("resume context mismatch")
+        for row in prior.get("results", []):
+            pair = (row.get("case_id"), row.get("configuration_id"))
+            if pair not in valid_pairs:
+                raise ValueError("unknown resume case/configuration pair")
+            if row.get("status") != "completed":
+                continue
+            plan = valid_pairs[pair]
+            case = next(c for c in manifest.cases if c.id == pair[0])
+            validate_answer(row["answer"], case)
+            if row.get("prompt_case_id") != plan["prompt_case_id"]:
+                raise ValueError("resume prompt case mismatch")
+            if pair in completed and canonical_hash(completed[pair]) != canonical_hash(row):
+                raise ValueError("conflicting completed resume observations")
+            completed[pair] = row
     if dry_run:
         return {
             "version": 1,
@@ -121,6 +200,11 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
         first = plans[0]["admission"]
         model = ROUTE_REGISTRY[first["physical_route_ids"][0]].model
         backend = LiteLLMBackend(LLMBackendConfig(model=model), storage=storage)
+    if quota_preflight is None and backend is not None and getattr(backend, "storage", None):
+
+        def quota_preflight(route):
+            return route_daily_capacity(backend.storage, route)
+
     remaining = max_cases
     exhausted = set()
     for plan in plans:
@@ -131,9 +215,23 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             "prompt_case_id": plan["prompt_case_id"],
             "candidate_status": entry["status"],
         }
+        pair = (row["case_id"], row["configuration_id"])
+        if pair in completed:
+            rows.append(completed[pair])
+            continue
         if remaining <= 0 or plan["configuration_id"] in exhausted:
             rows.append({**row, "status": "unattempted", "reason": "bounded run/capacity"})
             continue
+        if quota_preflight is not None:
+            try:
+                capacity = all(
+                    quota_preflight(ROUTE_REGISTRY[r]) for r in entry["physical_route_ids"]
+                )
+            except Exception:  # noqa: BLE001 -- quota read must fail closed without secrets
+                capacity = False
+            if not capacity:
+                rows.append({**row, "status": "unattempted", "reason": "daily quota headroom"})
+                continue
         remaining -= 1
         case = next(case for case in manifest.cases if case.id == row["case_id"])
         policy = LLMRequestPolicy(
@@ -141,7 +239,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             allowed_route_ids=tuple(entry["physical_route_ids"]),
             purpose="audit-remedy",
             require_direct=True,
-            deadline_at=datetime.now(UTC) + timedelta(seconds=60),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=case_deadline),
         )
         job = InferenceJob(
             task="tag",
@@ -152,7 +250,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
                 "llm_policy": policy,
                 "reasoning_level": entry["reasoning_level"],
                 "max_tokens": 2048,
-                "timeout": 30,
+                "timeout": request_timeout,
                 "num_retries": 0,
                 "max_provider_attempts": 2,
             },
@@ -197,8 +295,22 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
                 error_class=type(exc).__name__,
                 provider_attempts=getattr(exc, "provider_attempts", row.get("provider_attempts")),
             )
+        row["request_timeout_seconds"] = request_timeout
+        row["case_deadline_seconds"] = case_deadline
         row["latency_seconds"] = time.monotonic() - started
         rows.append(row)
+        if checkpoint is not None:
+            checkpoint(
+                {
+                    "version": 1,
+                    "dry_run": False,
+                    "mode": mode,
+                    **context,
+                    "results": [row],
+                    "model_observations": int("raw_response" in row),
+                    "policy_holds": holds,
+                }
+            )
     return {
         "version": 1,
         "dry_run": False,
@@ -228,6 +340,10 @@ def main(argv=None) -> int:
     run.add_argument("--dry-run", action="store_true")
     run.add_argument("--live", action="store_true")
     run.add_argument("--max-cases", type=int)
+    run.add_argument("--request-timeout", type=int, default=30)
+    run.add_argument("--case-deadline", type=int, default=60)
+    run.add_argument("--resume-results", type=Path, nargs="+", default=[])
+    run.add_argument("--checkpoint-dir", type=Path)
     for command in ("report", "rescore"):
         sub = commands.add_parser(command)
         sub.add_argument("--manifest", type=Path, required=True)
@@ -284,6 +400,18 @@ def main(argv=None) -> int:
                 subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
             ),
         )
+        if (
+            not 1 <= args.request_timeout <= 120
+            or not args.request_timeout <= args.case_deadline <= 150
+        ):
+            parser.error("timeout must be 1..120; deadline must be timeout..150")
+        prior_results = [json.loads(path.read_text()) for path in args.resume_results]
+        checkpoint = None
+        if args.checkpoint_dir is not None:
+
+            def checkpoint(observation):
+                publish_checkpoint(args.checkpoint_dir, {**observation, **metadata})
+
         value = run_cases(
             manifest,
             config,
@@ -291,6 +419,10 @@ def main(argv=None) -> int:
             dry_run=args.dry_run,
             max_cases=args.max_cases,
             mode=args.mode,
+            request_timeout=args.request_timeout,
+            case_deadline=args.case_deadline,
+            prior_results=prior_results,
+            checkpoint=checkpoint,
         )
         value.update(metadata)
         write_new(args.out, value)
