@@ -1635,10 +1635,14 @@ require available-history/case references; missing or contradictory proof remain
 No evaluation gold, models or network data are loaded implicitly, and no templates are activated.
 Legacy policy declarations retain their guarded behavior and unversioned status.
 
-### Opt-in source body coverage (prepared, #2216)
+### Opt-in source body coverage (implemented in #2215, issue #2216)
 
 `remedy_policy.replay_coverage` exposes immutable replay rows and separate configured/verified
 counts. `audit.collect_body_coverage` supplies retained records and fresh metadata from the audit's
 existing provider fetch. `audit_feeds --body-coverage-report PATH` writes a source-scoped JSON
 snapshot with material hashes and unknown completeness. This report path does not synchronize
 or save state, inspect audio sidecars, alter feed definitions, or reconcile GitHub issues.
+
+The body coverage report identifies its local state snapshot and warns that unsynchronized
+state can omit retained history. Completeness stays unknown; selector counts are not publication
+counts or official proof. Retained exclusions and publication filters are separate projections.

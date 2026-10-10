@@ -659,4 +659,6 @@ workshops, preserving all prior holders and recording identity. Deployment remai
 before case closure;6334 source-version discrepancy stays open.
 
 review/51 P2a shared policy/evidence foundation shipped in #2213; feed behavior is preserved.
-P2b report-only complete coverage is the next proposed slice; persistent dispositions follow.
+Recently shipped: P2b report-only retained/current coverage in #2215. Post-merge verification
+uses an explicitly local snapshot. Persistent reviewed dispositions and audit activation follow.
+All six historical evidence cases have approved closeout dispositions (169 resolved, zero open).

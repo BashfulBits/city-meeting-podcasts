@@ -74,3 +74,19 @@ claim absent source recordings were never made, and future new observations rema
 review. P1 evaluation tooling shipped in #1987; live model admission and P2–P5 gates remain.
 Search HTTPS enforcement and hosting-independent URLs are a separate follow-up in #2205.
 The retired broad scheduled task remains stopped.
+
+## Historical-case closeout superseding the carried-case status
+
+The maintainer approved terminal limited-evidence dispositions on October 9, 2026 Central.
+The register is now 169 resolved, zero open. See
+[final research and approved dispositions](historical-six-case-closeout-2026-10-10.md).
+This supersedes the requirement above to keep these six cases open; it does not claim that
+missing exact recording evidence was recovered. P0 rules, publication and raw records are unchanged.
+
+## Projection-count correction
+
+The P0 helper omitted global body exclusions by passing the wrong defaults mapping. The
+[post-merge P2b verification](p2b-postmerge-verification-2026-10-10.md) reproduces the old counts
+and corrects them to 28,594 placements / 1,189 unassigned entries. The 778 additional unassigned
+entries are bid/purchasing listings already excluded by production rules. No production behavior,
+raw record or 680-pattern approval changed. These counts supersede the historical table above.
