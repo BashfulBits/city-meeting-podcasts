@@ -1,9 +1,12 @@
-"""Judgments are appended to the judged candidate itself, never modified or deleted (review/53).
+"""Judgments live in the episode's own ``judging`` block, never in candidate dicts (review/53).
 
-Following R6's ``judge_assessments`` precedent, a candidate carries two lists: ``judgments`` (the
-append-only record) and ``judge_pending`` (the recipe that will answer each outstanding question,
-so a packet can span episodes: each subject finds its own answer by recipe hash). Failed,
-malformed or deferred calls write no judgment row.
+``Episode.judging`` is an artifact block owned only by the ``judge`` lane (records.py
+``_LANE_OWNED_BLOCKS``), so the judge lane never rewrites the tag/moment candidates other lanes own
+and rebuild, and those lanes never drop a judgment. Per judged subject it holds ``judgments`` (the
+append-only record, never modified or deleted) and ``pending`` (the recipe that will answer each
+outstanding question, so a packet may span episodes). Failed, malformed or deferred calls write no
+judgment row. ``unbuildable`` records a (question, judge, tier) whose evidence could not be built
+from the current transcript, so an unchanged episode is not revisited for it every pass.
 """
 
 from __future__ import annotations
@@ -13,8 +16,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 JUDGMENT_SCHEMA = 1
-JUDGMENTS = "judgments"
-PENDING = "judge_pending"
 
 KEY_FIELDS = (
     "subject_id",
@@ -30,52 +31,92 @@ def key_of(row: Mapping[str, Any]) -> tuple[Any, ...]:
     return tuple(row.get(field) for field in KEY_FIELDS)
 
 
-def judgments(candidate: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [row for row in candidate.get(JUDGMENTS) or [] if isinstance(row, dict)]
+def _entry(subject: Any, *, create: bool) -> dict[str, Any] | None:
+    store = subject.store
+    subjects = store.get("subjects")
+    if not isinstance(subjects, dict):
+        if not create:
+            return None
+        subjects = store["subjects"] = {}
+    entry = subjects.get(subject.subject_id)
+    if not isinstance(entry, dict):
+        if not create:
+            return None
+        entry = subjects[subject.subject_id] = {"task": subject.task}
+    return entry
 
 
-def pending(candidate: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [row for row in candidate.get(PENDING) or [] if isinstance(row, dict)]
+def _rows(subject: Any, name: str) -> list[dict[str, Any]]:
+    entry = _entry(subject, create=False)
+    return [row for row in (entry or {}).get(name) or [] if isinstance(row, dict)]
 
 
-def has_key(candidate: Mapping[str, Any], key: tuple[Any, ...]) -> bool:
-    return any(key_of(row) == key for row in judgments(candidate)) or any(
-        key_of(row) == key for row in pending(candidate)
+def judgments(subject: Any) -> list[dict[str, Any]]:
+    return _rows(subject, "judgments")
+
+
+def pending(subject: Any) -> list[dict[str, Any]]:
+    return _rows(subject, "pending")
+
+
+def has_key(subject: Any, key: tuple[Any, ...]) -> bool:
+    return any(key_of(row) == key for row in judgments(subject)) or any(
+        key_of(row) == key for row in pending(subject)
     )
 
 
-def append_judgment(candidate: dict[str, Any], row: Mapping[str, Any]) -> bool:
+def append_judgment(subject: Any, row: Mapping[str, Any]) -> bool:
     """Append ``row`` unless an identical key is already recorded; True when appended."""
-    if any(key_of(existing) == key_of(row) for existing in judgments(candidate)):
+    if any(key_of(existing) == key_of(row) for existing in judgments(subject)):
         return False
     record = {"schema": JUDGMENT_SCHEMA, **row}
     record.setdefault("judged_at", datetime.now(UTC).isoformat(timespec="seconds"))
-    candidate[JUDGMENTS] = [*judgments(candidate), record]
+    entry = _entry(subject, create=True)
+    entry["judgments"] = [*judgments(subject), record]
     return True
 
 
-def add_pending(candidate: dict[str, Any], marker: Mapping[str, Any]) -> None:
-    if any(key_of(row) == key_of(marker) for row in pending(candidate)):
+def add_pending(subject: Any, marker: Mapping[str, Any]) -> None:
+    if any(key_of(row) == key_of(marker) for row in pending(subject)):
         return
-    candidate[PENDING] = [*pending(candidate), dict(marker)]
+    entry = _entry(subject, create=True)
+    entry["pending"] = [*pending(subject), dict(marker)]
 
 
-def drop_pending(candidate: dict[str, Any], marker: Mapping[str, Any]) -> None:
-    remaining = [row for row in pending(candidate) if key_of(row) != key_of(marker)]
+def drop_pending(subject: Any, marker: Mapping[str, Any]) -> None:
+    entry = _entry(subject, create=False)
+    if entry is None:
+        return
+    remaining = [row for row in pending(subject) if key_of(row) != key_of(marker)]
     if remaining:
-        candidate[PENDING] = remaining
+        entry["pending"] = remaining
     else:
-        candidate.pop(PENDING, None)
+        entry.pop("pending", None)
 
 
-def anchor_value(
-    candidate: Mapping[str, Any], subject_id: str, question_id: str, tier: str, anchor_model: str
-) -> float | None:
+def unbuildable_key(question_id: str, judge_model: str, prompt_version: str, tier: str) -> str:
+    return f"{question_id}|{judge_model}|{prompt_version}|{tier}"
+
+
+def unbuildable(subject: Any) -> dict[str, str]:
+    """(question|judge|prompt|tier) -> the transcript identity it could not be built from."""
+    entry = _entry(subject, create=False)
+    value = (entry or {}).get("unbuildable")
+    return value if isinstance(value, dict) else {}
+
+
+def mark_unbuildable(subject: Any, key: str, transcript_identity: str) -> None:
+    if unbuildable(subject).get(key) == transcript_identity:
+        return
+    entry = _entry(subject, create=True)
+    entry["unbuildable"] = {**unbuildable(subject), key: transcript_identity}
+
+
+def anchor_value(subject: Any, question_id: str, tier: str, anchor_model: str) -> float | None:
     """The anchor's recorded probability for one question at one tier (escalation input)."""
-    for row in judgments(candidate):
+    for row in judgments(subject):
         if (
-            row.get("subject_id") == subject_id
-            and row.get("question_id") == question_id
+            row.get("question_id") == question_id
             and row.get("context_tier") == tier
             and row.get("judge_model") == anchor_model
             and isinstance(row.get("value"), (int, float))

@@ -288,9 +288,21 @@ judging:
 
 **Implemented** on `feat/review-53-pr3-judging` (2026-10-09), stacked on PR2. Deviations from the
 text below, all deliberate:
+- **Judgments live in their own record block, not on candidates** (found while fixing the
+  CodeRabbit CLI review, 2026-10-09). `Episode.judging` = `{"subjects": {subject_id: {"task",
+  "judgments", "pending", "unbuildable"}}}` is an artifact block owned only by the `judge` lane
+  (`records.py` `_LANE_OWNED_BLOCKS`). Writing into the `tags`/`llm_tag_candidates`/`moments`
+  blocks would have made two lanes owners of one block (concurrent pushes overwrite each other),
+  and the tag lane rebuilds its candidate lists when it re-tags, which would drop judgments. An
+  unregistered lane would also have owned every block. Candidates are now byte-for-byte unchanged.
+- **Source-scoped and record-backed.** `judge` runs once per source over its retained episodes
+  (`_SOURCE_STAGE_NAMES`), not once per episode in the global queue, so packets span a source's
+  episodes and the lanes' run caps (kept on `StageContext`, shared and locked) bind the whole run.
+  The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
+  preload and has its own window (`judge_run_time_budget_minutes`, default 90).
 - **Pending pointers instead of packet manifests.** A stage reads answers by recipe hash
-  (`llm_deferred.look_up_deferred`), so each candidate records, in `judge_pending`, the recipe that
-  will answer each of its questions. Packets can therefore span the city's episodes (JEV packs
+  (`llm_deferred.look_up_deferred`), so each subject records, in its `pending` list, the recipe
+  that will answer each of its questions. Packets can therefore span the city's episodes (JEV packs
   about 110 T1 items; per-episode packing would need about 1,200 JEV calls a day at 800 meetings)
   without a separate manifest, and a lost or structurally blocked recipe simply drops the pointer
   and re-plans the question for the current judges (the Slice 3a rebatch branch).
@@ -341,8 +353,8 @@ Sibling per subject: slot A unless the producer family is `google`, then slot B.
 subject: the first active adjudicator whose family differs from the producer and from the sibling
 that scored it. Rule candidates have family `rule`.
 
-**Judgment record** (`ledger.py`), appended to the candidate's new `judgments` list, following
-R6's `judge_assessments` precedent (no new state file):
+**Judgment record** (`ledger.py`), appended to the subject's `judgments` list in the episode's
+own `judging` record block (see the PR3 deviations: not on the candidate):
 
 ```python
 @dataclass(frozen=True)

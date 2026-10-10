@@ -1125,8 +1125,10 @@ context scan, `llm_rate_probe.py` and the weekly live gateway contract probe. Ju
 in `llm_families`, which the lane compiler enforces. The judge stack itself (`citypods/judging/`) runs as
 `JudgeStage` in its own `judge` lane (`.github/workflows/judge.yml`, every two hours): a task-spec
 registry (`tag`, `moment`), evidence by context tier, per-entry sibling choice by family, greedy
-packing (JEV up to 58,000 estimated tokens and 60 questions), and an append-only `judgments` list
-plus `judge_pending` recipe pointers on each candidate. In shadow mode it writes nothing else.
+packing (JEV up to 58,000 estimated tokens and 60 questions). Judgments are an episode artifact
+block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
+`unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
+written. The stage runs once per source and is dirty only while a judgment is pending or missing.
 
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
 live at the provider root — which is why the routing tests assert the full request URL rather than
