@@ -3547,3 +3547,23 @@ a5a13ccc completed with zero findings. One quota-accounted NVIDIA probe returned
 requested Kimi K3 model/max controls and a valid correct wrong-district rejection.
 This verifies transport/control provenance, not admission. Broader local evaluations are
 running; no production admission or alias automation is enabled.
+
+### P1 comparison diagnostics and evidence retention — L3, approved 2026-10-10
+
+The maintainer requested diagnosis of Gemini failures, investigation of DeepSeek response
+problems, GLM testing, and durable artifacts under evals/remedy/. Permit an evaluation-only
+diagnostic script and results bundle there, plus lifecycle documentation. Reuse the exact
+configured free routes, existing evidence prompts and shared CAS quota accounting. Do not
+change production routing, quotas, provider catalogs, storage routing or model admission.
+
+Capture sanitized provider errors and stream timing separately from scored model answers.
+Use at most two new Gemini diagnostics (120-second request, 150-second case), one DeepSeek
+stream diagnostic (600-second request, 650-second case, 16,384 output tokens), and GLM's
+ten evidence-check plus ten blind-owner cases (120/150 seconds, 4,096 output tokens).
+GLM uses its existing default reasoning; absent verified maximum controls it is a baseline
+comparison, not an admission candidate. No implicit paid or alternate-route fallback.
+
+Preserve prior configurations, observations, raw answers, scores and original provenance.
+Exclude credentials and credential-bearing logs; checksum retained files and document the
+unretained DeepSeek runs whose exclusive output paths collided. Gold is read only for
+scoring after requests. A valid default call does not prove maximum reasoning.
