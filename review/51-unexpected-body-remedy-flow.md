@@ -3479,3 +3479,35 @@ GitHub full review of #2248 at 52af2c90 completed with one valid minor documenta
 The parent holdout README now identifies the independently approved Denton ten-case dataset
 and its explicit manifest/gold paths; nested datasets are never discovered implicitly.
 Reviewed compiler/runtime, model-visible inputs and approved truth remain unchanged.
+
+P1 capability prerequisite implemented in PR #2248, merged 2026-10-10 at 855cc593.
+Freeze the prerequisite contract above; this does not stamp the entire P1 evaluation complete.
+Final full review covered 52af2c90; prose-only parent README fix 8d795359 passed all CI.
+No model admission or production activation. The first primary Denton batch completed five
+correct answers with zero classification errors and one timeout; seven cases per configuration
+were unattempted. All four primary/secondary Gemini routes have a 20-request daily cap with
+America/Los_Angeles resets. Broader and independent-family qualification remains pending.
+
+### P1 resumable local evaluation — L3, approved 2026-10-10 (#2251)
+
+Permitted files: scripts/eval_remedy.py, tests/test_remedy_evaluation.py,
+evals/remedy/README.md and lifecycle docs (review/11, review/51, CHANGELOG, ARCHITECTURE).
+Add explicit --request-timeout (1–120 seconds, default 30) and --case-deadline
+(1–150 seconds, default 60, at least request timeout); no production limits change.
+Add --resume-results explicit immutable result files, validated against manifest/prompt/schema/
+catalog/mode and configuration identities. Carry completed rows without another model call;
+failed/unattempted cases may retry in a new run and retain prior raw files. Reject conflicting
+completed observations and unknown pairs. Resume never reads gold or qualifies a model.
+Add --checkpoint-dir: after each attempted job atomically publish a separate immutable JSON
+observation with its frozen context and run provenance. An interruption preserves completed
+observations; final --out remains exclusive/immutable. A resumed run explicitly names files.
+Before each real job read the shared CAS quota ledger. For each allowed physical route use its
+reset timezone/current-day reservations; admit only if at least two daily requests remain
+(the existing per-job maximum provider attempts). Unavailable/invalid quota state fails closed.
+No-RPD routes still rely on shared scheduler limits. Test-injected backends may supply a quota
+preflight callback; actual live execution always uses the shared ledger. Shared scheduler
+reservations remain authoritative under races. Defer insufficient capacity without provider calls.
+Tests: interruption persistence, resume skipping, context/conflict rejection, reset handling,
+retry headroom, failed quota read, timeout bounds, unchanged defaults and no gold in prompts.
+Run targeted/full offline and whole Ruff/format before push. Do not change model/catalog/
+production storage routing, scheduler, feeds, workflows, dependencies or other runtime modules.
