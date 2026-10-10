@@ -902,3 +902,21 @@ def test_an_unreadable_transcript_skips_that_episode_and_keeps_it_incomplete():
     assert "ep-broken" not in stats.episodes_complete
     assert _all_pending(healthy) and not _any_pending(broken)
     assert not any(ledger.unbuildable(s) for s in _subjects(broken))
+
+
+def test_a_pass_restores_the_contexts_texts_reader():
+    """The per-pass texts cache must not outlive the pass, or a reused context could never retry
+    a read that failed once."""
+    calls = []
+
+    def texts_for(ep):
+        calls.append(ep.uid)
+        raise runner.TextsUnavailable("down")
+
+    ctx = _ctx(FakeDispatch())
+    ctx.texts_for = texts_for
+    ep = _episode()
+    runner.run([ep], ctx)
+    assert ctx.texts_for is texts_for
+    runner.run([ep], ctx)
+    assert calls == [ep.uid, ep.uid]

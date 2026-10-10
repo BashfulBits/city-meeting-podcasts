@@ -343,6 +343,16 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
 
 
 def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
+    # The per-pass texts cache below wraps ctx.texts_for; restore it so a reused context retries
+    # reads that failed in this pass.
+    texts_for = ctx.texts_for
+    try:
+        return _run(episodes, ctx)
+    finally:
+        ctx.texts_for = texts_for
+
+
+def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     stats = JudgingStats()
     # Evidence is rebuilt when planning and again when deciding completeness; read each episode's
     # transcript once per pass. A read that failed stays failed for the pass (no second attempt).

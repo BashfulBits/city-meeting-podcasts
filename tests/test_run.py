@@ -1702,6 +1702,71 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
     ]
 
 
+def test_global_queue_checkpoints_the_judge_lane_between_sources(monkeypatch):
+    """The judge lane's whole pass is the source-stage loop. That loop used to run before the
+    checkpoint helpers existed, so `mid_run_checkpoint` never fired and a cancelled run lost every
+    source's submitted-judge markers. It now checkpoints after a source once the interval passes."""
+
+    def _city(slug):
+        return City(
+            slug=slug,
+            provider="granicus",
+            source={"feed_url": f"https://{slug}.granicus.com/f"},
+            podcast_title=slug,
+            podcast_author="A",
+            podcast_email="",
+            podcast_description="",
+            extract_audio=True,
+        )
+
+    events: list[str] = []
+
+    class _JudgeStage:
+        name = "judge"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane="judge"
+            )
+            self.stages = [_JudgeStage()]
+
+        def fetch_merge(self, city, _key):
+            return object(), [_ep(f"{city.slug}-1")], {}, 0
+
+        fetch_merge_from_records = fetch_merge  # the judge lane is record-backed
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    clock = {"now": 0.0}
+
+    def _run_stages(_provider, city, _batch, stages, _ctx, *, quiet):
+        events.append(f"{stages[0].name}:{city.slug}")
+        clock["now"] += 181.0
+        return [StageStats(stages[0].name, ran=1)]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [_city("a"), _city("b")],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    first_checkpoint = events.index("checkpoint")
+    assert events[:first_checkpoint] == ["judge:a", "persist", "persist"]
+    assert "judge:b" in events[first_checkpoint:]
+
+
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
     tmp_path, monkeypatch
 ):

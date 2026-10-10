@@ -1129,6 +1129,10 @@ packing (JEV up to 58,000 estimated tokens and 60 questions). Judgments are an e
 block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
 `unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
 written. The stage runs once per source and is dirty only while a judgment is pending or missing.
+Like `tag`, the lane runs unsharded but is a scoped, lane-owned writer: it pushes through the
+foreign-block-preserving `push_records_merged` (protecting every block but `judging`), skips the
+full-run reconcile, and checkpoints between sources after submitting its batched jobs. An episode
+whose transcript read fails is skipped for the pass (`texts_unavailable`) and stays incomplete.
 
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
 live at the provider root — which is why the routing tests assert the full request URL rather than
