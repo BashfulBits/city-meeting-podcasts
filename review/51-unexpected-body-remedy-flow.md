@@ -3608,3 +3608,9 @@ timing, provenance and every failed attempt. Any drain timeout defers the case.
 The four Gemini routes are temporarily paused through the explicitly approved
 2026-10-11T07:15Z recheck time; renewal and a separate bounded quality recheck are
 scheduled in this chat. This does not permanently disable production Gemini routes.
+
+Patient comparison transport clarification, before BeatAPI provider requests:
+use LiteLLM's OpenAI-compatible adapter locally for BeatAPI's documented chat
+endpoint while preserving exact free upstream model and physical quota identity.
+The generated `beatapi/` direct-model prefix is rejected by local LiteLLM before
+HTTP; retain that failed setup observation and do not change production catalogs.
