@@ -167,6 +167,7 @@ from citypods.stages import (
     r6_stages,
     r7_stages,
     render_stages,
+    run_judge_across_sources,
     run_stages,
     stage_is_dirty,
 )
@@ -2366,21 +2367,33 @@ def _run_enrich_global_queue(
             tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
             ctx.tag_backend = tag_batcher
 
-    # Source-scoped stages (documents; the judge lane's only stage). Run once the checkpoint
-    # helpers and batchers exist so the judge lane, whose whole pass is this loop, checkpoints
-    # between sources.
-    if source_stages:
+    # Source-scoped stages. Run once the checkpoint helpers and batchers exist. Document stages
+    # run per source (each needs its source's whole archive); the judge stage runs once across
+    # every source, so its run caps go to the newest dirty episodes anywhere rather than to
+    # whichever sources sort first (the capped PR4 dry run gave one zoning board every sibling
+    # packet), then checkpoints.
+    document_stages = [s for s in source_stages if s.name != "judge"]
+    judge_stage = next((s for s in source_stages if s.name == "judge"), None)
+    if document_stages:
         for st in prepared.values():
             stats = run_stages(
                 st["provider"],
                 st["city"],
                 st["retained_episodes"],
-                source_stages,
+                document_stages,
                 ctx,
                 quiet=True,
             )
             pipeline.accumulate_stats(stats)
             _checkpoint_if_due()
+    if judge_stage is not None:
+        stat = run_judge_across_sources(
+            judge_stage,
+            [(st["city"], st["retained_episodes"]) for st in prepared.values()],
+            ctx,
+        )
+        pipeline.accumulate_stats([stat])
+        _checkpoint_if_due()
 
     # Chapter lanes use the same per-episode global queue as audio, but their stages already
     # know how to build/finalize a durable job independently.  Interpose the same collector used

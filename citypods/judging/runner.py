@@ -82,6 +82,8 @@ class JudgingStats:
     episodes_with_work: set[str] = field(default_factory=set)
     # Episodes whose texts could not be read this pass (TextsUnavailable): skipped, never complete.
     episodes_unavailable: set[str] = field(default_factory=set)
+    # Episodes the bounded plan reached this pass; only these can be found complete.
+    episodes_planned: set[str] = field(default_factory=set)
 
 
 class TextsUnavailable(Exception):
@@ -233,13 +235,57 @@ def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext)
     return [(t, s) for t, s in tiers if not (t in seen or seen.add(t))]
 
 
+def _item_budget(ctx: JudgingContext) -> dict[str, int] | None:
+    """Items one pass can submit per purpose: run-cap packets left times the fullest packet.
+
+    None when either purpose is uncapped. Planning stops once both budgets are met, so a pass reads
+    only the transcripts it can act on instead of the whole backlog (the first PR4 dry run spent
+    over an hour planning a cold backlog it could submit a fraction of)."""
+    anchor_left = ctx.run_caps.get(ANCHOR_PURPOSE)
+    sibling_left = ctx.run_caps.get(SIBLING_PURPOSE)
+    if anchor_left is None or sibling_left is None:
+        return None
+    sibling_items = max(
+        (_sibling_backend(model).max_items for model in ctx.sibling.models),
+        default=DEFAULT_SIBLING_CEILING[1],
+    )
+    return {
+        ANCHOR_PURPOSE: max(0, anchor_left) * JevBackend.max_items,
+        SIBLING_PURPOSE: max(0, sibling_left) * sibling_items,
+    }
+
+
 def plan(
-    episodes: Sequence[Any], ctx: JudgingContext, stats: JudgingStats
+    episodes: Sequence[Any],
+    ctx: JudgingContext,
+    stats: JudgingStats,
+    item_budget: Mapping[str, int] | None = None,
+    *,
+    bounded: bool = False,
 ) -> dict[tuple[str, str], list[list[Item]]]:
-    """Units of due items per (role, judge model), in recent-first episode order."""
+    """Units of due items per (role, judge model), in recent-first episode order.
+
+    A ``bounded`` (submitting) plan stops before the next episode when ``ctx.stop`` fires or once
+    every purpose has ``item_budget`` items planned; episodes it does not reach stay dirty for a
+    later pass. The completeness re-plan is unbounded over the episodes already planned."""
     units: dict[tuple[str, str], list[list[Item]]] = {}
     anchor_model = ctx.anchor.primary_model
+
+    def planned(purpose: str) -> int:
+        role = "anchor" if purpose == ANCHOR_PURPOSE else "sibling"
+        return sum(len(unit) for (r, _m), us in units.items() if r == role for unit in us)
+
     for ep in episodes:
+        if bounded:
+            if ctx.stop is not None and ctx.stop():
+                stats.counts["plan_stopped"] += 1
+                break
+            if item_budget is not None and all(
+                planned(purpose) >= budget for purpose, budget in item_budget.items()
+            ):
+                stats.counts["plan_budget_reached"] += 1
+                break
+        stats.episodes_planned.add(_episode_uid(ep))
         texts: EpisodeTexts | None = None
         for spec in ctx.tasks:
             subjects = spec.subjects(ep)
@@ -374,17 +420,24 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
     all_subjects = [s for ep in ordered for spec in ctx.tasks for s in spec.subjects(ep)]
     _collect(all_subjects, ctx, stats)
-    units = plan(ordered, ctx, stats)
+    units = plan(ordered, ctx, stats, _item_budget(ctx), bounded=True)
     for (role, model), judge_units in sorted(units.items()):
         purpose = ANCHOR_PURPOSE if role == "anchor" else SIBLING_PURPOSE
         backend = _backend_for(role, model)
         result = pack(judge_units, backend, purpose=purpose, role=role, judge_model=model)
         stats.counts["payload_too_large"] += result.payload_too_large
+        if result.units_split:
+            stats.counts["units_split"] += result.units_split
         for packet in result.packets:
             if ctx.stop is not None and ctx.stop():
                 stats.counts["stopped"] += 1
                 return _finish(ordered, ctx, stats)
             if ctx.dry_run:
+                # A rehearsal of one real pass: it spends the shared run caps (submitting nothing),
+                # so its counts and its bounded planning match what a scheduled run would send.
+                if not _take_run_slot(ctx, purpose):
+                    stats.counts[f"run_cap:{purpose}"] += 1
+                    break
                 stats.counts[f"dry_run_packets:{role}"] += 1
                 stats.counts["dry_run_items"] += len(packet.items)
                 stats.counts["dry_run_estimated_tokens"] += sum(
@@ -415,7 +468,11 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
 
 
 def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:
-    """An episode is complete when nothing is due and nothing is in flight for it."""
+    """An episode is complete when nothing is due and nothing is in flight for it.
+
+    Only episodes this pass planned are considered: one the bounded plan never reached was not
+    examined and stays dirty. Their texts are cached, so this re-plan reads no transcript."""
+    episodes = [ep for ep in episodes if _episode_uid(ep) in stats.episodes_planned]
     due = plan(episodes, ctx, JudgingStats())
     due_episodes = {
         subject.episode_uid

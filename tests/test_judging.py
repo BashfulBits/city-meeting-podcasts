@@ -219,7 +219,7 @@ def _item(subject_id, tokens, kind="validate"):
     )
 
 
-def test_packing_respects_ceilings_and_never_splits_a_unit():
+def test_packing_respects_ceilings_and_skips_only_an_item_too_large_alone():
     backend = ChatJudgeBackend(max_total_tokens=1000, max_items=3)
     units = [[_item("a", 400)], [_item("b", 400)], [_item("c", 400)], [_item("d", 5000)]]
     units.append([_item("e", 100), _item("f", 100), _item("g", 100)])
@@ -229,6 +229,60 @@ def test_packing_respects_ceilings_and_never_splits_a_unit():
     assert result.payload_too_large == 1
     again = pack(units, backend, purpose="judge:sibling", role="sibling", judge_model="m")
     assert [p.recipe_hash for p in again.packets] == [p.recipe_hash for p in result.packets]
+
+
+def _meeting_unit(candidates, tokens=100):
+    subjects = [Subject("moment", f"m{i}", "ep", None, None, {}) for i in range(candidates)]
+    unit = []
+    for subject in subjects:
+        for kind in ("validate", "gate", "grade"):
+            unit.append(
+                Item(
+                    QuestionSpec(kind, kind, "x"),
+                    "T0",
+                    make_evidence("T0", "w" * 4 * tokens),
+                    (subject,),
+                )
+            )
+    for order in ("", "_r"):
+        unit.append(
+            Item(
+                QuestionSpec("choose", "choose", "x"),
+                "T0",
+                make_evidence("T0", "w" * 4 * tokens),
+                tuple(subjects),
+                order=order,
+            )
+        )
+    return unit
+
+
+def test_an_oversize_meeting_is_split_by_candidate_not_skipped():
+    """review/53 PR4 dry run: a meeting with more than 7 candidates exceeded a 25-item sibling
+    packet and lost every judgment (481 units). It is now split: both choose items together, each
+    candidate's three items together, nothing skipped."""
+    backend = ChatJudgeBackend(max_total_tokens=10_000, max_items=7)
+    unit = _meeting_unit(4)  # 14 items > 7
+    result = pack([unit], backend, purpose="judge:sibling", role="sibling", judge_model="m")
+    assert result.payload_too_large == 0 and result.units_split == 1
+    packed = [item for packet in result.packets for item in packet.items]
+    assert sorted(map(id, packed)) == sorted(map(id, unit))
+    for packet in result.packets:
+        kinds = [item.question.kind for item in packet.items]
+        assert len(packet.items) <= 7
+        if "choose" in kinds:
+            assert kinds.count("choose") == 2
+    for subject_id in ("m0", "m1", "m2", "m3"):
+        homes = {
+            index
+            for index, packet in enumerate(result.packets)
+            for item in packet.items
+            if item.question.kind != "choose" and item.subjects[0].subject_id == subject_id
+        }
+        assert len(homes) == 1  # a candidate's items share one packet
+    # A meeting that fits is still one packet, unsplit.
+    whole = pack([_meeting_unit(1)], backend, purpose="p", role="sibling", judge_model="m")
+    assert len(whole.packets) == 1 and whole.units_split == 0
 
 
 # ---- backends ----------------------------------------------------------------------------------
@@ -486,7 +540,8 @@ def test_run_caps_and_stop_are_honoured():
     capped = runner.run([ep], _ctx(dispatch, run_caps={"judge:sibling": 0}))
     assert capped.counts["packets:sibling"] == 0 and capped.counts["packets:anchor"] == 1
     stopped = runner.run([_episode(uid="ep-2")], _ctx(FakeDispatch(), stop=lambda: True))
-    assert stopped.counts["stopped"] == 1 and stopped.counts["items_submitted"] == 0
+    # A stop that is already set ends the pass while planning, before any transcript is read.
+    assert stopped.counts["plan_stopped"] == 1 and stopped.counts["items_submitted"] == 0
 
 
 def test_moments_are_judged_per_meeting_with_both_choose_orders():
@@ -920,3 +975,78 @@ def test_a_pass_restores_the_contexts_texts_reader():
     assert ctx.texts_for is texts_for
     runner.run([ep], ctx)
     assert calls == [ep.uid, ep.uid]
+
+
+def test_planning_stops_at_the_item_budget_and_reads_no_further_transcripts(monkeypatch):
+    """A cold backlog: the first PR4 dry run read every candidate's transcript before submitting
+    anything and overran its window. Planning now stops once a pass's worth of items is planned;
+    later episodes are not read, not complete, and stay dirty for the next pass."""
+    dispatch = FakeDispatch()
+    episodes = [_episode(uid=f"ep-{i}", published=f"2026-10-0{i + 1}") for i in range(4)]
+    read = []
+
+    def texts_for(ep):
+        read.append(ep.uid)
+        return TEXTS
+
+    monkeypatch.setattr(
+        runner, "_item_budget", lambda _ctx: {"judge:anchor": 1, "judge:sibling": 1}
+    )
+    ctx = _ctx(dispatch)
+    ctx.texts_for = texts_for
+    stats = runner.run(episodes, ctx)
+    assert read == ["ep-3"]  # newest first; one episode fills both budgets
+    assert stats.counts["plan_budget_reached"] == 1
+    assert stats.episodes_planned == {"ep-3"}
+    assert stats.episodes_complete == set()
+    assert _all_pending(episodes[3]) and not _any_pending(episodes[0])
+
+    read.clear()
+    ctx = _ctx(FakeDispatch())
+    ctx.texts_for = texts_for
+    ctx.stop = lambda: bool(read)
+    stats = runner.run([_episode(uid=f"s-{i}") for i in range(3)], ctx)
+    assert len(read) == 1 and stats.counts["plan_stopped"] == 1
+
+
+def test_the_item_budget_is_run_cap_packets_times_the_fullest_packet():
+    ctx = _ctx(FakeDispatch(), run_caps={"judge:anchor": 2, "judge:sibling": 3})
+    budget = runner._item_budget(ctx)
+    sibling_items = max(runner._sibling_backend(m).max_items for m in ctx.sibling.models)
+    assert budget == {"judge:anchor": 120, "judge:sibling": 3 * sibling_items}
+    assert runner._item_budget(_ctx(FakeDispatch())) is None  # uncapped: no bound
+
+
+def test_a_dry_run_rehearses_one_capped_pass_and_submits_nothing():
+    """The first full dry run ignored the run caps, so every source planned and counted its whole
+    backlog. It now spends the shared caps like a real pass and still submits nothing."""
+    dispatch = FakeDispatch()
+    ctx = _ctx(dispatch, run_caps={"judge:anchor": 1, "judge:sibling": 1}, dry_run=True)
+    stats = runner.run([_episode(uid=f"ep-{i}") for i in range(3)], ctx)
+    assert not dispatch.submitted
+    assert stats.counts["dry_run_packets:anchor"] == 1
+    assert stats.counts["dry_run_packets:sibling"] == 1
+    assert ctx.run_caps == {"judge:anchor": 0, "judge:sibling": 0}
+
+
+def test_one_judge_pass_across_sources_gives_the_caps_to_the_newest_episodes(monkeypatch):
+    """The capped PR4 dry run judged source by source, so the alphabetically first sources spent
+    every run cap. run_judge_across_sources plans every source's episodes in one newest-first pass:
+    with a budget for one episode, the newest wins even in the source that sorts last."""
+    from citypods.stages import JudgeStage, run_judge_across_sources
+
+    monkeypatch.setattr(
+        runner, "_item_budget", lambda _ctx: {"judge:anchor": 1, "judge:sibling": 1}
+    )
+    ctx = _stage_ctx(enabled=True)
+    old = _episode(uid="addison-old", published="2025-01-01")
+    new = _episode(uid="waco-new", published="2026-10-09")
+    for ep in (old, new):
+        ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+    stat = run_judge_across_sources(
+        JudgeStage(),
+        [(SimpleNamespace(slug="addison"), [old]), (SimpleNamespace(slug="waco"), [new])],
+        ctx,
+    )
+    assert _any_pending(new) and not _any_pending(old)
+    assert stat.ran == 0 and ctx.judge_backend.jobs

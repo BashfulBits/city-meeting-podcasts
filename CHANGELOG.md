@@ -12,6 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Fix: judge planning is bounded by the run caps (review/53 PR4 dry run).** A pass planned
+  every candidate episode, reading each transcript, before submitting anything; on the cold
+  backlog the dry run overran the lane window. Planning now stops (recent first) once the run
+  caps' worth of items is planned (packets left times the fullest packet) or the stop signal
+  fires; episodes it did not reach stay dirty and are never counted complete. A dry run now spends
+  the run caps like a real pass. A moment meeting too large for one judge packet is split by
+  candidate (both `choose` items together) instead of skipped: the dry run skipped 481 such units,
+  every meeting over 7 candidates for the Gemma sibling and over 19 for JEV. The judge lane now
+  runs one pass across every source (newest dirty episodes anywhere first) instead of one per
+  source, which let the alphabetically first sources spend the whole run's caps.
+
 - **Prepared remembered-decision report (review/51 P2c3a).** Adds an explicit local comparison
   mode for saved histories and reviewed case projections. Unchanged watch cases recommend quiet;
   newly related recordings stay pending in the same case. Material proof changes, missing evidence,
