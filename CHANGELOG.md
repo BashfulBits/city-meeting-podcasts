@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared review/51 P1 capability prerequisite (#2247).** Allows explicit high/max compiler
+  levels and Gemini 3.7/3.8 high-effort controls without changing default requests or route choices.
+  Adds ten grounded, maintainer-reviewed Denton holdout cases. No model is admitted; local live
+  evaluation uses the existing `citypods-spike` quota ledger. Native Gemini thinking controls
+  replace the rejected OpenAI-only field; model qualification remains pending. No catalog/audio
+  backfill.
+  
 - **Fix: judge planning is bounded by the run caps (review/53 PR4 dry run).** A pass planned
   every candidate episode, reading each transcript, before submitting anything; on the cold
   backlog the dry run overran the lane window. Planning now stops (recent first) once the run

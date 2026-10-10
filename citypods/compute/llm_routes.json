@@ -452,6 +452,15 @@
       "tpm": 225000,
       "hard_input_ceiling": 218875,
       "free": true,
+      "reasoning_controls": {
+        "high": {
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      },
       "observed_on": "2026-09-12",
       "observed_burst": 0,
       "observed_input_ceiling": 218875,
@@ -493,6 +502,15 @@
       "tpm": 225000,
       "hard_input_ceiling": 218875,
       "free": true,
+      "reasoning_controls": {
+        "high": {
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      },
       "observed_on": "2026-09-12",
       "observed_burst": 0,
       "observed_input_ceiling": 218875,
@@ -534,6 +552,15 @@
       "tpm": 225000,
       "hard_input_ceiling": 234437,
       "free": true,
+      "reasoning_controls": {
+        "high": {
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      },
       "observed_on": "2026-09-12",
       "observed_burst": 7,
       "observed_input_ceiling": 234437,
@@ -574,6 +601,15 @@
       "tpm": 225000,
       "hard_input_ceiling": 234437,
       "free": true,
+      "reasoning_controls": {
+        "high": {
+          "generationConfig": {
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      },
       "observed_on": "2026-09-12",
       "observed_burst": 7,
       "observed_input_ceiling": 234437,

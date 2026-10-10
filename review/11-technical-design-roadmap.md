@@ -1733,3 +1733,8 @@ comparison report contract is L3 under #2243; activation remains separate from r
 
 P2c3a implementation prepared under #2243: pure comparison and local report CLI. Reviewed case
 projections are explicit inputs; automatic coverage projection and alert activation are not enabled.
+
+P1 completion prerequisite (2026-10-10): maintainer approved scoped existing-route reasoning
+capability metadata and local credential-wrapper evaluation. Exact prerequisite contract is in
+review/51; holdout truth and final production admissions remain evidence-gated. Complete P1
+before the authorized P2 production connection. No new evaluation workflow is required.

@@ -1692,3 +1692,9 @@ proof packets. It recommends review for new pending recordings or substantive pr
 unchanged watch cases recommend quiet. Missing evidence/history remains visible. The mode runs
 before config/provider/storage/GitHub setup and writes only its requested report. It neither
 projects aliases automatically nor changes recurring alerts; both integrations remain separate.
+
+Review/51 admission preparation: existing direct-route reasoning controls can now declare high/max
+in the compiled catalog; controls are applied only when a job explicitly requests a supported
+level. Current production lanes do not set those levels. The evaluation lane keeps strict physical
+route allowlists and shared CAS quota accounting; missing storage prevents provider calls.
+Grounded holdout answers remain separate from model-visible inputs and do not activate admissions.

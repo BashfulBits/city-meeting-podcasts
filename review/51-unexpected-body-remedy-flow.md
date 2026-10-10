@@ -3413,3 +3413,69 @@ changed. Raw review output is retained locally at /private/tmp/2245-cli-review.n
 
 CLI finding fix verification: 209 targeted checks and 5,747 offline tests passed (16 deselected);
 whole Ruff/format passed across 511 files. The prior complete report survives simulated failure.
+
+### P1 admission completion: reasoning capability prerequisite — L3, approved 2026-10-10
+
+The maintainer authorized finishing P1 before the P2 connection, and explicitly approved a scoped
+capability update for existing Gemini 3.7/3.8 Flash and DeepSeek V4.1 Flash free direct routes.
+Local live execution uses /usr/local/bin/citypods-env and the existing shared CAS quota accounting.
+No additional evaluation workflow is authorized or needed. Holdout truth and final admission are
+reviewed separately; successful transport alone never qualifies a model.
+
+Permitted prerequisite files: config/provider_limits.yml, scripts/compile_llm_limits.py,
+its existing tests, compiled citypods/compute/llm_routes.json and
+workers/llm-dispatch-v2/src/dispatch_limits.json, and lifecycle docs. Extend the compiler's closed
+reasoning-level set with high/max only. Add high controls for Gemini 3.7/3.8 direct accounts from
+Google's documented OpenAI reasoning_effort mapping. Preserve defaults, aliases, route selection,
+quotas, existing off/low controls and production lane settings. No lane currently sets a reasoning
+level; absent explicit requests continue sending no newly added controls. NVIDIA max mapping must
+be supported by that endpoint's documentation and a bounded probe; absent proof leaves it held.
+
+Sources: https://ai.google.dev/gemini-api/docs/openai and
+https://ai.google.dev/gemini-api/docs/thinking; NVIDIA endpoint documentation:
+https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash-1.
+Tests prove compiler acceptance/rejection, compiled consistency and unchanged default behavior.
+Whole Ruff/format and full offline checks precede the prerequisite PR. No production admission,
+feed, audio, storage routing, Worker runtime or stage-version change is included.
+
+P1 completion preparation under #2247: compiler supports explicit high/max levels; Gemini
+3.7/3.8 direct-account high controls use reasoning_effort=high. Production lane reasoning maps
+are empty, so default payloads and route selection remain unchanged. NVIDIA max remains held:
+model-level support alone does not prove this endpoint's max-effort mapping.
+
+The maintainer independently approved the ten Denton holdout answers in chat on 2026-10-10.
+Frozen manifest, official agenda excerpts and reviewed truth are under
+`evals/remedy/holdout/p1-denton-2026-10-10/`; the shipped validator confirms split disjointness.
+These four recordings test standalone named-body identity and distinct TIRZ boards, including
+wrong Council-room and wrong-zone proposals. They prove no general automatic-merge safety.
+
+Verification: 284 targeted checks, 5,754 offline tests (16 deselected), whole Ruff/format 511 files.
+A dry-run planned 54 candidate regression jobs without holds. A bounded local live probe attempted
+one case for each Gemini configuration but both failed with NoSuchBucket before any provider call
+(provider_attempts=0). Read-only checks confirm B2 primary access and R2 coordination 404; inventory
+permission is denied. No quota bypass, new bucket, credential mutation or production admission.
+Local evidence is retained as /private/tmp/p1-capability-{dryrun,live}.json. Correct shared quota
+storage configuration is required before live evaluation; this prerequisite is not P1 completion.
+
+P1 transport correction approved in chat on 2026-10-10: preserve the existing native Gemini
+generateContent transport. Replace the rejected OpenAI-only reasoning_effort field with native
+generationConfig.thinkingConfig.thinkingLevel=HIGH in the four Gemini capability entries.
+No runtime transport, default lane, quota or production admission changes. Verify compiled
+catalogs and bounded provider acceptance before accuracy evaluation.
+
+Native mapping correction verification: 73 compiler checks and 5,754 offline tests passed
+(16 deselected), whole Ruff/format clean. Read access to citypods-spike succeeds; use a local
+R2_BUCKET override rather than the retired wrapper bucket. Two 30-second native probes timed
+out. Maintainer approved a local-only two-request diagnostic with 120-second requests and
+150-second case deadlines; production/evaluator defaults remain unchanged. Quota unification
+is tracked separately in #2249. No admission or feed change.
+
+CodeRabbit CLI review of #2248 at 84ec7e13 completed: one valid minor rationale issue.
+The two wrong-zone holdout explanations now identify the official numbered TIRZ board and
+explain that Zone 1/2 are distinct. Approved truth/owner, case inputs and runtime are unchanged.
+Raw review retained locally at /private/tmp/2248-cli-review.ndjson.
+
+GitHub full review of #2248 at 52af2c90 completed with one valid minor documentation finding.
+The parent holdout README now identifies the independently approved Denton ten-case dataset
+and its explicit manifest/gold paths; nested datasets are never discovered implicitly.
+Reviewed compiler/runtime, model-visible inputs and approved truth remain unchanged.
