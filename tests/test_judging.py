@@ -1027,3 +1027,26 @@ def test_a_dry_run_rehearses_one_capped_pass_and_submits_nothing():
     assert stats.counts["dry_run_packets:anchor"] == 1
     assert stats.counts["dry_run_packets:sibling"] == 1
     assert ctx.run_caps == {"judge:anchor": 0, "judge:sibling": 0}
+
+
+def test_one_judge_pass_across_sources_gives_the_caps_to_the_newest_episodes(monkeypatch):
+    """The capped PR4 dry run judged source by source, so the alphabetically first sources spent
+    every run cap. run_judge_across_sources plans every source's episodes in one newest-first pass:
+    with a budget for one episode, the newest wins even in the source that sorts last."""
+    from citypods.stages import JudgeStage, run_judge_across_sources
+
+    monkeypatch.setattr(
+        runner, "_item_budget", lambda _ctx: {"judge:anchor": 1, "judge:sibling": 1}
+    )
+    ctx = _stage_ctx(enabled=True)
+    old = _episode(uid="addison-old", published="2025-01-01")
+    new = _episode(uid="waco-new", published="2026-10-09")
+    for ep in (old, new):
+        ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+    stat = run_judge_across_sources(
+        JudgeStage(),
+        [(SimpleNamespace(slug="addison"), [old]), (SimpleNamespace(slug="waco"), [new])],
+        ctx,
+    )
+    assert _any_pending(new) and not _any_pending(old)
+    assert stat.ran == 0 and ctx.judge_backend.jobs

@@ -77,7 +77,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from concurrent.futures.process import BrokenProcessPool
@@ -320,8 +320,8 @@ class StageContext:
     # review/53: the judge lane's dispatch backend and the site config `judging` block.
     judge_backend: object | None = None
     judging_config: dict = field(default_factory=dict)
-    # Packets left this run per judge purpose, shared by every source the run visits (the judge
-    # stage runs once per source); filled from the lanes' max_dispatches_per_run on first use.
+    # Packets left this run per judge purpose, shared by every pass in the run (the judge lane runs
+    # one pass across all sources); filled from the lanes' max_dispatches_per_run on first use.
     judge_run_caps: dict = field(default_factory=dict)
     judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
     moment_evaluation_state_path: Path | None = None
@@ -1617,7 +1617,9 @@ class JudgeStage(LLMProducerStage):
 
     Reads persisted candidates and writes only the episode's own ``judging`` block (per subject:
     judgments, pending recipe pointers, unbuildable tiers); candidates, display, admission and
-    publication are never touched. Runs once per source, so packets span a source's episodes.
+    publication are never touched. The judge lane runs it once across every source
+    (``process_sources``), so planning and the shared run caps go to the newest episodes overall
+    and packets span sources; ``process`` is the single-source form.
     """
 
     name = "judge"
@@ -1659,8 +1661,19 @@ class JudgeStage(LLMProducerStage):
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        return self.process_sources([(city, episodes)], ctx)
+
+    def process_sources(
+        self, sources: Sequence[tuple[City, list[Episode]]], ctx: StageContext
+    ) -> StageStats:
+        """Judge every source's episodes in one pass, newest first across all of them.
+
+        One source at a time let the first sources alphabetically spend the whole run's caps (the
+        capped PR4 dry run: Addison's zoning board took all 166 sibling packets)."""
         stats = StageStats(self.name)
-        self.census(city, episodes, ctx)
+        for city, city_episodes in sources:
+            self.census(city, city_episodes, ctx)
+        episodes = [ep for _city, city_episodes in sources for ep in city_episodes]
         if not self._enabled(ctx) or ctx.storage is None:
             return stats
         from citypods.compute.llm_deferred import look_up_deferred
@@ -1767,9 +1780,13 @@ class JudgeStage(LLMProducerStage):
                     work.consumed(reused=uid not in result.episodes_with_work)
                 elif uid in result.episodes_with_work:
                     work.defer("queued")
+        label = (
+            getattr(sources[0][0], "slug", "")
+            if len(sources) == 1
+            else f"{len(sources)} sources, {len(episodes)} episodes"
+        )
         print(
-            f"[judge] {city.slug if hasattr(city, 'slug') else ''}: "
-            + " ".join(f"{k}={v}" for k, v in sorted(result.counts.items())),
+            f"[judge] {label}: " + " ".join(f"{k}={v}" for k, v in sorted(result.counts.items())),
             flush=True,
         )
         return stats
@@ -10037,6 +10054,46 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     # review/53: the judge stack runs in its own lane and only reads persisted candidates.
     "judge": frozenset({"judge"}),
 }
+
+
+def run_judge_across_sources(
+    stage: JudgeStage, sources: Sequence[tuple[City, list[Episode]]], ctx: StageContext
+) -> StageStats:
+    """``run_stages`` for the judge stage over every source at once (review/53 PR4 dry run).
+
+    The same census, dirtiness, timing and completion bookkeeping as ``run_stages``, but one
+    ``process_sources`` call, so the newest dirty episodes anywhere get the run's caps first."""
+    allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
+    if allowed is not None and stage.name not in allowed:
+        return StageStats(stage.name)
+    dirty_by_source: list[tuple[City, list[Episode]]] = []
+    clean = 0
+    for city, episodes in sources:
+        stage.census(city, episodes, ctx)
+        dirty = [
+            ep
+            for ep in episodes
+            if stage_is_dirty(
+                stage,
+                ep,
+                city,
+                speaker_config=ctx.speaker_config,
+                judging_config=ctx.judging_config,
+            )
+        ]
+        clean += len(episodes) - len(dirty)
+        if dirty:
+            dirty_by_source.append((city, dirty))
+    if not dirty_by_source:
+        return StageStats(stage.name, reused=clean)
+    t0 = time.perf_counter()
+    with ctx.llm_work.producer(stage.name):
+        stat = stage.process_sources(dirty_by_source, ctx)
+    stat.seconds = time.perf_counter() - t0
+    stat.reused += clean
+    for city, dirty in dirty_by_source:
+        _mark_stage_complete(stage, dirty, city, stat, speaker_config=ctx.speaker_config)
+    return stat
 
 
 def run_stages(

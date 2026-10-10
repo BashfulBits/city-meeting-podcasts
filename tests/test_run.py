@@ -1702,10 +1702,10 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
     ]
 
 
-def test_global_queue_checkpoints_the_judge_lane_between_sources(monkeypatch):
-    """The judge lane's whole pass is the source-stage loop. That loop used to run before the
-    checkpoint helpers existed, so `mid_run_checkpoint` never fired and a cancelled run lost every
-    source's submitted-judge markers. It now checkpoints after a source once the interval passes."""
+def test_global_queue_judges_every_source_in_one_pass_then_checkpoints(monkeypatch):
+    """The capped PR4 dry run judged source by source, so the first sources alphabetically spent
+    the whole run's caps (one zoning board took every sibling packet). The judge lane now runs one
+    pass over every source's episodes, then checkpoints."""
 
     def _city(slug):
         return City(
@@ -1747,12 +1747,15 @@ def test_global_queue_checkpoints_the_judge_lane_between_sources(monkeypatch):
 
     clock = {"now": 0.0}
 
-    def _run_stages(_provider, city, _batch, stages, _ctx, *, quiet):
-        events.append(f"{stages[0].name}:{city.slug}")
+    def _across(stage, sources, _ctx):
+        events.append("judge:" + ",".join(sorted(city.slug for city, _eps in sources)))
         clock["now"] += 181.0
-        return [StageStats(stages[0].name, ran=1)]
+        return StageStats(stage.name, ran=1)
 
-    monkeypatch.setattr(run, "run_stages", _run_stages)
+    monkeypatch.setattr(run, "run_judge_across_sources", _across)
+    monkeypatch.setattr(
+        run, "run_stages", lambda *a, **k: pytest.fail("judge must not run per source")
+    )
     monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
     run._run_enrich_global_queue(
         _Pipeline(),
@@ -1762,9 +1765,8 @@ def test_global_queue_checkpoints_the_judge_lane_between_sources(monkeypatch):
         policy=None,
         mid_run_checkpoint=lambda: events.append("checkpoint"),
     )
-    first_checkpoint = events.index("checkpoint")
-    assert events[:first_checkpoint] == ["judge:a", "persist", "persist"]
-    assert "judge:b" in events[first_checkpoint:]
+    assert events[0] == "judge:a,b"
+    assert "checkpoint" in events
 
 
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(

@@ -295,9 +295,12 @@ text below, all deliberate:
   blocks would have made two lanes owners of one block (concurrent pushes overwrite each other),
   and the tag lane rebuilds its candidate lists when it re-tags, which would drop judgments. An
   unregistered lane would also have owned every block. Candidates are now byte-for-byte unchanged.
-- **Source-scoped and record-backed.** `judge` runs once per source over its retained episodes
-  (`_SOURCE_STAGE_NAMES`), not once per episode in the global queue, so packets span a source's
-  episodes and the lanes' run caps (kept on `StageContext`, shared and locked) bind the whole run.
+- **One pass across sources, record-backed.** `judge` is a source-scoped stage
+  (`_SOURCE_STAGE_NAMES`), not run once per episode in the global queue. Since the capped PR4 dry
+  run (2026-10-10), where judging source by source let the alphabetically first sources spend the
+  whole run's caps, it runs once over every source's retained episodes
+  (`run_judge_across_sources`). Planning is newest first across the catalog, bounded by the run
+  caps, and packets span sources. The lanes' run caps live on `StageContext`, shared and locked.
   The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
   preload and has its own window (`judge_run_time_budget_minutes`, default 90).
 - **Tag subjects come only from the canonical ledger** `Episode.llm_tag_candidates` (rule and LLM

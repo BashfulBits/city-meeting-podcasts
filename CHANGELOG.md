@@ -19,7 +19,9 @@ Once 1.0 ships, entries move under semver tags.
   fires; episodes it did not reach stay dirty and are never counted complete. A dry run now spends
   the run caps like a real pass. A moment meeting too large for one judge packet is split by
   candidate (both `choose` items together) instead of skipped: the dry run skipped 481 such units,
-  every meeting over 7 candidates for the Gemma sibling and over 19 for JEV.
+  every meeting over 7 candidates for the Gemma sibling and over 19 for JEV. The judge lane now
+  runs one pass across every source (newest dirty episodes anywhere first) instead of one per
+  source, which let the alphabetically first sources spend the whole run's caps.
 
 - **State restore path confinement and scoped tombstone hardening (#1972).** Hardens
   `citypods.statesync` to strictly confine state file downloads, replacements, and tombstone

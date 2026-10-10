@@ -1128,10 +1128,12 @@ registry (`tag`, `moment`), evidence by context tier, per-entry sibling choice b
 packing (JEV up to 58,000 estimated tokens and 60 questions). Judgments are an episode artifact
 block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
 `unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
-written. The stage runs once per source and is dirty only while a judgment is pending or missing.
+written. The stage runs once across every source (`run_judge_across_sources`), planning the newest
+dirty episodes anywhere first until the run caps are spent, and is dirty only while a judgment is
+pending or missing.
 Like `tag`, the lane runs unsharded but is a scoped, lane-owned writer: it pushes through the
 foreign-block-preserving `push_records_merged` (protecting every block but `judging`), skips the
-full-run reconcile, and checkpoints between sources after submitting its batched jobs. An episode
+full-run reconcile, and checkpoints after its pass once its batched jobs are submitted. An episode
 whose transcript read fails is skipped for the pass (`texts_unavailable`) and stays incomplete.
 
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
