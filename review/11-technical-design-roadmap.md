@@ -1760,3 +1760,10 @@ production route selection, quota or admission change.
 
 P1 comparison diagnostics: approved bounded Gemini/DeepSeek diagnosis, GLM baseline and
 durable evaluation artifacts; see review/51. Production activation remains unchanged.
+
+Review/51 P1 patient comparison follow-up (2026-10-10): maintainer approved
+full NVIDIA GLM 5.3 and free BeatAPI Astra/Sol/DeepSeek V4.1 Flash quality and
+latency baselines, plus temporary Gemini primary/secondary pauses and a scheduled
+quality recheck. L3 and scope are in review/51; evaluation-only scaffolding/results
+live in evals/remedy/results/p1-patient-2026-10-10/. No admission or production
+route activation follows from default-reasoning comparison results.

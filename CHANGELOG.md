@@ -7898,3 +7898,10 @@ and validated hand-built recording inclusions. Final head passed all CI; no temp
 Retain model configurations, original results, scored comparisons and bounded provider
 diagnostics under evals/remedy/results/p1-comparison-2026-10-10/. No production model
 activation, quota, feed, audio, storage-routing or pipeline-version changes.
+
+### Review/51 patient alternative-model evaluation scaffolding (2026-10-10)
+
+- Add bounded, quota-accounted evaluation-only comparisons for full NVIDIA GLM 5.3
+  and free BeatAPI GPT 6 Astra, GPT 6.1 Sol and DeepSeek V4.1 Flash, using the
+  existing approved Denton cases. Preserve answers, errors and timing separately
+  from model identity/reasoning admission gates; no production defaults change.
