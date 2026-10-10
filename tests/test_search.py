@@ -698,3 +698,56 @@ def test_completed_source_reuses_records_after_changes_and_cache_hits(tmp_path, 
     incremental = _shard(tmp_path, source_key(city))
     build_search_index(tmp_path / "state", [city], tmp_path / "docs", "https://site.test", cache={})
     assert _shard(tmp_path, source_key(city)) == incremental
+
+
+def test_hosting_url_changes_preserve_checkpoint_reuse(tmp_path, monkeypatch):
+    city = _city()
+    records = {f"u{i}": episode_to_record(_episode(f"u{i}")) for i in range(3)}
+    _save(tmp_path, city, records)
+    cache = {}
+    calls = []
+    original = search_mod._record_to_document
+
+    def convert(c, record, **kwargs):
+        calls.append(record["uid"])
+        return original(c, record, **kwargs)
+
+    monkeypatch.setattr(search_mod, "_record_to_document", convert)
+
+    # First run on HTTP base URL
+    res_http = build_search_index(
+        tmp_path / "state", [city], tmp_path / "docs", "http://site.test", cache=cache
+    )
+    assert res_http is not None
+    assert calls == ["u0", "u1", "u2"]
+    manifest_file = tmp_path / "docs" / "data" / "search" / "manifest.json"
+    manifest_http = json.loads(manifest_file.read_text())
+    assert manifest_http["shards"][0]["shard_url"] == f"/data/search/{source_key(city)}.json"
+
+    # Second run on HTTPS base URL: must reuse cached records without re-extracting sidecars
+    res_https = build_search_index(
+        tmp_path / "state", [city], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    assert res_https is not None
+    # Calls must not have increased — sidecars were not re-read
+    assert calls == ["u0", "u1", "u2"]
+
+    shard_https = _shard(tmp_path, source_key(city))
+    # Page URL in the emitted documents must reflect the updated HTTPS protocol
+    for doc in shard_https["documents"]:
+        assert doc["page_url"].startswith("https://site.test/")
+
+
+def test_search_body_labels_strip_selector_syntax(tmp_path):
+    city = _city(body="Civil Service Commission on *")
+    ep = _episode("u1")
+    ep.body = "Civil Service Commission on *"
+    records = {"u1": episode_to_record(ep)}
+    _save(tmp_path, city, records)
+    build_search_index(tmp_path / "state", [city], tmp_path / "docs", "https://site.test")
+    shard = _shard(tmp_path, source_key(city))
+    assert shard["body"] == "Civil Service Commission"
+    assert shard["documents"][0]["body"] == "Civil Service Commission"
+    manifest = json.loads((tmp_path / "docs" / "data" / "search" / "manifest.json").read_text())
+    assert manifest["shards"][0]["body"] == "Civil Service Commission"
+    assert manifest["shards"][0]["bodies"] == ["Civil Service Commission"]

@@ -4998,16 +4998,18 @@ def _newer_run_queued() -> str | None:
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:
     import os
+    from urllib.parse import urlsplit
 
-    if base_url:
-        return base_url
-    env = os.environ.get("PAGES_BASE_URL")
-    if env:
-        return env
+    url = base_url or os.environ.get("PAGES_BASE_URL")
+    if not url:
+        domain = site_config.get("custom_domain")
+        return f"https://{domain}" if domain else "http://localhost:8000"
+
+    parsed = urlsplit(url)
     domain = site_config.get("custom_domain")
-    if domain:
-        return f"https://{domain}"
-    return "http://localhost:8000"
+    if parsed.scheme == "http" and domain and parsed.hostname in {domain, f"www.{domain}"}:
+        return f"https://{parsed.netloc}{parsed.path}"
+    return url
 
 
 def _write_cname(output_dir: Path, site_config: dict) -> None:

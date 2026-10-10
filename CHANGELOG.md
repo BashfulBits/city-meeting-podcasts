@@ -17,6 +17,22 @@ Once 1.0 ships, entries move under semver tags.
   Interrupted delivery retries reuse the stored event; conflicting commands/history fail closed.
   No production runner, workflow activation, feed changes or alert suppression.
 
+- **Judge stack shadow on (review/53 PR4).** `judging.enabled: true`: the two-hourly judge lane
+  now judges tag and moment candidates with JEV and one independent sibling and records judgments
+  only (no display, admission or publication change). Reserves 920 ingress units for
+  `judge:anchor` and 2,400 for `judge:sibling` (total 16,506 of 25,600); the adjudicator's
+  reservation follows with PR5.
+  
+- **Search index HTTPS enforcement, origin-relative shards, and client pacing (#2205).**
+  Enforces HTTPS for the production custom domain `www.citymeetings.fyi` while preserving
+  HTTP for local development. Emits origin-relative shard URLs (`/data/search/{city}.json`)
+  in `manifest.json` and decouples search checkpoint hashes from hosting scheme and hostname,
+  allowing full checkpoint reuse across base URL protocol transitions without re-extracting
+  sidecars. Sanitizes feed and committee labels in search dropdowns and records by stripping
+  selector wildcard syntax (`*`, `on *`) and city name prefixes. Paces client-side search shard
+  downloads to 4 concurrent workers, debounces result rendering with `requestAnimationFrame`,
+  and dynamically scopes the body filter dropdown to bodies present in the selected city.
+
 - **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
   reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
   for writes; existing events and uploaded content are verified. Corrupt history fails closed,
@@ -26,6 +42,15 @@ Once 1.0 ships, entries move under semver tags.
 - **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
   canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
   configuration errors and unblocking the Dependency Dashboard.
+
+- **Agenda PDF character map and corrupted glyph recovery (#2061).** Adds structural detection
+  for corrupted PDF native text extractions caused by missing or damaged ToUnicode font encodings
+  (e.g. literal glyph-name sequences like `/i255`, repeated replacement characters `\ufffd`/`ÿ`,
+  and low alpha-word ratios). Corrupted native extractions are flagged suspicious, bypass
+  false-positive short notice acceptance, trigger OCR fallback, and reject with durable diagnostic
+  `corrupted-native-text` if OCR is unavailable. Strips stray bullet glyphs (such as corrupted `Å`
+  prefixes) from candidate titles while preserving genuine Unicode names. Pipeline version
+  remains stable (`AGENDA_TEXT_QUALITY_VERSION = "3"`).
 
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,

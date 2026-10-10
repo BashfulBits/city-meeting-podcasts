@@ -291,8 +291,8 @@ llm_lanes:
     models: ["typesafe/jev-1.13"]
     dispatch_shape: per_model
     max_dispatches_per_run: 116
-    # 920 from PR4 (review/53); zero while nothing dispatches here.
-    reserved_write_units: 0
+    # review/53 PR4: routine ~191 jobs/day x 4 units x 1.2.
+    reserved_write_units: 920
     daily_write_units: 5600
   judge:sibling:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
@@ -309,8 +309,8 @@ llm_lanes:
       non_google: ["openrouter/nvidia/nemotron-3-super-120b-a12b:free", "qwen/qwen3.8-27b"]
     dispatch_shape: per_model
     max_dispatches_per_run: 166
-    # 2,400 from PR4 (review/53); zero while nothing dispatches here.
-    reserved_write_units: 0
+    # review/53 PR4: routine ~473 jobs/day x 4 units x 1.2, rounded up.
+    reserved_write_units: 2400
     daily_write_units: 8000
   judge:adjudicator:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
@@ -322,7 +322,7 @@ llm_lanes:
       - "deepseek/deepseek-v4.1-flash"
     dispatch_shape: per_model
     max_dispatches_per_run: 33
-    # 920 from PR4 (review/53); zero while nothing dispatches here.
+    # 920 from PR5, when adjudication starts dispatching; zero until then.
     reserved_write_units: 0
     daily_write_units: 1600
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
@@ -415,10 +415,10 @@ llm_families:
   "tencent/hy3": tencent
   "openai/gpt-6-astra": unverified-beatapi-gpt
   "openai/gpt-6.1-sol": unverified-beatapi-gpt
-# Judge stack switches (review/53). `enabled` stays false until PR4; each task leaves shadow only
-# through its graduation PR (PR8 tags, PR9 moments).
+# Judge stack switches (review/53). Enabled in PR4 (shadow: judgments only, no display change);
+# each task leaves shadow only through its graduation PR (PR8 tags, PR9 moments).
 judging:
-  enabled: false
+  enabled: true
   tasks:
     tag: {mode: shadow}
     moment: {mode: shadow, top_k: 3}
