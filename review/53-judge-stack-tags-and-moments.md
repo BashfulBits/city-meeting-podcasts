@@ -404,7 +404,11 @@ no row and an `answer_missing` count.
 an item or truncates evidence; an item over the ceiling alone is counted `payload-too-large` (the
 existing blocked outcome) and skipped. Ceilings: JEV 58,000 total and 28,000 state-plus-largest, 60
 questions; Gemma 10,000 tokens, 25 items; Nemotron 3 Super 24,000 tokens, 25 items; adjudicators
-20 questions and their route ceiling. Moment questions for one meeting stay in one packet.
+20 questions and their route ceiling. Moment questions for one meeting stay in one packet when
+they fit. A meeting too large for the judge is split, not skipped (decided 2026-10-10 after the PR4
+dry run, where every meeting over 7 candidates lost its sibling and over 19 lost both judges): its
+two `choose` items stay together, since each lists every option in its own text, and each
+candidate's items stay together (`units_split` counts it).
 
 **Stage** `JudgeStage` (`citypods/stages.py`, an `LLMProducerStage`, name `judge`) in
 `LANE_STAGES["judge"]` only. Per episode and enabled task: build subjects and due evidence, choose
@@ -599,8 +603,9 @@ authority, measured by the audit and the reliability tripwires.
 1. Registry rules; both tasks register; `subject_id` stable across pre-labeler and display changes.
 2. Evidence caps per tier; None without chapter or transcript.
 3. Families: every active and eligible model has one; sibling and adjudicator choice per subject.
-4. Packing ceilings, no split or truncation, oversize skipped and counted, one packet per meeting
-   for moments.
+4. Packing ceilings, no item split or truncation, an item oversize alone skipped and counted; one
+   packet per meeting for moments when it fits, otherwise split by candidate with both choose
+   items together.
 5. Backends against fixtures: JEV `noul`/`score`/`choice`; chat contracts, including malformed and
    partial replies.
 6. Ledger append-only and dedup; no row on failure.

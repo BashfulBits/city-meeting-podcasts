@@ -219,7 +219,7 @@ def _item(subject_id, tokens, kind="validate"):
     )
 
 
-def test_packing_respects_ceilings_and_never_splits_a_unit():
+def test_packing_respects_ceilings_and_skips_only_an_item_too_large_alone():
     backend = ChatJudgeBackend(max_total_tokens=1000, max_items=3)
     units = [[_item("a", 400)], [_item("b", 400)], [_item("c", 400)], [_item("d", 5000)]]
     units.append([_item("e", 100), _item("f", 100), _item("g", 100)])
@@ -229,6 +229,60 @@ def test_packing_respects_ceilings_and_never_splits_a_unit():
     assert result.payload_too_large == 1
     again = pack(units, backend, purpose="judge:sibling", role="sibling", judge_model="m")
     assert [p.recipe_hash for p in again.packets] == [p.recipe_hash for p in result.packets]
+
+
+def _meeting_unit(candidates, tokens=100):
+    subjects = [Subject("moment", f"m{i}", "ep", None, None, {}) for i in range(candidates)]
+    unit = []
+    for subject in subjects:
+        for kind in ("validate", "gate", "grade"):
+            unit.append(
+                Item(
+                    QuestionSpec(kind, kind, "x"),
+                    "T0",
+                    make_evidence("T0", "w" * 4 * tokens),
+                    (subject,),
+                )
+            )
+    for order in ("", "_r"):
+        unit.append(
+            Item(
+                QuestionSpec("choose", "choose", "x"),
+                "T0",
+                make_evidence("T0", "w" * 4 * tokens),
+                tuple(subjects),
+                order=order,
+            )
+        )
+    return unit
+
+
+def test_an_oversize_meeting_is_split_by_candidate_not_skipped():
+    """review/53 PR4 dry run: a meeting with more than 7 candidates exceeded a 25-item sibling
+    packet and lost every judgment (481 units). It is now split: both choose items together, each
+    candidate's three items together, nothing skipped."""
+    backend = ChatJudgeBackend(max_total_tokens=10_000, max_items=7)
+    unit = _meeting_unit(4)  # 14 items > 7
+    result = pack([unit], backend, purpose="judge:sibling", role="sibling", judge_model="m")
+    assert result.payload_too_large == 0 and result.units_split == 1
+    packed = [item for packet in result.packets for item in packet.items]
+    assert sorted(map(id, packed)) == sorted(map(id, unit))
+    for packet in result.packets:
+        kinds = [item.question.kind for item in packet.items]
+        assert len(packet.items) <= 7
+        if "choose" in kinds:
+            assert kinds.count("choose") == 2
+    for subject_id in ("m0", "m1", "m2", "m3"):
+        homes = {
+            index
+            for index, packet in enumerate(result.packets)
+            for item in packet.items
+            if item.question.kind != "choose" and item.subjects[0].subject_id == subject_id
+        }
+        assert len(homes) == 1  # a candidate's items share one packet
+    # A meeting that fits is still one packet, unsplit.
+    whole = pack([_meeting_unit(1)], backend, purpose="p", role="sibling", judge_model="m")
+    assert len(whole.packets) == 1 and whole.units_split == 0
 
 
 # ---- backends ----------------------------------------------------------------------------------

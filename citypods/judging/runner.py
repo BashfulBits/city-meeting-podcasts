@@ -426,6 +426,8 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
         backend = _backend_for(role, model)
         result = pack(judge_units, backend, purpose=purpose, role=role, judge_model=model)
         stats.counts["payload_too_large"] += result.payload_too_large
+        if result.units_split:
+            stats.counts["units_split"] += result.units_split
         for packet in result.packets:
             if ctx.stop is not None and ctx.stop():
                 stats.counts["stopped"] += 1

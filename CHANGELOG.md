@@ -16,7 +16,10 @@ Once 1.0 ships, entries move under semver tags.
   every candidate episode, reading each transcript, before submitting anything; on the cold
   backlog the dry run overran the lane window. Planning now stops (recent first) once the run
   caps' worth of items is planned (packets left times the fullest packet) or the stop signal
-  fires; episodes it did not reach stay dirty and are never counted complete.
+  fires; episodes it did not reach stay dirty and are never counted complete. A dry run now spends
+  the run caps like a real pass. A moment meeting too large for one judge packet is split by
+  candidate (both `choose` items together) instead of skipped: the dry run skipped 481 such units,
+  every meeting over 7 candidates for the Gemma sibling and over 19 for JEV.
 - **Fix: `enrich --lane judge` rejected as an unknown lane (review/53 PR4 dry run).** `build()`
   kept a hand-written lane allowlist beside `LANE_STAGES` and missed `judge` (the same bug `tag`
   once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
