@@ -92,12 +92,16 @@ def _moment(quote, start, **extra):
 
 
 def _episode(uid="ep-1", published="2026-10-01", tags=None, llm=None, moments=None):
+    # The canonical tag ledger (llm_tag_candidates) holds rule and LLM candidates alike; ``tags``
+    # is the projected visible list derived from it and is never read by the judge.
+    rule = tags if tags is not None else [_rule_tag()]
+    llm = llm if llm is not None else [_llm_tag()]
     return SimpleNamespace(
         uid=uid,
         guid=uid,
         published=published,
-        tags=tags if tags is not None else [_rule_tag()],
-        llm_tag_candidates=llm if llm is not None else [_llm_tag()],
+        tags=rule,
+        llm_tag_candidates=[*rule, *llm],
         moment_pullquote_candidates=moments or [],
         chapters=[{"start": 0, "title": "Rezoning"}, {"start": 1200, "title": "Budget"}],
     )
@@ -202,8 +206,7 @@ def test_sibling_and_adjudicator_are_chosen_per_entry():
     assert adjudicator_for("deepseek/deepseek-v4-flash", None, adjudicator, FAMILIES) == (
         "zai/glm-5.3-flash"
     )
-    with pytest.raises(ValueError, match="no llm_families entry"):
-        family_of("unknown/model", FAMILIES)
+    assert family_of("unknown/model", FAMILIES) == "unknown"
 
 
 # ---- packing -----------------------------------------------------------------------------------
@@ -425,7 +428,7 @@ def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
     by_model = {(row["judge_role"], row["judge_model"]) for row in rows}
     assert ("sibling", "google/gemma-4-31b-it") in by_model  # the rule candidate
     # The Gemini-produced LLM tag is judged by the non-Google sibling.
-    [llm_subject] = [x for x in _subjects(ep) if x.payload is ep.llm_tag_candidates[0]]
+    [llm_subject] = [x for x in _subjects(ep) if x.payload.get("source_kind") == "llm"]
     llm_rows = ledger.judgments(llm_subject)
     assert {r["judge_model"] for r in llm_rows if r["judge_role"] == "sibling"} == {
         "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
@@ -617,7 +620,7 @@ def test_the_judge_stage_submits_shadow_packets_and_records_markers():
     purposes = sorted(job.inputs["llm_policy"].purpose for job in ctx.judge_backend.jobs)
     assert purposes == ["judge:anchor", "judge:sibling", "judge:sibling"]
     assert _all_pending(ep)
-    assert ep.tags[0]["display"] is True and ep.llm_tag_candidates[0]["display"] is False
+    assert ep.tags[0]["display"] is True and ep.llm_tag_candidates[-1]["display"] is False
 
 
 def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgments():
@@ -651,7 +654,12 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
     }
     record = {
         "published": "2026-10-01",
-        "tags": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+        "llm_tag_candidates": [
+            {"id": "a"},
+            {"id": "b"},
+            {"id": "c"},
+            {"id": "d", "candidate_state": "historical"},
+        ],
         "judging": judging,
     }
     report = summarize([record], now=datetime(2026, 10, 9, tzinfo=UTC))
@@ -698,7 +706,7 @@ def test_the_judge_stage_is_dirty_only_while_it_has_work():
     }
     assert not episode_needs_judging(ep, [task("tag")], **kwargs)
     # A new candidate on the same episode makes it dirty again.
-    ep.tags.append(_rule_tag(id="new-tag"))
+    ep.llm_tag_candidates.append(_rule_tag(id="new-tag"))
     assert episode_needs_judging(ep, [task("tag")], **kwargs)
 
 
@@ -716,7 +724,8 @@ def test_two_run_stages_passes_submit_then_keep_collecting(monkeypatch):
         video_url="https://example.test/v",
         uid="ep-1",
     )
-    ep.tags, ep.llm_tag_candidates = [_rule_tag()], [_llm_tag()]
+    ep.tags = [_rule_tag()]
+    ep.llm_tag_candidates = [*ep.tags, _llm_tag()]
     ep.chapters = [{"start": 0, "title": "Rezoning"}, {"start": 1200, "title": "Budget"}]
     ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
     disabled = _stage_ctx(enabled=False)
@@ -843,3 +852,31 @@ def test_run_caps_are_shared_across_sources_in_one_run():
     )
     assert first.counts["packets:anchor"] == 1 and second.counts["packets:anchor"] == 0
     assert second.counts["run_cap:judge:anchor"] == 1 and caps["judge:anchor"] == 0
+
+
+def test_stored_producer_identities_are_normalized_and_unknown_ones_fail_safe():
+    sibling = LANES["judge:sibling"]
+    # Tag LLM candidates record the backend-prefixed form (stages.py TagsStage).
+    prefixed = "litellm:" + GEMINI
+    assert family_of(prefixed, FAMILIES) == "google"
+    assert sibling_for(prefixed, sibling, FAMILIES) == (
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    )
+    # Route-specific aliases resolve to the logical key.
+    assert family_of("nvidia/deepseek-v4.1-flash", FAMILIES) == "deepseek"
+    # An unknown producer is never paired with a possibly same-family judge.
+    assert family_of("acme/new-model", FAMILIES) == "unknown"
+    assert sibling_for("acme/new-model", sibling, FAMILIES) is None
+    ep = _episode(tags=[], llm=[_llm_tag(provider_model="acme/new-model")])
+    result = runner.run([ep], _ctx(FakeDispatch()))
+    assert result.counts["unknown_producer_family"] == 1
+    assert result.counts["packets:anchor"] == 1 and result.counts["packets:sibling"] == 0
+
+
+def test_tag_subjects_come_from_the_ledger_once_and_skip_historical_rows():
+    rule = _rule_tag()
+    historical = _llm_tag(candidate_state="historical", id="old-tag")
+    ep = _episode(tags=[rule], llm=[historical])
+    ep.llm_tag_candidates.append(dict(rule))  # a duplicate row of the same subject
+    subjects = task("tag").subjects(ep)
+    assert [x.payload["id"] for x in subjects] == ["zoning-reform"]

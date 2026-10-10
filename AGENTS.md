@@ -210,8 +210,9 @@ coderabbit review --agent --type committed --base-commit "$root" --dir citypods 
 - **Free-tier rate limit:** the CLI free tier is a **rolling allowance** (~3 reviews/hour/dev, no
   queuing — you get a "limit reached" message, not a fixed cooldown), so 6 directory-scoped reviews
   back-to-back stall fast (a promotional credit can land mid-run and unblock some unpredictably).
-  Don't sleep a fixed hour — check remaining budget (`@coderabbitai reviews remaining?` on a PR, or
-  `cr stats`) and retry each blocked dir from a **backgrounded** shell that re-polls as slots age out
+  Don't sleep a fixed hour — check remaining budget (`coderabbit usage` prints `Remaining : N of 3`,
+  `Window : rolling 1 hour` and `Next available : in M minutes` for this repo; or
+  `@coderabbitai reviews remaining?` on a PR) and retry each blocked dir from a **backgrounded** shell that re-polls as slots age out
   of the rolling window (e.g. a short `sleep`-and-retry loop, minutes not an hour) rather than blocking
   synchronously. The root-commit and working-tree diff both resolve at execution time, so a `git pull`
   in between is picked up.

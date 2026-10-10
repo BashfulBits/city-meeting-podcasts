@@ -300,6 +300,13 @@ text below, all deliberate:
   episodes and the lanes' run caps (kept on `StageContext`, shared and locked) bind the whole run.
   The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
   preload and has its own window (`judge_run_time_budget_minutes`, default 90).
+- **Tag subjects come only from the canonical ledger** `Episode.llm_tag_candidates` (rule and LLM
+  rows; `Episode.tags` is the projection derived from it), skipping `historical` rows and
+  de-duplicated by subject id. **Producer identities are normalized** before the family lookup:
+  stored forms include the backend prefix (`litellm:gemini/...`) and route aliases. A producer with
+  no family is `unknown` and gets no sibling or adjudicator (judged by JEV only and counted as
+  `unknown_producer_family`), so it is never paired with a judge of possibly the same family.
+  (CodeRabbit CLI review, fourth pass, 2026-10-09.)
 - **Pending pointers instead of packet manifests.** A stage reads answers by recipe hash
   (`llm_deferred.look_up_deferred`), so each subject records, in its `pending` list, the recipe
   that will answer each of its questions. Packets can therefore span the city's episodes (JEV packs

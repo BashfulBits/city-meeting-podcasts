@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 CANDIDATE_LISTS = {
-    "tag": ("tags", "llm_tag_candidates"),
+    "tag": ("llm_tag_candidates",),
     "moment": ("moment_pullquote_candidates",),
 }
 FIRST_TIER = "T1"
@@ -52,9 +52,11 @@ def summarize(records: Iterable[Mapping[str, Any]], *, now: datetime | None = No
         recent = published is not None and now - published <= timedelta(days=BACKFILL_DAYS)
         if recent:
             recent_total += sum(
-                len(record.get(field) or [])
+                1
                 for fields in CANDIDATE_LISTS.values()
                 for field in fields
+                for candidate in record.get(field) or []
+                if isinstance(candidate, dict) and candidate.get("candidate_state") != "historical"
             )
         subjects = ((record.get("judging") or {}).get("subjects") or {}).values()
         for entry in subjects:
