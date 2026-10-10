@@ -17,6 +17,9 @@ source:
     - AllianceAirport Authority, Inc., Central City Local Development Corporation, and Fort Worth
       Local Development Corporation, and AllianceAirport Authority, Inc., Central City Local
       Development Corporation, and Fort Worth Local Development Corporation, and
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 109 days ago; local government corporation meets infrequently"
 podcast_title: 'Fort Worth: Central City Local Government Corporation'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

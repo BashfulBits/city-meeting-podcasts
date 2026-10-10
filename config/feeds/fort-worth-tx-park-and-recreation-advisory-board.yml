@@ -15,6 +15,9 @@ source:
     - Park Advisory Board Meeting of June 24, 2020 Park Advisory Board Meeting
       of June 24, 2020
     - Park Board Park Board
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 522 days ago; standing advisory board inactive in provider feed"
 podcast_title: 'Fort Worth: Tx Park and Recreation Advisory Board'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

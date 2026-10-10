@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Batch feed lifecycle dispositions for 50 inactive and historical feeds.** Marks 33 concluded
+  temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
+  standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
+  review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
+
 - **Provider catalog Slice 5 adaptive context calibration (#2209; PR #2218).** Adds offline-tested
   provider-count search, bounded weekly orchestration, authenticated 90-day histories and exact
   reviewed `/apply` input/output cap choices. Groq input and OpenRouter input/output chat parsers

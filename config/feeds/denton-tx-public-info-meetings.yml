@@ -80,6 +80,9 @@ source:
     - "*Open House*"
     - "*Neighborhood Workshop*"
     - "*Project Update*"
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 353 days ago; intermittent public informational meetings"
 podcast_title: "Denton: Public Info Meetings"
 podcast_author: "City of Denton, TX"
 podcast_email: ''

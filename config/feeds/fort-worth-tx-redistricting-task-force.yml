@@ -9,6 +9,9 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
   body: Redistricting Task Force
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1720 days ago; redistricting task force concluded mandate"
 podcast_title: 'Fort Worth: Redistricting Task Force'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

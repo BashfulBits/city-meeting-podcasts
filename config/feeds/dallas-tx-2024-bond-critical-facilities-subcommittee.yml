@@ -7,6 +7,9 @@ source:
     - 2024 Bond Task Force Critical Facilities Subcommittee Meeting
     - 2024 Bond Critical Facilities Subcommittee Meeting
     - 2024 Bond Critical Facilities Subcommittee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1076 days ago; 2024 bond subcommittee concluded mandate"
 podcast_title: 'Dallas: 2024 Bond Critical Facilities Subcommittee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

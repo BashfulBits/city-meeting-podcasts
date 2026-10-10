@@ -9,6 +9,9 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
   body: ARTS FUNDING TASK FORCE
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 4945 days ago; temporary arts funding task force concluded mandate"
 podcast_title: 'Fort Worth: Tx Arts Funding Task Force'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: 'Public Art Committee'
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1968 days ago; standing advisory committee inactive in provider feed"
 podcast_title: 'Denton: Public Art Committee'
 podcast_author: 'City of Denton, TX'
 podcast_email: ''
