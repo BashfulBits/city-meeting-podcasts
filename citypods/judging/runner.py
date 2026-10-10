@@ -431,6 +431,11 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                 stats.counts["stopped"] += 1
                 return _finish(ordered, ctx, stats)
             if ctx.dry_run:
+                # A rehearsal of one real pass: it spends the shared run caps (submitting nothing),
+                # so its counts and its bounded planning match what a scheduled run would send.
+                if not _take_run_slot(ctx, purpose):
+                    stats.counts[f"run_cap:{purpose}"] += 1
+                    break
                 stats.counts[f"dry_run_packets:{role}"] += 1
                 stats.counts["dry_run_items"] += len(packet.items)
                 stats.counts["dry_run_estimated_tokens"] += sum(

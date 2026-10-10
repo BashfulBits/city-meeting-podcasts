@@ -961,3 +961,15 @@ def test_the_item_budget_is_run_cap_packets_times_the_fullest_packet():
     sibling_items = max(runner._sibling_backend(m).max_items for m in ctx.sibling.models)
     assert budget == {"judge:anchor": 120, "judge:sibling": 3 * sibling_items}
     assert runner._item_budget(_ctx(FakeDispatch())) is None  # uncapped: no bound
+
+
+def test_a_dry_run_rehearses_one_capped_pass_and_submits_nothing():
+    """The first full dry run ignored the run caps, so every source planned and counted its whole
+    backlog. It now spends the shared caps like a real pass and still submits nothing."""
+    dispatch = FakeDispatch()
+    ctx = _ctx(dispatch, run_caps={"judge:anchor": 1, "judge:sibling": 1}, dry_run=True)
+    stats = runner.run([_episode(uid=f"ep-{i}") for i in range(3)], ctx)
+    assert not dispatch.submitted
+    assert stats.counts["dry_run_packets:anchor"] == 1
+    assert stats.counts["dry_run_packets:sibling"] == 1
+    assert ctx.run_caps == {"judge:anchor": 0, "judge:sibling": 0}
