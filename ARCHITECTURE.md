@@ -1660,7 +1660,7 @@ The body coverage report identifies its local state snapshot and warns that unsy
 state can omit retained history. Completeness stays unknown; selector counts are not publication
 counts or official proof. Retained exclusions and publication filters are separate projections.
 
-### Prepared decision memory foundation (review/51 P2c1)
+### Decision memory foundation (review/51 P2c1, shipped #2231)
 
 `citypods/remedy_ledger.py` validates immutable source-local decision events and reconstructs
 causal histories offline. It performs no IO and is not wired into scans or production storage.

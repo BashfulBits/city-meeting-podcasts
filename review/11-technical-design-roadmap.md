@@ -1697,10 +1697,19 @@ The final disclosure fix review gap is recorded in review/51. Daily alerts, pers
 dispositions and feed assignments remain unchanged. All six carried historical cases now have
 approved terminal dispositions; the register is 169 resolved, zero open.
 
-### review/51 P2c1 decision memory — L3, approved
+### review/51 P2c1 decision memory — Shipped (#2231)
 
 P2a/P2b and historical closeout are shipped. Next proposed slice is a strict immutable decision
 event and pure causal fold, specified in review/51. Explicit assigned/excluded/watch/not-pursued/
 rejected dispositions stay separate from workflow state. No storage writes, alert suppression,
-model calls or feed changes. The maintainer approved the schema and unchanged-watch suppression in chat; then
+model calls or feed changes. Implemented in #2231; exact schema and unchanged-watch semantics are approved. Next,
 follow with source-event persistence and report-only audit integration as separate slices.
+
+
+### review/51 P2c2a decision event persistence — L3
+
+Source-local memory validation shipped in #2231. Next proposed contract in review/51 adds
+immutable B2 event append under the existing remedy lease and strict source-scoped reconstruction.
+No storage adapter/routing changes, coordinator, workflow activation or scan suppression. The maintainer
+approved the exact append/strict-load interface in chat on 2026-10-09; implement this slice. Later trusted
+entrypoints and audit integration preserve pending-watch grouping and quiet unchanged scans.
