@@ -1702,6 +1702,71 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
     ]
 
 
+def test_global_queue_checkpoints_the_judge_lane_between_sources(monkeypatch):
+    """The judge lane's whole pass is the source-stage loop. That loop used to run before the
+    checkpoint helpers existed, so `mid_run_checkpoint` never fired and a cancelled run lost every
+    source's submitted-judge markers. It now checkpoints after a source once the interval passes."""
+
+    def _city(slug):
+        return City(
+            slug=slug,
+            provider="granicus",
+            source={"feed_url": f"https://{slug}.granicus.com/f"},
+            podcast_title=slug,
+            podcast_author="A",
+            podcast_email="",
+            podcast_description="",
+            extract_audio=True,
+        )
+
+    events: list[str] = []
+
+    class _JudgeStage:
+        name = "judge"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane="judge"
+            )
+            self.stages = [_JudgeStage()]
+
+        def fetch_merge(self, city, _key):
+            return object(), [_ep(f"{city.slug}-1")], {}, 0
+
+        fetch_merge_from_records = fetch_merge  # the judge lane is record-backed
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    clock = {"now": 0.0}
+
+    def _run_stages(_provider, city, _batch, stages, _ctx, *, quiet):
+        events.append(f"{stages[0].name}:{city.slug}")
+        clock["now"] += 181.0
+        return [StageStats(stages[0].name, ran=1)]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [_city("a"), _city("b")],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    first_checkpoint = events.index("checkpoint")
+    assert events[:first_checkpoint] == ["judge:a", "persist", "persist"]
+    assert "judge:b" in events[first_checkpoint:]
+
+
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
     tmp_path, monkeypatch
 ):
@@ -3027,6 +3092,49 @@ def test_tag_lane_is_accepted(tmp_path, fake_provider):
     results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="tag")
 
     assert [r.status for r in results] == ["built"]
+
+
+@pytest.mark.parametrize("lane", sorted(run.LANE_STAGES))
+def test_every_registered_lane_is_accepted(tmp_path, fake_provider, lane):
+    """review/53 PR4 dry run: `enrich --lane judge` died with "unknown lane 'judge'" because
+    _build_impl kept its own allowlist beside LANE_STAGES (the `tag` bug above, again). Every lane
+    LANE_STAGES registers must pass validation; the allowlist is now LANE_STAGES itself."""
+    cities = _setup(tmp_path)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane=lane, dry_run=True)
+
+
+def test_judge_lane_uses_merged_scoped_push_without_full_reconcile(
+    tmp_path, fake_provider, monkeypatch
+):
+    """`judge.yml` runs unsharded, like `tag.yml`. Unscoped, it would push its whole stale snapshot
+    over concurrent lanes' records and run the full-run reconcile sweep; it owns only the
+    `judging` block, so it must take the foreign-block-preserving merged push."""
+    cities = _setup(tmp_path)
+    captured = {}
+
+    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, lane=None, **_k):
+        captured["lane"] = lane
+        captured["protected"] = set(protected_blocks)
+        return len(set(source_keys))
+
+    def _reconcile(*_a, full_run=True, **_k):
+        captured["full_run"] = full_run
+        return 0
+
+    def _push(*_a, only_prefixes=None, only_paths=None, **_k):
+        # Scoped runs still push their own append-only run_events by path; never the whole tree.
+        assert only_prefixes is not None or only_paths is not None, "whole-snapshot push_state"
+        return 0
+
+    monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "reconcile_state", _reconcile)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
+
+    assert captured["lane"] == "judge"
+    assert captured["protected"] and "judging" not in captured["protected"]
+    assert captured["full_run"] is False
 
 
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------

@@ -1677,11 +1677,21 @@ class JudgeStage(LLMProducerStage):
         }
 
         def texts_for(ep: Episode) -> EpisodeTexts:
-            raw = (
-                _read_storage_bytes(ctx.storage, ep.transcript_key or "")
-                if ep.transcript_key
-                else None
-            )
+            try:
+                raw = (
+                    _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+                    if ep.transcript_key
+                    else None
+                )
+            except StorageReadUnavailable as exc:
+                # A transient B2/R2 outage after retries: skip this episode for the pass instead
+                # of aborting the lane (the first PR4 dry run died here on one transcript).
+                print(
+                    f"[judge] texts-unavailable uid={ep.uid or ep.guid} "
+                    f"key={ep.transcript_key!r} error={exc}",
+                    flush=True,
+                )
+                raise runner.TextsUnavailable(str(exc)) from exc
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             chapters = []
             served = [c for c in ep.chapters or [] if isinstance(c, dict)]
@@ -1737,7 +1747,10 @@ class JudgeStage(LLMProducerStage):
         for key, count in sorted(result.counts.items()):
             # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
             # quality/volume counters for the run log.
-            if key.startswith(("run_cap", "stopped")) or key == "still_pending":
+            if key.startswith(("run_cap", "stopped")) or key in {
+                "still_pending",
+                "texts_unavailable",
+            }:
                 stats.defer("llm-pending" if key == "still_pending" else f"judge-{key}", count)
             else:
                 stats.quality(f"judge-{key}", count)
