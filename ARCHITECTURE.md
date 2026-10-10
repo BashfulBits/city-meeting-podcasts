@@ -1659,3 +1659,12 @@ or save state, inspect audio sidecars, alter feed definitions, or reconcile GitH
 The body coverage report identifies its local state snapshot and warns that unsynchronized
 state can omit retained history. Completeness stays unknown; selector counts are not publication
 counts or official proof. Retained exclusions and publication filters are separate projections.
+
+### Prepared decision memory foundation (review/51 P2c1)
+
+`citypods/remedy_ledger.py` validates immutable source-local decision events and reconstructs
+causal histories offline. It performs no IO and is not wired into scans or production storage.
+Actor and approval references are provenance claims, not authentication. Contradictory branches
+remain blocked until an explicit reconciliation; retries retain provenance while folding once.
+Keep-watching outcomes remain pending. Later trusted persistence and audit integration will
+attach new related meetings and avoid asking again when related evidence is unchanged.
