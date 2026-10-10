@@ -524,6 +524,10 @@ routes:
     tpm: 250000
     hard_input_ceiling: 218875
     free: true
+    # Explicit evaluation requests only; production lane defaults are unchanged.
+    reasoning_controls:
+      high:
+        reasoning_effort: high
     observed_on: "2026-09-12"
     observed_burst: 0
     observed_input_ceiling: 218875
@@ -541,6 +545,10 @@ routes:
     tpm: 250000
     hard_input_ceiling: 218875
     free: true
+    # Explicit evaluation requests only; production lane defaults are unchanged.
+    reasoning_controls:
+      high:
+        reasoning_effort: high
     observed_on: "2026-09-12"
     observed_burst: 0
     observed_input_ceiling: 218875
@@ -558,6 +566,10 @@ routes:
     tpm: 250000
     hard_input_ceiling: 234437
     free: true
+    # Explicit evaluation requests only; production lane defaults are unchanged.
+    reasoning_controls:
+      high:
+        reasoning_effort: high
     observed_on: "2026-09-12"
     observed_burst: 7
     observed_input_ceiling: 234437
@@ -574,6 +586,10 @@ routes:
     tpm: 250000
     hard_input_ceiling: 234437
     free: true
+    # Explicit evaluation requests only; production lane defaults are unchanged.
+    reasoning_controls:
+      high:
+        reasoning_effort: high
     observed_on: "2026-09-12"
     observed_burst: 7
     observed_input_ceiling: 234437

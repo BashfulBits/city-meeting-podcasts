@@ -3437,3 +3437,22 @@ https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash-1.
 Tests prove compiler acceptance/rejection, compiled consistency and unchanged default behavior.
 Whole Ruff/format and full offline checks precede the prerequisite PR. No production admission,
 feed, audio, storage routing, Worker runtime or stage-version change is included.
+
+P1 completion preparation under #2247: compiler supports explicit high/max levels; Gemini
+3.7/3.8 direct-account high controls use reasoning_effort=high. Production lane reasoning maps
+are empty, so default payloads and route selection remain unchanged. NVIDIA max remains held:
+model-level support alone does not prove this endpoint's max-effort mapping.
+
+The maintainer independently approved the ten Denton holdout answers in chat on 2026-10-10.
+Frozen manifest, official agenda excerpts and reviewed truth are under
+`evals/remedy/holdout/p1-denton-2026-10-10/`; the shipped validator confirms split disjointness.
+These four recordings test standalone named-body identity and distinct TIRZ boards, including
+wrong Council-room and wrong-zone proposals. They prove no general automatic-merge safety.
+
+Verification: 284 targeted checks, 5,754 offline tests (16 deselected), whole Ruff/format 511 files.
+A dry-run planned 54 candidate regression jobs without holds. A bounded local live probe attempted
+one case for each Gemini configuration but both failed with NoSuchBucket before any provider call
+(provider_attempts=0). Read-only checks confirm B2 primary access and R2 coordination 404; inventory
+permission is denied. No quota bypass, new bucket, credential mutation or production admission.
+Local evidence is retained as /private/tmp/p1-capability-{dryrun,live}.json. Correct shared quota
+storage configuration is required before live evaluation; this prerequisite is not P1 completion.

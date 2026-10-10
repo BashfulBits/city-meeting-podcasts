@@ -239,7 +239,7 @@ _ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"}
 
 # Reasoning levels a lane may request (llm_lanes[...].reasoning); a route maps each level it
 # supports to provider-specific request parameters in `reasoning_controls`.
-_REASONING_LEVELS = frozenset({"off", "low"})
+_REASONING_LEVELS = frozenset({"off", "low", "high", "max"})
 
 
 def _validate_reasoning_controls(route: dict[str, Any]) -> None:

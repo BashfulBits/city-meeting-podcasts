@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared review/51 P1 capability prerequisite (#2247).** Allows explicit high/max compiler
+  levels and Gemini 3.7/3.8 high-effort controls without changing default requests or route choices.
+  Adds ten grounded, maintainer-reviewed Denton holdout cases. No model is admitted; local live
+  evaluation is held by unavailable shared R2 quota storage. No catalog/audio backfill.
+
 - **Prepared remembered-decision report (review/51 P2c3a).** Adds an explicit local comparison
   mode for saved histories and reviewed case projections. Unchanged watch cases recommend quiet;
   newly related recordings stay pending in the same case. Material proof changes, missing evidence,

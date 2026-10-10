@@ -696,7 +696,11 @@
         "maxItems"
       ],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "high": {
+          "reasoning_effort": "high"
+        }
+      }
     },
     "gemini_3_8_flash_secondary": {
       "route_id": "gemini_3_8_flash_secondary",
@@ -743,7 +747,11 @@
         "maxItems"
       ],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "high": {
+          "reasoning_effort": "high"
+        }
+      }
     },
     "gemini_3_7_flash_primary": {
       "route_id": "gemini_3_7_flash_primary",
@@ -790,7 +798,11 @@
         "maxItems"
       ],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "high": {
+          "reasoning_effort": "high"
+        }
+      }
     },
     "gemini_3_7_flash_secondary": {
       "route_id": "gemini_3_7_flash_secondary",
@@ -837,7 +849,11 @@
         "maxItems"
       ],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "high": {
+          "reasoning_effort": "high"
+        }
+      }
     },
     "gemini_3_6_flash_primary": {
       "route_id": "gemini_3_6_flash_primary",

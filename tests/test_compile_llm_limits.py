@@ -1095,3 +1095,21 @@ def test_a_systemone_route_is_worker_only_and_carries_its_shape():
     # A direct LiteLLM call would send a chat completion, so only the Worker may reach it.
     assert python_routes["jev"]["transports"] == []
     assert python_routes["chat"]["transports"] == ["direct"]
+
+
+def test_explicit_high_max_controls_preserve_default_request_parameters():
+    for level in ("high", "max"):
+        compile_llm_limits._validate_reasoning_controls(
+            {"route_id": "evaluation", "reasoning_controls": {level: {"reasoning_effort": level}}}
+        )
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    for route_id in (
+        "gemini_3_7_flash_primary",
+        "gemini_3_7_flash_secondary",
+        "gemini_3_8_flash_primary",
+        "gemini_3_8_flash_secondary",
+    ):
+        route = worker[route_id]
+        assert route["reasoning_controls"] == {"high": {"reasoning_effort": "high"}}
+        assert route["request_params"] is None
