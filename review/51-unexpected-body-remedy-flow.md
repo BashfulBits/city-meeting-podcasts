@@ -189,8 +189,10 @@ match a feed, a reviewer should be able to distinguish these outcomes:
    ordinary cancellations and unavailable recordings.
 2. **Keep watching.** Evidence shows a real public body or recurring meeting series, but the
    recordings in the catalog are not yet enough to justify a feed. Preserve the unmatched entries
-   and revisit this decision when another recording appears. This is not a feed assignment or a
-   claim that an unrecorded meeting has audio.
+   and attach newly related recordings to the same pending disposition. An unchanged weekly
+   scan does not re-ask for a decision. Renewed review requires new related meetings or material
+   evidence. This is not a feed assignment or a claim that an unrecorded meeting has audio.
+   These keep-watching semantics were approved on 2026-10-10; P2c integration implements them.
 3. **Add a rule to an existing feed.** Evidence identifies the meeting as the same body already
    served by a configured feed. Add a reusable, source-scoped title rule when possible and test
    positive examples plus similar titles that should remain out. Use a one-recording exception
@@ -3087,3 +3089,20 @@ an unchanged weekly scan must not request another decision. Only new related mee
 material related evidence warrants renewed review. Similarity must use reviewed identity rules,
 not a model guess, cross-source UID inference or count threshold. P2c3 implements that behavior;
 P2c1 records the pending outcome without suppressing any current scan.
+
+P2c1 implementation prepared under #2230: new pure ledger module and fake-fixture tests.
+No storage or scan entrypoint is connected. `evidence_hash` is the supplied replay evidence hash
+for assigned/covered declarations; validation cannot prove that the cited replay actually ran.
+The approved keep-watching semantics are a later integration acceptance requirement, not an
+assertion that weekly suppression is active in this foundation PR.
+
+P2c1 verification: 5,618 offline tests passed (16 deselected), then 38 final ledger checks
+passed including additional cycle/terminal tests; whole Ruff/format passed across 497 files.
+No current production behavior changed. Human merge remains required.
+
+CodeRabbit review on #2231 identified one valid approval-gate gap: excluded state with null
+disposition still requires approval_ref. The fix validates both state and disposition, preserves
+nullable resolved outcomes, and adds a regression test. No scan or feed entrypoint is enabled.
+
+Review-fix verification: 39 targeted tests and 5,623 offline tests passed (16 deselected);
+whole Ruff/format passed across 497 files.
