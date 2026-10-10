@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: 'Special Citizens Bond Advisory Committee'
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1187 days ago; temporary bond advisory committee concluded mandate"
 podcast_title: 'Denton: Special Citizens Bond Advisory Committee'
 podcast_author: 'City of Denton, TX'
 podcast_email: ''

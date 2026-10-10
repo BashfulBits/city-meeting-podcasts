@@ -9,6 +9,9 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
   body: Aviation Advisory Board
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1969 days ago; standing advisory board inactive in provider feed"
 podcast_title: 'Fort Worth: Tx Aviation Advisory Board'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

@@ -7,6 +7,9 @@ source:
     - 2024 Bond Task Force Economic Development
     - 2024 Capital Bond ECONOM Meeting
     - 2024 Bond ECONOM
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1145 days ago; 2024 bond subcommittee concluded mandate"
 podcast_title: 'Dallas: 2024 Bond Economic Development, Housing and Homeless Solutions Subcommittee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

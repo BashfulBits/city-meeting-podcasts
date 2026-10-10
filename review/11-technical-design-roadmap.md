@@ -1668,7 +1668,7 @@ Published search currently fails in HTTPS browsers because asset requests use HT
 search-page asset URLs and support existing same-host HTTP shard URLs without rebuilding the
 index. Bounded implementation contract: review/51, Search browser mixed-content correction.
 
-### review/51 P2a policy foundation — L3 (2026-10-09)
+### review/51 P2a policy foundation — Shipped, PR #2213 (2026-10-09)
 
 The maintainer approved the typed official-evidence packet and exact city/source template binding.
 Implement only the policy parser, immutable indexes, deterministic owner lookup and existing guard
@@ -1680,3 +1680,19 @@ production template list remains empty. Persistent excluded/watch dispositions, 
 model admission remain separate gated work.
 
 P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
+
+P2a merged in [#2213](https://github.com/BashfulBits/city-meeting-podcasts/pull/2213); no templates
+activated. The final minor parser fix has an explicitly recorded fresh-review gap. P2b complete
+coverage report is approved L3, report-only; the maintainer approved its schema and staged
+activation in chat on 2026-10-09.
+
+P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
+
+P2b issue #2216 is **Shipped in PR #2215**, as an opt-in complete body-coverage report. Retained and current
+source observations are replayed without editing assignments; configured matches and policy
+proof remain separate. No daily-alert activation or persistent disposition ledger is included.
+
+P2b code #2217 merged through parent #2215 to main at 01:10:34 UTC on 2026-10-10.
+The final disclosure fix review gap is recorded in review/51. Daily alerts, persistent
+dispositions and feed assignments remain unchanged. All six carried historical cases now have
+approved terminal dispositions; the register is 169 resolved, zero open.

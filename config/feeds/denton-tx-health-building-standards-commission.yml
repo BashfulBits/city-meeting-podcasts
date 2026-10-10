@@ -12,6 +12,9 @@ source:
       body: Health & Building Standards Commission on 2021-05-06 3:00 PM
     - provider_guid: '119886'
       body: Health & Building Standards Commission on 2021-04-22 3:00 PM
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1955 days ago; standing commission inactive in provider feed"
 podcast_title: 'Denton: Health & Building Standards Commission'
 podcast_author: City of Denton, TX
 podcast_email: ''

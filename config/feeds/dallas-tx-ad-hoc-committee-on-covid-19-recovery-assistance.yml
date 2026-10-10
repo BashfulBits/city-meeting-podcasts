@@ -6,6 +6,9 @@ source:
   body: Ad Hoc Committee on COVID-19 Recovery & Assistance
   body_any:
     - Ad Hoc Committee on COVID-19 Recovery and Assistance
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1626 days ago; pandemic ad-hoc committee concluded mandate"
 podcast_title: 'Dallas: Ad Hoc Committee on COVID-19 Recovery Assistance'
 podcast_author: City of Dallas, TX
 podcast_email: ''

@@ -11,6 +11,9 @@ source:
   body_exact:
     - 'T Board Meeting'
     - 'T Board of Directors'
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 4709 days ago; regional transit board recordings discontinued in municipal archive"
 podcast_title: 'Fort Worth: Trinity Metro Board'
 podcast_author: 'City of Fort Worth, TX'
 podcast_email: ''

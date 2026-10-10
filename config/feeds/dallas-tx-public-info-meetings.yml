@@ -72,6 +72,9 @@ source:
     - '*Project Update*'
     - 'Charter Review Commission: Community Meeting'
     - 'Charter Review Commission: Community Meeting'
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 471 days ago; intermittent public informational meetings"
 podcast_title: 'Dallas: Public Info Meetings'
 podcast_author: City of Dallas, TX
 podcast_email: ''

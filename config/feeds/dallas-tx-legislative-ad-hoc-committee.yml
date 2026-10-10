@@ -7,6 +7,9 @@ source:
   body_any:
     - Legislative Ad Hoc Committee
     - Legislative Ad HOC Committee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1530 days ago; legislative ad-hoc committee concluded mandate"
 podcast_title: 'Dallas: Legislative Ad Hoc Committee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

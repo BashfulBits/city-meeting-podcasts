@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: Gas Well Task Force
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 5101 days ago; gas well task force concluded mandate"
 podcast_title: 'Denton: Gas Well Task Force'
 podcast_author: City of Denton, TX
 podcast_email: ''

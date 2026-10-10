@@ -5,6 +5,9 @@ source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   body_exact:
   - Community and Neighborhood Development Committee
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 2300 days ago; council committee restructured"
 podcast_title: 'Arlington: Community and Neighborhood Development Committee'
 podcast_author: City of Arlington, TX
 podcast_email: ''

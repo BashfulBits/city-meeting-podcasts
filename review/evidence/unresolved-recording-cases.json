@@ -2045,17 +2045,17 @@
       "uid": "081d2695d7d0136a",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6334",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Recovered official PDF proves three consecutive proceedings, but exact UID-to-recording-segment binding remains unavailable.",
-      "next_action": "Carry exact UID-to-segment binding as an open evidence obligation after P0 baseline completion; retain the maintainer-approved current four participant feed assignments and all raw records/audio.",
-      "last_researched": "2026-10-09",
+      "missing_evidence": "Original combined-recording segment binding remains unavailable; accepted no-recording disposition, not proof-complete ownership.",
+      "next_action": "Reopen only if independently bound original media or contradictory evidence appears; do not attach the current budget-only video to this listing.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-city-council-worksession",
         "fort-worth-tx-community-development-committee",
         "fort-worth-tx-property-management-and-environmental-services-committee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: retained combined schedule listing without separately bound media. Separate budget and committee recordings exist; preserve all raw records and current four feed assignments. Exact original segment ownership is not proven. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "fort-worth-tx-0c66fc968402fabd-ownership",
@@ -2264,17 +2264,17 @@
       "uid": "ead427dae0bbb284",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6334",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Recovered official PDF proves three consecutive proceedings, but exact UID-to-recording-segment binding remains unavailable.",
-      "next_action": "Carry exact UID-to-segment binding as an open evidence obligation after P0 baseline completion; retain the maintainer-approved current four participant feed assignments and all raw records/audio.",
-      "last_researched": "2026-10-09",
+      "missing_evidence": "Original combined-recording segment binding remains unavailable; accepted no-recording disposition, not proof-complete ownership.",
+      "next_action": "Reopen only if independently bound original media or contradictory evidence appears; do not attach the current budget-only video to this listing.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-city-council-worksession",
         "fort-worth-tx-community-development-committee",
         "fort-worth-tx-property-management-and-environmental-services-committee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: retained combined schedule listing without separately bound media. Separate budget and committee recordings exist; preserve all raw records and current four feed assignments. Exact original segment ownership is not proven. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "fort-worth-tx-f28ae055829705ec-ownership",
@@ -2573,15 +2573,15 @@
       "provider_guid": "270975",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, “Streets and Transportation Meeting #6,” which matches the retained provider record date/title. The page’s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
-      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
-      "last_researched": "2026-10-09",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
         "dallas-tx-transportation-and-infrastructure"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "dallas-tx-2b172a76868ad86c-ownership",
@@ -2623,15 +2623,15 @@
       "provider_guid": "269407",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "The retained source record dates this episode August 10, 2023, but the official Dallas Streets and Transportation Subcommittee page currently lists August 15 as Meeting #5, not an August 10 meeting. No dated official August 10 agenda/minutes or exact official video link was located; the provider record alone is not independent proof.",
-      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
-      "last_researched": "2026-10-09",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
         "dallas-tx-transportation-and-infrastructure"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "dallas-tx-427b4f7de9ec3a32-ownership",
@@ -2657,15 +2657,15 @@
       "provider_guid": "277830",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 27 Streets meeting or bind provider GUID277830 / this UID to an official agenda or recording.",
-      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
-      "last_researched": "2026-10-09",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
         "dallas-tx-transportation-and-infrastructure"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "dallas-tx-ae8f0826293006f0-ownership",
@@ -2691,15 +2691,15 @@
       "provider_guid": "277827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 26 Streets meeting or bind provider GUID277827 / this UID to an official agenda or recording.",
-      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
-      "last_researched": "2026-10-09",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
         "dallas-tx-transportation-and-infrastructure"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
     },
     {
       "case_id": "dallas-tx-fe0b7e556c694307-ownership",

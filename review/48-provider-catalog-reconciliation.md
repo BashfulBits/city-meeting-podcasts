@@ -710,6 +710,49 @@ lane repair unchanged and is not a blocker for this remaining core sequence.
 
 #### Recovery-canary evidence follow-up — maintainer approved, 2026-10-09 (#2198)
 
+**Ordinary-run evidence checkpoint — 2026-10-09, tracking #2220 (partial acceptance).**
+No provider calls, synthetic jobs, storage scans, deployment or activation were performed for this
+inspection. The GitHub Actions run metadata and named payload-free telemetry artifacts were read.
+
+- Scheduled sweep [37927175388](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37927175388)
+  succeeded on `1b6f7b11048630ed6d92e4ba795b84a383cdeb69`; artifact `11615726319`
+  (`llm-submission-telemetry-37927175388`) contains two `audit_persisted` events at
+  2026-10-09 12:12:33–12:12:35 UTC. Both preserve failure count `0 → 0` and schema correction
+  `false → false`, terminal reason `unadmissible`. Correlated fingerprints are
+  `56167e9f17a4023d946787087f5615307e17bd71699ffd490044871554c0fcee` and
+  `f1713a86d2aa6bc2b23a5eb09a96c0ba9a41c0b9d107914817b758150e33e636`.
+- Scheduled locator [37954384745](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37954384745)
+  succeeded on `94049c15646de70aebaab4ddf4570d4c4e824124`, and
+  [37993571610](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37993571610)
+  succeeded on `5005879bd0626a3192b8f3890802df45a30bd2e8`. Their named
+  `llm-submission-telemetry-<run_id>` artifacts record four blocked submission decisions for each
+  correlated fingerprint in each run: `allowed=false`, `unchanged_or_unfitting_generation`.
+  Event windows are 15:51:22–15:52:03 and 21:30:48–21:31:11 UTC, respectively. Artifact
+  `11646442275` supplies the latter observations. Repeated checks are blocked decisions, not
+  evidence of repeated successful enqueue. A third fingerprint has blocked decisions but lacks
+  a correlated audit in this inspection; it is not counted as recovery-state preservation proof.
+- Both sweep snapshots and later ordinary producer/sweep snapshots show the same catalog digest
+  `93ea5092844785be2a06727b927cbde4b7652a5c52f51fd1dd2bd12ebbbe2efd`, `complete=true`,
+  and identical nonempty committed cursor. Latest sweep
+  [37995585913](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37995585913),
+  head `5005879bd0626a3192b8f3890802df45a30bd2e8`, artifact `11647393429`, records this at
+  21:48:34 and 22:05:48 UTC. It contains no recovery events; that absence is not guard proof.
+  Ordinary moments [38004086895](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38004086895)
+  reports the same completed checkpoint through 2026-10-10 00:09:15 UTC. Its start was before
+  the successful normal Worker deployment
+  [38004328681](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38004328681)
+  of `898147413ca26d4ce87265e691d5ee0de25960e9` at 23:25 UTC. This is continuity across a
+  deployment window, not proof of a particular DO instance recreation or injected outage.
+
+**Remaining gaps:** legacy sentinel/no-route index coverage is not established by these
+`unadmissible` events; nonzero retry counts or an already-used schema correction are not exercised;
+explicit outage/recreation continuity is not established. Current data proves two zero-state audits,
+subsequent blocked checks in two runs and a retained completed checkpoint. It does not satisfy the
+entire removal gate. #2220 remains open and removals remain disabled. Continue observing ordinary
+runs; missing cases must not be manufactured with synthetic production jobs or inferred from offline
+tests. Any change to the acceptance gate requires a recorded maintainer decision.
+
+
 The deployed coordinator run [37857444179](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37857444179)
 succeeded with Slice 3a on main. The ordinary Python sweep
 [37877209806](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37877209806)
