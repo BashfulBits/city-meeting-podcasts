@@ -43,6 +43,7 @@ class Response:
     first_event_error: bool = False
     timed_out: bool = False
     transport_error: str | None = None
+    context_diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
     def header(self, name: str) -> str | None:
         name = name.lower()
@@ -236,6 +237,7 @@ class ProviderRules:
     limit_observations: Callable[[Response], tuple[tuple[str, int, str], ...]] = lambda _r: ()
 
     context_observation: Callable = lambda response, request: unsupported_context(response, request)
+    context_rate_diagnostics: Callable = lambda _headers: {}
 
     @property
     def observation_only(self) -> bool:
@@ -268,54 +270,104 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
     """
     from citypods.provider_catalog.evidence import ContextObservation
 
-    def make(**values):
-        return ContextObservation.from_request(request, **values)
+    def make(*, diagnostic_code=None, **values):
+        diagnostic_fields = {
+            "diagnostic_code",
+            "http_status",
+            "http_error_class",
+            "provider_error_class",
+            "response_media_type",
+            "response_bytes",
+            "duration_ms",
+            "first_byte_ms",
+            "admitted_at_ms",
+            "request_started_at_ms",
+            "request_finished_at_ms",
+            "rate_limit_limit_tokens",
+            "rate_limit_remaining_tokens",
+            "rate_limit_reset_tokens_ms",
+            "rate_limit_limit_requests",
+            "rate_limit_remaining_requests",
+            "rate_limit_reset_requests_ms",
+            "retry_after_ms",
+        }
+        diagnostics = {
+            key: value
+            for key, value in response.context_diagnostics.items()
+            if key in diagnostic_fields
+        }
+        diagnostics.setdefault("http_status", response.status)
+        diagnostics.setdefault("http_error_class", _context_http_error_class(response.status))
+        diagnostics.setdefault("provider_error_class", "none")
+        diagnostics.setdefault("response_media_type", "unknown")
+        diagnostics.setdefault("response_bytes", None)
+        diagnostics.setdefault("duration_ms", None)
+        diagnostics.setdefault("first_byte_ms", None)
+        diagnostics.setdefault("admitted_at_ms", None)
+        diagnostics.setdefault("request_started_at_ms", None)
+        diagnostics.setdefault("request_finished_at_ms", None)
+        diagnostics.setdefault("rate_limit_limit_tokens", None)
+        diagnostics.setdefault("rate_limit_remaining_tokens", None)
+        diagnostics.setdefault("rate_limit_reset_tokens_ms", None)
+        diagnostics.setdefault("rate_limit_limit_requests", None)
+        diagnostics.setdefault("rate_limit_remaining_requests", None)
+        diagnostics.setdefault("rate_limit_reset_requests_ms", None)
+        diagnostics.setdefault("retry_after_ms", None)
+        diagnostics["diagnostic_code"] = (
+            diagnostic_code or diagnostics.get("diagnostic_code") or "unclassified_response"
+        )
+        return ContextObservation.from_request(request, **(diagnostics | values))
 
     if response.timed_out or response.transport_error:
-        return make(outcome="transport")
+        return make(
+            diagnostic_code=response.context_diagnostics.get("diagnostic_code", "transport_error"),
+            outcome="transport",
+        )
     if response.status == 429:
-        return make(outcome="quota")
+        return make(diagnostic_code="http_429_rate_limited", outcome="quota")
     if response.status != 200:
-        return make(outcome="inconclusive")
+        return make(diagnostic_code="http_non_success", outcome="inconclusive")
 
     try:
         data = strict_context_json(response.body)
     except (TypeError, ValueError):
-        return make()
+        return make(diagnostic_code="invalid_json")
     if not isinstance(data, dict) or data.get("object") != "chat.completion" or data.get("error"):
-        return make()
+        return make(diagnostic_code="unexpected_response_envelope")
     usage = data.get("usage")
     choices = data.get("choices")
-    if not isinstance(usage, dict) or not isinstance(choices, list) or len(choices) != 1:
-        return make()
+    if not isinstance(usage, dict):
+        return make(diagnostic_code="usage_missing_or_invalid")
+    if not isinstance(choices, list) or len(choices) != 1:
+        return make(diagnostic_code="completion_shape_invalid")
     counts = {key: usage.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
     if any(
         type(counts[k]) is not int or not 0 <= counts[k] <= 2**53 - 1
         for k in ("prompt_tokens", "completion_tokens")
     ):
-        return make()
+        return make(diagnostic_code="usage_counts_invalid")
     total = counts["total_tokens"]
     if total is not None and (
         type(total) is not int or total != counts["prompt_tokens"] + counts["completion_tokens"]
     ):
-        return make()
+        return make(diagnostic_code="usage_total_inconsistent")
     choice = choices[0]
     if not isinstance(choice, dict) or choice.get("error"):
-        return make()
+        return make(diagnostic_code="completion_shape_invalid")
     message = choice.get("message")
     if not isinstance(message, dict) or message.get("refusal") or message.get("tool_calls"):
-        return make(outcome="inconclusive")
+        return make(diagnostic_code="refusal_or_tool_call", outcome="inconclusive")
     content, finish = message.get("content"), choice.get("finish_reason")
     if not isinstance(content, str) or finish not in {"stop", "length"}:
-        return make(outcome="inconclusive")
+        return make(diagnostic_code="completion_content_or_finish_invalid", outcome="inconclusive")
     detail = usage.get("completion_tokens_details")
     if detail is not None and not isinstance(detail, dict):
-        return make()
+        return make(diagnostic_code="reasoning_details_invalid")
     reasoning = (detail or {}).get("reasoning_tokens")
     if reasoning is not None and (
         type(reasoning) is not int or not 0 <= reasoning <= counts["completion_tokens"]
     ):
-        return make()
+        return make(diagnostic_code="reasoning_count_invalid")
     values = dict(
         reported_input=counts["prompt_tokens"],
         reported_output=counts["completion_tokens"],
@@ -324,6 +376,7 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
         reasoning_basis=reasoning_basis,
         finish_reason=finish,
         outcome="inconclusive",
+        diagnostic_code="fixture_not_verified",
     )
     if request.dimension == "input":
         expected = dict(
@@ -342,7 +395,17 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             and counts["prompt_tokens"] > 0
             and finish == "stop"
         ):
-            values.update(evidence_kind="processed_input", outcome="verified")
+            values.update(
+                evidence_kind="processed_input",
+                outcome="verified",
+                diagnostic_code="verified_input_fixture",
+            )
+        elif finish != "stop":
+            values["diagnostic_code"] = "input_fixture_not_completed"
+        elif not counts["prompt_tokens"]:
+            values["diagnostic_code"] = "input_count_not_positive"
+        else:
+            values["diagnostic_code"] = "input_sentinel_mismatch"
     elif (
         reasoning_basis != "unknown"
         and counts["completion_tokens"] > 0
@@ -352,7 +415,9 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
         # Truncation may leave one partial number at the tail. Every complete element must
         # follow the fixture's exact sequence; refusal/early EOS/reasoning-only replies cannot pass.
         parts = content.splitlines()
-        if len(parts) >= 3:
+        if len(parts) < 3:
+            values["diagnostic_code"] = "output_fixture_not_reached"
+        else:
             complete = parts[:-1]
             tail = parts[-1]
             if (
@@ -360,8 +425,30 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
                 and tail
                 and (str(len(complete) + 1).startswith(tail))
             ):
-                values.update(evidence_kind="generated_output", outcome="verified")
+                values.update(
+                    evidence_kind="generated_output",
+                    outcome="verified",
+                    diagnostic_code="verified_output_fixture",
+                )
+            else:
+                values["diagnostic_code"] = "output_fixture_not_reached"
     return make(**values)
+
+
+def _context_http_error_class(status):
+    if status is None:
+        return "unknown"
+    if status == 429:
+        return "rate_limited"
+    if status in {401, 403}:
+        return "authentication"
+    if status == 400:
+        return "invalid_request"
+    if status >= 500:
+        return "server_error"
+    if status >= 400:
+        return "client_error"
+    return "none"
 
 
 def context_parser_support(rules, request):

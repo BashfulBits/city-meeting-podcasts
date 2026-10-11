@@ -2106,6 +2106,22 @@ malformed headers become null, never guesses. Groq's token limit header is TPM, 
 limit/reset headers refer to RPD; do not treat request headers as RPM. See the
 [Groq rate-limit contract](https://console.groq.com/docs/rate-limits).
 
+**Manual rerun diagnostics — 2026-10-11.** Extend the existing `ContextObservation` v1 additively so
+manual artifacts explain otherwise ambiguous results without changing their evidence meaning.
+Record a bounded `diagnostic_code`, HTTP status and finite HTTP/provider error classes, normalized
+response media type, capped response-byte count, admission/start/finish timestamps, total and
+first-byte duration, and the parsed Groq request and token limit/remaining/reset headers plus
+decimal `Retry-After`. Preserve no raw headers, body, provider error text, prompt or completion.
+Parser reason codes distinguish preflight/credential failure, transport timeout/error,
+oversize/invalid/incomplete SSE, HTTP failure, invalid JSON/envelope/usage/counts, refusal or tool
+call, missing completion, sentinel mismatch and verified fixture completion. A structured
+`context_size_candidate` diagnostic is informational only: it does not create a context rejection
+bound unless a separately reviewed typed parser does so. Old observations load with empty diagnostic
+defaults, and diagnostic fields do not change identity, search bounds, or authority. This prepares
+the next manual Groq attempt to distinguish an accepted completion from a response the current
+parser cannot interpret; it does not activate §8.12 settlement, runtime ceiling updates, or TPM
+topping-off behavior.
+
 HTTP 429 is `rate_limited`, even when its message contains a token limit or "request too large";
 without a documented subcode, the exhausted dimension is unknown. It cannot establish a context
 maximum, a one-minute-only bucket or a permanently reduced burst allowance. Current Groq/OpenRouter

@@ -10,13 +10,13 @@ import json
 import os
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import requests
 
 from citypods.compute.structured_shaping import shape_structured_request
-from citypods.provider_catalog.rules import ProviderRules, Response
+from citypods.provider_catalog.rules import ProviderRules, Response, strict_context_json
 
 # The Worker's own response ceiling (wrangler.jsonc MAX_RESPONSE_SECONDS): a canary is never
 # stricter than production. Live first bytes took up to 224 s (NVIDIA, 2026-09-24).
@@ -432,6 +432,58 @@ def build_context_request(
 _CONTEXT_BYTES = 4 * 1024 * 1024
 
 
+class ContextEnvelopeError(ValueError):
+    """A bounded, payload-free reason why a provider stream could not be normalized."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code.replace("_", " "))
+
+
+def _response_media_type(headers):
+    value = next((v for k, v in headers.items() if str(k).lower() == "content-type"), None)
+    if not isinstance(value, str) or len(value) > 256 or not value.isascii():
+        return "unknown"
+    media_type = value.split(";", 1)[0].strip().lower()
+    if media_type in {"application/json", "text/event-stream"}:
+        return media_type
+    return "other"
+
+
+def _provider_error_class(body):
+    """Reduce structured error type/code to a small enum; never persist provider error text."""
+    try:
+        data = strict_context_json(body)
+    except (TypeError, ValueError):
+        return "unknown"
+    error = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(error, dict):
+        return "unknown"
+    values = [
+        error[key].strip().lower()
+        for key in ("code", "type")
+        if isinstance(error.get(key), str) and len(error[key]) <= 64
+    ]
+    classes = {
+        "rate_limit_exceeded": "rate_limited",
+        "rate_limit_error": "rate_limited",
+        "rate_limited": "rate_limited",
+        "invalid_api_key": "authentication",
+        "authentication_error": "authentication",
+        "invalid_request_error": "invalid_request",
+        "context_length_exceeded": "context_size_candidate",
+        "maximum_context_length_exceeded": "context_size_candidate",
+        "insufficient_quota": "quota",
+        "quota_exceeded": "quota",
+        "server_error": "server_error",
+        "internal_server_error": "server_error",
+    }
+    recognized = [classes[value] for value in values if value in classes]
+    if not recognized or any(value != recognized[0] for value in recognized):
+        return "unknown"
+    return recognized[0]
+
+
 def _context_envelope(raw, content_type):
     """Normalize documented SSE final usage; malformed/truncated streams remain unsupported."""
     if "text/event-stream" not in content_type:
@@ -446,36 +498,37 @@ def _context_envelope(raw, content_type):
             done = True
             continue
         if done:
-            raise ValueError("SSE event after termination")
-        from citypods.provider_catalog.rules import strict_context_json
-
-        event = strict_context_json(value)
+            raise ContextEnvelopeError("invalid_sse_envelope")
+        try:
+            event = strict_context_json(value)
+        except (TypeError, ValueError) as exc:
+            raise ContextEnvelopeError("invalid_sse_json") from exc
         if not isinstance(event, dict) or event.get("error"):
-            raise ValueError("invalid context SSE envelope")
+            raise ContextEnvelopeError("invalid_sse_envelope")
         if event.get("usage") is not None:
             if usage is not None:
-                raise ValueError("conflicting context usage")
+                raise ContextEnvelopeError("conflicting_sse_usage")
             usage = event["usage"]
         choices = event.get("choices")
         if not isinstance(choices, list) or len(choices) > 1:
-            raise ValueError("invalid context SSE choices")
+            raise ContextEnvelopeError("invalid_sse_choice")
         if choices:
             choice = choices[0]
             if not isinstance(choice, dict) or choice.get("error") or choice.get("index", 0) != 0:
-                raise ValueError("invalid context SSE choice")
+                raise ContextEnvelopeError("invalid_sse_choice")
             delta = choice.get("delta")
             if not isinstance(delta, dict) or delta.get("tool_calls") or delta.get("refusal"):
-                raise ValueError("unsupported context SSE delta")
+                raise ContextEnvelopeError("invalid_sse_delta")
             if delta.get("content") is not None:
                 if not isinstance(delta["content"], str):
-                    raise ValueError("invalid context SSE content")
+                    raise ContextEnvelopeError("invalid_sse_content")
                 content.append(delta["content"])
             if choice.get("finish_reason") is not None:
                 if finish is not None and finish != choice["finish_reason"]:
-                    raise ValueError("conflicting context termination")
+                    raise ContextEnvelopeError("conflicting_sse_finish_reason")
                 finish = choice["finish_reason"]
     if not done or usage is None or finish is None:
-        raise ValueError("incomplete context stream")
+        raise ContextEnvelopeError("incomplete_sse")
     return json.dumps(
         {
             "object": "chat.completion",
@@ -487,8 +540,46 @@ def _context_envelope(raw, content_type):
 
 def _collect_context(session, request, headers, timeout, clock):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
+    from citypods.provider_catalog.registry import rules_for
+
     started = clock()
+    started_at_ms = time.time_ns() // 1_000_000
     response = None
+    raw_size = 0
+    first_byte_ms = None
+
+    def result(
+        status,
+        *,
+        body="",
+        timed_out=False,
+        transport_error=None,
+        code="unclassified_response",
+    ):
+        finished_at_ms = time.time_ns() // 1_000_000
+        response_headers = response.headers if response is not None else {}
+        diagnostics = {
+            "diagnostic_code": code,
+            "response_media_type": _response_media_type(response_headers),
+            "response_bytes": min(raw_size, _CONTEXT_BYTES),
+            "duration_ms": min(120_000, max(0, round((clock() - started) * 1000))),
+            "first_byte_ms": first_byte_ms,
+            "request_started_at_ms": started_at_ms,
+            "request_finished_at_ms": finished_at_ms,
+            **rules_for(request.provider).context_rate_diagnostics(response_headers),
+        }
+        if status is not None and status != 200:
+            diagnostics["provider_error_class"] = (
+                "rate_limited" if status == 429 else _provider_error_class(body)
+            )
+        return Response(
+            status,
+            body=body,
+            timed_out=timed_out,
+            transport_error=transport_error,
+            context_diagnostics=diagnostics,
+        )
+
     try:
         response = session.post(
             request.shaped_body["url"],
@@ -500,19 +591,63 @@ def _collect_context(session, request, headers, timeout, clock):
         )
         raw = bytearray()
         for chunk in response.iter_content(chunk_size=16384):
-            if clock() - started >= timeout or len(raw) + len(chunk) > _CONTEXT_BYTES:
-                return Response(None, timed_out=True)
+            if first_byte_ms is None:
+                first_byte_ms = min(120_000, max(0, round((clock() - started) * 1000)))
+            if clock() - started >= timeout:
+                raw_size = len(raw)
+                return result(response.status_code, timed_out=True, code="transport_timeout")
+            if len(raw) + len(chunk) > _CONTEXT_BYTES:
+                raw_size = len(raw) + len(chunk)
+                return result(
+                    response.status_code,
+                    timed_out=True,
+                    code="response_too_large",
+                )
             raw.extend(chunk)
+            raw_size = len(raw)
         if clock() - started >= timeout:
-            return Response(None, timed_out=True)
-        body = raw.decode("utf-8", errors="strict")
+            return result(response.status_code, timed_out=True, code="transport_timeout")
+        try:
+            body = raw.decode("utf-8", errors="strict")
+        except UnicodeError:
+            return result(response.status_code, transport_error="UnicodeError", code="invalid_utf8")
         if response.status_code == 200:
-            body = _context_envelope(body, response.headers.get("Content-Type", ""))
-        return Response(response.status_code, body=body)
+            try:
+                body = _context_envelope(body, response.headers.get("Content-Type", ""))
+            except ContextEnvelopeError as exc:
+                return result(response.status_code, code=exc.code)
+        return result(response.status_code, body=body, code="response_received")
     except requests.Timeout:
-        return Response(None, timed_out=True)
-    except (requests.RequestException, ValueError, UnicodeError) as exc:
-        return Response(None, transport_error=type(exc).__name__)
+        raw_size = len(raw) if "raw" in locals() else raw_size
+        return result(
+            response.status_code if response is not None else None,
+            timed_out=True,
+            code="transport_timeout",
+        )
+    except requests.ConnectionError as exc:
+        return result(
+            response.status_code if response is not None else None,
+            transport_error=type(exc).__name__,
+            code="transport_connection_error",
+        )
+    except requests.RequestException as exc:
+        return result(
+            response.status_code if response is not None else None,
+            transport_error=type(exc).__name__,
+            code="transport_request_error",
+        )
+    except UnicodeError:
+        return result(
+            response.status_code if response is not None else None,
+            transport_error="ResponseDecodeError",
+            code="invalid_utf8",
+        )
+    except ValueError as exc:
+        return result(
+            response.status_code if response is not None else None,
+            transport_error=type(exc).__name__,
+            code="transport_request_error",
+        )
     finally:
         if response is not None:
             response.close()
@@ -528,7 +663,13 @@ def _context_http_worker(pipe, request, session, timeout):
         config = {"accounts": [{"id": request.account_id, "api_key_env": pipe.recv()}]}
         key = account_key(config, request.account_id)
         if not key:
-            pipe.send("unavailable")
+            pipe.send(
+                Response(
+                    None,
+                    transport_error="provider credential unavailable",
+                    context_diagnostics={"diagnostic_code": "worker_credentials_unavailable"},
+                )
+            )
             return
         # A copied Requests session must not inherit transport retries from a custom adapter.
         for adapter in getattr(session, "adapters", {}).values():
@@ -541,7 +682,13 @@ def _context_http_worker(pipe, request, session, timeout):
         pipe.send(_collect_context(session, request, headers, timeout, time.monotonic))
     except (OSError, ValueError, KeyError, EOFError):
         try:
-            pipe.send(Response(None, transport_error="context preflight unavailable"))
+            pipe.send(
+                Response(
+                    None,
+                    transport_error="context preflight unavailable",
+                    context_diagnostics={"diagnostic_code": "worker_preflight_error"},
+                )
+            )
         except (OSError, EOFError):
             pass
     finally:
@@ -562,7 +709,12 @@ def measure_context(request, *, session, before_call, clock, timeout=120):
     ctx = multiprocessing.get_context("spawn")
     parent, child = ctx.Pipe()
     process = ctx.Process(target=_context_http_worker, args=(child, request, session, timeout))
-    observation = Response(None, timed_out=True)
+    observation = Response(
+        None,
+        timed_out=True,
+        context_diagnostics={"diagnostic_code": "worker_response_timeout"},
+    )
+    admitted_at_ms = None
     try:
         process.start()
         child.close()
@@ -570,19 +722,49 @@ def measure_context(request, *, session, before_call, clock, timeout=120):
         env_name = request.shaped_body.get("api_key_env")
         parent.send(env_name or "")
         remaining = timeout - (clock() - started)
-        if remaining > 0 and parent.poll(remaining) and parent.recv() == "ready":
-            admission = before_call()
-            if not isinstance(admission, ContextAdmission):
-                raise ValueError("context call lacks a new durable admission")
-            remaining = timeout - (clock() - started)
-            if remaining > 0:
-                parent.send("new")
-                if parent.poll(remaining):
-                    received = parent.recv()
-                    if isinstance(received, Response):
-                        observation = received
+        if remaining > 0 and parent.poll(remaining):
+            ready = parent.recv()
+            if isinstance(ready, Response):
+                observation = ready
+            elif ready == "ready":
+                admission = before_call()
+                if not isinstance(admission, ContextAdmission):
+                    raise ValueError("context call lacks a new durable admission")
+                admitted_at_ms = time.time_ns() // 1_000_000
+                remaining = timeout - (clock() - started)
+                received_response = False
+                if remaining > 0:
+                    parent.send("new")
+                    if parent.poll(remaining):
+                        received = parent.recv()
+                        if isinstance(received, Response):
+                            observation = replace(
+                                received,
+                                context_diagnostics=(
+                                    received.context_diagnostics
+                                    | {
+                                        "admitted_at_ms": admitted_at_ms,
+                                    }
+                                ),
+                            )
+                            received_response = True
+                if not received_response:
+                    observation = replace(
+                        observation,
+                        context_diagnostics={
+                            "diagnostic_code": "worker_response_timeout",
+                            "admitted_at_ms": admitted_at_ms,
+                        },
+                    )
     except (OSError, EOFError):
-        observation = Response(None, transport_error="context worker unavailable")
+        observation = Response(
+            None,
+            transport_error="context worker unavailable",
+            context_diagnostics={
+                "diagnostic_code": "worker_transport_error",
+                "admitted_at_ms": admitted_at_ms,
+            },
+        )
     finally:
         parent.close()
         child.close()
