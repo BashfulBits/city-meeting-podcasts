@@ -683,5 +683,6 @@ finite allowance. Explicit canary execution and acceptance precede output/broade
 
 Review/48 calibration extension: design automatic Worker request-ceiling refinement from
 authenticated provider-reported counts and typed experiment outcomes, independently of static TPM
-and model context limits. The L2 contract is in [review/48 §8.12](review/48-provider-catalog-reconciliation.md#812-experimental-request-ceilings-and-tpm-topping-off--l2-extension-2026-10-10);
-no runtime adjustment is implemented or activated until its bounded L3 contract and review.
+and model context limits. The L3 contract is in [review/48 §8.12](review/48-provider-catalog-reconciliation.md#812-experimental-request-ceilings-and-tpm-topping-off--l3-contract-2026-10-10);
+bounded implementation [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264)
+follows PR #2263 design merge; runtime update activation remains separate.

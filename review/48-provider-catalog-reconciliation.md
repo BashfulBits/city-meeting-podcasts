@@ -1941,7 +1941,7 @@ the original measurement error. Manual dispatch uploads diagnostic artifacts eve
 records contain only error stage/type, attempted routes, available observations and accounting.
 Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.
 
-### 8.12 Experimental request ceilings and TPM topping-off — L2 extension, 2026-10-10
+### 8.12 Experimental request ceilings and TPM topping-off — L3 contract, 2026-10-10
 
 The maintainer requested that calibration use experimental data to adjust the request sizes the
 Worker will admit, including routes whose provider accepts an individual request larger than its
@@ -1988,9 +1988,9 @@ configured TPM. Unknown outcomes move neither bound. Success above TPM proves on
 observed request size was accepted with that experiment's bucket state; it is not by itself an
 exact maximum or proof of sustained throughput.
 
-**Learn the safe request ceiling over time.** Calibration keeps a route- and physical-quota-scope-
-bound search interval: the highest request size verified successful using actual provider counts,
-and the lowest reliably classified context-size rejection, if one exists. Search/refinement follows
+**Learn the safe request ceiling over time.** Calibration keeps a search interval bound to the
+route and physical quota scope: the highest request size verified successful using actual provider counts,
+and the lowest reliably classified legal context ceiling, if one exists. Search/refinement follows
 §8.10's accepted 0.5% or 128-token stopping goal and existing weekly job budget; it adds no
 blanket safety margins at each stage. If no context rejection has been observed, later approved
 experiments may stretch the successful bound upward, subject to existing per-run and weekly
@@ -1999,7 +1999,7 @@ admission. After a verified context rejection, probe within the narrower bracket
 its effective request ceiling only to a provider-count-verified success; it lowers that ceiling
 only when an unambiguous context-size rejection establishes a tighter bound. Until then, retain the
 current configured ceiling/behavior. Expired, stale-catalog, mismatched physical-scope, partial or
-failed evidence cannot change runtime authority.
+failed-run evidence cannot raise runtime authority; §8.12.D defines conservative rejection guards.
 
 This is automatic adjustment of the Worker's runtime request ceiling from authenticated experiment
 evidence, not automatic editing of provider catalogs or provider quotas. Each result must link to
@@ -2021,8 +2021,9 @@ budgets and shared-scope gates; do not create synthetic Worker jobs or override 
 A successful above-TPM request supports a bounded burst-capability classification for that exact
 physical scope and observed size, not a blanket provider-family rule.
 
-**Activation and failure behavior.** Live calibration remains disabled until a separately reviewed
-activation specifies route/scope, dimensions, bounded experiments and rollback. Runtime ceilings
+**Activation and failure behavior.** This new ceiling-update authority remains disabled until a
+separately reviewed activation specifies route/scope, dimensions, bounded experiments and rollback.
+The already-approved input pilot remains available under its existing authority. Runtime ceilings
 may move only within the model context limit, existing compiled/transport maximum and provider's
 established shared bucket bound. No experiment changes TPM, context window, RPD/TPD, concurrency,
 paid policy, output enablement or route eligibility. Missing or conflicting evidence fails closed to
@@ -2031,10 +2032,322 @@ last reviewed static ceiling; it does not erase evidence, weekly charges or rate
 Telemetry must expose the active ceiling, evidence version/source, last observed actual count and
 rejection class without request content.
 
-**Maturity and follow-up.** This extension is L2. Before implementation, promote it to L3 with the
-exact settlement operation and bounded durable fields, evidence authentication/retention rules,
-endpoint-specific rate-limit and context-error parsers, search scheduling, Worker overlay
-precedence, rollback procedure and tests for stale/replayed results, rate-limit/context
-classification, actual-count corrections, above-TPM refill behavior, outage/recreation and shared
-provider concurrency. Update the §8.11 file/function plan and implementation issue then. This
-design amendment does not implement or activate runtime ceiling adjustment.
+#### 8.12.A Authority and delivery — L3 contract
+
+The maintainer authorized L3 maturation on PR #2263; implementation is tracked in
+[issue #2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
+Implementation follows design merge, in one
+prerequisite PR for durable receipt/publication primitives and one integration PR for parsers,
+search and runtime overlay. Both remain offline/disabled for production ceiling updates. Separate
+reviewed activation enables automatic updates for named input routes only; the existing input pilot
+and manual allowance are unaffected. Output and broader rotation keep #2222/#2223 gates.
+
+This contract deliberately replaces the earlier reviewed-choice-only rule for the **runtime input
+request ceiling** on activated routes. Static YAML cap changes continue through explicit `/apply`
+choices. A valid completed experiment can publish a higher verified input bound automatically,
+without two distinct weekly runs; two weeks remain required for static catalog offers. This is the
+requested automatic experimental adjustment, with no extra tokenizer margin. Existing producer and
+Worker token-ratio calibration remains authoritative for translating ordinary-job estimates.
+
+Implementation authority uses three server-owned constants, initially empty: `CONTEXT_SETTLE_ROUTE_IDS`,
+`CONTEXT_CEILING_UPDATE_ROUTE_IDS` and `CONTEXT_BURST_TEST_ROUTE_IDS`. Each is a subset of the existing
+approved input-probe routes with verified physical scope. No dispatch input or environment string
+can widen them. Settlement can be enabled before updates, allowing observation without a production
+ceiling change. A route's existing `CONTEXT_INPUT_CEILINGS` bounds every experiment and update; raising
+that experiment ceiling remains a reviewed activation change. No context probe bypasses TPM/RPM,
+TPD/RPD, provider pause/drain, session/call/token budgets or the shared five-window cap.
+
+**Publication trust boundary.** The existing Worker bearer credential authenticates the reconciler,
+not the provider. The Worker cannot independently prove a provider response or GitHub artifact.
+Consequently the trusted main-workflow reconciler must authenticate completed successful run/artifact
+provenance using `verified_context_history` before publication; the Worker independently verifies
+that the published values match a durable receipt from a real charged admission. No arbitrary artifact
+upload, CLI input or caller-supplied token count without such a receipt is authority. There is no new
+credential or Worker-side GitHub network fetch. Document this boundary in ARCHITECTURE and tests.
+
+#### 8.12.B Exact observations, parsers and time/count units
+
+Keep `ContextObservation` v1 and existing static-cap history compatible. Add
+`RequestCeilingObservation` v1 in `evidence.py`, paired with its existing context observation by
+`context_observation_digest`. Retain only paired records inside the existing bounded artifact schema;
+the publication verifier authenticates both record digests in the same successful artifact. Its fields are: `schema_version=1`, `pool` (`scheduled|manual`),
+`week_start`, `run_id`, `attempt_id`, `route_id`, `catalog_digest`, `quota_scope`, `identity_digest`,
+`request_digest`, `parser_version`, `context_observation_digest`, `outcome`, `http_status`,
+`reported_input`, `reported_output`, `reported_total`, `reported_cached_input`,
+`reported_context_ceiling`, `count_basis`, `rate_count_basis`,
+`provider_tpm`, `remaining_tokens`, `reset_tokens_ms`, `retry_after_ms`, `started_at_ms`,
+`finished_at_ms`, `admission_not_before_ms` and `refill_pair_attempt_id` (nullable).
+
+Counts are nullable nonnegative safe integers; a verified success requires positive input plus
+known output/total with input+output=total, input counting basis and verified sentinel/tail result
+from the existing parser. Never infer actual counts from the requested output, byte count, local
+estimate or arbitrary error-message numbers. A count above either admitted reservation records an
+`overshoot` outcome, stops the route and cannot publish a new ceiling; charges remain consumed.
+The existing fixture-estimate correction uses that count on a future attempt. Cached input is
+nullable and cannot exceed reported input; parse only exact `usage.prompt_tokens_details.cached_tokens`.
+`rate_count_basis` is `total_uncached` only when that field is exactly zero, otherwise `unknown`.
+Missing cached-token detail never implies a zero count. Context success may still be useful without
+a known rate-count basis. See [Groq prompt caching](https://console.groq.com/docs/prompt-caching). Output-only,
+combined-window-ambiguous and reasoning-ambiguous responses cannot supply this input authority.
+
+`outcome` is exactly `success|context_rejection|rate_limited|inconclusive|transport|overshoot`.
+Reject unknown/extra fields. Payload is at most 2 KiB in canonical JSON. Digests are 64 lowercase
+hex characters; route/run/attempt syntax uses existing validators. Scope and identity are server-
+checked against admission and the current raw catalog. UTC timings are safe integers; duration is
+0..120,000 ms and start cannot precede admission or finish follow settlement. Provider timing fields
+are evidence rather than a clock authority; scheduling uses the Worker's admission timestamp.
+
+Groq chat is the first settlement-supported parser (`groq-chat-ceiling-v1`). Preserve only parsed
+`x-ratelimit-limit-tokens`, `x-ratelimit-remaining-tokens`, `x-ratelimit-reset-tokens` and `retry-after`.
+Decimal token headers must be integers; reset durations accept the documented h/m/s sequence with
+fractional seconds, converted by ceiling to milliseconds; Retry-After accepts decimal seconds.
+Bound headers individually to 128 bytes, reset to 86,400,000 ms and retry to 3,600,000 ms. Missing or
+malformed headers become null, never guesses. Groq's token limit header is TPM, whereas its request
+limit/reset headers refer to RPD; do not treat request headers as RPM. See the
+[Groq rate-limit contract](https://console.groq.com/docs/rate-limits).
+
+HTTP 429 is `rate_limited`, even when its message contains a token limit or "request too large";
+without a documented subcode, the exhausted dimension is unknown. It cannot establish a context
+maximum, a one-minute-only bucket or a permanently reduced burst allowance. Current Groq/OpenRouter
+context parsers do not establish a trustworthy numeric context rejection. Initial production
+support therefore learns successful lower bounds, with `context_rejection` publication disabled.
+Gemini, BeatAPI JEV, OpenRouter quota settlement and other endpoints explicitly return unsupported
+for this new authority until a separately reviewed parser/scope contract is added. The protocol and
+pure reducer support a context-rejection capability for future parsers and fixture tests, but no
+production allowlist entry can enable it without the documented parser. Unknown 400/413 errors
+remain inconclusive. This removes any requirement to invent a size-error parser during implementation.
+
+#### 8.12.C Durable receipts, operations and outage bounds
+
+Add two tables to the existing coordinator readiness contract; no new DO namespace or index:
+
+- `context_ceiling_receipts`: `pool TEXT`, `week_start TEXT`, `attempt_id TEXT`, `run_id TEXT`,
+  `route_id TEXT`, `result_digest TEXT`, `result_json TEXT`, `settled_at INTEGER`,
+  `published_digest TEXT NULL`, `published_at INTEGER NULL`; primary key
+  `(pool, week_start, attempt_id) WITHOUT ROWID`.
+- `context_ceiling_state`: `route_id TEXT PRIMARY KEY`, `catalog_digest TEXT`, `quota_scope TEXT`,
+  `identity_digest TEXT`, `parser_version TEXT`, `version INTEGER`, `state_json TEXT`.
+  `state_json` is at most 8 KiB, retaining at most 16 observation/provenance references and bounds,
+  burst classification, last update and effective ceiling. References store only receipt key/digest, count and admission
+  time, not copied observations. At most 128 configured route rows.
+
+Receipts retain the same eight UTC weeks as admitted attempts: at most 24 scheduled plus 24 manual
+receipts per week (384 total). Prune receipt rows for the same one expired pool/week removed by
+session start, using exact clustered keys; at most 24 receipts per pruned pool/week. No new cleanup
+loop, global historical scan or secondary index. Live ordinary-job paths never prune or write them.
+Readiness uses additive table creation with existing migration/accounting conventions. Corrupt or
+oversized rows withhold the overlay and surface a diagnostic; do not silently recreate evidence.
+
+Extend `POST /v2/dispatch:reserve` with two operations, through `validateReserveRequest` and the
+existing authenticated index handler (no new endpoint):
+
+1. `context_settle`: `{operation, run_id, catalog_digest, pool, week_start, attempt_id, result}`.
+   Match the pool's active session, raw catalog and exact admitted receipt, including request digest,
+   route, dimension, token reservations and physical scope. Require input dimension, settle authority,
+   admission no older than 205 seconds and a live session. Settlement of a charged attempt at the
+   immediately previous UTC week boundary remains possible only through its original live session;
+   it never starts or charges a new week. Identical replay returns `already_settled`; changed content
+   returns `result_conflict`. Stage a bounded receipt only; success does not yet change dispatch.
+   For 429, conservatively retain all charged tokens and atomically extend the route's existing
+   `blocked_until` to max(current, now+max(60,000, parsed retry delay)); no refund, quota increase,
+   guessed bucket reset or ordinary-job failure-counter increment. Stop probing that scope this run.
+2. `context_publish`: `{operation, run_id, catalog_digest, entries}` with 1..16 entries. Each entry
+   supplies `{pool, week_start, attempt_id, result_digest, source_run_id, artifact_id,
+   artifact_sha256, head_sha, context_observation_digest}`. Caller authenticates the completed
+   successful source run's default-branch main ancestry, repository, exact workflow/event, artifact
+   identity/digest/size and paired observation through existing evidence code. Worker requires a
+   currently live publisher session in either pool, exact staged values, an unexpired receipt and
+   matching catalog/scope/parser authority. It never accepts an unstaged observation, unfinished
+   source run or result supplied solely in the publication body. The publisher may be a later run.
+   Canonically sort by server admission time then `(pool, week_start, attempt_id)`; deduplicate before
+   reduction. Atomically mark all newly published receipts and update each affected state once.
+   Replay is write-free; conflicting provenance is rejected before mutation. Entries may include
+   non-success diagnostics but only the permitted success/rejection classes move ceiling bounds.
+
+Expose nullable receipt/state summaries through existing context pause-status and route
+`calibrationStatus`; raw request/response content never appears. Typed Python methods are
+`settle_context` and `publish_context_results`. Neither retries an ambiguous mutation automatically:
+read exact receipt status after a lost response, accept its matching stored digest or defer. Lost
+settlement leaves a charged attempt with no usable proof; lost publication must never resubmit a
+provider request. Manual diagnostic artifacts remain uploaded even when settlement/status fails.
+
+All mutations use `_transactionSync`, `_contextRowBudget` and existing row accounting. Budget
+preflight covers receipt/state rows, route cooldown, expired receipt cleanup and scheduler accounting.
+No writes may survive a mutation/accounting-flush failure. Acceptance budgets: first settlement
+at most 3 billed writes including accounting (one additional route write for 429); publication
+of N new receipts touching R routes at most N+R+1 writes; replay zero. Settlement reads at most
+one attempt, one session, one receipt and one existing route ledger. Publication reads at most
+16 receipts, 16 state rows and two session rows plus fixed accounting, never historical jobs.
+Pruning reads/deletes at most 24 exact receipt rows in the selected pool/week. Measure real workerd
+billed units; if the measurements exceed these bounds, stop under AGENTS rather than ship an
+unreviewed larger cost. Existing weekly charges are never refunded, reset or transferred.
+
+#### 8.12.D Runtime reducer, identity and pacing precedence
+
+Use a pure JS reducer in a new `src/context-ceilings.js`, with matching Python planning reducer in
+`limits.py` and shared JSON fixture cases. Admission records, not caller timestamps, order results.
+Version increments once per publication with new authority. Replay cannot increase version. Late
+older evidence is retained as a diagnostic but cannot replace a newer bound. Keep the largest
+non-overshooting success `L`; for future supported rejections, keep the lowest explicit legal input
+ceiling `U`. A failure's attempted estimate never becomes `U`. Initial Groq state has no `U`.
+
+For a route with an existing static hard ceiling H, a success produces
+`max(H, min(L, reviewed_experiment_ceiling))`; a small experiment must never reduce an existing
+larger H. The ordinary request still fits the model window minus its output reservation. For a route without H, never turn a finite observed lower bound into a new restrictive
+maximum: preserve existing uncapped behavior until a typed rejection supplies U. With supported
+rejections, cap at U; if retained successes contradict U, freeze increases, mark uncertainty and
+apply min(previous effective ceiling,U) until fresh compatible evidence repairs the interval.
+No arbitrary extra margin or tolerance is added. Active learned ceilings have tolerance zero;
+existing tokenizer-ratio and input+reserved-output window checks remain intact.
+
+Keep `_dispatchLimits()` and `_contextCatalogDigest()` based on the unchanged compiled catalog.
+Add `_effectiveDispatchLimits(now)` that overlays **only** `hard_input_ceiling` and its tolerance on
+approved routes. Cache bounded state reads per request; ordinary claims load at most 128 state rows
+by route primary keys, in chunks within `MAX_SQL_BOUND_PARAMS`. Apply one consistent effective
+catalog in `_claimDispatchLimits`, coarse `routesEligibleFor`, capacity/pacing checks, producer
+calibration preflight and structural rescue compatibility. The rescue digest must include the
+ceiling evidence version so bounded queue-index rechecks can revisit jobs after a ceiling rises.
+Do not fabricate a removed-model rescue or terminal result from temporary rate state. Provider
+pause filtering still wraps the same effective catalog. No change to job hashes, policy, aliases,
+model context/output limits or estimator ratios. Existing ordinary-job `prompt_cap_estimate` is an
+independent constraint and remains binding; never clear it from a generic canary success.
+
+Require exact current catalog digest, physical quota scope, parser/identity and enabled update
+route. Runtime raising evidence expires 90 days after server admission; its overlay then returns
+to the reviewed static ceiling. Expiry does not delete charges/history or activate another route.
+In a future rejection-capable parser, a tightened guard must not expire upward silently: retain
+min(static ceiling, learned U) for the same physical identity until explicit reviewed reset or
+compatible newer publication. Catalog/scope changes invalidate raising authority; a conservative
+rejection guard cannot migrate to a different model/account. Changing such an identity requires the
+activation PR to state the old guard's disposition. Status exposes the expiry/reset requirement.
+
+Pacing stays reservation-based: wait until the full input-plus-output reservation is available,
+then debit it using existing route/provider logic; refill at the unchanged effective TPM before
+another call. Do not switch to "balance merely positive" admission, which could overspend another
+large request. No new five-window clamp on route buckets; existing shared-provider clamp remains.
+Native Gemini retains its trailing-minute rule; it is never relabeled bucketed by this implementation.
+Provider headers may extend cooldown but cannot mint local token credit or change refill slopes.
+
+**Producer parity.** Extend the existing `/v2/calibration` response with raw `catalog_digest`,
+physical scope, `ceiling_version`, effective ceiling, static ceiling and expiry, without changing
+input-ratio fields. `LiteLLMBackend.dispatch_v2_calibration` validates these optional fields;
+old Workers retain static behavior. Add a per-process bounded cache (at most 128 route/family
+entries), sharing existing ratio lookups; authenticate the response with the existing Worker client
+and require its raw catalog digest to match the local compiled dispatch catalog before using a
+ceiling. A failed/stale lookup uses static ceilings; enqueue/claim remains the final authority. Cache entries
+expire after 300 seconds or their authority expiry, whichever comes first; long-running producers
+must not retain a ceiling through rollback for an entire process lifetime.
+
+Add optional `dispatch_ceiling_overrides` to `select_route` and `select_and_reserve` in
+`llm_scheduler.py`. Choose the route's physical transport before its hard-ceiling check and apply
+the validated override only when that selected transport is `dispatch_v2`. Direct, v1 and batch
+transports keep their existing catalog caps. Wire `LiteLLMBackend` selection and structural recovery
+context through that mapping. `structural_recovery_context` accepts the validated dispatch overlay
+and includes ceiling version in its lineage fingerprint for v2 resubmission eligibility, while
+retaining stable recipe hashes and existing non-v2 routing. This is advisory route selection, not
+authority to bypass the Worker's current ceiling. No global mutation of `ROUTE_REGISTRY` or model
+capabilities. Cache invalidation does not retry an already-admitted job or change its recipe hash. Existing tag/prelabeler chunk sizing may remain smaller until its separate workflow
+changes; do not silently enlarge producer batches or their output/token budgets in this work.
+
+#### 8.12.E Search, burst classification and publication workflow
+
+Use the existing 50% stretch without a rejection, 10% refinement around a previously bounded
+maximum and 0.5%/128-token convergence rule. Preserve existing weekly/re-scan limits and uncertainty
+restart semantics. Read published state before planning; one workflow shares its input/output
+call budgets, with input first. Context-authority planning uses actual input counts, while burst
+classification requires a known rate-count basis. Groq counts cached tokens differently; cached-
+usage responses without an exact comparable rate count cannot prove above-TPM capability.
+
+A `burst_verified` classification requires two distinct published compatible successes in the same
+identity: both have non-cached actual total tokens strictly above the parsed provider TPM (not
+compiled discounted TPM), consistent positive TPM headers and no reservation overshoot. Second
+admission must occur after the first, with sufficient Worker-calculated refill and existing pacing
+checks; both are charged separately. A single success is `burst_observed`; missing headers/count
+basis is `unknown`. Rejection/429 cannot classify `one_minute_only`; that needs a future documented
+provider parser, not a guessed behavior from an ambiguous failure. Classification reports measured
+size and scope, not a provider-wide capacity. It does not raise bucket capacity or bypass the
+five-window gate; automatic hard-ceiling updates may use individually verified successes even
+before the informational two-call burst label is complete.
+
+Extend the existing workflow with `context_publish_only` boolean, default false and mutually
+exclusive with context-canary, due-only and discovery modes. This main-only dispatch authenticates
+completed evidence, opens a short session in the existing manual pool, publishes at most 16 staged
+observations and finishes without provider I/O, pause, token admission or allowance consumption.
+It preserves the writer concurrency lock. Once a canary run completes successfully, a publish-only
+run can apply its evidence immediately; no Monday/week-long wait or new provider calls are needed.
+Scheduled and regular manual entrypoints also publish authenticated prior completed evidence before
+measurement. Current-run observations are settled and uploaded, but cannot publish until their run
+has completed successfully. A successful workflow containing an inconclusive/429 observation still
+cannot turn that observation into success authority. Failed/partial artifacts cannot publish.
+
+Discovery reuses bounded eight-week/16-observation/90-day history. Publish only newly staged,
+authenticated results matching their receipts; sort identically to Worker reduction. During a
+measurement run, a settlement or publication ambiguity abandons further optional probes while
+preserving cleanup and artifacts. No automatic provider retries. The prior successful >TPM
+observation can supply the next refill-pair reference only if its receipt and scope still match.
+Existing route experiment ceilings may limit upward progress: report `activation_ceiling` and the
+next desired target rather than silently raising them. This contract activates no new experiment.
+
+#### 8.12.F File/function, verification and rollout plan
+
+Permitted implementation changes, supplementing §8.11's file plan:
+
+- `citypods/provider_catalog/evidence.py`: typed paired observations and successful completed-run
+  authentication, canonical digest, bounded discovery and publication selections; old v1 history
+  remains readable but cannot supply an unstaged runtime result.
+- `rules.py`, `providers/groq.py`, `probe.py`: allowlisted response headers/timing through the existing
+  cancellable child, Groq success/rate parser and explicit unsupported rejection capability. Keep
+  existing 120-second/4-MiB limits, URL validation, no redirects and no raw artifact content.
+- `limits.py`, `reconcile.py`: pure bracket/burst reduction, published-state planning, settle after
+  each admitted result and publish earlier authenticated results; same shared budget and pause gates.
+- `citypods/compute/llm_dispatch_pause.py`: typed settle/publish/status methods and bounded errors.
+- `citypods/compute/llm.py`, `llm_scheduler.py`, `llm_deferred.py`: validated read-only calibration
+  ceiling cache, optional dispatch-only selection override and versioned recovery fingerprint as
+  specified in §8.12.D. Direct/v1/batch and recipe hashes remain unchanged.
+- `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`:
+  publish-only mode, mutual exclusion, main/event guards and staged diagnostic artifact handling;
+  existing pinned actions, writer lock and permissions retained.
+- Worker `coordinator.js`, `protocol.js`, `index.js`, new `context-ceilings.js`: additive readiness,
+  strict two-operation validation, settlement/publication/status, pure reducer and effective catalog
+  integration at the named selection/preflight/rescue call sites. `pacing.js`, `routes.js` and
+  `calibration.js` may change only to consume the same effective-ceiling/tolerance metadata and
+  preserve pacing invariants; no new refill algorithm or estimate margin.
+- Python context/evidence/limits/reconcile/pause and compute LLM/scheduler/deferred tests;
+  Worker coordinator/protocol/index/schema-
+  readiness/pacing/calibration tests and new `test/context-ceilings.test.js`; shared fixture
+  `tests/fixtures/provider_catalog/context_ceiling_cases.json`; existing rows-written harness and
+  README. Cover both pool schemas without modifying the normal jobs ledger.
+- Lifecycle: review/48, review/11, ROADMAP, ARCHITECTURE and CHANGELOG in implementation PRs.
+
+Required offline acceptance: exact header parsing/invalid bounds; 429 with misleading context
+numbers; missing/cached/overshooting counts; old artifacts unsupported; wrong scope/digest/route;
+future/out-of-order/stale results; same/conflicting replay; successful artifact paired to wrong
+receipt; failed-run publication denial; two-call actual above-TPM/refill proof; TPM unchanged;
+no mutation from unknown/rejected evidence; static vs learned ceiling, tolerance, model/output and
+independent prompt-cap guards; v2-only producer overrides with direct/v1/batch unchanged;
+claim/producer/rescue consistency and effective-digest invalidation;
+90-day expiry, UTC boundary, shutdown/reset; manual/scheduled pool conservation; no calls in
+publish-only mode. Test effective runtime increases without editing compiled catalogs.
+
+Real local workerd must measure row bounds with 384 retained receipts plus 128 route states,
+inject failure at every settlement/publication/prune mutation and accounting flush, lose responses,
+replay, dispose/recreate and verify exact restored snapshots, charges, version and ceiling. Verify
+multi-route batch atomicity and no idle/background writes. Run focused Python and Worker suites,
+full offline Python/Worker acceptance, whole-repository Ruff, both compilers with unchanged outputs
+and diff checks. No live calls are implementation acceptance.
+
+Rollout: merge/deploy disabled prerequisite and integration through normal processes; inspect
+bounded status. A separate activation PR names the input route, scope, experiment ceiling and
+settlement/update authorities plus finite manual or existing scheduled budget. Run the separately
+approved canary, authenticate completed evidence and publish-only dispatch, then inspect producer
+preflight, request ceiling/version, refill admission and unchanged quota accounting. Rollback by
+normal reviewed deployment removes the update-route authority; this immediately restores the
+reviewed static ceiling while preserving receipts, charges and cooldowns. Settlement may remain
+observation-only. Input evidence, output activation, broader rotation and removal gates remain
+separate. Do not deploy, call providers or enable ordinary-job ceiling changes from this docs PR.
+
+Do not modify provider/compiled catalogs, credentials, dependencies, namespace/binding config,
+ordinary queue schema/indexes, job payload/hash policy, paid/free decisions, route RPM/RPD/TPM/TPD,
+concurrency or output activation. No new endpoint, synthetic production jobs or extra per-week
+calls. If code or real-workerd measurements disagree with this contract, use the AGENTS stop/ask
+gate before implementation scope changes.
