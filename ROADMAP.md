@@ -681,9 +681,10 @@ with separately bounded durable manual budgets; contract review precedes impleme
 Review/48 manual trigger implementation is prepared under #2221 with the approved separate
 finite allowance. Explicit canary execution and acceptance precede output/broader activation.
 
-The next Groq manual probe is staged to 16,384 input tokens to test beyond the current 6,986-token
-success; scheduled probing remains at 8,192 and ordinary jobs at 7,125. The activation PR and
-maintainer-approved run are pending.
+The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
+reservation. It yielded no provider counts or completion reason, so it does not verify that request
+size. A payload-free diagnostics follow-up is being prepared before rerunning the same target;
+scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or dimension is enabled.
 
 Review/48 calibration extension: design automatic Worker request-ceiling refinement from
 authenticated provider-reported counts and typed experiment outcomes, independently of static TPM

@@ -111,6 +111,77 @@ def test_chat_success_uses_actual_counts_and_leaves_no_payload_in_observation():
     serialized = json.dumps(asdict(observed))
     assert "messages" not in serialized and "sentinel=" not in serialized
     assert req.messages[0]["content"] not in serialized
+    assert observed.diagnostic_code == "verified_input_fixture"
+
+
+def test_older_context_observations_load_with_diagnostic_defaults():
+    values = asdict(ContextObservation.from_request(request()))
+    for name in (
+        "diagnostic_code",
+        "http_status",
+        "http_error_class",
+        "provider_error_class",
+        "response_media_type",
+        "response_bytes",
+        "duration_ms",
+        "first_byte_ms",
+        "admitted_at_ms",
+        "request_started_at_ms",
+        "request_finished_at_ms",
+        "rate_limit_limit_tokens",
+        "rate_limit_remaining_tokens",
+        "rate_limit_reset_tokens_ms",
+        "rate_limit_limit_requests",
+        "rate_limit_remaining_requests",
+        "rate_limit_reset_requests_ms",
+        "retry_after_ms",
+    ):
+        values.pop(name)
+    loaded = ContextObservation(**values)
+    assert loaded.diagnostic_code == "not_recorded"
+    assert loaded.http_status is None and loaded.retry_after_ms is None
+
+
+def test_inconclusive_chat_response_records_safe_reason_and_rate_headers():
+    req = request()
+    observed = rules_for("groq").context_observation(
+        Response(
+            200,
+            body=json.dumps({"object": "chat.completion", "choices": [{}]}),
+            context_diagnostics={
+                "diagnostic_code": "response_received",
+                "response_media_type": "application/json",
+                "response_bytes": 47,
+                "duration_ms": 321,
+                "first_byte_ms": 104,
+                "admitted_at_ms": 1_791_679_200_000,
+                "request_started_at_ms": 1_791_679_200_005,
+                "request_finished_at_ms": 1_791_679_200_326,
+                "rate_limit_limit_tokens": 8000,
+                "rate_limit_remaining_tokens": 731,
+                "rate_limit_reset_tokens_ms": 12000,
+                "rate_limit_limit_requests": 14400,
+                "rate_limit_remaining_requests": 14398,
+                "rate_limit_reset_requests_ms": 30000,
+                "retry_after_ms": None,
+            },
+        ),
+        req,
+    )
+    assert observed.outcome == "unsupported"
+    assert observed.diagnostic_code == "usage_missing_or_invalid"
+    assert observed.http_status == 200
+    assert observed.http_error_class == "none"
+    assert observed.response_media_type == "application/json"
+    assert observed.response_bytes == 47 and observed.duration_ms == 321
+    assert observed.first_byte_ms == 104
+    assert observed.rate_limit_limit_tokens == 8000
+    assert observed.rate_limit_remaining_tokens == 731
+    assert observed.rate_limit_reset_tokens_ms == 12000
+    assert observed.rate_limit_limit_requests == 14400
+    assert observed.rate_limit_remaining_requests == 14398
+    assert observed.rate_limit_reset_requests_ms == 30000
+    assert "choices" not in json.dumps(asdict(observed))
 
 
 @pytest.mark.parametrize("count", [True, -1, 0.5, "900", 2**53, None])
@@ -122,10 +193,20 @@ def test_chat_rejects_non_integer_and_unsafe_counts(count):
 
 
 @pytest.mark.parametrize(
-    "mutation",
-    ["total", "native", "jev", "refusal", "tail", "finish", "reasoning", "multiple", "tool"],
+    ("mutation", "diagnostic"),
+    [
+        ("total", "usage_total_inconsistent"),
+        ("native", "unexpected_response_envelope"),
+        ("jev", "unexpected_response_envelope"),
+        ("refusal", "refusal_or_tool_call"),
+        ("tail", "input_sentinel_mismatch"),
+        ("finish", "completion_content_or_finish_invalid"),
+        ("reasoning", "reasoning_count_invalid"),
+        ("multiple", "completion_shape_invalid"),
+        ("tool", "refusal_or_tool_call"),
+    ],
 )
-def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation):
+def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation, diagnostic):
     req = request()
     value = envelope(req)
     if mutation == "total":
@@ -146,7 +227,9 @@ def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation):
         value["choices"] *= 2
     if mutation == "tool":
         value["choices"][0]["message"]["tool_calls"] = [{"name": "anything"}]
-    assert parse(req, value).outcome != "verified"
+    observed = parse(req, value)
+    assert observed.outcome != "verified"
+    assert observed.diagnostic_code == diagnostic
 
 
 def test_unknown_reasoning_permits_input_but_not_output_and_eos_is_inconclusive():
@@ -162,6 +245,19 @@ def test_unknown_reasoning_permits_input_but_not_output_and_eos_is_inconclusive(
     assert parse(req, value).outcome == "inconclusive"
 
 
+def test_short_output_fixture_reports_that_sequence_never_reached_probe_boundary():
+    from citypods.provider_catalog.rules import chat_context_observation
+
+    req = request(dimension="output", target=100)
+    observed = chat_context_observation(
+        Response(200, body=json.dumps(envelope(req, content="1\n2", finish="length"))),
+        req,
+        reasoning_basis="included",
+    )
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic_code == "output_fixture_not_reached"
+
+
 def test_quota_and_undocumented_error_numbers_never_establish_rejection():
     req = request()
     for code in [400, 413, 429]:
@@ -170,6 +266,23 @@ def test_quota_and_undocumented_error_numbers_never_establish_rejection():
         )
         assert observed.reported_ceiling is None
         assert observed.outcome == ("quota" if code == 429 else "inconclusive")
+        assert observed.http_status == code
+        assert observed.reported_ceiling is None
+    rate_limited = rules_for("groq").context_observation(
+        Response(
+            429,
+            body='{"error":{"type":"rate_limit_exceeded","message":"private detail"}}',
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "retry_after_ms": 1200,
+            },
+        ),
+        req,
+    )
+    assert rate_limited.diagnostic_code == "http_429_rate_limited"
+    assert rate_limited.provider_error_class == "rate_limited"
+    assert rate_limited.retry_after_ms == 1200
+    assert "private detail" not in json.dumps(asdict(rate_limited))
 
 
 def test_identity_survives_cap_and_rate_edits_but_not_gateway_or_opposite_changes():
@@ -302,9 +415,19 @@ def test_fixture_construction_cannot_allocate_above_the_reviewed_call_budget():
 
 
 class ContextFakeResponse:
-    def __init__(self, body, counter=None, *, delay=0, oversized=False):
-        self.status_code = 200
-        self.headers = {"Content-Type": "application/json"}
+    def __init__(self, body, counter=None, *, delay=0, oversized=False, status=200):
+        self.status_code = status
+        self.headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "x-ratelimit-limit-requests": "14400",
+            "x-ratelimit-remaining-requests": "14398",
+            "x-ratelimit-reset-requests": "30s",
+            "x-ratelimit-limit-tokens": "8000",
+            "x-ratelimit-remaining-tokens": "731",
+            "x-ratelimit-reset-tokens": "1.25s",
+            "Retry-After": "0.5",
+            "Authorization": "secret-must-never-be-recorded",
+        }
         self.body, self.counter, self.delay, self.oversized = body, counter, delay, oversized
         self.closed = False
 
@@ -344,6 +467,19 @@ def test_collector_enforces_bytes_closes_response_and_rejects_truncated_sse():
         ContextFakeSession(response, SimpleNamespace(value=0)), req, {}, 120, time.monotonic
     )
     assert observed.timed_out and response.closed
+    assert observed.context_diagnostics["diagnostic_code"] == "response_too_large"
+    assert observed.context_diagnostics["response_media_type"] == "application/json"
+    assert observed.context_diagnostics["response_bytes"] == 4 * 1024 * 1024
+    assert observed.context_diagnostics["rate_limit_limit_requests"] == 14400
+    assert observed.context_diagnostics["rate_limit_remaining_requests"] == 14398
+    assert observed.context_diagnostics["rate_limit_reset_requests_ms"] == 30000
+    assert observed.context_diagnostics["rate_limit_limit_tokens"] == 8000
+    assert observed.context_diagnostics["rate_limit_remaining_tokens"] == 731
+    assert observed.context_diagnostics["rate_limit_reset_tokens_ms"] == 1250
+    assert observed.context_diagnostics["retry_after_ms"] == 500
+    assert "secret-must-never-be-recorded" not in json.dumps(
+        asdict(rules_for("groq").context_observation(observed, req))
+    )
     with pytest.raises(ValueError, match="incomplete"):
         _context_envelope('data: {"choices":[]}\n\n', "text/event-stream")
     frames = [
@@ -361,6 +497,69 @@ def test_collector_enforces_bytes_closes_response_and_rejects_truncated_sse():
             raw.replace("data: [DONE]", f"data: {json.dumps(frames[1])}\n\ndata: [DONE]"),
             "text/event-stream",
         )
+
+
+def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():
+    from citypods.provider_catalog.evidence import parse_documented_token_rate_headers
+
+    parsed = parse_documented_token_rate_headers(
+        {
+            "x-ratelimit-limit-tokens": "9007199254740992",
+            "x-ratelimit-remaining-tokens": "17",
+            "x-ratelimit-reset-tokens": "1e999999",
+            "x-ratelimit-limit-requests": "6",
+            "x-ratelimit-remaining-requests": "4",
+            "x-ratelimit-reset-requests": "2m",
+            "Retry-After": "1e999999",
+        }
+    )
+    assert parsed == {
+        "rate_limit_limit_requests": 6,
+        "rate_limit_remaining_requests": 4,
+        "rate_limit_reset_requests_ms": 120_000,
+        "rate_limit_limit_tokens": None,
+        "rate_limit_remaining_tokens": 17,
+        "rate_limit_reset_tokens_ms": None,
+        "retry_after_ms": None,
+    }
+    other_provider = rules_for("openrouter").context_rate_diagnostics(
+        {
+            "x-ratelimit-limit-tokens": "8000",
+            "x-ratelimit-remaining-tokens": "17",
+            "x-ratelimit-reset-tokens": "1.25s",
+            "Retry-After": "0.5",
+        }
+    )
+    assert other_provider == {}
+
+
+def test_collector_keeps_only_typed_http_error_diagnostics():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    req = request()
+    body = json.dumps(
+        {
+            "error": {
+                "type": "context_length_exceeded",
+                "message": "private provider text with a claimed token ceiling 123456",
+            }
+        }
+    )
+    response = ContextFakeResponse(body, status=413)
+    raw = _collect_context(
+        ContextFakeSession(response, SimpleNamespace(value=0)), req, {}, 120, time.monotonic
+    )
+    observed = rules_for("groq").context_observation(raw, req)
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic_code == "http_non_success"
+    assert observed.http_status == 413 and observed.http_error_class == "client_error"
+    assert observed.provider_error_class == "context_size_candidate"
+    assert observed.reported_ceiling is None
+    encoded = json.dumps(asdict(observed))
+    assert "private provider text" not in encoded and "123456" not in encoded
 
 
 @pytest.mark.parametrize("mode", ["success", "timeout", "denied"])
@@ -410,7 +609,48 @@ def test_subprocess_requires_admission_and_cancels_slow_stream(monkeypatch, mode
         )
         assert calls.value == 1
         assert observed.outcome == ("verified" if mode == "success" else "transport")
+        if mode == "success":
+            assert observed.http_status == 200
+            assert observed.admitted_at_ms is not None
+            assert observed.request_started_at_ms >= observed.admitted_at_ms
+            assert observed.request_finished_at_ms >= observed.request_started_at_ms
+            assert observed.first_byte_ms is not None
+            assert "secret-must-never-be-recorded" not in json.dumps(asdict(observed))
     assert time.monotonic() - started < 1.5
+
+
+def test_missing_provider_credential_is_distinguished_before_charging_admission(monkeypatch):
+    import multiprocessing
+    import time
+
+    import citypods.security
+    from citypods.provider_catalog.probe import measure_context
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("offline inherited fake transport requires fork")
+    ctx = multiprocessing.get_context("fork")
+    monkeypatch.setattr(multiprocessing, "get_context", lambda _name: ctx)
+    monkeypatch.setattr(citypods.security, "validate_source_url", lambda _url: None)
+    monkeypatch.delenv("CONTEXT_OFFLINE_MISSING_KEY", raising=False)
+    req = request()
+    req = replace(
+        req, shaped_body={**req.shaped_body, "api_key_env": "CONTEXT_OFFLINE_MISSING_KEY"}
+    )
+    calls = ctx.Value("i", 0)
+
+    def no_admission():
+        pytest.fail("missing credential must be detected before durable admission")
+
+    observed = measure_context(
+        req,
+        session=ContextFakeSession(ContextFakeResponse(""), calls),
+        before_call=no_admission,
+        clock=time.monotonic,
+        timeout=3,
+    )
+    assert calls.value == 0
+    assert observed.outcome == "transport"
+    assert observed.diagnostic_code == "worker_credentials_unavailable"
 
 
 def context_artifact_fixture():
@@ -1383,7 +1623,13 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
 
     @contextmanager
     def pause(_provider):
-        yield SimpleNamespace(contended=False)
+        yield SimpleNamespace(
+            contended=False,
+            drained=True,
+            in_flight_at_start=0,
+            waited_seconds=0.25,
+            pause_expired=False,
+        )
 
     monkeypatch.setattr(control, "paused", pause)
     monkeypatch.setattr(script, "_control", lambda _flag: control)
@@ -1447,6 +1693,16 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
     payload = json.loads(target.read_text())["payload"]
     assert payload["kind"] == "manual_context" and payload["authority"]["max_requests"] == 2
     assert payload["authority"]["per_call_input"] == 16384
+    assert payload["pause_evidence"] == [
+        {
+            "provider": "groq",
+            "drained": True,
+            "in_flight_at_start": 0,
+            "waited_ms": 250,
+            "pause_expired": False,
+            "contended": False,
+        }
+    ]
 
     assert payload["run_status"] == ("failed" if fault else "success")
     assert payload["attempted_routes"] == ["r"]

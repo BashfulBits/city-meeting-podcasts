@@ -1771,8 +1771,11 @@ See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger
 Manual-trigger implementation is prepared under #2221 following the approved L3 contract;
 explicit manual execution, input evidence acceptance, output authority and broader rotation remain gated.
 The focused Groq manual probe follow-up keeps scheduled/manual authority separate: manual input may
-reach 16,384, scheduled input remains 8,192 and ordinary jobs remain at 7,125. No live call or
-deployment occurs in the PR.
+reach 16,384, scheduled input remains 8,192 and ordinary jobs remain at 7,125. The 2026-10-11
+manual attempt allowed up to six calls but stopped after one 10,467-token input reservation. It
+returned no parsed provider counts or completion reason, so it supplies no size evidence. A
+payload-free diagnostics follow-up precedes a repeat at the same target. This does not widen
+route/dimension authority or enable runtime updates.
 
 Review/48 calibration extension: maintainer requested automatic adjustment of the Worker's effective
 per-request ceiling from authenticated provider-count experiments, including measured requests above

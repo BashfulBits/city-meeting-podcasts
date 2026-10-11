@@ -11,6 +11,7 @@ import zipfile
 import zlib
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from typing import Any
 
 
@@ -18,6 +19,67 @@ def digest(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()
+
+
+def parse_documented_token_rate_headers(headers):
+    """Parse bounded Groq request/token rate headers; missing or malformed values stay null."""
+
+    def integer(name):
+        value = next((v for k, v in headers.items() if str(k).lower() == name), None)
+        if (
+            not isinstance(value, str)
+            or len(value) > 128
+            or not value.isascii()
+            or not re.fullmatch(r"[0-9]+", value.strip())
+        ):
+            return None
+        parsed = int(value.strip())
+        return parsed if parsed <= 2**53 - 1 else None
+
+    def duration(name):
+        raw = next((v for k, v in headers.items() if str(k).lower() == name), None)
+        if not isinstance(raw, str) or len(raw) > 128 or not raw.isascii():
+            return None
+        match = re.fullmatch(
+            r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?"
+            r"(?:(\d+(?:\.\d+)?)s)?",
+            raw.strip(),
+        )
+        if not match or not any(match.groups()):
+            return None
+        try:
+            hours, minutes, seconds = (Decimal(value or "0") for value in match.groups())
+            millis = ((hours * 3600 + minutes * 60 + seconds) * 1000).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+            return int(millis) if 0 <= millis <= 86_400_000 else None
+        except (InvalidOperation, OverflowError):
+            return None
+
+    retry = next((v for k, v in headers.items() if str(k).lower() == "retry-after"), None)
+    retry_ms = None
+    if (
+        isinstance(retry, str)
+        and len(retry) <= 128
+        and retry.isascii()
+        and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", retry.strip())
+    ):
+        try:
+            millis = (Decimal(retry.strip()) * 1000).to_integral_value(rounding=ROUND_CEILING)
+            if 0 <= millis <= 3_600_000:
+                retry_ms = int(millis)
+        except (InvalidOperation, OverflowError):
+            pass
+
+    return {
+        "rate_limit_limit_requests": integer("x-ratelimit-limit-requests"),
+        "rate_limit_remaining_requests": integer("x-ratelimit-remaining-requests"),
+        "rate_limit_reset_requests_ms": duration("x-ratelimit-reset-requests"),
+        "rate_limit_limit_tokens": integer("x-ratelimit-limit-tokens"),
+        "rate_limit_remaining_tokens": integer("x-ratelimit-remaining-tokens"),
+        "rate_limit_reset_tokens_ms": duration("x-ratelimit-reset-tokens"),
+        "retry_after_ms": retry_ms,
+    }
 
 
 @dataclass(frozen=True)
@@ -499,6 +561,24 @@ class ContextObservation:
     head_sha: str = ""
     attempt_id: str = ""
     parser_version: str = "chat-usage-v1"
+    diagnostic_code: str = "not_recorded"
+    http_status: int | None = None
+    http_error_class: str = "unknown"
+    provider_error_class: str = "none"
+    response_media_type: str = "unknown"
+    response_bytes: int | None = None
+    duration_ms: int | None = None
+    first_byte_ms: int | None = None
+    admitted_at_ms: int | None = None
+    request_started_at_ms: int | None = None
+    request_finished_at_ms: int | None = None
+    rate_limit_limit_tokens: int | None = None
+    rate_limit_remaining_tokens: int | None = None
+    rate_limit_reset_tokens_ms: int | None = None
+    rate_limit_limit_requests: int | None = None
+    rate_limit_remaining_requests: int | None = None
+    rate_limit_reset_requests_ms: int | None = None
+    retry_after_ms: int | None = None
 
     def __post_init__(self):
         if type(self.schema_version) is not int or self.schema_version != 1:
@@ -552,6 +632,106 @@ class ContextObservation:
             not self.reported_ceiling or self.count_basis == "unknown"
         ):
             raise ValueError("rejection requires a documented ceiling basis")
+        if self.diagnostic_code not in {
+            "not_recorded",
+            "unclassified_response",
+            "response_received",
+            "transport_error",
+            "transport_timeout",
+            "transport_connection_error",
+            "transport_request_error",
+            "worker_response_timeout",
+            "worker_transport_error",
+            "worker_credentials_unavailable",
+            "worker_preflight_error",
+            "response_too_large",
+            "invalid_utf8",
+            "invalid_sse_json",
+            "invalid_sse_envelope",
+            "conflicting_sse_usage",
+            "invalid_sse_choice",
+            "invalid_sse_delta",
+            "invalid_sse_content",
+            "conflicting_sse_finish_reason",
+            "incomplete_sse",
+            "http_429_rate_limited",
+            "http_non_success",
+            "invalid_json",
+            "unexpected_response_envelope",
+            "usage_missing_or_invalid",
+            "completion_shape_invalid",
+            "usage_counts_invalid",
+            "usage_total_inconsistent",
+            "refusal_or_tool_call",
+            "completion_content_or_finish_invalid",
+            "reasoning_details_invalid",
+            "reasoning_count_invalid",
+            "fixture_not_verified",
+            "input_fixture_not_completed",
+            "input_count_not_positive",
+            "input_sentinel_mismatch",
+            "verified_input_fixture",
+            "output_fixture_not_reached",
+            "verified_output_fixture",
+            "unsupported_endpoint",
+        }:
+            raise ValueError("unknown context diagnostic code")
+        if self.http_error_class not in {
+            "none",
+            "rate_limited",
+            "authentication",
+            "invalid_request",
+            "client_error",
+            "server_error",
+            "unknown",
+        }:
+            raise ValueError("unknown context HTTP error class")
+        if self.provider_error_class not in {
+            "none",
+            "rate_limited",
+            "authentication",
+            "invalid_request",
+            "context_size_candidate",
+            "quota",
+            "server_error",
+            "unknown",
+        }:
+            raise ValueError("unknown context provider error class")
+        if self.response_media_type not in {
+            "unknown",
+            "application/json",
+            "text/event-stream",
+            "other",
+        }:
+            raise ValueError("unknown context response media type")
+        if self.http_status is not None and (
+            type(self.http_status) is not int or not 100 <= self.http_status <= 599
+        ):
+            raise ValueError("invalid context HTTP status")
+        bounded = {
+            "response_bytes": 4 * 1024 * 1024,
+            "duration_ms": 120_000,
+            "first_byte_ms": 120_000,
+            "rate_limit_reset_tokens_ms": 86_400_000,
+            "rate_limit_reset_requests_ms": 86_400_000,
+            "retry_after_ms": 3_600_000,
+        }
+        for name, maximum in bounded.items():
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or not 0 <= value <= maximum):
+                raise ValueError(f"invalid context diagnostic {name}")
+        for name in (
+            "admitted_at_ms",
+            "request_started_at_ms",
+            "request_finished_at_ms",
+            "rate_limit_limit_tokens",
+            "rate_limit_remaining_tokens",
+            "rate_limit_limit_requests",
+            "rate_limit_remaining_requests",
+        ):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or not 0 <= value <= 2**53 - 1):
+                raise ValueError(f"invalid context diagnostic {name}")
         for name in ("identity_digest", "gateway_digest"):
             if not isinstance(getattr(self, name), str) or not re.fullmatch(
                 r"[a-f0-9]{64}", getattr(self, name)
@@ -585,6 +765,7 @@ class ContextObservation:
                 finish_reason="",
                 evidence_kind="parameter_only",
                 outcome="unsupported",
+                diagnostic_code="unsupported_endpoint",
             )
             if not values
             else cls(**{**asdict(cls.from_request(request)), **values})
@@ -664,10 +845,37 @@ def context_artifact(
     catalog_digest,
     attempted_routes=(),
     states=(),
+    pause_evidence=(),
 ):
     """Typed payload-free weekly evidence; summaries never renew the age of original proof."""
     if now.tzinfo is None or len(observations) > 24 or len(limits.get("routes", [])) > 128:
         raise ValueError("context artifact exceeds reviewed bounds")
+    if len(pause_evidence) > 128:
+        raise ValueError("context artifact has too many pause diagnostics")
+    for item in pause_evidence:
+        if (
+            not isinstance(item, dict)
+            or set(item)
+            != {
+                "provider",
+                "drained",
+                "in_flight_at_start",
+                "waited_ms",
+                "pause_expired",
+                "contended",
+            }
+            or not isinstance(item["provider"], str)
+            or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", item["provider"])
+            or type(item["drained"]) is not bool
+            or type(item["in_flight_at_start"]) is not int
+            or not 0 <= item["in_flight_at_start"] <= 2**53 - 1
+            or type(item["waited_ms"]) is not int
+            or not 0 <= item["waited_ms"] <= 600_000
+            or type(item["pause_expired"]) is not bool
+            or type(item["contended"]) is not bool
+            or item["contended"] != (not item["drained"] or item["pause_expired"])
+        ):
+            raise ValueError("invalid context pause diagnostics")
     payload = {
         "version": 1,
         "repository": repository,
@@ -680,6 +888,7 @@ def context_artifact(
         "observations": [asdict(o) for o in observations],
         "attempted_routes": sorted(set(attempted_routes)),
         "summaries": [asdict(state) for state in states],
+        "pause_evidence": list(pause_evidence),
     }
     envelope = {"payload": payload, "payload_digest": digest(payload)}
     if len(json.dumps(envelope).encode()) > CONTEXT_ARTIFACT_MAX_BYTES:

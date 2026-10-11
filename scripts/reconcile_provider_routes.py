@@ -307,6 +307,7 @@ def manual_context_canary(args, limits, control):
     before = None
     failure = None
     errors = []
+    pause_evidence = []
     try:
         before = control.client.context_status(Selection("global")).get("manual_session")
         for provider in dict.fromkeys(route["provider"] for route in selected):
@@ -316,20 +317,34 @@ def manual_context_canary(args, limits, control):
                 max_requests_total=args.context_calls,
                 max_requests_per_route=args.context_calls,
             )
-            with control.paused(provider) as pause, requests.Session() as session:
-                _measure_context_routes(
-                    report,
-                    context,
-                    [route for route in selected if route["provider"] == provider],
-                    cfg,
-                    rules,
-                    runner,
-                    pause,
-                    control,
-                    session,
-                    sleep=time.sleep,
-                    cooldown=rules.canary_interval_seconds,
-                )
+            pause = None
+            try:
+                with control.paused(provider) as pause, requests.Session() as session:
+                    _measure_context_routes(
+                        report,
+                        context,
+                        [route for route in selected if route["provider"] == provider],
+                        cfg,
+                        rules,
+                        runner,
+                        pause,
+                        control,
+                        session,
+                        sleep=time.sleep,
+                        cooldown=rules.canary_interval_seconds,
+                    )
+            finally:
+                if pause is not None:
+                    pause_evidence.append(
+                        {
+                            "provider": provider,
+                            "drained": pause.drained,
+                            "in_flight_at_start": pause.in_flight_at_start,
+                            "waited_ms": round(pause.waited_seconds * 1000),
+                            "pause_expired": pause.pause_expired,
+                            "contended": pause.contended,
+                        }
+                    )
     except Exception as exc:
         failure = exc
         errors.append({"stage": "measurement", "type": type(exc).__name__})
@@ -356,6 +371,7 @@ def manual_context_canary(args, limits, control):
             catalog_digest=status["catalog_digest"],
             attempted_routes=report.context_attempted_routes,
             states=report.context_states,
+            pause_evidence=pause_evidence,
         )
         artifact["payload"].update(
             {
@@ -377,6 +393,26 @@ def manual_context_canary(args, limits, control):
         raise failure
     for observation in report.observations:
         print(observation)
+    for observation in report.context_observations:
+        print(
+            "context diagnostic: "
+            f"route={observation.route_id} dimension={observation.dimension} "
+            f"outcome={observation.outcome} reason={observation.diagnostic_code} "
+            f"http={observation.http_status} http_class={observation.http_error_class} "
+            f"provider_class={observation.provider_error_class} "
+            f"reserved_input={observation.reserved_input} "
+            f"actual_input={observation.reported_input} "
+            f"actual_output={observation.reported_output} "
+            f"duration_ms={observation.duration_ms} "
+            f"first_byte_ms={observation.first_byte_ms} "
+            f"rate_limit_requests={observation.rate_limit_limit_requests} "
+            f"rate_remaining_requests={observation.rate_limit_remaining_requests} "
+            f"rate_reset_requests_ms={observation.rate_limit_reset_requests_ms} "
+            f"rate_limit={observation.rate_limit_limit_tokens} "
+            f"rate_remaining={observation.rate_limit_remaining_tokens} "
+            f"rate_reset_ms={observation.rate_limit_reset_tokens_ms} "
+            f"retry_after_ms={observation.retry_after_ms}"
+        )
     return 0
 
 

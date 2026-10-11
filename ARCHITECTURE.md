@@ -238,6 +238,15 @@ legacy candidate proofs without a method are rechecked. An invalid resolved meth
 showing the lane's remaining pooled routes. The pause also holds through a final provider interval
 before resuming dispatch, protecting shared account capacity spent by unregistered candidates. The
 evidence-report command uses the same planner.
+
+Context-probe artifacts retain parsed provider token counts and bounded diagnostics: a finite
+parser reason code, HTTP/provider error classes, admission/request timing, total and first-byte
+duration, response media type/size, pause/drain state, and allowlisted Groq request/token-rate and
+retry headers. They never retain provider bodies, prompt/completion content, credentials, arbitrary
+headers or raw provider error text. Diagnostic outcomes do not alter context bounds or dispatch
+authority; they explain why an attempt could not establish verified evidence. Groq request counters
+are its daily request budget (RPD); token counters are per-minute (TPM).
+
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
 actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing

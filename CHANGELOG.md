@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider context canary diagnostics.** Context evidence now records a bounded reason code,
+  HTTP/provider error classes, admission/request/first-byte timing, response media type and byte
+  count, pause/drain state, and parsed Groq request/token-rate/Retry-After headers. Bodies, prompts,
+  completions, credentials, arbitrary headers and provider error text remain excluded. Unknown
+  results still cannot change context bounds or dispatch behavior.
+
 - **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
   routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
   charges across reruns and outages; provider quota and existing activation remain binding.
