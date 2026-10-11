@@ -1774,7 +1774,9 @@ The focused Groq manual probe follow-up keeps scheduled/manual authority separat
 reach 16,384, scheduled input remains 8,192 and ordinary jobs remain at 7,125. The 2026-10-11
 manual attempt allowed up to six calls but stopped after one 10,467-token input reservation. It
 returned no parsed provider counts or completion reason, so it supplies no size evidence. A
-payload-free diagnostics follow-up precedes a repeat at the same target. This does not widen
+manual-only sanitized error-body diagnostics follow-up precedes a repeat at the same target. The
+manual artifact may include up to 4 KiB of HTTP error response text after redacting the active
+credential and generated probe prompt; scheduled artifacts remain body-free. This does not widen
 route/dimension authority or enable runtime updates.
 
 Review/48 calibration extension: maintainer requested automatic adjustment of the Worker's effective

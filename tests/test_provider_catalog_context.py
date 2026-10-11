@@ -135,11 +135,14 @@ def test_older_context_observations_load_with_diagnostic_defaults():
         "rate_limit_remaining_requests",
         "rate_limit_reset_requests_ms",
         "retry_after_ms",
+        "error_response_body",
+        "error_response_body_truncated",
     ):
         values.pop(name)
     loaded = ContextObservation(**values)
     assert loaded.diagnostic_code == "not_recorded"
     assert loaded.http_status is None and loaded.retry_after_ms is None
+    assert loaded.error_response_body == "" and not loaded.error_response_body_truncated
 
 
 def test_inconclusive_chat_response_records_safe_reason_and_rate_headers():
@@ -499,6 +502,55 @@ def test_collector_enforces_bytes_closes_response_and_rejects_truncated_sse():
         )
 
 
+def test_manual_collector_retains_only_bounded_redacted_error_body():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    req = request()
+    credential = "gsk_live_manual_probe_secret"
+    provider_body = json.dumps(
+        {
+            "error": {
+                "type": "context_length_exceeded",
+                "message": "Request exceeds context limit",
+                "authorization": f"Bearer {credential}",
+                "prompt": req.messages[0]["content"],
+            }
+        }
+    )
+    headers = {"Authorization": f"Bearer {credential}"}
+    response = ContextFakeResponse(provider_body, status=413)
+    captured = _collect_context(
+        ContextFakeSession(response, SimpleNamespace(value=0)),
+        req,
+        headers,
+        120,
+        time.monotonic,
+        retain_error_body=True,
+    )
+    observed = rules_for("groq").context_observation(captured, req)
+    assert observed.http_status == 413
+    assert observed.provider_error_class == "context_size_candidate"
+    assert "Request exceeds context limit" in observed.error_response_body
+    assert "[redacted authorization]" in observed.error_response_body
+    assert "[generated probe prompt redacted]" in observed.error_response_body
+    assert credential not in json.dumps(asdict(observed))
+    assert req.messages[0]["content"] not in json.dumps(asdict(observed))
+    assert observed.error_response_body_truncated
+
+    routine_response = ContextFakeResponse(provider_body, status=413)
+    routine = _collect_context(
+        ContextFakeSession(routine_response, SimpleNamespace(value=0)),
+        req,
+        headers,
+        120,
+        time.monotonic,
+    )
+    assert "error_response_body" not in routine.context_diagnostics
+
+
 def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():
     from citypods.provider_catalog.evidence import parse_documented_token_rate_headers
 
@@ -531,6 +583,60 @@ def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():
         }
     )
     assert other_provider == {}
+
+
+def test_manual_error_body_excerpt_is_bounded_and_redacts_credential_and_prompt():
+    from citypods.provider_catalog.probe import _manual_error_body_excerpt
+
+    req = request()
+    prompt = req.messages[0]["content"]
+    secret = "gsk_live_do_not_store"
+    body = json.dumps(
+        {
+            "error": {
+                "message": "context limit reached",
+                "credential": f"Bearer {secret}",
+                "echo": prompt,
+            }
+        }
+    ).encode()
+    excerpt, truncated = _manual_error_body_excerpt(
+        body,
+        req,
+        {"Authorization": f"Bearer {secret}"},
+    )
+    assert "context limit reached" in excerpt
+    assert "[redacted authorization]" in excerpt
+    assert "[generated probe prompt redacted]" in excerpt
+    assert secret not in excerpt and prompt not in excerpt
+    # The generated prompt makes the raw source exceed the bound, even though its replacement
+    # marker makes the sanitized excerpt smaller.
+    assert truncated
+
+    excerpt, truncated = _manual_error_body_excerpt(
+        b"x" * 4097,
+        req,
+        {"Authorization": f"Bearer {secret}"},
+    )
+    assert len(excerpt.encode("utf-8")) == 4096 and truncated
+
+
+def test_context_observation_accepts_bounded_body_only_for_http_errors():
+    req = request()
+    observed = ContextObservation.from_request(
+        req,
+        http_status=413,
+        error_response_body='{"error":{"type":"rate_limit_exceeded"}}',
+    )
+    assert "rate_limit_exceeded" in observed.error_response_body
+    with pytest.raises(ValueError, match="bounded error response body"):
+        ContextObservation.from_request(
+            req,
+            http_status=200,
+            error_response_body='{"choices":[]}',
+        )
+    with pytest.raises(ValueError, match="bounded error response body"):
+        ContextObservation.from_request(req, http_status=413, error_response_body="x" * 4097)
 
 
 def test_collector_keeps_only_typed_http_error_diagnostics():

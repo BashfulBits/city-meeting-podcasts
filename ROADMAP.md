@@ -683,8 +683,9 @@ finite allowance. Explicit canary execution and acceptance precede output/broade
 
 The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
 reservation. It yielded no provider counts or completion reason, so it does not verify that request
-size. A payload-free diagnostics follow-up is being prepared before rerunning the same target;
-scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or dimension is enabled.
+size. A manual-only, 4 KiB sanitized HTTP error-body excerpt is being added before rerunning the
+same target; scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or
+dimension is enabled.
 
 Review/48 calibration extension: design automatic Worker request-ceiling refinement from
 authenticated provider-reported counts and typed experiment outcomes, independently of static TPM

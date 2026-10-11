@@ -2111,7 +2111,13 @@ manual artifacts explain otherwise ambiguous results without changing their evid
 Record a bounded `diagnostic_code`, HTTP status and finite HTTP/provider error classes, normalized
 response media type, capped response-byte count, admission/start/finish timestamps, total and
 first-byte duration, and the parsed Groq request and token limit/remaining/reset headers plus
-decimal `Retry-After`. Preserve no raw headers, body, provider error text, prompt or completion.
+decimal `Retry-After`. Preserve no raw headers, prompt or completion. For manually triggered runs
+only, retain a UTF-8 excerpt of an HTTP 4xx/5xx response body up to 4 KiB after replacing the
+active Authorization value and generated probe prompt (including its JSON-escaped form). Mark
+excerpts truncated when the source or sanitized excerpt exceeds the limit. Never retain successful
+response bodies, and never use retained provider text for classification or authority; it is
+diagnostic evidence for the maintainer reviewing the manual artifact. Scheduled runs retain no
+body.
 Parser reason codes distinguish preflight/credential failure, transport timeout/error,
 oversize/invalid/incomplete SSE, HTTP failure, invalid JSON/envelope/usage/counts, refusal or tool
 call, missing completion, sentinel mismatch and verified fixture completion. A structured
