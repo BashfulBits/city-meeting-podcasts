@@ -1975,7 +1975,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // Reviewed input pilot (#2221): six weekly attempts on one verified free quota scope.
   // No HTTP body or environment flag can widen the server-owned authority.
   static CONTEXT_PROBE_ROUTE_IDS = Object.freeze(["groq_gpt_oss_120b_primary"]);
+  // Scheduled scans keep the reviewed 8,192-token request ceiling. The larger value is for
+  // explicitly dispatched, budgeted manual measurements on this one verified physical scope.
   static CONTEXT_INPUT_CEILINGS = Object.freeze({ groq_gpt_oss_120b_primary: 8192 });
+  static CONTEXT_MANUAL_INPUT_CEILINGS = Object.freeze({ groq_gpt_oss_120b_primary: 16384 });
   static CONTEXT_OUTPUT_ENABLED = false;
 
   _contextWeek(now) {
@@ -2027,6 +2030,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       manual_session: this._manualContextStatus(now),
       output_enabled: LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED,
       input_ceilings: LLMSchedulerDO.CONTEXT_INPUT_CEILINGS,
+      manual_input_ceilings: LLMSchedulerDO.CONTEXT_MANUAL_INPUT_CEILINGS,
       routes: Object.fromEntries(selectedRouteIds.map(id => [id, {
         quota_scope: this._contextQuotaScope(catalog.routes_by_id[id], catalog),
         enabled: LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(id),
@@ -2082,7 +2086,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (!route || route.free !== true || route.rpd === 0) return { ok: false, error: "unknown_target" };
       if (!this._contextQuotaScope(route, catalog)) return { ok: false, error: "quota_unknown" };
       if ((body.dimensions.includes("input") && body.per_call_input >
-        (LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[id] ?? 524288)) ||
+        (LLMSchedulerDO.CONTEXT_MANUAL_INPUT_CEILINGS[id] ??
+          LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[id] ?? 524288)) ||
         (!body.dimensions.includes("output") && body.per_call_output > 256)) {
         return { ok: false, error: "budget_exhausted" };
       }
@@ -2220,8 +2225,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const output = body.dimension === "output";
     if (!LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(body.route_id) ||
       (output && !LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED)) return { ok: false, error: "disabled" };
-    if (body.input_tokens > (output ? 2048 :
-      (LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[body.route_id] ?? 524288)) ||
+    const inputCeiling = output ? 2048 : (manual
+      ? (LLMSchedulerDO.CONTEXT_MANUAL_INPUT_CEILINGS[body.route_id] ??
+        LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[body.route_id] ?? 524288)
+      : (LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[body.route_id] ?? 524288));
+    if (body.input_tokens > inputCeiling ||
       body.output_tokens > (output ? 32768 : 256) ||
       row.input_used + body.input_tokens > 2097152 ||
       row.output_used + body.output_tokens > 131072 || row.requests_used >= 24) {

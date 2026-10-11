@@ -2351,3 +2351,13 @@ ordinary queue schema/indexes, job payload/hash policy, paid/free decisions, rou
 concurrency or output activation. No new endpoint, synthetic production jobs or extra per-week
 calls. If code or real-workerd measurements disagree with this contract, use the AGENTS stop/ask
 gate before implementation scope changes.
+
+#### Groq manual probe stretch preparation — 2026-10-10
+
+The successful manual run at 2026-10-10 23:40 UTC measured 6,986 input / 7,177 total tokens
+against a 7,119 input / 256 output reservation. It did not test above Groq's documented 8,000 TPM.
+The next 50% search target is approximately 10,479 actual input tokens, above the current 8,192
+manual reservation ceiling. A narrow follow-up PR raises only this route's manual per-call server
+authority to 16,384; scheduled scans stay at 8,192, ordinary jobs at 7,125 and output at 256.
+The §8.12 runtime ceiling design is not implemented by this change. No new call or deployment is
+included; #2221 stays open for stepwise evidence review.

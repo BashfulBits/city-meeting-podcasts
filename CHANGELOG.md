@@ -17,6 +17,11 @@ Once 1.0 ships, entries move under semver tags.
   charges across reruns and outages; provider quota and existing activation remain binding.
   Failed manual runs retain diagnostic artifacts and preserve the original error if cleanup
   also fails. Manual evidence cannot enter scheduled cap-offer history. No automatic cap changes or backfill.
+
+- **Prepared manual Groq input stretch.** A separate server-owned manual ceiling of
+  16,384 provider input tokens enables bounded probes above the current 6,986-token success.
+  Scheduled probes remain capped at 8,192 and ordinary jobs at 7,125. The PR does not dispatch
+  provider calls or deploy the Worker.
   
 - **Fix: recovery test injection stays synchronous (#2258 follow-up).** The isolated harness
   computes its catalog digest before installing its fault wrapper, preventing other requests

@@ -3242,6 +3242,32 @@ test("reviewed input pilot admits six bounded calls and excludes output and othe
   assert.equal(row.output_used, 6 * 256);
 });
 
+test("16k Groq ceiling is manual-only; scheduled probes remain capped at 8192", async t => {
+  const rid = "groq_gpt_oss_120b_primary";
+  const { coordinator: c, now, start, admit } = await contextFixture(t, {
+    ids: [rid], tpm: 10000000,
+  });
+  assert.equal(LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[rid], 8192);
+  assert.equal(LLMSchedulerDO.CONTEXT_MANUAL_INPUT_CEILINGS[rid], 16384);
+  const status = await c._contextStatus(now, [rid]);
+  assert.equal(status.input_ceilings[rid], 8192);
+  assert.equal(status.manual_input_ceilings[rid], 16384);
+
+  await c.reserveRouteRequests(start, now);
+  assert.equal((await c.reserveRouteRequests({ ...admit, input_tokens: 8193 }, now)).error,
+    "budget_exhausted");
+
+  const manual = { ...start, operation: "context_manual_start", route_ids: [rid],
+    dimensions: ["input"], max_requests: 1, max_input: 16384, max_output: 256,
+    per_call_input: 16384, per_call_output: 256, purpose: "#2221 manual ceiling test" };
+  assert.equal((await c.reserveRouteRequests(manual, now)).ok, true);
+  assert.equal((await c.reserveRouteRequests({ ...admit, operation: "context_manual_admit",
+    input_tokens: 16384 }, now)).ok, true);
+  const oversized = { ...admit, operation: "context_manual_admit",
+    attempt_id: "c".repeat(64), input_tokens: 16385 };
+  assert.equal((await c.reserveRouteRequests(oversized, now)).error, "budget_exhausted");
+});
+
 function manualStart(start, overrides = {}) {
   return { ...start, operation: "context_manual_start", route_ids: ["probe"],
     dimensions: ["input"], max_requests: 8, max_input: 2097152, max_output: 131072,
