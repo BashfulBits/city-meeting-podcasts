@@ -258,6 +258,18 @@ A new per-episode feature is almost always a **stage**, not a core change.
    not PR CI).
 5. Document it in [README.md](README.md) and [`.github/ADD_CITY.md`](.github/ADD_CITY.md).
 
+### Add a provider parser for context calibration
+
+When a new LLM provider or endpoint is added to the catalog, decide whether its responses can
+support context calibration before enabling that route. Follow the route onboarding checklist in
+[§8.11](review/48-provider-catalog-reconciliation.md#b-observation-parser-and-transport-schemas):
+verify the endpoint contract, add endpoint-specific success and rejection fixtures, implement or
+adapt a strict typed parser, and test the parser and search reducer. Reuse a similar provider's
+parser only when the response envelope and semantics match; keep route-specific fixtures and quota
+scope checks. Unknown or ambiguous responses must remain unsupported/inconclusive. A live canary or
+server allowlist change requires its separately reviewed authority and approval.
+
+
 ## Updating feeds & snapshots
 
 Feed output is snapshot-tested byte-for-byte. After an **intentional** change, regenerate with
