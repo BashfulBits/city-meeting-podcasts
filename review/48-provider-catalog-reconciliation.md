@@ -1457,6 +1457,40 @@ primary documentation or redacted captured protocol evidence, and cannot invoke 
 merely to obtain a fixture. All configured free routes must have positive support or an explicit
 unsupported reason in the final offline matrix.
 
+
+**Onboarding a provider or endpoint.** Treat every new provider adapter, API endpoint, or materially
+different response envelope as an explicit parser-onboarding task before its route can steer a
+search. The maintainer should:
+
+1. Identify the exact endpoint, API version, model/account scope and documented response contract.
+   Record which usage fields count input, generated output, reasoning tokens and combined totals;
+   identify the provider's documented context-size, token-rate, request-rate, daily-quota and
+   shared-capacity signals. Similar status codes or OpenAI-compatible branding do not establish
+   equivalent semantics.
+2. Add sanitized positive and negative fixtures from primary documentation or already available,
+   redacted protocol evidence. Cover successful usage, each claimed typed rejection, reset/remaining
+   headers, missing or malformed fields, contradictory counts, unrelated quota exhaustion and
+   ambiguous failures. Never call a live provider just to create a fixture.
+3. Implement the endpoint parser in `providers/<provider>.py`, or copy the structure of a similar
+   parser only after confirming the endpoint has the same field meanings and error contract. Keep
+   the parser provider/endpoint-specific, version it, validate strict integer ranges and count
+   consistency, and return unsupported/inconclusive for unknown forms. Do not infer a boundary from
+   HTTP status alone or scrape arbitrary numbers from free-text messages.
+4. Add parser tests plus reducer/search tests proving that actual provider-counted usage updates the
+   right input, output or combined bracket; typed size errors only bound their declared dimension;
+   typed rate errors remain separate and use the matching exhausted quota's reset; and unknown,
+   daily-quota and shared-capacity errors never become size bounds. Add a route-specific offline
+   eligibility fixture and preserve explicit unsupported coverage for routes without evidence.
+5. Verify the physical quota scope and compiled-catalog identity for the route. Parser support alone
+   does not authorize live calls. Any server allowlist, measurement dimension, budget or production
+   behavior change follows a separate reviewed activation contract and approval.
+
+The PR should identify the primary contract or redacted evidence used, parser/version added or
+reused, fixtures and test cases, supported versus unsupported signals, and whether separate
+activation is still required. This checklist is repeated in the contributor guide so future provider
+additions include parser work in their initial route-onboarding plan rather than leaving it for a
+later canary.
+
 Add frozen `ContextRequest` with `route_id`, `provider`, `account_id`, `upstream_model`,
 `identity_digest`, `dimension`, `fixture_version`, `estimator_version`, `local_input_estimate`,
 `reserved_input`, `requested_output`, `attempt_ordinal`, and transient `messages`/`shaped_body`.

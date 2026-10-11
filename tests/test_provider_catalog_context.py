@@ -339,7 +339,7 @@ def test_groq_tpm_error_parses_only_structured_matching_limit_and_request_count(
             "type": "tokens",
             "code": "rate_limit_exceeded",
             "message": "Request too large on tokens per minute (TPM): "
-            "Limit 8,000, Requested 10,488",
+            "Limit 8,000, Requested 10,488, please reduce your message size and try again.",
         }
     }
     observed = rules_for("groq").context_observation(
@@ -407,6 +407,27 @@ def test_groq_tpm_error_parses_only_structured_matching_limit_and_request_count(
         req,
     )
     assert malformed.rate_limit_requested_tokens is None
+
+    malformed_request = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(
+                {
+                    "error": {
+                        **body["error"],
+                        "message": "tokens per minute (TPM): Limit 8,000, Requested 10,48, "
+                        "please retry",
+                    }
+                }
+            ),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert malformed_request.rate_limit_requested_tokens is None
 
 
 def test_typed_tpm_rejection_downshifts_then_refines_separate_rate_bracket():
