@@ -40,7 +40,7 @@ def context_rate_limit_request_tokens(response):
         return None
     number = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
     match = re.search(
-        rf"tokens per minute \(TPM\): Limit ({number}), Requested ({number})(?![0-9,])",
+        rf"tokens per minute \(TPM\): Limit ({number}), Requested ({number})(?![0-9]|,[0-9])",
         message,
         re.IGNORECASE,
     )
