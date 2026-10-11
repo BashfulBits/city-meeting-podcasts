@@ -242,10 +242,13 @@ evidence-report command uses the same planner.
 Context-probe artifacts retain parsed provider token counts and bounded diagnostics: a finite
 parser reason code, HTTP/provider error classes, admission/request timing, total and first-byte
 duration, response media type/size, pause/drain state, and allowlisted Groq request/token-rate and
-retry headers. They never retain provider bodies, prompt/completion content, credentials, arbitrary
-headers or raw provider error text. Diagnostic outcomes do not alter context bounds or dispatch
-authority; they explain why an attempt could not establish verified evidence. Groq request counters
-are its daily request budget (RPD); token counters are per-minute (TPM).
+retry headers. Manually triggered artifacts may retain a sanitized UTF-8 excerpt of HTTP error
+bodies, capped at 4 KiB, with the active Authorization value and generated prompt redacted.
+Successful response bodies and scheduled-run bodies are not retained. Credentials, arbitrary
+headers and prompt/completion content are not retained. Provider text is diagnostic only and does
+not alter context bounds or dispatch authority; it explains why an attempt could not establish
+verified evidence. Groq request counters are its daily request budget (RPD); token counters are
+per-minute (TPM).
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is

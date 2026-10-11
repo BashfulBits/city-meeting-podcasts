@@ -430,6 +430,33 @@ def build_context_request(
 
 
 _CONTEXT_BYTES = 4 * 1024 * 1024
+_CONTEXT_ERROR_BODY_BYTES = 4096
+
+
+def _manual_error_body_excerpt(raw, request, request_headers):
+    """Retain bounded manual error detail after removing the canary credential and prompt."""
+    raw = bytes(raw)
+    truncated = len(raw) > _CONTEXT_ERROR_BODY_BYTES
+    text = raw.decode("utf-8", errors="replace")
+    authorization = next(
+        (value for key, value in request_headers.items() if key.lower() == "authorization"), ""
+    )
+    if isinstance(authorization, str) and authorization:
+        text = text.replace(authorization, "[redacted authorization]")
+        if authorization.lower().startswith("bearer "):
+            text = text.replace(authorization[7:], "[redacted credential]")
+    for message in request.messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str) and content:
+            text = text.replace(content, "[generated probe prompt redacted]")
+            escaped = json.dumps(content, ensure_ascii=False)[1:-1]
+            if escaped != content:
+                text = text.replace(escaped, "[generated probe prompt redacted]")
+    encoded = text.encode("utf-8")
+    if len(encoded) > _CONTEXT_ERROR_BODY_BYTES:
+        text = encoded[:_CONTEXT_ERROR_BODY_BYTES].decode("utf-8", errors="ignore")
+        truncated = True
+    return text, truncated
 
 
 class ContextEnvelopeError(ValueError):
@@ -538,13 +565,14 @@ def _context_envelope(raw, content_type):
     )
 
 
-def _collect_context(session, request, headers, timeout, clock):
+def _collect_context(session, request, headers, timeout, clock, *, retain_error_body=False):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
     from citypods.provider_catalog.registry import rules_for
 
     started = clock()
     started_at_ms = time.time_ns() // 1_000_000
     response = None
+    raw = bytearray()
     raw_size = 0
     first_byte_ms = None
 
@@ -568,6 +596,12 @@ def _collect_context(session, request, headers, timeout, clock):
             "request_finished_at_ms": finished_at_ms,
             **rules_for(request.provider).context_rate_diagnostics(response_headers),
         }
+        if retain_error_body and status is not None and status >= 400:
+            excerpt, truncated = _manual_error_body_excerpt(raw, request, headers)
+            diagnostics["error_response_body"] = excerpt
+            diagnostics["error_response_body_truncated"] = truncated or (
+                bool(excerpt) and code != "response_received"
+            )
         if status is not None and status != 200:
             diagnostics["provider_error_class"] = (
                 "rate_limited" if status == 429 else _provider_error_class(body)
@@ -589,7 +623,6 @@ def _collect_context(session, request, headers, timeout, clock):
             allow_redirects=False,
             timeout=(min(20, timeout), timeout),
         )
-        raw = bytearray()
         for chunk in response.iter_content(chunk_size=16384):
             if first_byte_ms is None:
                 first_byte_ms = min(120_000, max(0, round((clock() - started) * 1000)))
@@ -653,7 +686,7 @@ def _collect_context(session, request, headers, timeout, clock):
             response.close()
 
 
-def _context_http_worker(pipe, request, session, timeout):
+def _context_http_worker(pipe, request, session, timeout, retain_error_body):
     """Preflight before admission; parent permission is required before any provider submission."""
     from citypods.provider_catalog.registry import rules_for
     from citypods.security import validate_source_url
@@ -679,7 +712,16 @@ def _context_http_worker(pipe, request, session, timeout):
             return
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         rules_for(request.provider)  # refuse unknown plugins before submission
-        pipe.send(_collect_context(session, request, headers, timeout, time.monotonic))
+        pipe.send(
+            _collect_context(
+                session,
+                request,
+                headers,
+                timeout,
+                time.monotonic,
+                retain_error_body=retain_error_body,
+            )
+        )
     except (OSError, ValueError, KeyError, EOFError):
         try:
             pipe.send(
@@ -696,7 +738,7 @@ def _context_http_worker(pipe, request, session, timeout):
         session.close()
 
 
-def measure_context(request, *, session, before_call, clock, timeout=120):
+def measure_context(request, *, session, before_call, clock, timeout=120, retain_error_body=False):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
 
@@ -708,7 +750,10 @@ def measure_context(request, *, session, before_call, clock, timeout=120):
     started = clock()
     ctx = multiprocessing.get_context("spawn")
     parent, child = ctx.Pipe()
-    process = ctx.Process(target=_context_http_worker, args=(child, request, session, timeout))
+    process = ctx.Process(
+        target=_context_http_worker,
+        args=(child, request, session, timeout, retain_error_body),
+    )
     observation = Response(
         None,
         timed_out=True,

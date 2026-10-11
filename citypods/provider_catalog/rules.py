@@ -35,7 +35,7 @@ ACTIONABLE_VERDICTS = frozenset({"proven", "retired", "not_served"})
 
 @dataclass(frozen=True)
 class Response:
-    """What a canary observed. `body` is used only for classification and is never reported."""
+    """What a canary observed; raw bodies are transient and manual error excerpts are bounded."""
 
     status: int | None
     headers: Mapping[str, str] = field(default_factory=dict)
@@ -290,6 +290,8 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             "rate_limit_remaining_requests",
             "rate_limit_reset_requests_ms",
             "retry_after_ms",
+            "error_response_body",
+            "error_response_body_truncated",
         }
         diagnostics = {
             key: value
@@ -313,6 +315,8 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
         diagnostics.setdefault("rate_limit_remaining_requests", None)
         diagnostics.setdefault("rate_limit_reset_requests_ms", None)
         diagnostics.setdefault("retry_after_ms", None)
+        diagnostics.setdefault("error_response_body", "")
+        diagnostics.setdefault("error_response_body_truncated", False)
         diagnostics["diagnostic_code"] = (
             diagnostic_code or diagnostics.get("diagnostic_code") or "unclassified_response"
         )

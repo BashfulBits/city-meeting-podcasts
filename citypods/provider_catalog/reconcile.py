@@ -1434,6 +1434,7 @@ def _measure_context_routes(
                         before_call=before_call,
                         clock=time.monotonic,
                         timeout=120,
+                        retain_error_body=bool(context_run.get("manual")),
                     )
                 except (DispatchPauseError, ProbeBudgetExceeded, RouteBudgetExceeded):
                     context_run["abandoned"] = (

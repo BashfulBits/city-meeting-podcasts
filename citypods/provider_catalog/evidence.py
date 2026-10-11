@@ -579,6 +579,8 @@ class ContextObservation:
     rate_limit_remaining_requests: int | None = None
     rate_limit_reset_requests_ms: int | None = None
     retry_after_ms: int | None = None
+    error_response_body: str = ""
+    error_response_body_truncated: bool = False
 
     def __post_init__(self):
         if type(self.schema_version) is not int or self.schema_version != 1:
@@ -720,6 +722,19 @@ class ContextObservation:
             value = getattr(self, name)
             if value is not None and (type(value) is not int or not 0 <= value <= maximum):
                 raise ValueError(f"invalid context diagnostic {name}")
+        if not isinstance(self.error_response_body, str):
+            raise ValueError("invalid bounded error response body")
+        try:
+            body_size = len(self.error_response_body.encode("utf-8"))
+        except UnicodeError as exc:
+            raise ValueError("invalid bounded error response body") from exc
+        if (
+            body_size > 4096
+            or type(self.error_response_body_truncated) is not bool
+            or (self.error_response_body and not 400 <= (self.http_status or 0) <= 599)
+            or (self.error_response_body_truncated and not self.error_response_body)
+        ):
+            raise ValueError("invalid bounded error response body")
         for name in (
             "admitted_at_ms",
             "request_started_at_ms",
