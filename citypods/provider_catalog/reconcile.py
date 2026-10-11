@@ -1478,14 +1478,62 @@ def _measure_context_routes(
                         f"[{lower}, {upper}], basis {current.success.count_basis}; "
                         f"observed {current.success.observed_at} (not an exact maximum)"
                     )
-                if observed.outcome != "verified" or current.status in {"uncertain", "converged"}:
-                    break
+                if observed.rate_limit_requested_tokens is not None:
+                    rate_probe_steered = current.rate_rejection == observed
+                    report.observations.append(
+                        f"{rid}/{dimension}: provider TPM rejection at "
+                        f"{observed.rate_limit_requested_tokens} provider-counted input tokens; "
+                        "recorded only as a probe-search hint"
+                    )
+                    if (
+                        context_run.get("manual")
+                        and rate_probe_steered
+                        and current.status == "rate_refining"
+                        and budget["remaining_requests"] > 0
+                    ):
+                        wait_ms = max(60_000, observed.retry_after_ms or 0)
+                        budget["remaining_seconds"] = min(
+                            budget["remaining_seconds"],
+                            (context_run["deadline_ms"] - time.time() * 1000) / 1000,
+                        )
+                        if budget["remaining_seconds"] >= wait_ms / 1000 + 205:
+                            sleep(wait_ms / 1000)
+                            continue
+                if observed.outcome != "verified" or current.status in {
+                    "uncertain",
+                    "converged",
+                    "rate_converged",
+                }:
+                    if current.status != "rate_converged":
+                        # Manual searches may downshift after a typed Groq TPM rejection, but
+                        # never retry the same request or spend beyond the admitted run budget.
+                        if not (
+                            context_run.get("manual")
+                            and current.rate_rejection == observed
+                            and observed.rate_limit_requested_tokens is not None
+                            and current.status == "rate_refining"
+                            and budget["remaining_requests"] > 0
+                        ):
+                            break
+                        # The typed rejection branch above waits for the Worker cooldown. If
+                        # insufficient deadline remains, retain the next target for a later run.
+                        if (
+                            budget["remaining_seconds"]
+                            < max(60_000, observed.retry_after_ms or 0) / 1000 + 205
+                        ):
+                            break
+                    else:
+                        break
             if dimension == "input" and (
                 key is None
                 or states.get(key) is None
                 or states[key].success is None
                 or states[key].status == "uncertain"
-                or (observed is not None and observed.outcome != "verified")
+                or (
+                    observed is not None
+                    and observed.outcome != "verified"
+                    and states[key].status != "rate_converged"
+                )
             ):
                 break
     report.context_states = list(states.values())

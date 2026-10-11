@@ -262,7 +262,14 @@ def unsupported_context(response, request):
     return ContextObservation.from_request(request)
 
 
-def chat_context_observation(response, request, *, reasoning_basis="unknown"):
+def chat_context_observation(
+    response,
+    request,
+    *,
+    reasoning_basis="unknown",
+    rate_limit_requested_tokens=None,
+    rate_limit_parser_version="not_recorded",
+):
     """Strict documented chat usage; size/quota error numbers never become context bounds.
 
     Opt-in plugins own reasoning semantics. See their endpoint references; compatibility alone
@@ -284,6 +291,7 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             "request_started_at_ms",
             "request_finished_at_ms",
             "rate_limit_limit_tokens",
+            "rate_limit_requested_tokens",
             "rate_limit_remaining_tokens",
             "rate_limit_reset_tokens_ms",
             "rate_limit_limit_requests",
@@ -309,6 +317,8 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
         diagnostics.setdefault("request_started_at_ms", None)
         diagnostics.setdefault("request_finished_at_ms", None)
         diagnostics.setdefault("rate_limit_limit_tokens", None)
+        diagnostics.setdefault("rate_limit_requested_tokens", rate_limit_requested_tokens)
+        diagnostics.setdefault("rate_limit_parser_version", rate_limit_parser_version)
         diagnostics.setdefault("rate_limit_remaining_tokens", None)
         diagnostics.setdefault("rate_limit_reset_tokens_ms", None)
         diagnostics.setdefault("rate_limit_limit_requests", None)
@@ -327,8 +337,12 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             diagnostic_code=response.context_diagnostics.get("diagnostic_code", "transport_error"),
             outcome="transport",
         )
-    if response.status == 429:
-        return make(diagnostic_code="http_429_rate_limited", outcome="quota")
+    if (
+        response.status == 429
+        or response.context_diagnostics.get("provider_error_class") == "rate_limited"
+    ):
+        code = "http_429_rate_limited" if response.status == 429 else "provider_rate_limited"
+        return make(diagnostic_code=code, outcome="quota")
     if response.status != 200:
         return make(diagnostic_code="http_non_success", outcome="inconclusive")
 

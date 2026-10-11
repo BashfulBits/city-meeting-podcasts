@@ -98,6 +98,21 @@ def rejection(count, **changes):
     )
 
 
+def groq_rate_rejection(requested=10488, *, limit=8000):
+    return replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        http_status=413,
+        provider_error_class="rate_limited",
+        rate_limit_limit_tokens=limit,
+        rate_limit_requested_tokens=requested,
+        rate_limit_parser_version="groq-tpm-rejection-v1",
+        observed_at="2026-10-11T15:00:00+00:00",
+        run_id="1",
+        attempt_id="previous",
+    )
+
+
 def state(observation=None):
     return ContextSearchState(request().identity_digest, "input", success=observation)
 
@@ -129,6 +144,8 @@ def test_older_context_observations_load_with_diagnostic_defaults():
         "request_started_at_ms",
         "request_finished_at_ms",
         "rate_limit_limit_tokens",
+        "rate_limit_requested_tokens",
+        "rate_limit_parser_version",
         "rate_limit_remaining_tokens",
         "rate_limit_reset_tokens_ms",
         "rate_limit_limit_requests",
@@ -313,6 +330,135 @@ def test_actual_counts_advance_search_and_observed_mapping_without_blanket_margi
     assert context_input_ratio(state(), 1) == 1
     assert context_input_ratio(replace(updated, count_pairs=((100, 123),)), 1) == Fraction(123, 100)
     assert context_input_ratio(replace(updated, count_pairs=((100, 90),)), 1.2) == Fraction(6, 5)
+
+
+def test_groq_tpm_error_parses_only_structured_matching_limit_and_request_count():
+    req = request()
+    body = {
+        "error": {
+            "type": "tokens",
+            "code": "rate_limit_exceeded",
+            "message": "Request too large on tokens per minute (TPM): "
+            "Limit 8,000, Requested 10,488",
+        }
+    }
+    observed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert observed.outcome == "quota"
+    assert observed.rate_limit_requested_tokens == 10488
+    assert observed.rate_limit_parser_version == "groq-tpm-rejection-v1"
+    assert observed.reported_ceiling is None
+
+    for mutation in (
+        {"error": {**body["error"], "type": "context_length"}},
+        {"error": {**body["error"], "code": "context_length_exceeded"}},
+    ):
+        rejected = rules_for("groq").context_observation(
+            Response(
+                413,
+                body=json.dumps(mutation),
+                context_diagnostics={
+                    "provider_error_class": "rate_limited",
+                    "rate_limit_limit_tokens": 8000,
+                },
+            ),
+            req,
+        )
+        assert rejected.rate_limit_requested_tokens is None
+
+    mismatched_limit = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 7000,
+            },
+        ),
+        req,
+    )
+    assert mismatched_limit.rate_limit_requested_tokens is None
+
+    malformed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(
+                {
+                    "error": {
+                        **body["error"],
+                        "message": "tokens per minute (TPM): Limit 8,00, Requested 10,488",
+                    }
+                }
+            ),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert malformed.rate_limit_requested_tokens is None
+
+
+def test_typed_tpm_rejection_downshifts_then_refines_separate_rate_bracket():
+    rejected = advance_context_state(state(), groq_rate_rejection())
+    assert rejected.status == "rate_refining"
+    assert rejected.rejection is None
+    assert (
+        next_context_probe(
+            rejected, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 5244
+    )
+
+    accepted = advance_context_state(rejected, success(5200))
+    assert accepted.status == "rate_refining"
+    assert accepted.rejection is None
+    assert (
+        next_context_probe(
+            accepted, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 7844
+    )
+
+    closer = advance_context_state(accepted, success(7990))
+    narrow = advance_context_state(closer, groq_rate_rejection(8050))
+    assert narrow.status == "rate_converged"
+    next_week = next_context_probe(narrow, {"baseline": 16384, "opposite_reservation": 256}, BUDGET)
+    assert next_week.next_target == 11985
+    assert next_week.rate_rejection is None
+
+
+def test_untyped_rate_limit_does_not_steer_probe_or_context_cap():
+    observation = replace(
+        ContextObservation.from_request(request()), outcome="quota", provider_error_class="unknown"
+    )
+    current = state(success(7000))
+    updated = advance_context_state(current, observation)
+    assert updated.rejection is None and updated.rate_rejection is None
+    assert (
+        next_context_probe(
+            updated, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 10500
+    )
+
+
+def test_rate_rejection_below_last_success_does_not_create_search_upper_bound():
+    current = state(success(9000))
+    updated = advance_context_state(current, groq_rate_rejection(8500))
+    assert updated.rate_rejection is None
+    assert updated.success == current.success
+    assert updated.status == current.status
 
 
 @pytest.mark.parametrize(
@@ -992,7 +1138,16 @@ def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
 
 
 def run_context_orchestration(
-    monkeypatch, *, mode="success", provider="groq", quota=True, previous_requests=0, history=()
+    monkeypatch,
+    *,
+    mode="success",
+    provider="groq",
+    quota=True,
+    previous_requests=0,
+    history=(),
+    manual=False,
+    dimensions=("input", "output"),
+    input_ceiling=1000,
 ):
     import time
     from types import SimpleNamespace
@@ -1002,13 +1157,17 @@ def run_context_orchestration(
     from citypods.provider_catalog.reconcile import Report, _measure_context_routes
 
     calls, admissions = [], []
-    route = {**ROUTE, "provider": provider, "hard_input_ceiling": 1000}
+    route = {**ROUTE, "provider": provider, "hard_input_ceiling": input_ceiling}
     context = {
         "run_id": "100",
         "head_sha": "a" * 40,
         "deadline_ms": int((time.time() + 3600) * 1000),
         "catalog_digest": "c" * 64,
         "history": history,
+        "manual": manual,
+        "dimensions": dimensions,
+        "per_call_input": 16384 if manual else 524288,
+        "per_call_output": 256 if manual else 32768,
         "budget": dict(BUDGET),
         "readiness": {
             "r": {"enabled": True, "quota_scope": f"{provider}:primary:test" if quota else None}
@@ -1031,6 +1190,17 @@ def run_context_orchestration(
         calls.append(req)
         if mode == "transport":
             return ContextObservation.from_request(req, outcome="transport")
+        if mode == "rate_then_success" and len(calls) == 1:
+            return replace(
+                ContextObservation.from_request(req),
+                outcome="quota",
+                http_status=413,
+                provider_error_class="rate_limited",
+                rate_limit_limit_tokens=8000,
+                rate_limit_requested_tokens=10488,
+                rate_limit_parser_version="groq-tpm-rejection-v1",
+                retry_after_ms=19000,
+            )
         if req.dimension == "input":
             count = req.reserved_input + 1 if mode == "overshoot" else req.reserved_input
             return parse(req, envelope(req, prompt=count))
@@ -1051,9 +1221,14 @@ def run_context_orchestration(
         rules_for(provider),
         runner,
         pause,
-        SimpleNamespace(client=SimpleNamespace(reserve_context=reserve)),
+        SimpleNamespace(
+            client=SimpleNamespace(
+                reserve_context=reserve,
+                reserve_manual_context=reserve,
+            )
+        ),
         None,
-        sleep=lambda _seconds: None,
+        sleep=lambda seconds: context.setdefault("sleeps", []).append(seconds),
         cooldown=0,
     )
     return report, context, runner, calls, admissions
@@ -1067,6 +1242,25 @@ def test_context_shared_request_allowance_is_not_a_new_pool(monkeypatch):
     assert context["budget"]["remaining_requests"] == 23
     assert admissions[0]["output_tokens"] == 256
     assert report.context_observations[0].run_id == "100"
+
+
+def test_manual_probe_downshifts_after_typed_groq_rate_rejection(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert [call.reserved_input for call in calls] == [10467, 5243, 7863]
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert context["budget"]["remaining_requests"] == 21
+    assert context["sleeps"] == [60]
+    assert report.context_observations[0].rate_limit_requested_tokens == 10488
+    assert report.context_observations[0].rate_limit_requested_tokens > calls[0].reserved_input
+    assert report.context_observations[1].outcome == "verified"
+    assert report.context_observations[2].outcome == "verified"
+    assert all(call.dimension == "input" for call in calls)
 
 
 @pytest.mark.parametrize("mode", ["denied", "transport", "overshoot", "preflight"])

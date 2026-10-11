@@ -364,6 +364,7 @@ class ContextSearchState:
     dimension: str
     success: ContextObservation | None = None
     rejection: ContextObservation | None = None
+    rate_rejection: ContextObservation | None = None
     next_target: int | None = None
     status: str = "baseline"
     last_attempted_at: str | None = None
@@ -374,6 +375,8 @@ class ContextSearchState:
             "baseline",
             "exploring",
             "refining",
+            "rate_refining",
+            "rate_converged",
             "converged",
             "budget_limited",
             "uncertain",
@@ -394,7 +397,7 @@ class ContextSearchState:
             type(self.next_target) is not int or not 0 < self.next_target <= 2**53 - 1
         ):
             raise ValueError("invalid context target")
-        for observation in (self.success, self.rejection):
+        for observation in (self.success, self.rejection, self.rate_rejection):
             if observation is not None and (
                 observation.identity_digest != self.identity_digest
                 or observation.dimension != self.dimension
@@ -420,6 +423,13 @@ def _context_converged(success, rejection):
     return width > 0 and (width <= 128 or width * 200 <= lower)
 
 
+def _rate_probe_converged(success, rejection):
+    lower = _context_count(success)
+    upper = rejection.rate_limit_requested_tokens
+    width = upper - lower
+    return width > 0 and (width <= 128 or width * 200 <= lower)
+
+
 def advance_context_state(state, observation):
     """Update only a compatible actual-count bracket; failures never fabricate progress."""
     from dataclasses import replace
@@ -430,6 +440,22 @@ def advance_context_state(state, observation):
     ):
         raise ValueError("incompatible context observation")
     attempted = replace(state, last_attempted_at=observation.observed_at)
+    if observation.rate_limit_requested_tokens is not None:
+        lower = _context_count(state.success) if state.success else 0
+        requested = observation.rate_limit_requested_tokens
+        if requested <= lower:
+            return attempted
+        previous = state.rate_rejection
+        if previous and previous.rate_limit_requested_tokens <= requested:
+            return attempted
+        updated = replace(
+            attempted,
+            rate_rejection=observation,
+            status="rate_refining",
+        )
+        if state.success and _rate_probe_converged(state.success, observation):
+            updated = replace(updated, status="rate_converged")
+        return updated
     reference = state.success or state.rejection
     if (
         reference
@@ -482,13 +508,23 @@ def advance_context_state(state, observation):
         )
     elif rejection and count == rejection.reported_ceiling:
         return replace(attempted, count_pairs=pairs, status="uncertain")
+    rate_rejection = state.rate_rejection
+    if rate_rejection and count >= rate_rejection.rate_limit_requested_tokens:
+        rate_rejection = None  # an accepted request supersedes the prior rate-limit hint
     status = "exploring"
-    if rejection:
+    if rate_rejection:
+        status = (
+            "rate_converged"
+            if _rate_probe_converged(observation, rate_rejection)
+            else "rate_refining"
+        )
+    elif rejection:
         status = "converged" if _context_converged(observation, rejection) else "refining"
     return replace(
         attempted,
         success=observation,
         rejection=rejection,
+        rate_rejection=rate_rejection,
         count_pairs=pairs,
         next_target=None,
         status=status,
@@ -501,12 +537,25 @@ def next_context_probe(state, limits, budget):
 
     if state.status == "unsupported":
         return state
+    if state.status == "rate_converged":
+        # The bracket is sufficiently narrow for this run. Reopen exploration next run so a
+        # changed provider token bucket can still demonstrate topping-off headroom.
+        state = replace(state, rate_rejection=None, status="exploring")
     if state.status == "uncertain":
         # The caller stops this run on uncertainty; its next weekly scan revalidates baseline.
         state = replace(state, success=None, rejection=None, next_target=None, status="baseline")
     if state.success is None:
-        target = state.next_target or limits["baseline"]
-        status = "baseline"
+        target = (
+            state.rate_rejection.rate_limit_requested_tokens // 2
+            if state.rate_rejection
+            else state.next_target or limits["baseline"]
+        )
+        status = "rate_refining" if state.rate_rejection else "baseline"
+    elif state.rate_rejection and state.status != "rate_converged":
+        lower = _context_count(state.success)
+        upper = state.rate_rejection.rate_limit_requested_tokens
+        target = lower + (upper - lower) // 2
+        status = "rate_refining"
     elif state.rejection and state.status != "converged":
         target = (_context_count(state.success) + state.rejection.reported_ceiling) // 2
         status = "refining"

@@ -20,6 +20,13 @@ Once 1.0 ships, entries move under semver tags.
   credentials and arbitrary headers remain excluded. Unknown results still cannot change context
   bounds or dispatch behavior.
 
+- **Groq TPM rejection now guides the next context probe.** A strict parser accepts only the
+  structured token-rate error with a requested-token count matching Groq's documented TPM header.
+  Manual probes wait at least 60 seconds or the longer parsed Retry-After, then downshift and
+  bisect within their existing admitted call budget; scheduled scans retain the hint for a later
+  run. This separate search state cannot change the model context cap, configured TPM or Worker
+  request ceiling.
+
 - **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
   routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
   charges across reruns and outages; provider quota and existing activation remain binding.

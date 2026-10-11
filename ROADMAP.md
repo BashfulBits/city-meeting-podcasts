@@ -297,6 +297,9 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract are accepted; live activation remains gated.
+> The 2026-10-11 Groq TPM diagnostic follow-up adds a typed, non-authoritative probe-size hint so a
+> manual run can downshift after a structured rate rejection and refine within its existing
+> allowance; it cannot alter context, TPM or Worker ceilings.
 > Slice 2b is tracked in #2187: paid decisions, including the approved
 > disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).

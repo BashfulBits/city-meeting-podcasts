@@ -532,7 +532,7 @@ class ContextRequest:
 
 @dataclass(frozen=True)
 class ContextObservation:
-    """Payload-free provider counts. Pure parsers leave provenance for the authenticated caller."""
+    """Typed provider counts and bounded diagnostics; provenance belongs to the caller."""
 
     schema_version: int
     identity_digest: str
@@ -561,6 +561,7 @@ class ContextObservation:
     head_sha: str = ""
     attempt_id: str = ""
     parser_version: str = "chat-usage-v1"
+    rate_limit_parser_version: str = "not_recorded"
     diagnostic_code: str = "not_recorded"
     http_status: int | None = None
     http_error_class: str = "unknown"
@@ -573,6 +574,7 @@ class ContextObservation:
     request_started_at_ms: int | None = None
     request_finished_at_ms: int | None = None
     rate_limit_limit_tokens: int | None = None
+    rate_limit_requested_tokens: int | None = None
     rate_limit_remaining_tokens: int | None = None
     rate_limit_reset_tokens_ms: int | None = None
     rate_limit_limit_requests: int | None = None
@@ -657,6 +659,7 @@ class ContextObservation:
             "conflicting_sse_finish_reason",
             "incomplete_sse",
             "http_429_rate_limited",
+            "provider_rate_limited",
             "http_non_success",
             "invalid_json",
             "unexpected_response_envelope",
@@ -743,10 +746,26 @@ class ContextObservation:
             "rate_limit_remaining_tokens",
             "rate_limit_limit_requests",
             "rate_limit_remaining_requests",
+            "rate_limit_requested_tokens",
         ):
             value = getattr(self, name)
             if value is not None and (type(value) is not int or not 0 <= value <= 2**53 - 1):
                 raise ValueError(f"invalid context diagnostic {name}")
+        if self.rate_limit_requested_tokens is not None and (
+            self.dimension != "input"
+            or self.provider_error_class != "rate_limited"
+            or self.rate_limit_limit_tokens is None
+            or self.rate_limit_requested_tokens <= self.rate_limit_limit_tokens
+            or self.rate_limit_parser_version != "groq-tpm-rejection-v1"
+        ):
+            raise ValueError("invalid typed Groq token-rate rejection")
+        if self.rate_limit_parser_version not in {"not_recorded", "groq-tpm-rejection-v1"}:
+            raise ValueError("unknown token-rate parser version")
+        if (
+            self.rate_limit_requested_tokens is None
+            and self.rate_limit_parser_version != "not_recorded"
+        ):
+            raise ValueError("token-rate parser version has no parsed count")
         for name in ("identity_digest", "gateway_digest"):
             if not isinstance(getattr(self, name), str) or not re.fullmatch(
                 r"[a-f0-9]{64}", getattr(self, name)
