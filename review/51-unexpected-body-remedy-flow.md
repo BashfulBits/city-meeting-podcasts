@@ -3622,3 +3622,13 @@ previously deferred mode/case pairs, never repeat completed cases. Retain origin
 and save retry observations separately. Existing request/output, pause/drain and
 quota bounds stay unchanged. Combine latest retry rows with originals only in an
 explicit derived scoring file; never rewrite original observations.
+
+Gemini evaluation resumption — maintainer approved 2026-10-11:
+resume missing Denton claim-support and blind-owner pairs on all four approved
+Gemini routes after the successful reset diagnostic. Preserve original observations.
+Use the existing eval_remedy runner, 120-second request/150-second case limits and
+shared quota headroom checks. Generate evaluation-only subset manifests and candidate
+configs under evals/remedy/results/gemini-resume-2026-10-11/, explicitly recording
+current catalog/subset hashes. Map original configuration IDs through retained
+admission files; skip completed pairs without rewriting their provenance. No admission,
+production defaults or quotas change. Daily exhaustion remains pending, not incorrect.
