@@ -433,6 +433,19 @@ def _rate_probe_converged(success, rejection):
     return width > 0 and (width <= 128 or width * 200 <= lower)
 
 
+def context_rate_wait_ms(observation):
+    """Choose a bounded wait from the quota the provider says was exhausted."""
+    wait_ms = max(60_000, observation.retry_after_ms or 0)
+    if observation.rate_limit_requested_tokens is not None:
+        return max(wait_ms, observation.rate_limit_reset_tokens_ms or 0)
+    resets = []
+    if observation.rate_limit_remaining_tokens == 0:
+        resets.append(observation.rate_limit_reset_tokens_ms or 0)
+    if observation.rate_limit_remaining_requests == 0:
+        resets.append(observation.rate_limit_reset_requests_ms or 0)
+    return max([wait_ms, *resets])
+
+
 def advance_context_state(state, observation):
     """Update only a compatible actual-count bracket; failures never fabricate progress."""
     from dataclasses import replace
@@ -546,7 +559,14 @@ def next_context_probe(state, limits, budget):
         state = replace(state, rate_rejection=None, status="exploring")
     if state.status == "uncertain":
         # The caller stops this run on uncertainty; its next weekly scan revalidates baseline.
-        state = replace(state, success=None, rejection=None, next_target=None, status="baseline")
+        state = replace(
+            state,
+            success=None,
+            rejection=None,
+            rate_rejection=None,
+            next_target=None,
+            status="baseline",
+        )
     if state.status == "retrying":
         target = state.next_target
         status = "retrying"
@@ -632,7 +652,12 @@ def _replay_context_history(identity, dimension, values):
     for observation in sorted(values, key=lambda o: (o.observed_at, o.run_id, o.attempt_id)):
         if state.status == "uncertain" and observation.run_id != previous_run:
             state = replace(
-                state, success=None, rejection=None, next_target=None, status="baseline"
+                state,
+                success=None,
+                rejection=None,
+                rate_rejection=None,
+                next_target=None,
+                status="baseline",
             )
             active = []
         state = advance_context_state(state, observation)

@@ -22,10 +22,10 @@ Once 1.0 ships, entries move under semver tags.
 
 - **Context probes use a provider-neutral bidirectional search.** Typed size rejections downshift
   before a passing sample and then refine against provider-counted success; typed rate rejections
-  remain separate and honor cooldown. Manual untyped 429s get one same-size retry after cooldown;
-  a repeat defers without creating a size bound. Groq is the first adapter with a numeric TPM
-  rejection parser. Unknown provider errors remain inconclusive, and probes cannot change
-  configured TPM or Worker authority.
+  remain separate and honor the matching quota reset. Manual untyped 429s get one same-size retry
+  after cooldown; a repeat defers without creating a size bound. Groq is the first adapter with a
+  numeric TPM rejection parser. Unknown provider errors remain inconclusive, and probes cannot
+  change configured TPM or Worker authority.
 
 - **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
   routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves

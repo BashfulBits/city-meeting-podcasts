@@ -1271,6 +1271,7 @@ def _measure_context_routes(
         advance_context_state,
         context_history_states,
         context_input_ratio,
+        context_rate_wait_ms,
         next_context_probe,
         plan_context_scan,
     )
@@ -1492,7 +1493,7 @@ def _measure_context_routes(
                         and current.status == "rate_refining"
                         and budget["remaining_requests"] > 0
                     ):
-                        wait_ms = max(60_000, observed.retry_after_ms or 0)
+                        wait_ms = context_rate_wait_ms(observed)
                         budget["remaining_seconds"] = min(
                             budget["remaining_seconds"],
                             (context_run["deadline_ms"] - time.time() * 1000) / 1000,
@@ -1504,12 +1505,7 @@ def _measure_context_routes(
                     # Untyped rate errors get one same-size retry after cooldown. This can
                     # confirm transient recovery, but never creates a numeric size bound.
                     retry_target = target.next_target
-                    retry_after = max(
-                        observed.retry_after_ms or 0,
-                        observed.rate_limit_reset_tokens_ms or 0,
-                        observed.rate_limit_reset_requests_ms or 0,
-                    )
-                    wait_ms = max(60_000, retry_after)
+                    wait_ms = context_rate_wait_ms(observed)
                     if (
                         observed.provider_error_class != "quota"
                         and retry_target not in rate_retried_targets

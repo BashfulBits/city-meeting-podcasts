@@ -2156,8 +2156,10 @@ Worker cooldown), then issue a distinct newly admitted probe. If the response id
 token count and rate threshold, retain a rate bracket separate from the context bracket and downshift
 when the attempt exceeds that threshold. An untyped 429 in a manual run gets one same-shape retry
 after cooldown; if it repeats, defer without creating a numeric bracket. A documented daily quota
-error defers until its reset. Shared-capacity errors do not masquerade as per-request size ceilings.
-Never replay an admission or reuse its charge.
+error defers until its reset. Choose a reset only when the corresponding remaining counter says that
+quota is exhausted; a token-rate retry must not wait for an unrelated requests-per-day reset. If
+multiple counters are exhausted, wait for the longest applicable reset. Shared-capacity errors do
+not masquerade as per-request size ceilings. Never replay an admission or reuse its charge.
 
 For a typed context/input-size rejection, reduce the affected request dimension until it passes, then
 grow from the highest passing actual provider count and bisect against the lowest comparable

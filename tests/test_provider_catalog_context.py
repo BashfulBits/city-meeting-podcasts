@@ -456,6 +456,90 @@ def test_other_provider_versioned_rate_parser_can_use_shared_reducer():
     )
 
 
+def test_context_rate_wait_uses_only_the_exhausted_quota_reset():
+    from citypods.provider_catalog.limits import context_rate_wait_ms
+
+    base = replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        provider_error_class="rate_limited",
+        retry_after_ms=5000,
+    )
+    token_limited = replace(
+        base,
+        rate_limit_remaining_tokens=0,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=12,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(token_limited) == 90_000
+
+    request_limited = replace(
+        base,
+        rate_limit_remaining_tokens=8,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(request_limited) == 3_600_000
+
+    typed = replace(
+        groq_rate_rejection(),
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(typed) == 90_000
+    assert context_rate_wait_ms(base) == 60_000
+
+
+def test_uncertain_search_discards_stale_rate_hint_before_restarting():
+    current = replace(
+        state(success(7000)),
+        rate_rejection=groq_rate_rejection(),
+        status="uncertain",
+    )
+    restarted = next_context_probe(
+        current,
+        {"baseline": 16384, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert restarted.rate_rejection is None
+    assert restarted.next_target == 16384
+    assert restarted.status == "baseline"
+
+
+def test_history_replay_clears_stale_rate_hint_after_uncertain_run():
+    from citypods.provider_catalog.limits import _replay_context_history
+
+    hinted = replace(
+        groq_rate_rejection(),
+        observed_at="2026-10-09T10:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+    overshoot = replace(
+        success(10001),
+        reserved_input=10000,
+        observed_at="2026-10-09T11:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-2",
+    )
+    later_success = replace(
+        success(2000),
+        observed_at="2026-10-10T10:00:00+00:00",
+        run_id="run-2",
+        attempt_id="attempt-3",
+    )
+    replayed, _active = _replay_context_history(
+        hinted.identity_digest,
+        "input",
+        [hinted, overshoot, later_success],
+    )
+    assert replayed.status == "exploring"
+    assert replayed.rate_rejection is None
+
+
 def test_untyped_rate_limit_does_not_steer_probe_or_context_cap():
     observation = replace(
         ContextObservation.from_request(request()), outcome="quota", provider_error_class="unknown"
