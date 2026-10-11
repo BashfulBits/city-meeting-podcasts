@@ -1983,8 +1983,10 @@ Never persist prompts, completions, API keys or arbitrary response bodies. Class
 
 An explicit context-size rejection narrows the request-size upper bound but does not erase the
 largest verified successful request. A rate-limit rejection updates rate-limit/backoff evidence
-and the applicable token balance/cooldown; it must not lower the learned request ceiling or
-configured TPM. Unknown outcomes move neither bound. Success above TPM proves only that the
+and the applicable token balance/cooldown; it must not lower the learned Worker request ceiling or
+configured TPM. A separately typed request-count rejection may guide probe size under the
+maintainer-approved search addendum below, but it never becomes a context bound or runtime ceiling.
+Unknown outcomes move neither bound. Success above TPM proves only that the
 observed request size was accepted with that experiment's bucket state; it is not by itself an
 exact maximum or proof of sustained throughput.
 
@@ -2117,27 +2119,66 @@ active Authorization value and generated probe prompt (including its JSON-escape
 excerpts truncated when the source or sanitized excerpt exceeds the limit. Never retain successful
 response bodies, and never use retained provider text for classification or authority; it is
 diagnostic evidence for the maintainer reviewing the manual artifact. Scheduled runs retain no
-body.
+body. The separately approved Groq parser below examines only the bounded in-memory response;
+artifacts retain its validated integer, not the message. Generic diagnostics cannot change identity,
+context bounds or Worker authority.
 Parser reason codes distinguish preflight/credential failure, transport timeout/error,
 oversize/invalid/incomplete SSE, HTTP failure, invalid JSON/envelope/usage/counts, refusal or tool
 call, missing completion, sentinel mismatch and verified fixture completion. A structured
 `context_size_candidate` diagnostic is informational only: it does not create a context rejection
 bound unless a separately reviewed typed parser does so. Old observations load with empty diagnostic
-defaults, and diagnostic fields do not change identity, search bounds, or authority. This prepares
-the next manual Groq attempt to distinguish an accepted completion from a response the current
-parser cannot interpret; it does not activate §8.12 settlement, runtime ceiling updates, or TPM
-topping-off behavior.
+defaults. Apart from the typed probe-search hint below, diagnostics do not change identity, context
+search bounds or authority. This prepares the next manual Groq attempt to distinguish an accepted
+completion from a response the current parser cannot interpret; it does not activate §8.12
+settlement, runtime ceiling updates, or TPM topping-off behavior.
 
-HTTP 429 is `rate_limited`, even when its message contains a token limit or "request too large";
-without a documented subcode, the exhausted dimension is unknown. It cannot establish a context
-maximum, a one-minute-only bucket or a permanently reduced burst allowance. Current Groq/OpenRouter
-context parsers do not establish a trustworthy numeric context rejection. Initial production
-support therefore learns successful lower bounds, with `context_rejection` publication disabled.
+HTTP 429 is `rate_limited`, even when its message contains a token limit or "request too large".
+Without the exact structured Groq `error.type=tokens` / `error.code=rate_limit_exceeded` response,
+the documented TPM message and a matching `x-ratelimit-limit-tokens` header, the exhausted dimension
+is unknown. Even a typed request-count rejection cannot establish a context maximum, a one-minute-only
+bucket or a permanently reduced burst allowance. Current Groq/OpenRouter context parsers do not
+establish a trustworthy numeric context rejection. Initial production support therefore learns
+successful lower bounds, with `context_rejection` publication disabled.
 Gemini, BeatAPI JEV, OpenRouter quota settlement and other endpoints explicitly return unsupported
 for this new authority until a separately reviewed parser/scope contract is added. The protocol and
 pure reducer support a context-rejection capability for future parsers and fixture tests, but no
 production allowlist entry can enable it without the documented parser. Unknown 400/413 errors
 remain inconclusive. This removes any requirement to invent a size-error parser during implementation.
+
+**Provider-neutral bidirectional probe policy — maintainer direction 2026-10-11.** The search
+reducer applies the same direction rules to every provider, while each provider adapter classifies
+its own response semantics and count basis. A status code alone is never a numeric bound. Keep rate
+rejections separate from input, output and combined-context rejections; a transient quota response
+must never become a model context limit.
+
+For a typed rate-limit response, first wait for the documented reset or `Retry-After` (or the longer
+Worker cooldown), then issue a distinct newly admitted probe. If the response identifies the attempted
+token count and rate threshold, retain a rate bracket separate from the context bracket and downshift
+when the attempt exceeds that threshold. An untyped 429 in a manual run gets one same-shape retry
+after cooldown; if it repeats, defer without creating a numeric bracket. A documented daily quota
+error defers until its reset. Choose a reset only when the corresponding remaining counter says that
+quota is exhausted; a token-rate retry must not wait for an unrelated requests-per-day reset. If
+multiple counters are exhausted, wait for the longest applicable reset. Shared-capacity errors do
+not masquerade as per-request size ceilings. Never replay an admission or reuse its charge.
+
+For a typed context/input-size rejection, reduce the affected request dimension until it passes, then
+grow from the highest passing actual provider count and bisect against the lowest comparable
+rejection. Hold the other dimensions fixed while probing input or output. A provider that reports a
+combined-window rejection must bracket actual input-plus-output total instead. Stop at the existing
+0.5% or 128-token goal; a later run may stretch again to test newly available headroom. Only
+provider-reported usage or an endpoint-documented count may update the passing bound. A rejection
+without a comparable provider count can direct a conservative retry but cannot claim an exact
+boundary. Providers without a reliable typed parser remain inconclusive for that constraint.
+
+The observed Groq 413 body reported `Limit 8000, Requested 10488` with `error.type=tokens`,
+`error.code=rate_limit_exceeded` and a matching documented token-limit header. Groq is the first
+adapter for this policy: preserve only the validated requested-token integer and
+`rate_limit_parser_version=groq-tpm-rejection-v1` in `ContextObservation` v1; never retain the
+provider's message as search state. The reducer is provider-neutral; other adapters opt in only when
+their endpoint contract and fixtures establish equivalent typed evidence. Scheduled runs record a
+hint and defer the next probe to a later run. Unknown quota responses do not steer either bracket.
+These searches change neither configured TPM nor the model context window or Worker authority, and do
+not classify topping-off behavior without §8.12's separate paired-success/refill evidence.
 
 #### 8.12.C Durable receipts, operations and outage bounds
 
@@ -2172,7 +2213,12 @@ existing authenticated index handler (no new endpoint):
    returns `result_conflict`. Stage a bounded receipt only; success does not yet change dispatch.
    For 429, conservatively retain all charged tokens and atomically extend the route's existing
    `blocked_until` to max(current, now+max(60,000, parsed retry delay)); no refund, quota increase,
-   guessed bucket reset or ordinary-job failure-counter increment. Stop probing that scope this run.
+   guessed bucket reset or ordinary-job failure-counter increment. Scheduled probing stops for
+   this scope; a manual run may make a distinct, newly admitted probe only after the cooldown and
+   within its existing run budget. A provider-specific typed parser may steer a rate bracket only
+   when its count basis and physical scope match the admitted route (see the provider-neutral
+   bidirectional probe policy above). Groq is the first adapter; each additional adapter requires
+   its own contract-backed parser and fixtures before its rejection can steer a search.
 2. `context_publish`: `{operation, run_id, catalog_digest, entries}` with 1..16 entries. Each entry
    supplies `{pool, week_start, attempt_id, result_digest, source_run_id, artifact_id,
    artifact_sha256, head_sha, context_observation_digest}`. Caller authenticates the completed

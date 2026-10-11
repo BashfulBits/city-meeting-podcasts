@@ -98,6 +98,21 @@ def rejection(count, **changes):
     )
 
 
+def groq_rate_rejection(requested=10488, *, limit=8000):
+    return replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        http_status=413,
+        provider_error_class="rate_limited",
+        rate_limit_limit_tokens=limit,
+        rate_limit_requested_tokens=requested,
+        rate_limit_parser_version="groq-tpm-rejection-v1",
+        observed_at="2026-10-11T15:00:00+00:00",
+        run_id="1",
+        attempt_id="previous",
+    )
+
+
 def state(observation=None):
     return ContextSearchState(request().identity_digest, "input", success=observation)
 
@@ -129,6 +144,8 @@ def test_older_context_observations_load_with_diagnostic_defaults():
         "request_started_at_ms",
         "request_finished_at_ms",
         "rate_limit_limit_tokens",
+        "rate_limit_requested_tokens",
+        "rate_limit_parser_version",
         "rate_limit_remaining_tokens",
         "rate_limit_reset_tokens_ms",
         "rate_limit_limit_requests",
@@ -313,6 +330,237 @@ def test_actual_counts_advance_search_and_observed_mapping_without_blanket_margi
     assert context_input_ratio(state(), 1) == 1
     assert context_input_ratio(replace(updated, count_pairs=((100, 123),)), 1) == Fraction(123, 100)
     assert context_input_ratio(replace(updated, count_pairs=((100, 90),)), 1.2) == Fraction(6, 5)
+
+
+def test_groq_tpm_error_parses_only_structured_matching_limit_and_request_count():
+    req = request()
+    body = {
+        "error": {
+            "type": "tokens",
+            "code": "rate_limit_exceeded",
+            "message": "Request too large on tokens per minute (TPM): "
+            "Limit 8,000, Requested 10,488",
+        }
+    }
+    observed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert observed.outcome == "quota"
+    assert observed.rate_limit_requested_tokens == 10488
+    assert observed.rate_limit_parser_version == "groq-tpm-rejection-v1"
+    assert observed.reported_ceiling is None
+
+    for mutation in (
+        {"error": {**body["error"], "type": "context_length"}},
+        {"error": {**body["error"], "code": "context_length_exceeded"}},
+    ):
+        rejected = rules_for("groq").context_observation(
+            Response(
+                413,
+                body=json.dumps(mutation),
+                context_diagnostics={
+                    "provider_error_class": "rate_limited",
+                    "rate_limit_limit_tokens": 8000,
+                },
+            ),
+            req,
+        )
+        assert rejected.rate_limit_requested_tokens is None
+
+    mismatched_limit = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 7000,
+            },
+        ),
+        req,
+    )
+    assert mismatched_limit.rate_limit_requested_tokens is None
+
+    malformed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(
+                {
+                    "error": {
+                        **body["error"],
+                        "message": "tokens per minute (TPM): Limit 8,00, Requested 10,488",
+                    }
+                }
+            ),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert malformed.rate_limit_requested_tokens is None
+
+
+def test_typed_tpm_rejection_downshifts_then_refines_separate_rate_bracket():
+    rejected = advance_context_state(state(), groq_rate_rejection())
+    assert rejected.status == "rate_refining"
+    assert rejected.rejection is None
+    assert (
+        next_context_probe(
+            rejected, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 5244
+    )
+
+    accepted = advance_context_state(rejected, success(5200))
+    assert accepted.status == "rate_refining"
+    assert accepted.rejection is None
+    assert (
+        next_context_probe(
+            accepted, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 7844
+    )
+
+    closer = advance_context_state(accepted, success(7990))
+    narrow = advance_context_state(closer, groq_rate_rejection(8050))
+    assert narrow.status == "rate_converged"
+    next_week = next_context_probe(narrow, {"baseline": 16384, "opposite_reservation": 256}, BUDGET)
+    assert next_week.next_target == 11985
+    assert next_week.rate_rejection is None
+
+
+def test_other_provider_versioned_rate_parser_can_use_shared_reducer():
+    observation = replace(
+        groq_rate_rejection(),
+        provider="openrouter",
+        rate_limit_parser_version="openrouter-tpm-rejection-v1",
+    )
+    rejected = advance_context_state(state(), observation)
+    assert rejected.status == "rate_refining"
+    assert (
+        next_context_probe(
+            rejected,
+            {"baseline": 16384, "opposite_reservation": 256},
+            BUDGET,
+        ).next_target
+        == 5244
+    )
+
+
+def test_context_rate_wait_uses_only_the_exhausted_quota_reset():
+    from citypods.provider_catalog.limits import context_rate_wait_ms
+
+    base = replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        provider_error_class="rate_limited",
+        retry_after_ms=5000,
+    )
+    token_limited = replace(
+        base,
+        rate_limit_remaining_tokens=0,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=12,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(token_limited) == 90_000
+
+    request_limited = replace(
+        base,
+        rate_limit_remaining_tokens=8,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(request_limited) == 3_600_000
+
+    typed = replace(
+        groq_rate_rejection(),
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(typed) == 90_000
+    assert context_rate_wait_ms(base) == 60_000
+
+
+def test_uncertain_search_discards_stale_rate_hint_before_restarting():
+    current = replace(
+        state(success(7000)),
+        rate_rejection=groq_rate_rejection(),
+        status="uncertain",
+    )
+    restarted = next_context_probe(
+        current,
+        {"baseline": 16384, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert restarted.rate_rejection is None
+    assert restarted.next_target == 16384
+    assert restarted.status == "baseline"
+
+
+def test_history_replay_clears_stale_rate_hint_after_uncertain_run():
+    from citypods.provider_catalog.limits import _replay_context_history
+
+    hinted = replace(
+        groq_rate_rejection(),
+        observed_at="2026-10-09T10:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+    overshoot = replace(
+        success(10001),
+        reserved_input=10000,
+        observed_at="2026-10-09T11:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-2",
+    )
+    later_success = replace(
+        success(2000),
+        observed_at="2026-10-10T10:00:00+00:00",
+        run_id="run-2",
+        attempt_id="attempt-3",
+    )
+    replayed, _active = _replay_context_history(
+        hinted.identity_digest,
+        "input",
+        [hinted, overshoot, later_success],
+    )
+    assert replayed.status == "exploring"
+    assert replayed.rate_rejection is None
+
+
+def test_untyped_rate_limit_does_not_steer_probe_or_context_cap():
+    observation = replace(
+        ContextObservation.from_request(request()), outcome="quota", provider_error_class="unknown"
+    )
+    current = state(success(7000))
+    updated = advance_context_state(current, observation)
+    assert updated.rejection is None and updated.rate_rejection is None
+    assert (
+        next_context_probe(
+            updated, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 10500
+    )
+
+
+def test_rate_rejection_below_last_success_does_not_create_search_upper_bound():
+    current = state(success(9000))
+    updated = advance_context_state(current, groq_rate_rejection(8500))
+    assert updated.rate_rejection is None
+    assert updated.success == current.success
+    assert updated.status == current.status
 
 
 @pytest.mark.parametrize(
@@ -984,6 +1232,46 @@ def test_combined_window_rejection_compares_full_reservation_not_generated_outpu
     assert advance_context_state(current, conflicting).status == "uncertain"
 
 
+@pytest.mark.parametrize(
+    "provider,dimension,count_basis,ceiling,expected",
+    [
+        ("openrouter", "input", "input", 12000, 6000),
+        ("gemini", "output", "output", 8000, 4000),
+        ("nvidia", "input", "combined_reserved", 16000, 8000),
+    ],
+)
+def test_provider_neutral_size_rejection_without_success_downshifts(
+    provider, dimension, count_basis, ceiling, expected
+):
+    from citypods.provider_catalog.evidence import digest
+
+    req = request(provider=provider, dimension=dimension, target=ceiling)
+    attempted = replace(
+        ContextObservation.from_request(req),
+        outcome="inconclusive",
+        evidence_kind="size_rejection",
+        reported_ceiling=ceiling,
+        count_basis=count_basis,
+        reported_input=7000 if count_basis == "combined_reserved" else None,
+        reported_output=256 if count_basis == "combined_reserved" else None,
+        reported_total=7256 if count_basis == "combined_reserved" else None,
+        identity_digest=digest([provider, "model", dimension]),
+    )
+    current = ContextSearchState(
+        attempted.identity_digest,
+        dimension,
+        rejection=attempted,
+        status="refining",
+    )
+    next_probe = next_context_probe(
+        current,
+        {"baseline": 16000, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert next_probe.status == "refining"
+    assert next_probe.next_target == expected
+
+
 def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
     observed = replace(success(11000), reserved_input=10000, local_input_estimate=9000)
     updated = advance_context_state(state(), observed)
@@ -992,7 +1280,16 @@ def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
 
 
 def run_context_orchestration(
-    monkeypatch, *, mode="success", provider="groq", quota=True, previous_requests=0, history=()
+    monkeypatch,
+    *,
+    mode="success",
+    provider="groq",
+    quota=True,
+    previous_requests=0,
+    history=(),
+    manual=False,
+    dimensions=("input", "output"),
+    input_ceiling=1000,
 ):
     import time
     from types import SimpleNamespace
@@ -1002,13 +1299,17 @@ def run_context_orchestration(
     from citypods.provider_catalog.reconcile import Report, _measure_context_routes
 
     calls, admissions = [], []
-    route = {**ROUTE, "provider": provider, "hard_input_ceiling": 1000}
+    route = {**ROUTE, "provider": provider, "hard_input_ceiling": input_ceiling}
     context = {
         "run_id": "100",
         "head_sha": "a" * 40,
         "deadline_ms": int((time.time() + 3600) * 1000),
         "catalog_digest": "c" * 64,
         "history": history,
+        "manual": manual,
+        "dimensions": dimensions,
+        "per_call_input": 16384 if manual else 524288,
+        "per_call_output": 256 if manual else 32768,
         "budget": dict(BUDGET),
         "readiness": {
             "r": {"enabled": True, "quota_scope": f"{provider}:primary:test" if quota else None}
@@ -1031,6 +1332,21 @@ def run_context_orchestration(
         calls.append(req)
         if mode == "transport":
             return ContextObservation.from_request(req, outcome="transport")
+        if mode in {"rate_then_success", "generic_rate_then_success", "generic_rate_repeat"} and (
+            len(calls) == 1 or mode == "generic_rate_repeat"
+        ):
+            return replace(
+                ContextObservation.from_request(req),
+                outcome="quota",
+                http_status=413 if mode == "rate_then_success" else 429,
+                provider_error_class="rate_limited",
+                rate_limit_limit_tokens=8000 if mode == "rate_then_success" else None,
+                rate_limit_requested_tokens=10488 if mode == "rate_then_success" else None,
+                rate_limit_parser_version=(
+                    "groq-tpm-rejection-v1" if mode == "rate_then_success" else "not_recorded"
+                ),
+                retry_after_ms=19000 if mode == "rate_then_success" else 5000,
+            )
         if req.dimension == "input":
             count = req.reserved_input + 1 if mode == "overshoot" else req.reserved_input
             return parse(req, envelope(req, prompt=count))
@@ -1051,9 +1367,14 @@ def run_context_orchestration(
         rules_for(provider),
         runner,
         pause,
-        SimpleNamespace(client=SimpleNamespace(reserve_context=reserve)),
+        SimpleNamespace(
+            client=SimpleNamespace(
+                reserve_context=reserve,
+                reserve_manual_context=reserve,
+            )
+        ),
         None,
-        sleep=lambda _seconds: None,
+        sleep=lambda seconds: context.setdefault("sleeps", []).append(seconds),
         cooldown=0,
     )
     return report, context, runner, calls, admissions
@@ -1067,6 +1388,56 @@ def test_context_shared_request_allowance_is_not_a_new_pool(monkeypatch):
     assert context["budget"]["remaining_requests"] == 23
     assert admissions[0]["output_tokens"] == 256
     assert report.context_observations[0].run_id == "100"
+
+
+def test_manual_probe_downshifts_after_typed_groq_rate_rejection(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert [call.reserved_input for call in calls] == [10467, 5243, 7863]
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert context["budget"]["remaining_requests"] == 21
+    assert context["sleeps"] == [60]
+    assert report.context_observations[0].rate_limit_requested_tokens == 10488
+    assert report.context_observations[0].rate_limit_requested_tokens > calls[0].reserved_input
+    assert report.context_observations[1].outcome == "verified"
+    assert report.context_observations[2].outcome == "verified"
+    assert all(call.dimension == "input" for call in calls)
+
+
+def test_manual_untyped_rate_limit_waits_then_retries_same_size(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert calls[2].reserved_input > calls[1].reserved_input
+    assert context["sleeps"] == [60]
+    assert [o.outcome for o in report.context_observations] == ["quota", "verified", "verified"]
+    assert not any(o.rate_limit_requested_tokens for o in report.context_observations)
+
+
+def test_repeated_untyped_rate_limit_defers_without_creating_a_size_bound(monkeypatch):
+    report, context, _runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_repeat",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == 2
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert context["sleeps"] == [60]
+    assert all(o.rate_limit_requested_tokens is None for o in report.context_observations)
+    assert not any("context converged" in note for note in report.observations)
 
 
 @pytest.mark.parametrize("mode", ["denied", "transport", "overshoot", "preflight"])

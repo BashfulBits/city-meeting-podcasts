@@ -297,6 +297,10 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract are accepted; live activation remains gated.
+> The 2026-10-11 provider-neutral probe-search follow-up separates rate recovery from input,
+> output and combined-context search. Groq is the first typed rate-rejection adapter; other
+> providers require their own verified parser before errors can steer a numeric bound. Search
+> evidence cannot alter configured TPM or Worker authority.
 > Slice 2b is tracked in #2187: paid decisions, including the approved
 > disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
