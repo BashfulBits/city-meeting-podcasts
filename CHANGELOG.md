@@ -16,6 +16,12 @@ Once 1.0 ships, entries move under semver tags.
   comma after the requested-token count while still rejecting malformed grouped numbers. A
   regression fixture matches the full live response shape.
 
+- **Provider catalog scope clarification.** New-route discovery retains an admitted/refused
+  input/output/combined request-cap search with strict 0.5% refinement and resumable maintainer
+  `test again` decisions. Periodic quota/burst/refill characterization and automatic runtime
+  ceiling publication are Deferred under review/54; existing dispatch adaptations remain intact.
+  The new discovery contract is L2, not yet integrated into the live workflow.
+
 - **Provider context canary diagnostics.** Context evidence now records a bounded reason code,
   HTTP/provider error classes, admission/request/first-byte timing, response media type and byte
   count, pause/drain state, and parsed Groq request/token-rate/Retry-After headers. Scheduled runs
