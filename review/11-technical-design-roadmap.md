@@ -1770,3 +1770,10 @@ See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger
 
 Manual-trigger implementation is prepared under #2221 following the approved L3 contract;
 explicit manual execution, input evidence acceptance, output authority and broader rotation remain gated.
+
+Review/48 calibration extension: maintainer requested automatic adjustment of the Worker's effective
+per-request ceiling from authenticated provider-count experiments, including measured requests above
+TPM when accumulated bucket balance permits. Model context and configured TPM remain separate,
+unchanged facts; rate-limit failures do not tighten context ceilings. The extension is L2 in
+[review/48 §8.12](48-provider-catalog-reconciliation.md#812-experimental-request-ceilings-and-tpm-topping-off--l2-extension-2026-10-10);
+exact durable settlement, parsers, bounds and rollback contract must reach L3 before implementation.

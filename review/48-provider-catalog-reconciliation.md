@@ -1940,3 +1940,101 @@ exception must not skip the partial artifact, and a cleanup/status failure must 
 the original measurement error. Manual dispatch uploads diagnostic artifacts even after failure;
 records contain only error stage/type, attempted routes, available observations and accounting.
 Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.
+
+### 8.12 Experimental request ceilings and TPM topping-off — L2 extension, 2026-10-10
+
+The maintainer requested that calibration use experimental data to adjust the request sizes the
+Worker will admit, including routes whose provider accepts an individual request larger than its
+published tokens-per-minute (TPM) rate. The goal is to learn the largest safe per-request input
+over time, while keeping the provider's refill rate and the model's context window as separate,
+unchanged facts. This extends §8.10–8.11, which currently use calibration evidence to offer
+reviewed catalog cap changes; it does not authorize changing catalog TPM, model window, route
+allowlist, weekly budget, output authority or quota scope.
+
+**Separate the limits.** There are three different quantities:
+
+1. The model's input context window is a model capability. Calibration does not change it.
+2. Provider TPM is the token-bucket refill rate and remains sourced from reviewed provider limits.
+   A larger accepted request does not demonstrate a higher TPM.
+3. The per-request hard input ceiling is a request-size constraint. Authenticated experiments may
+   establish a verified-success lower bound and, only when an endpoint has a reliable typed
+   context-size rejection parser, a rejection upper bound. The Worker may adjust its effective
+   request ceiling from those bounds without rewriting YAML or compiled catalogs.
+
+The current Worker already refills route and shared-provider token budgets at configured TPM and
+can wait for a reservation larger than one TPM interval when the bucket has accumulated enough
+tokens. It separately applies `hard_input_ceiling`, and bounds the shared provider bucket to five
+TPM windows. Therefore a route may top off to a request above TPM only when its effective hard
+ceiling permits that size, the route and provider buckets have enough balance, and existing
+shared-scope and rolling gates pass. This does not establish that every provider permits such a
+burst; `context_limit > tpm` alone must never infer it.
+
+**Use observed provider counts and typed outcomes.** For every experiment, retain the exact
+reserved amount and provider-reported input/output/total counts when available. The parser must
+feed the observed count, not the local tokenizer estimate, into calibration brackets and Worker
+settlement. Record only allowlisted, payload-free response evidence: outcome class, typed HTTP or
+provider error class, request/response timing, documented rate-limit headers and retry timing.
+Never persist prompts, completions, API keys or arbitrary response bodies. Classify at least:
+
+- verified success, with actual provider token count;
+- explicit context/request-size rejection, only for a provider-specific recognized condition;
+- rate-limit/TPM rejection (for example 429), which is not a context ceiling;
+- transport, authentication, quota-scope or otherwise unknown failure.
+
+An explicit context-size rejection narrows the request-size upper bound but does not erase the
+largest verified successful request. A rate-limit rejection updates rate-limit/backoff evidence
+and the applicable token balance/cooldown; it must not lower the learned request ceiling or
+configured TPM. Unknown outcomes move neither bound. Success above TPM proves only that the
+observed request size was accepted with that experiment's bucket state; it is not by itself an
+exact maximum or proof of sustained throughput.
+
+**Learn the safe request ceiling over time.** Calibration keeps a route- and physical-quota-scope-
+bound search interval: the highest request size verified successful using actual provider counts,
+and the lowest reliably classified context-size rejection, if one exists. Search/refinement follows
+§8.10's accepted 0.5% or 128-token stopping goal and existing weekly job budget; it adds no
+blanket safety margins at each stage. If no context rejection has been observed, later approved
+experiments may stretch the successful bound upward, subject to existing per-run and weekly
+allowances, route/input authority, the shared bucket's five-TPM-window ceiling and normal provider
+admission. After a verified context rejection, probe within the narrower bracket. The Worker raises
+its effective request ceiling only to a provider-count-verified success; it lowers that ceiling
+only when an unambiguous context-size rejection establishes a tighter bound. Until then, retain the
+current configured ceiling/behavior. Expired, stale-catalog, mismatched physical-scope, partial or
+failed evidence cannot change runtime authority.
+
+This is automatic adjustment of the Worker's runtime request ceiling from authenticated experiment
+evidence, not automatic editing of provider catalogs or provider quotas. Each result must link to
+its admitted attempt, route, physical quota scope, parser version, deployed catalog digest and
+actual provider count. Persist it through a typed, idempotent settlement to the existing durable
+Worker authority, with bounded row/read/write cost and outage-safe rollback and recreation
+behavior. A workflow artifact alone is not runtime authority. Competing runs cannot overwrite
+newer evidence; accepted results are monotonic by evidence time/version and stale runners are
+fenced. Provider counts exceeding a reservation are useful observed-count evidence but do not
+retroactively increase admission or weekly charges.
+
+**Evidence for topping-off behavior.** The canary tests more than a single large request. For an
+approved route/scope, controlled requests should demonstrate (a) success for an actual
+provider-counted request larger than one TPM interval after sufficient idle/refill and (b) a later
+request submitted only after the Worker replenishes the corresponding token deficit. Capture
+documented rate-limit headers and timings where available. A rate-limit response remains rate
+evidence and is never labeled a context failure. Keep attempts inside existing canary/manual
+budgets and shared-scope gates; do not create synthetic Worker jobs or override provider quotas.
+A successful above-TPM request supports a bounded burst-capability classification for that exact
+physical scope and observed size, not a blanket provider-family rule.
+
+**Activation and failure behavior.** Live calibration remains disabled until a separately reviewed
+activation specifies route/scope, dimensions, bounded experiments and rollback. Runtime ceilings
+may move only within the model context limit, existing compiled/transport maximum and provider's
+established shared bucket bound. No experiment changes TPM, context window, RPD/TPD, concurrency,
+paid policy, output enablement or route eligibility. Missing or conflicting evidence fails closed to
+the last authenticated ceiling. Rollback disables experimental ceiling updates and returns to the
+last reviewed static ceiling; it does not erase evidence, weekly charges or rate-limit state.
+Telemetry must expose the active ceiling, evidence version/source, last observed actual count and
+rejection class without request content.
+
+**Maturity and follow-up.** This extension is L2. Before implementation, promote it to L3 with the
+exact settlement operation and bounded durable fields, evidence authentication/retention rules,
+endpoint-specific rate-limit and context-error parsers, search scheduling, Worker overlay
+precedence, rollback procedure and tests for stale/replayed results, rate-limit/context
+classification, actual-count corrections, above-TPM refill behavior, outage/recreation and shared
+provider concurrency. Update the §8.11 file/function plan and implementation issue then. This
+design amendment does not implement or activate runtime ceiling adjustment.
