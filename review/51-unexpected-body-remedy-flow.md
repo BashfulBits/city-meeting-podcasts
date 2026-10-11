@@ -3632,3 +3632,15 @@ configs under evals/remedy/results/gemini-resume-2026-10-11/, explicitly recordi
 current catalog/subset hashes. Map original configuration IDs through retained
 admission files; skip completed pairs without rewriting their provenance. No admission,
 production defaults or quotas change. Daily exhaustion remains pending, not incorrect.
+
+### Varied backlog evaluation preparation — 2026-10-11
+
+Maintainer authorized a larger challenge set from the actual unexpected-body backlog.
+`evals/remedy/holdout/backlog-varied-2026-10-11/` retains 60 unique source/recording pairs
+across Addison, Arlington, Dallas, Denton and Fort Worth. It separates review-only past
+assignments/dispositions from model-input drafts, records input hashes and includes joints,
+bond programs, numbered districts, planning/Council boundaries, archive media and sparse bodies.
+This is preparation, not approved gold or admission evidence. Exact official excerpts and current
+feed inventory must be bound before freezing. Split overlap must be removed for admission;
+already-tested recordings belong only in a named regression/challenge slice. No live calls or
+production route changes are authorized by generating this preparation artifact.
