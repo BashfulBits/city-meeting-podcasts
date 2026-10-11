@@ -3644,3 +3644,11 @@ This is preparation, not approved gold or admission evidence. Exact official exc
 feed inventory must be bound before freezing. Split overlap must be removed for admission;
 already-tested recordings belong only in a named regression/challenge slice. No live calls or
 production route changes are authorized by generating this preparation artifact.
+
+Varied-set preparation checkpoint: 20 retained official agendas retrieved with document/text
+hashes; 60 review packets and separate answer-free input drafts saved. Twenty agenda-backed
+feed sets are drafted, not new approved gold; forty cases require additional evidence/adjudication.
+Three prior Denton recording overlaps are explicitly separated; source/family isolation remains
+pending. Multi-feed correctness needs membership checks rather than a fabricated exclusive owner.
+A lighter-proposer experiment is proposed in the set's `smaller-model-options.md`; it does not
+lower the existing Gemini 3.7 High admission floor or authorize new live model calls.

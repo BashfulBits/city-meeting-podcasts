@@ -29,3 +29,24 @@ Before evaluation:
 
 No provider requests, production changes or new human dispositions occur when building this set.
 Run `build.py` only into an empty output directory; generated files refuse overwrite.
+
+## Evidence preparation checkpoint
+
+Twenty official agendas were retrieved through the source-URL safety gate and retained with byte
+and extracted-text hashes in `official-documents/`. `evidence-packets.json` links all 60 recordings
+to retained research and exact recording identifiers; it does not promote research prose to official
+source evidence. Forty recordings still need content/official evidence or a separately adjudicated
+insufficient-evidence scenario. No approved gold has been manufactured.
+
+`expected-decisions-draft.json` proposes 20 agenda-backed feed sets, including two genuine
+multi-feed cases. These are review drafts. `evidence-model-inputs.json` contains agenda excerpts and
+candidate feed display names, excluding historical answers, research dispositions and UID inclusion
+rules. Check excerpt relevance before freezing: the first 4,000 characters are a preparation bound,
+not permission to omit contradictory evidence. Three recording identities overlap the prior Denton
+set; GUID matching catches alternate retained UID representations. Broader source/family overlap
+still needs audit before any admission-holdout label. Character counts are not token counts.
+
+`retrieve_evidence.py` and `prepare_packets.py` preserve preparation scaffolding. Existing aggregate
+outputs refuse overwrite. Do not rerun against existing outputs. No model calls occurred.
+See `smaller-model-options.md` for an evaluation-only lighter-proposer proposal and the existing
+admission-floor constraint.

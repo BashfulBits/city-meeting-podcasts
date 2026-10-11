@@ -1,0 +1,1701 @@
+{
+  "kind": "review-draft-not-approved-gold",
+  "cases": [
+    {
+      "id": "addison-359742-31b194e3b25f0bf8",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-361917-1ef623b5f2bc909a",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-362796-cb34bf9c6001c32a",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-371625-902400566a6637b5",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-55864-35a78fa89c7c5c5c",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-56029-63b22f80ce9500ff",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-276855-4ef85ec6540cf95b",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-295839-fcc9bde16c7f47fe",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-310072-c95af66385f6cf31",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-55599-e59549e833479e1d",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-56020-235c1c030568dac0",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-56021-24d5e7dc230eb900",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-56022-ee80c45122c4f9f0",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-56023-1f50e2274a6dd26c",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-394474-757ab2a4aaf9bbca",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-148373-4b69d73512792a44",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-150744-e2e2e4d8c9b5330c",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-153032-52ec3e810707f814",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "addison-154641-ff8eac28f4881cd2",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-board-of-zoning-adjustment"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-bond-committees"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "addison-tx-city-council"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "arlington-tx-1792515fdd51c6c2-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-environmental-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-environmental-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-2d5dc451df2da130-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-environmental-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-35b22fcc8d07967b-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-environmental-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-237c28f30496e3e0-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-economic-development-committee"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-30b28efc23346a6d-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-economic-development-committee"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-economic-development-committee"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "arlington-tx-d8f3b672b482369b-ownership",
+      "expected_feeds_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "arlington-tx-community-and-neighborhood-development-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-arlington-tomorrow-foundation"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-council"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "arlington-tx-economic-development-committee"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-bond-public-town-halls"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-citizens-bond-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2024-bond-critical-facilities-subcommittee"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "dallas-tx-16300c982b358fe9-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-bond-public-town-halls"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-citizens-bond-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2024-bond-critical-facilities-subcommittee"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "dallas-tx-2b172a76868ad86c-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-bond-public-town-halls"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-citizens-bond-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2024-bond-critical-facilities-subcommittee"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "dallas-tx-2bc4c440c974dba8-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-bond-public-town-halls"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-citizens-bond-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2024-bond-critical-facilities-subcommittee"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "dallas-tx-bd172b762dd20b63-ownership",
+      "expected_feeds_draft": [
+        "dallas-tx-redistricting-commission"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "dallas-tx-redistricting-commission"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-bond-public-town-halls"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2017-citizens-bond-task-force"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "dallas-tx-2024-bond-critical-facilities-subcommittee"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-04689e3929ac104e-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-special-citizens-bond-advisory-committee"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-special-citizens-bond-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-280db52d91547dd6-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [
+        "evals/remedy/holdout/p1-denton-2026-10-10/manifest.json"
+      ],
+      "slice": "previously-tested-challenge",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-health-building-standards-commission"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-7abd583b2ed8189a-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-health-building-standards-commission"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-b50c6a018b2c08e7-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-library-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [
+        "evals/remedy/holdout/p1-denton-2026-10-10/manifest.json"
+      ],
+      "slice": "previously-tested-challenge",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-library-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-library-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-library-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-a1aa4af8f26e120c-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-city-council",
+        "denton-tx-library-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-city-council"
+        },
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-library-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-1c91182b70afefb3-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-tirz-2-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [
+        "evals/remedy/holdout/p1-denton-2026-10-10/manifest.json"
+      ],
+      "slice": "previously-tested-challenge",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-tirz-2-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-2493e59c0844a4b4-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-tirz-1-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-2b458f3c556df459-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-tirz-1-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "expected_feeds_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "denton-tx-tirz-1-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "fort-worth-tx-27254aa1a700569f-ownership",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "expected_feeds_draft": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-emsisd-board-joint-meetings"
+      ],
+      "unresolved_feed_slugs": [],
+      "rationale": "Draft based on recovered official agenda naming the convening body; verify date and configured feed identity before approval.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "positive-membership",
+          "feed": "fort-worth-tx-city-council"
+        },
+        {
+          "kind": "positive-membership",
+          "feed": "fort-worth-tx-emsisd-board-joint-meetings"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Confirm official body/date/source binding and expected answer"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-1ba31685c3061fad",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-345a3a95d050eddf",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-3afe3a4c3aaa04d9",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-43599790450713d2",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-93bbf0722bbc0edd",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-c33b73995d47d8f3",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-d38106e9b2725a87",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-f1e199354d821412",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-f3eac6548e0da80c",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-3b7588310856-f9c0123089539a11",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-agenda-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-airport-advisory-board"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "denton-tx-board-of-ethics"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-6540eef2dc2e-00c9f506545d220a",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-6540eef2dc2e-00e5a51984f89df0",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-6540eef2dc2e-01127a49d16869ef",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-6540eef2dc2e-014649318804b782",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    },
+    {
+      "id": "untracked-6540eef2dc2e-018c23a1b2493ae3",
+      "expected_feeds_draft": [],
+      "unresolved_feed_slugs": [],
+      "rationale": "Evidence needs independent content review; no owner inferred from a title or current assignment.",
+      "truth_status": "draft-not-approved",
+      "overlap": [],
+      "slice": "new-challenge-pending-split-audit",
+      "questions": [
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee"
+        },
+        {
+          "kind": "plausible-negative-membership",
+          "feed": "fort-worth-tx-alliance-airport-authority"
+        }
+      ],
+      "needs": [
+        "Locate official content evidence, or design an explicit insufficient-evidence question"
+      ]
+    }
+  ]
+}
