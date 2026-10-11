@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
+  comma after the requested-token count while still rejecting malformed grouped numbers. A
+  regression fixture matches the full live response shape.
+
 - **Provider context canary diagnostics.** Context evidence now records a bounded reason code,
   HTTP/provider error classes, admission/request/first-byte timing, response media type and byte
   count, pause/drain state, and parsed Groq request/token-rate/Retry-After headers. Scheduled runs
