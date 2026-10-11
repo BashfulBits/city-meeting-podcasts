@@ -242,10 +242,13 @@ def manual_context_canary(args, limits, control):
             != f"{route['provider']}:{route['account_id']}:{route['upstream_model']}"
         ):
             raise ValueError("manual context route not approved or quota unknown")
-        if "input" in dimensions and args.context_input > status.get("input_ceilings", {}).get(
-            rid, 524288
-        ):
-            raise ValueError("manual input ceiling exceeds approved route authority")
+        if "input" in dimensions:
+            manual_ceilings = status.get("manual_input_ceilings")
+            if not isinstance(manual_ceilings, dict):
+                # Compatibility with a Worker deployed before the manual-only ceiling field.
+                manual_ceilings = status.get("input_ceilings", {})
+            if args.context_input > manual_ceilings.get(rid, 524288):
+                raise ValueError("manual input ceiling exceeds approved route authority")
         if dimensions == ["input"] and args.context_output > 256:
             raise ValueError("input canary output reservation cannot exceed 256")
         if "output" in dimensions and not status.get("output_enabled"):

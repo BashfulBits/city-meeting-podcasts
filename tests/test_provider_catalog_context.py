@@ -1346,6 +1346,8 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
         "enabled": True,
         "catalog_digest": digest,
         "output_enabled": False,
+        "input_ceilings": {"r": 8192},
+        "manual_input_ceilings": {"r": 16384},
         "routes": {"r": {"enabled": True, "quota_scope": "groq:primary:m"}},
         "manual_session": {"weekly_requests_used": 0},
     }
@@ -1425,6 +1427,8 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
         "r",
         "--context-purpose",
         "#2221",
+        "--context-input",
+        "16384",
         "--context-evidence",
         str(target),
     ]
@@ -1442,6 +1446,7 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
     assert calls == [True] and finished == [True]
     payload = json.loads(target.read_text())["payload"]
     assert payload["kind"] == "manual_context" and payload["authority"]["max_requests"] == 2
+    assert payload["authority"]["per_call_input"] == 16384
 
     assert payload["run_status"] == ("failed" if fault else "success")
     assert payload["attempted_routes"] == ["r"]
