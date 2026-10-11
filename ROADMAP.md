@@ -691,14 +691,15 @@ size. A manual-only, 4 KiB sanitized HTTP error-body excerpt is being added befo
 same target; scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or
 dimension is enabled.
 
-**Review/48 scope correction — 2026-10-11.** Complete route discovery/addition/removal with
-bounded new-route input/output/combined request-cap searches at strict 0.5% admitted/refused width.
+**Review/48 scope correction and discovery L3 — 2026-10-11.** Complete route
+discovery/addition/removal with bounded new-route input/output/combined request-cap searches at strict 0.5% admitted/refused width.
 Report partial results on a stuck/escape bound; maintainer `test again` resumes authenticated
 progress another day. Ask for missing provider quotas and cap overrides before preparing a PR.
 Existing runtime feedback remains intact. Separate quota-pool configuration/enforcement design
 from route maintenance. Periodic empirical limit verification, burst/refill and pacing redesign
 are Deferred to [review/54](review/54-provider-limit-characterization.md), tracked by #2264; they
-do not block review/48.
+do not block discovery reporting. Review/48 §8.13 defines the offline file/test plan, finite escape
+budgets and authenticated next-day retries; live discovery activation remains separately reviewed.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing

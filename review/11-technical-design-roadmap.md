@@ -1796,7 +1796,9 @@ The former automatic runtime request-ceiling design is now Deferred under
 Its historical L3 designation no longer authorizes implementation or activation; fresh design
 and prioritization are required. Discovery-time request-cap search remains in review/48 §8.13.
 
-### Review/48 scope correction and new-route cap discovery — L2 (2026-10-11)
+### Review/48 scope correction and new-route cap discovery — L3 (2026-10-11)
+
+Implementation tracking: [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
 
 The maintainer retains route discovery/addition/removal and bounded new-route input/output/total
 request-size search in review/48. Seek verified admitted/refused brackets at strict 0.5% width;
@@ -1807,6 +1809,11 @@ Explicit quota-pool/schema enforcement needs a separate bounded design; periodic
 quota/cap revalidation, overflow/refill and broader pacing redesign are Deferred under
 [review/54](54-provider-limit-characterization.md), tracked by #2264. Previous review/48 §8.12 L3
 automatic runtime ceiling direction is superseded by this scope decision.
+
+Review/48 §8.13 now specifies the offline discovery/report/retry file and test plan: 64 submissions,
+20 minutes and finite token reservations per candidate; two candidates per run; separate authenticated
+90-day histories and next-day `/apply` retry receipts. Live discovery stays disabled pending reviewed
+activation. Combined-cap/shared-quota additions remain gated on their separate configuration design.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 
