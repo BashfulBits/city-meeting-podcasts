@@ -438,6 +438,24 @@ def test_typed_tpm_rejection_downshifts_then_refines_separate_rate_bracket():
     assert next_week.rate_rejection is None
 
 
+def test_other_provider_versioned_rate_parser_can_use_shared_reducer():
+    observation = replace(
+        groq_rate_rejection(),
+        provider="openrouter",
+        rate_limit_parser_version="openrouter-tpm-rejection-v1",
+    )
+    rejected = advance_context_state(state(), observation)
+    assert rejected.status == "rate_refining"
+    assert (
+        next_context_probe(
+            rejected,
+            {"baseline": 16384, "opposite_reservation": 256},
+            BUDGET,
+        ).next_target
+        == 5244
+    )
+
+
 def test_untyped_rate_limit_does_not_steer_probe_or_context_cap():
     observation = replace(
         ContextObservation.from_request(request()), outcome="quota", provider_error_class="unknown"
@@ -1130,6 +1148,46 @@ def test_combined_window_rejection_compares_full_reservation_not_generated_outpu
     assert advance_context_state(current, conflicting).status == "uncertain"
 
 
+@pytest.mark.parametrize(
+    "provider,dimension,count_basis,ceiling,expected",
+    [
+        ("openrouter", "input", "input", 12000, 6000),
+        ("gemini", "output", "output", 8000, 4000),
+        ("nvidia", "input", "combined_reserved", 16000, 8000),
+    ],
+)
+def test_provider_neutral_size_rejection_without_success_downshifts(
+    provider, dimension, count_basis, ceiling, expected
+):
+    from citypods.provider_catalog.evidence import digest
+
+    req = request(provider=provider, dimension=dimension, target=ceiling)
+    attempted = replace(
+        ContextObservation.from_request(req),
+        outcome="inconclusive",
+        evidence_kind="size_rejection",
+        reported_ceiling=ceiling,
+        count_basis=count_basis,
+        reported_input=7000 if count_basis == "combined_reserved" else None,
+        reported_output=256 if count_basis == "combined_reserved" else None,
+        reported_total=7256 if count_basis == "combined_reserved" else None,
+        identity_digest=digest([provider, "model", dimension]),
+    )
+    current = ContextSearchState(
+        attempted.identity_digest,
+        dimension,
+        rejection=attempted,
+        status="refining",
+    )
+    next_probe = next_context_probe(
+        current,
+        {"baseline": 16000, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert next_probe.status == "refining"
+    assert next_probe.next_target == expected
+
+
 def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
     observed = replace(success(11000), reserved_input=10000, local_input_estimate=9000)
     updated = advance_context_state(state(), observed)
@@ -1190,16 +1248,20 @@ def run_context_orchestration(
         calls.append(req)
         if mode == "transport":
             return ContextObservation.from_request(req, outcome="transport")
-        if mode == "rate_then_success" and len(calls) == 1:
+        if mode in {"rate_then_success", "generic_rate_then_success", "generic_rate_repeat"} and (
+            len(calls) == 1 or mode == "generic_rate_repeat"
+        ):
             return replace(
                 ContextObservation.from_request(req),
                 outcome="quota",
-                http_status=413,
+                http_status=413 if mode == "rate_then_success" else 429,
                 provider_error_class="rate_limited",
-                rate_limit_limit_tokens=8000,
-                rate_limit_requested_tokens=10488,
-                rate_limit_parser_version="groq-tpm-rejection-v1",
-                retry_after_ms=19000,
+                rate_limit_limit_tokens=8000 if mode == "rate_then_success" else None,
+                rate_limit_requested_tokens=10488 if mode == "rate_then_success" else None,
+                rate_limit_parser_version=(
+                    "groq-tpm-rejection-v1" if mode == "rate_then_success" else "not_recorded"
+                ),
+                retry_after_ms=19000 if mode == "rate_then_success" else 5000,
             )
         if req.dimension == "input":
             count = req.reserved_input + 1 if mode == "overshoot" else req.reserved_input
@@ -1261,6 +1323,37 @@ def test_manual_probe_downshifts_after_typed_groq_rate_rejection(monkeypatch):
     assert report.context_observations[1].outcome == "verified"
     assert report.context_observations[2].outcome == "verified"
     assert all(call.dimension == "input" for call in calls)
+
+
+def test_manual_untyped_rate_limit_waits_then_retries_same_size(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert calls[2].reserved_input > calls[1].reserved_input
+    assert context["sleeps"] == [60]
+    assert [o.outcome for o in report.context_observations] == ["quota", "verified", "verified"]
+    assert not any(o.rate_limit_requested_tokens for o in report.context_observations)
+
+
+def test_repeated_untyped_rate_limit_defers_without_creating_a_size_bound(monkeypatch):
+    report, context, _runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_repeat",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == 2
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert context["sleeps"] == [60]
+    assert all(o.rate_limit_requested_tokens is None for o in report.context_observations)
+    assert not any("context converged" in note for note in report.observations)
 
 
 @pytest.mark.parametrize("mode", ["denied", "transport", "overshoot", "preflight"])

@@ -1293,6 +1293,7 @@ def _measure_context_routes(
         key = None
         for dimension in context_run.get("dimensions", ("input", "output")):
             observed = None
+            rate_retried_targets = set()
             for _ in range(8 if context_run.get("manual") else 6):
                 if context_run.get("abandoned"):
                     return
@@ -1499,14 +1500,52 @@ def _measure_context_routes(
                         if budget["remaining_seconds"] >= wait_ms / 1000 + 205:
                             sleep(wait_ms / 1000)
                             continue
+                elif observed.outcome == "quota" and context_run.get("manual"):
+                    # Untyped rate errors get one same-size retry after cooldown. This can
+                    # confirm transient recovery, but never creates a numeric size bound.
+                    retry_target = target.next_target
+                    retry_after = max(
+                        observed.retry_after_ms or 0,
+                        observed.rate_limit_reset_tokens_ms or 0,
+                        observed.rate_limit_reset_requests_ms or 0,
+                    )
+                    wait_ms = max(60_000, retry_after)
+                    if (
+                        observed.provider_error_class != "quota"
+                        and retry_target not in rate_retried_targets
+                        and budget["remaining_requests"] > 0
+                    ):
+                        budget["remaining_seconds"] = min(
+                            budget["remaining_seconds"],
+                            (context_run["deadline_ms"] - time.time() * 1000) / 1000,
+                        )
+                        if budget["remaining_seconds"] >= wait_ms / 1000 + 205:
+                            rate_retried_targets.add(retry_target)
+                            states[key] = replace(
+                                current,
+                                next_target=retry_target,
+                                status="retrying",
+                            )
+                            sleep(wait_ms / 1000)
+                            continue
+                    if current.status == "retrying":
+                        current = replace(
+                            current,
+                            next_target=None,
+                            status="exploring" if current.success else "baseline",
+                        )
+                        states[key] = current
+                    report.observations.append(
+                        f"{rid}/{dimension}: rate limit deferred; no typed size bound"
+                    )
                 if observed.outcome != "verified" or current.status in {
                     "uncertain",
                     "converged",
                     "rate_converged",
                 }:
                     if current.status != "rate_converged":
-                        # Manual searches may downshift after a typed Groq TPM rejection, but
-                        # never retry the same request or spend beyond the admitted run budget.
+                        # Manual searches may downshift after a typed provider token-rate
+                        # rejection, but never replay an admission or exceed the run budget.
                         if not (
                             context_run.get("manual")
                             and current.rate_rejection == observed

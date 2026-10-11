@@ -756,11 +756,11 @@ class ContextObservation:
             or self.provider_error_class != "rate_limited"
             or self.rate_limit_limit_tokens is None
             or self.rate_limit_requested_tokens <= self.rate_limit_limit_tokens
-            or self.rate_limit_parser_version != "groq-tpm-rejection-v1"
+            or not re.fullmatch(
+                r"[a-z][a-z0-9_-]{0,62}-v[1-9][0-9]*", self.rate_limit_parser_version
+            )
         ):
-            raise ValueError("invalid typed Groq token-rate rejection")
-        if self.rate_limit_parser_version not in {"not_recorded", "groq-tpm-rejection-v1"}:
-            raise ValueError("unknown token-rate parser version")
+            raise ValueError("invalid typed provider token-rate rejection")
         if (
             self.rate_limit_requested_tokens is None
             and self.rate_limit_parser_version != "not_recorded"

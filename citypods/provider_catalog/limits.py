@@ -377,6 +377,7 @@ class ContextSearchState:
             "refining",
             "rate_refining",
             "rate_converged",
+            "retrying",
             "converged",
             "budget_limited",
             "uncertain",
@@ -397,6 +398,8 @@ class ContextSearchState:
             type(self.next_target) is not int or not 0 < self.next_target <= 2**53 - 1
         ):
             raise ValueError("invalid context target")
+        if self.status == "retrying" and self.next_target is None:
+            raise ValueError("retrying context state requires its prior target")
         for observation in (self.success, self.rejection, self.rate_rejection):
             if observation is not None and (
                 observation.identity_digest != self.identity_digest
@@ -544,13 +547,19 @@ def next_context_probe(state, limits, budget):
     if state.status == "uncertain":
         # The caller stops this run on uncertainty; its next weekly scan revalidates baseline.
         state = replace(state, success=None, rejection=None, next_target=None, status="baseline")
-    if state.success is None:
-        target = (
-            state.rate_rejection.rate_limit_requested_tokens // 2
-            if state.rate_rejection
-            else state.next_target or limits["baseline"]
-        )
-        status = "rate_refining" if state.rate_rejection else "baseline"
+    if state.status == "retrying":
+        target = state.next_target
+        status = "retrying"
+    elif state.success is None:
+        if state.rate_rejection:
+            target = state.rate_rejection.rate_limit_requested_tokens // 2
+            status = "rate_refining"
+        elif state.rejection:
+            target = state.rejection.reported_ceiling // 2
+            status = "refining"
+        else:
+            target = state.next_target or limits["baseline"]
+            status = "baseline"
     elif state.rate_rejection and state.status != "rate_converged":
         lower = _context_count(state.success)
         upper = state.rate_rejection.rate_limit_requested_tokens
