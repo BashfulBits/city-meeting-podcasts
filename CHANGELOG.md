@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Changelog fragments and automated compiler workflow.** PRs now add isolated fragment
+  files in `changelog.d/<slug>.md` instead of editing `CHANGELOG.md` directly, eliminating
+  merge and rebase conflicts on GitHub when multiple PRs land in sequence. A GitHub Action
+  compiles fragments into `CHANGELOG.md` under `## Unreleased` and removes them upon merge
+  to `main`.
+
      
 - **New-route size searches retain token calibration at the hard ceiling.** The input planner
   now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
