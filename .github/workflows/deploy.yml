@@ -10,6 +10,7 @@ on:
       - "AGENTS.md"
       - "ARCHITECTURE.md"
       - "CHANGELOG.md"
+      - "changelog.d/**"
       - "CLAUDE.md"
       - "README.md"
       - "ROADMAP.md"

@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+<!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
+     changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
+     upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+
 - **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
   after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
   hard ceiling. Once both admitted and refused bounds exist, the planner bisects them to the existing

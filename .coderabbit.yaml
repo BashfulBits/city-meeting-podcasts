@@ -105,8 +105,9 @@ reviews:
           PASS if any of these is true:
           - No file under citypods/, scripts/, workers/, or templates/ was changed (e.g. the PR only
             touches tests/, config/, constraints/, docs/*.md, or CI/tooling files).
-          - The PR also modifies at least one of: CHANGELOG.md, ARCHITECTURE.md, or any file under
-            review/ (a review/NN-*.md breakout doc, including review/11-technical-design-roadmap.md).
+          - The PR also modifies at least one of: changelog.d/, CHANGELOG.md, ARCHITECTURE.md, or
+            any file under review/ (a review/NN-*.md breakout doc, including
+            review/11-technical-design-roadmap.md).
           - The PR description or title explicitly states no doc update is needed and why (e.g.
             "no doc update needed" or "pure refactor, no behavior change").
 
