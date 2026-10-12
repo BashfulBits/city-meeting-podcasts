@@ -1,0 +1,13 @@
+{
+  "case_ids": [
+    "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+    "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee",
+    "addison-55864-35a78fa89c7c5c5c-wrong-target",
+    "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+    "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+    "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+    "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force",
+    "addison-55599-e59549e833479e1d-member-addison-tx-city-council"
+  ],
+  "approval": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94"
+}

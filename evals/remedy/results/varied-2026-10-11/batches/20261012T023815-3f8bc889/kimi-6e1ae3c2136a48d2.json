@@ -1,0 +1,87 @@
+{
+  "candidate": "kimi",
+  "case_id": "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:41:44.081891+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "39234bb50ef3a0432d108b49700ef57ba1246538ddbfb9cb6b6b1611c850e206",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 9
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-9122d5c7-0fca-4794-a7aa-0b59f4d02c90",
+    "created": 1791772912,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force\",\"supported\":true,\"proposed_owner\":\"arlington-tx-environmental-task-force\",\"proposed_action\":\"publish-to-arlington-tx-environmental-task-force\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda identifies the convened body as the City of Arlington Environmental Task Force for the April 14, 2020 meeting, and the provider player for the same recording is officially titled Environmental Task Force. Under the identity rule, ownership follows the convened body rather than shared city or topic tokens, so the recording belongs in the existing Environmental Task Force feed.\"}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "We need answer raw JSON according schema. Need assess claim under supplied approved publication policy. Claim: recording belongs in arlington-tx-environmental-task-force. Evidence: agenda says ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON telephone meeting April 14 2020; provider player title Environmental Task Force. Existing feed slug matches. Family policy identity use convened body. So supported true, proposed owner slug same, action maybe \"publish\" or \"assign\"? Need infer expectations. Need provide case_id from id. evidence_ref_ids cite only supplied IDs: retained-agenda, provider-player. missing_evidence empty. rationale concise. proposed_action maybe \"assign-to-feed\" or the claim itself? Schema string unrestricted. We need formulate likely evaluation wants fields. Let's inspect context: decision_type publication-membership. Supported claim means proposed_owner should be feed slug. proposed_action perhaps \"publish-in-owner-feed\" or \"accept\". Need use frozen evidence and approved policy. Let's reason carefully.\n\nInput is a publication membership challenge. We must judge supplied claim. The recording's official metadata title/body = Environmental Task Force. Evidence refs include agenda and provider player, both independently clearly name body. Existing feed exists \"arlington-tx-environmental-task-force\" with title \"Arlington: Environmental Task Force\" and description verified proceedings. The claim says under policy it belongs there. Identity must use convened body, not venue/topic/common members; numbered boards differ. The convening body in agenda is Environmental Task Force, City of Arlington. The exact owner feed exists. Thus supported=true; proposed_owner=\"arlington-tx-environmental-task-force\"; proposed_action maybe \"assign-recording-to-arlington-tx-environmental-task-force\". evidence IDs both. Missing evidence [] because adequate. Rationale under 2000 chars.\n\nNeed ensure JSON valid no markdown. Should we use null for proposed_action? Schema allows string/null. Since supported, action should specify. Could use \"publish-to-arlington-tx-environmental-task-force\". There might be hidden expected semantics but free text. Let's craft.\n\nNeed maybe cite evidence-reference IDs only, not URLs. evidence_ref_ids exact IDs. Case id exact \"arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force\". Rationale mention no reliance on shared city/topic tokens; official title and agenda identify same convened body and recording ID matches. Hmm \"Official metadata immutable.\" We cite evidence IDs in separate array. Could mention these IDs in rationale? Not necessary, but can. Need only cite IDs. The answer:\n\n{\n \"case_id\": \"...\",\n \"supported\": true,\n \"proposed_owner\": \"arlington-tx-environmental-task-force\",\n \"proposed_action\": \"publish-to-owner-feed\",\n ...,\n \"rationale\": \"The retained agenda identifies the convened body as the City of Arlington Environmental Task Force and gives the same 2020-04-14 telephone meeting details; the provider player for the same recording ID is officially titled Environmental Task Force. Under the identity rule, ownership follows that convened body, so the recording belongs in the existing matching feed.\"\n}\n\nCheck proposed_action maybe should include slug. \"publish-to-arlington-tx-environmental-task-force\" more precise. Use supported true.\n\nNeed be mindful \"five owner-unknown programs test unsupported claim rejection only.\" Not relevant; this is known. \"Historical challenge, not source/family-disjoint admission holdout.\" Not relevant.\n\nLet's provide raw JSON.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "We need answer raw JSON according schema. Need assess claim under supplied approved publication policy. Claim: recording belongs in arlington-tx-environmental-task-force. Evidence: agenda says ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON telephone meeting April 14 2020; provider player title Environmental Task Force. Existing feed slug matches. Family policy identity use convened body. So supported true, proposed owner slug same, action maybe \"publish\" or \"assign\"? Need infer expectations. Need provide case_id from id. evidence_ref_ids cite only supplied IDs: retained-agenda, provider-player. missing_evidence empty. rationale concise. proposed_action maybe \"assign-to-feed\" or the claim itself? Schema string unrestricted. We need formulate likely evaluation wants fields. Let's inspect context: decision_type publication-membership. Supported claim means proposed_owner should be feed slug. proposed_action perhaps \"publish-in-owner-feed\" or \"accept\". Need use frozen evidence and approved policy. Let's reason carefully.\n\nInput is a publication membership challenge. We must judge supplied claim. The recording's official metadata title/body = Environmental Task Force. Evidence refs include agenda and provider player, both independently clearly name body. Existing feed exists \"arlington-tx-environmental-task-force\" with title \"Arlington: Environmental Task Force\" and description verified proceedings. The claim says under policy it belongs there. Identity must use convened body, not venue/topic/common members; numbered boards differ. The convening body in agenda is Environmental Task Force, City of Arlington. The exact owner feed exists. Thus supported=true; proposed_owner=\"arlington-tx-environmental-task-force\"; proposed_action maybe \"assign-recording-to-arlington-tx-environmental-task-force\". evidence IDs both. Missing evidence [] because adequate. Rationale under 2000 chars.\n\nNeed ensure JSON valid no markdown. Should we use null for proposed_action? Schema allows string/null. Since supported, action should specify. Could use \"publish-to-arlington-tx-environmental-task-force\". There might be hidden expected semantics but free text. Let's craft.\n\nNeed maybe cite evidence-reference IDs only, not URLs. evidence_ref_ids exact IDs. Case id exact \"arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force\". Rationale mention no reliance on shared city/topic tokens; official title and agenda identify same convened body and recording ID matches. Hmm \"Official metadata immutable.\" We cite evidence IDs in separate array. Could mention these IDs in rationale? Not necessary, but can. Need only cite IDs. The answer:\n\n{\n \"case_id\": \"...\",\n \"supported\": true,\n \"proposed_owner\": \"arlington-tx-environmental-task-force\",\n \"proposed_action\": \"publish-to-owner-feed\",\n ...,\n \"rationale\": \"The retained agenda identifies the convened body as the City of Arlington Environmental Task Force and gives the same 2020-04-14 telephone meeting details; the provider player for the same recording ID is officially titled Environmental Task Force. Under the identity rule, ownership follows that convened body, so the recording belongs in the existing matching feed.\"\n}\n\nCheck proposed_action maybe should include slug. \"publish-to-arlington-tx-environmental-task-force\" more precise. Use supported true.\n\nNeed be mindful \"five owner-unknown programs test unsupported claim rejection only.\" Not relevant; this is known. \"Historical challenge, not source/family-disjoint admission holdout.\" Not relevant.\n\nLet's provide raw JSON."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 865,
+      "prompt_tokens": 1900,
+      "total_tokens": 2765,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 705,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force",
+    "supported": true,
+    "proposed_owner": "arlington-tx-environmental-task-force",
+    "proposed_action": "publish-to-arlington-tx-environmental-task-force",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "missing_evidence": [],
+    "rationale": "The retained agenda identifies the convened body as the City of Arlington Environmental Task Force for the April 14, 2020 meeting, and the provider player for the same recording is officially titled Environmental Task Force. Under the identity rule, ownership follows the convened body rather than shared city or topic tokens, so the recording belongs in the existing Environmental Task Force feed."
+  },
+  "end_to_end_seconds": 29.53709370829165,
+  "diagnostics": [
+    {
+      "duration_seconds": 28.062327416613698
+    }
+  ]
+}

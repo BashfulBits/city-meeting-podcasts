@@ -1,0 +1,95 @@
+{
+  "candidate": "flashlite",
+  "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "gemini_3_5_flash_lite_primary",
+  "reasoning": "provider-default",
+  "request_timeout": 120,
+  "output_token_cap": 4096,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:22:53.459147+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "92fd98645632e1118b6b955ad0382c0bdef13b2c7aa243e05322cbe61cf6e04f",
+  "route_settings_hash": "c51dfb7c938be7f1ce106d11a1e4a235ce970e02492add3144b0b792a23aa7f8",
+  "capacity": {
+    "observed_usage": {
+      "gemini_3_5_flash_lite_primary": 20,
+      "gemini_3_5_flash_lite_secondary": 0
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "gETMaurXNPad1MkPlaW66Q8",
+    "created": 1791771776,
+    "model": "gemini-3.5-flash-lite",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council\",\n  \"supported\": true,\n  \"proposed_owner\": \"addison-tx-city-council\",\n  \"proposed_action\": \"add\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The joint meeting explicitly includes the Addison City Council as a convening participant along with the Planning & Zoning Commission and the Comprehensive Plan Advisory Committee, supporting inclusion in the City Council feed under the joint meeting policy.\"\n}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "images": [],
+          "thinking_blocks": [],
+          "provider_specific_fields": {
+            "thought_signatures": [
+              "EmAKXgFpFH0TKvZKFDSAb5HuhAiKSdQOesg5R6BNJMlllb+OjxBdZhQNwg3scBgNm7coWCWsnTcO4IFnSextg0jRg4GJIELPlMxeMgZ4NbV79c2WT8jjNuH5KSukbD9zwo8="
+            ]
+          }
+        }
+      }
+    ],
+    "usage": {
+      "completion_tokens": 172,
+      "prompt_tokens": 3307,
+      "total_tokens": 3479,
+      "completion_tokens_details": {
+        "text_tokens": 172
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": null,
+        "text_tokens": 3307,
+        "image_tokens": null,
+        "video_tokens": null
+      },
+      "cache_read_input_tokens": null
+    },
+    "vertex_ai_grounding_metadata": [],
+    "vertex_ai_url_context_metadata": [],
+    "vertex_ai_safety_results": [],
+    "vertex_ai_citation_metadata": [],
+    "service_tier": "default"
+  },
+  "upstream_model": "gemini-3.5-flash-lite",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+    "supported": true,
+    "proposed_owner": "addison-tx-city-council",
+    "proposed_action": "add",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "missing_evidence": [],
+    "rationale": "The joint meeting explicitly includes the Addison City Council as a convening participant along with the Planning & Zoning Commission and the Comprehensive Plan Advisory Committee, supporting inclusion in the City Council feed under the joint meeting policy."
+  },
+  "end_to_end_seconds": 4.7017052080482244,
+  "diagnostics": [
+    {
+      "duration_seconds": 1.5778293749317527
+    }
+  ]
+}

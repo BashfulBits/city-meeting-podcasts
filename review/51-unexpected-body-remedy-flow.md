@@ -3678,10 +3678,10 @@ all60 source/UID/GUID pairs found with source media;38 retained agendas plus off
 minutes/native headings/provider pages collected.121 linked document responses and65 supplements
 retained; two current Addison pages returned403 and remain documented gaps. Raw evidence is sealed
 with per-entry hashes. Proposed answers cover40 assignments,15 existing archive/event/untracked
-policies and5 insufficient-owner-proof programs.113 draft membership/proof questions remain
-awaiting maintainer test-answer approval. Body identity and publication aggregation stay distinct;
-known-policy controls do not inflate independent identity accuracy. No new live model calls,
-production dispositions, evaluator schemas or route limits changed in preparation.
+policies and5 insufficient-owner-proof programs. The maintainer approved the113 membership/proof
+answers for this evaluation; they are frozen separately under `approved-v2/`. Body identity and
+publication aggregation stay distinct; known-policy controls do not inflate independent identity
+accuracy. No new production dispositions, evaluator schemas or route limits changed in preparation.
 
 ### Varied-packet evaluation — maintainer approved 2026-10-11
 
@@ -3703,3 +3703,15 @@ reasoning, not maximum-effort qualification. Scoped Flash-Lite evaluation remain
 and diagnostic-only. Separate quota project/account uncertainty and production headroom remain
 visible. BeatAPI's shared JEV capacity and NVIDIA's production lanes retain priority. Insufficient
 capacity defers work across resets; no paid capacity, duplicate requests or unbounded retry loop.
+
+The first eight-slot pilot invocation was unbalanced: six Flash-Lite observations completed, one
+Gemini 3.7 attempt failed at its route attempt limit, one Gemini 3.8 attempt received provider 503,
+and the remaining candidates deferred before a provider request because their shared accounts were
+busy. This exposed that a global pilot cap could favor the first candidate in the list. The
+evaluation-only runner now requires a single candidate per pilot invocation, so each model gets the
+same eight examples without changing any original result. A later Kimi K3 pilot completed all eight:
+7 correct, 1 incorrect, with the miss being the approved Dallas Transportation and Infrastructure
+membership. Raw results and offline scoring are under
+`evals/remedy/results/varied-2026-10-11/`. These eight cases are from the regression challenge,
+not blind-owner admission truth; no model has a qualifying P1 report from them. Remaining pilot and
+full-comparison candidates are pending shared provider capacity. Production admissions remain empty.

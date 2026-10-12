@@ -1,6 +1,8 @@
 # Entire 60-recording evidence and expected-answer packet
 
-Status: evidence collected; expected test answers awaiting maintainer approval. No model calls.
+This document records the packet-preparation checkpoint before answer approval and model calls.
+It is retained as historical provenance; see the parent README's evaluation-status section and
+`approved-v2/` for the approved answers and current results.
 
 ## What is being measured
 

@@ -1,0 +1,12 @@
+{
+  "attempted_case_route_pairs": 16,
+  "status_counts": {
+    "completed": 16,
+    "unattempted": 39
+  },
+  "correct": 16,
+  "incorrect": 0,
+  "remaining_original_missing_pairs": 39,
+  "note": "Scorer full-manifest missing rows are unrun cases, not new provider failures. This batch was capped at two cases per route and mode.",
+  "registered_missing_pairs": 55
+}

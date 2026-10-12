@@ -1775,6 +1775,16 @@ quality recheck. L3 and scope are in review/51; evaluation-only scaffolding/resu
 live in evals/remedy/results/p1-patient-2026-10-10/. No admission or production
 route activation follows from default-reasoning comparison results.
 
+PR #2256 merged 2026-10-12 with the approved GLM/DeepSeek comparison diagnostics and retained
+results. The separately approved 60-recording backlog challenge is frozen under
+`evals/remedy/holdout/backlog-varied-2026-10-11/approved-v2/`. Its first candidate-specific
+pilot batches score Flash-Lite 5/6, Kimi K3 7/8, full NVIDIA GLM 5.3 8/8 and OrcaRouter GLM 5.3
+Flash 8/8 on supported-claim checks. The same Dallas multi-feed membership was missed by Flash-Lite
+and Kimi. All eight GLM Flash responses remain held because the response model name differs from
+the requested catalog ID; see #2257. This regression challenge has no blind-owner truth and yields
+zero admission-eligible cases. Further balanced pilots and the approved full comparison remain
+pending shared provider capacity; production admissions remain empty.
+
 <!-- review/48 activation checkpoint -->
 Input calibration canary #2221 has a concrete proposed one-route, one-week plan in
 [review/48](48-provider-catalog-reconciliation.md#proposed-input-canary-activation-contract--2221-2026-10-10).

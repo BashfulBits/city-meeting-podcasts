@@ -1,0 +1,41 @@
+{
+  "scope": "one grounded claim-support case per route, not full admission comparison",
+  "results": [
+    {
+      "route": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "correct": 1,
+      "provider_seconds": 17.733607416972518,
+      "total_seconds": 18.88164799986407,
+      "returned_model": "gemini-3.7-flash",
+      "reasoning_level": "high"
+    },
+    {
+      "route": "gemini_3_7_flash_secondary",
+      "status": "completed",
+      "correct": 1,
+      "provider_seconds": 9.705458874814212,
+      "total_seconds": 10.509215833153576,
+      "returned_model": "gemini-3.7-flash",
+      "reasoning_level": "high"
+    },
+    {
+      "route": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "correct": 1,
+      "provider_seconds": 21.989568499848247,
+      "total_seconds": 22.99988237489015,
+      "returned_model": "gemini-3.8-flash",
+      "reasoning_level": "high"
+    },
+    {
+      "route": "gemini_3_8_flash_secondary",
+      "status": "completed",
+      "correct": 1,
+      "provider_seconds": 15.14007120905444,
+      "total_seconds": 15.955591666977853,
+      "returned_model": "gemini-3.8-flash",
+      "reasoning_level": "high"
+    }
+  ]
+}

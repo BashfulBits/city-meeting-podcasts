@@ -1,0 +1,88 @@
+{
+  "candidate": "kimi",
+  "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:38:15.395763+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "92fd98645632e1118b6b955ad0382c0bdef13b2c7aa243e05322cbe61cf6e04f",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 3
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-165fa10d-148f-49b5-b20a-724cf8fc000a",
+    "created": 1791772705,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council\",\"supported\":true,\"proposed_owner\":\"addison-tx-city-council\",\"proposed_action\":\"publish\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider page both prove this January 24, 2024 recording is a joint meeting at which the Addison City Council formally convened alongside the Planning & Zoning Commission and the Comprehensive Plan Advisory Committee: the agenda calls for the Mayor to 'Call Addison City Council ... Joint Meeting to Order and Announce that a Quorum is Present,' and the transcript/chapters confirm Mayor Bruce Arfsten calling the City Council to order. Under the approved joint-meeting policy, the same recording may serve every proven participant, and subscription aggregation is separate from identity. City Council participation is proven by official immutable metadata (agenda and provider record), not inferred merely from shared city/topic tokens or common members. The addison-tx-city-council feed exists for City Council meetings, so membership of this recording in that feed is supported. No evidence is missing; abstention is not warranted.\"}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.\"\n\nThe recording is a Joint Meeting of Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee, dated January 24, 2024.\n\nPolicy:\n- identity: Use convened body, not venue, topic or common members; numbered boards differ.\n- joint: \"Same recording may serve every proven participant; separate subscription aggregation from identity.\"\n- publication: Ordinary public comment doesn't add Public Info membership; ceremonies excluded.\n- untracked: An unassigned real body is not automatically a non-meeting. Missing proof permits abstention.\n\nSo for a joint meeting, the same recording may serve every proven participant. The City Council is a proven participant \u2014 the agenda clearly shows the Addison City Council convening as part of the joint meeting. Evidence:\n- retained-agenda: \"Joint Meeting Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee January 24, 2024\"\n- provider-player: confirms title and content\n- native-source-chapters: confirms chapters\n\nThe joint policy says the same recording may serve every proven participant. City Council is one of the three convened bodies. So the claim that it belongs in addison-tx-city-council is supported \u2014 the City Council is a proven participant of the joint meeting.\n\nExisting feeds include addison-tx-city-council (\"City Council meetings for Addison\").\n\nSo supported: true, proposed_owner: addison-tx-city-council, proposed_action: publish/assign membership? The decision type is \"publication-membership\". Proposed action likely \"publish\" or \"assign-to-feed\". I'll use something like \"include\" or \"publish-to-addison-tx-city-council\". Let me choose \"publish\" \u2014 the action of adding to the feed. I'll say \"add-to-feed\" or \"include-in-feed\". I'll use \"publish\" as action.\n\nEvidence refs to cite: retained-agenda, provider-player, native-source-chapters. Cite only supplied evidence-reference IDs. I'll cite retained-agenda and provider-player (the strongest), maybe all three.\n\nMissing evidence: none.\n\nRationale: The recording is a joint meeting of three bodies; joint policy permits same recording to serve every proven participant; agenda and provider page prove City Council convened (Mayor calls City Council to order); therefore membership in addison-tx-city-council is supported. Official metadata immutable; identity from convened body (City Council is one), not venue/topic.\n\nCase id: addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council.\n\nKeep rationale under 2000 chars.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.\"\n\nThe recording is a Joint Meeting of Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee, dated January 24, 2024.\n\nPolicy:\n- identity: Use convened body, not venue, topic or common members; numbered boards differ.\n- joint: \"Same recording may serve every proven participant; separate subscription aggregation from identity.\"\n- publication: Ordinary public comment doesn't add Public Info membership; ceremonies excluded.\n- untracked: An unassigned real body is not automatically a non-meeting. Missing proof permits abstention.\n\nSo for a joint meeting, the same recording may serve every proven participant. The City Council is a proven participant \u2014 the agenda clearly shows the Addison City Council convening as part of the joint meeting. Evidence:\n- retained-agenda: \"Joint Meeting Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee January 24, 2024\"\n- provider-player: confirms title and content\n- native-source-chapters: confirms chapters\n\nThe joint policy says the same recording may serve every proven participant. City Council is one of the three convened bodies. So the claim that it belongs in addison-tx-city-council is supported \u2014 the City Council is a proven participant of the joint meeting.\n\nExisting feeds include addison-tx-city-council (\"City Council meetings for Addison\").\n\nSo supported: true, proposed_owner: addison-tx-city-council, proposed_action: publish/assign membership? The decision type is \"publication-membership\". Proposed action likely \"publish\" or \"assign-to-feed\". I'll use something like \"include\" or \"publish-to-addison-tx-city-council\". Let me choose \"publish\" \u2014 the action of adding to the feed. I'll say \"add-to-feed\" or \"include-in-feed\". I'll use \"publish\" as action.\n\nEvidence refs to cite: retained-agenda, provider-player, native-source-chapters. Cite only supplied evidence-reference IDs. I'll cite retained-agenda and provider-player (the strongest), maybe all three.\n\nMissing evidence: none.\n\nRationale: The recording is a joint meeting of three bodies; joint policy permits same recording to serve every proven participant; agenda and provider page prove City Council convened (Mayor calls City Council to order); therefore membership in addison-tx-city-council is supported. Official metadata immutable; identity from convened body (City Council is one), not venue/topic.\n\nCase id: addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council.\n\nKeep rationale under 2000 chars."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 823,
+      "prompt_tokens": 3397,
+      "total_tokens": 4220,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 562,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+    "supported": true,
+    "proposed_owner": "addison-tx-city-council",
+    "proposed_action": "publish",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "missing_evidence": [],
+    "rationale": "The retained agenda and provider page both prove this January 24, 2024 recording is a joint meeting at which the Addison City Council formally convened alongside the Planning & Zoning Commission and the Comprehensive Plan Advisory Committee: the agenda calls for the Mayor to 'Call Addison City Council ... Joint Meeting to Order and Announce that a Quorum is Present,' and the transcript/chapters confirm Mayor Bruce Arfsten calling the City Council to order. Under the approved joint-meeting policy, the same recording may serve every proven participant, and subscription aggregation is separate from identity. City Council participation is proven by official immutable metadata (agenda and provider record), not inferred merely from shared city/topic tokens or common members. The addison-tx-city-council feed exists for City Council meetings, so membership of this recording in that feed is supported. No evidence is missing; abstention is not warranted."
+  },
+  "end_to_end_seconds": 39.36366487527266,
+  "diagnostics": [
+    {
+      "duration_seconds": 36.30228525027633
+    }
+  ]
+}

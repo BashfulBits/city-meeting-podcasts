@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "077cdcb8d2cbe009587592bea1a02841087cb94e972359c69f472fa43f89321a",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "2dbcebc4b79660717aa0e677a76a49b69a43cd2e",
+  "dry_run": false,
+  "manifest_hash": "e6ac6afa8be96f2d647205233348ed7110bc2e5bd701e2aabe2fc9c1ebb2675c",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-11T08:30:48.117319+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign",
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The official agenda demonstrates that the convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, not the City Council. Under the identity policy, the meeting room location does not determine the owner, and distinct boards stay distinct. The recording matches the existing denton-tx-tirz-1-board feed.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-council",
+      "configuration_id": "6afb485a2450929e995e4ea89929f17e6338df8790012ea5982d89b52b9ebac7",
+      "latency_seconds": 30.030668791849166,
+      "prompt_case_id": "denton-zone1-council",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone1-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-tirz-1-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\"official-agenda\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda demonstrates that the convened body is the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, not the City Council. Under the identity policy, the meeting room location does not determine the owner, and distinct boards stay distinct. The recording matches the existing denton-tx-tirz-1-board feed.\"\n}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791707473,
+        "id": "UUnLapixJaaez7IP2aeR0A0",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2705,
+          "completion_tokens_details": {
+            "reasoning_tokens": 519,
+            "text_tokens": 153
+          },
+          "prompt_tokens": 5672,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2885,
+            "video_tokens": null
+          },
+          "total_tokens": 8377
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": true
+}

@@ -58,7 +58,9 @@ for all 60 were found and bound to their source/UID/GUID; all have source media.
 agendas, additional Dallas minutes, native chapter headings, provider pages and prior manually
 verified opening evidence support a proposed review packet. Five Fort Worth title-only program
 records remain owner-unknown and are proposed proof-sufficiency tests, not invented exclusions.
-The expected answers are drafts until approved for this evaluation. Nothing reopens P0 dispositions.
+The expected answers were approved for this evaluation before the first model call and are frozen
+under `approved-v2/`. Nothing reopens P0 dispositions. The approval covers this comparison only,
+not new feed changes or production model activation.
 
 121 linked document responses and 65 supplemental responses were retained. The two unavailable
 supplements are the current Addison bond-program page and FY2007 budget (403). Successful HTTP
@@ -76,3 +78,16 @@ Known decisions/rules would ordinarily suppress these calls in production. This 
 challenge comparison, not a count of new live unresolved meetings or an independent admission
 holdout. Distinct event statistics group Fort Worth125/127, and prior Denton overlap remains marked.
 No model calls occurred while collecting/preparing packet v2.
+
+## Evaluation status
+
+The maintainer approved an eight-case pilot followed by a resumable comparison of nine candidates.
+The first shared eight-call attempt was not balanced: six Flash-Lite answers completed, one Gemini
+3.7 call failed on the route's attempt limit, and one Gemini 3.8 call received a provider 503; the
+other candidates were deferred before a provider call because their shared accounts were busy. A
+later candidate-specific Kimi K3 pilot completed all eight examples. Its scored result is retained
+in `../../results/varied-2026-10-11/pilot-scored-2026-10-12-v1.json`; it got seven answers right and
+missed one approved Dallas Transportation and Infrastructure membership. The original observations
+remain unchanged. The runner now requires one candidate per pilot invocation so the next pilots use
+the same eight examples fairly. None of these regression-set scores qualifies an admission: all
+owner-truth fields are null, and production remains unchanged.

@@ -1,0 +1,91 @@
+{
+  "candidate": "kimi",
+  "case_id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:39:11.930182+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "b0d30b9caa9824897165dbbf69c3f796218a7947a77991c6301e05c1c28c54a2",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 5
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-2814ab9a-5270-4836-97bb-b5034792282b",
+    "created": 1791772759,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"addison-55864-35a78fa89c7c5c5c-wrong-target\",\"supported\":false,\"proposed_owner\":null,\"proposed_action\":\"archive-only\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"maintained-policy\"],\"missing_evidence\":[\"Proof that the City Council actually convened as a body at this event (e.g., council minutes, an agenda showing council business, or records of action/deliberation by the council itself).\",\"Official metadata identifying the convening body for the recording beyond a precautionary quorum notice.\"],\"rationale\":\"Both the retained agenda and provider player show only a 'NOTICE OF POSSIBLE CITY COUNCIL QUORUM': a precautionary open-meeting notice that council members MAY attend the Addison Economic Development Luncheon, where town business 'may be discussed, but no action will be taken.' This does not establish that the City Council convened as a body; per identity policy, the convened body\u2014not venue, topic, or common members\u2014controls ownership. The approved maintainer disposition for this exact source/uid (maintained-policy) is 'archive-only' with allowed_body_feed_memberships empty and scope stating it is 'not proof of convening.' Shared Addison/city-council tokens in the quorum notice do not transfer identity to addison-tx-city-council. The claim that evidence and policy are sufficient to place the recording in addison-tx-city-council is therefore unsupported; the correct action is archive-only per approved policy.\"}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "Let me analyze this case.\n\nThe claim: \"The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.\"\n\nThe recording: \"Addison Economic Development Luncheon\" - June 2, 2017, at InterContinental Dallas.\n\nEvidence:\n1. retained-agenda: \"NOTICE OF POSSIBLE CITY COUNCIL QUORUM\" - an open meeting notice that a quorum of City Council MAY be in attendance at the Economic Development Luncheon, where Town business/issues may be discussed, but no action will be taken.\n2. provider-player: same content from Swagit.\n3. maintained-policy: Maintainer-approved directive: outcome \"archive-only\", allowed_body_feed_memberships: [] (empty), scope says \"not proof of convening.\"\n\nFamily policy:\n- identity: use convened body, not venue/topic/common members.\n- maintained_local_disposition: archive-only, allowed memberships empty.\n- publication: ceremonies excluded.\n- untracked: missing proof permits abstention.\n\nSo the claim asks to place this recording in addison-tx-city-council. But the evidence only shows a \"possible quorum\" notice \u2014 not proof that the City Council actually convened as a body. The luncheon is an event hosted at a hotel; the notice is precautionary (Texas Open Meetings Act quorum notice). The maintained policy explicitly says outcome \"archive-only\" with no allowed body feed memberships, and \"not proof of convening.\"\n\nTherefore the claim is NOT supported. The approved policy says archive-only, no body feed memberships. The evidence does not establish the City Council convened. So:\n\n- supported: false\n- proposed_owner: null (no feed placement; archive-only)\n- proposed_action: \"archive-only\" (per maintained policy disposition)\n- evidence_ref_ids: cite the evidence used \u2014 retained-agenda, provider-player, maintained-policy\n- missing_evidence: e.g., proof that the City Council convened as a body (minutes, agenda of council business, action taken).\n- rationale: The agenda/player only show a \"notice of possible city council quorum\" for an economic development luncheon; no action taken, no convened body identified. Approved maintainer policy (maintained-policy) explicitly sets outcome archive-only with empty allowed_body_feed_memberships, stating it is not proof of convening. Shared city/topic tokens don't establish identity. Therefore cannot support placement in addison-tx-city-council.\n\ncase_id: \"addison-55864-35a78fa89c7c5c5c-wrong-target\"\n\nRationale under 2000 chars. Raw JSON.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "Let me analyze this case.\n\nThe claim: \"The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.\"\n\nThe recording: \"Addison Economic Development Luncheon\" - June 2, 2017, at InterContinental Dallas.\n\nEvidence:\n1. retained-agenda: \"NOTICE OF POSSIBLE CITY COUNCIL QUORUM\" - an open meeting notice that a quorum of City Council MAY be in attendance at the Economic Development Luncheon, where Town business/issues may be discussed, but no action will be taken.\n2. provider-player: same content from Swagit.\n3. maintained-policy: Maintainer-approved directive: outcome \"archive-only\", allowed_body_feed_memberships: [] (empty), scope says \"not proof of convening.\"\n\nFamily policy:\n- identity: use convened body, not venue/topic/common members.\n- maintained_local_disposition: archive-only, allowed memberships empty.\n- publication: ceremonies excluded.\n- untracked: missing proof permits abstention.\n\nSo the claim asks to place this recording in addison-tx-city-council. But the evidence only shows a \"possible quorum\" notice \u2014 not proof that the City Council actually convened as a body. The luncheon is an event hosted at a hotel; the notice is precautionary (Texas Open Meetings Act quorum notice). The maintained policy explicitly says outcome \"archive-only\" with no allowed body feed memberships, and \"not proof of convening.\"\n\nTherefore the claim is NOT supported. The approved policy says archive-only, no body feed memberships. The evidence does not establish the City Council convened. So:\n\n- supported: false\n- proposed_owner: null (no feed placement; archive-only)\n- proposed_action: \"archive-only\" (per maintained policy disposition)\n- evidence_ref_ids: cite the evidence used \u2014 retained-agenda, provider-player, maintained-policy\n- missing_evidence: e.g., proof that the City Council convened as a body (minutes, agenda of council business, action taken).\n- rationale: The agenda/player only show a \"notice of possible city council quorum\" for an economic development luncheon; no action taken, no convened body identified. Approved maintainer policy (maintained-policy) explicitly sets outcome archive-only with empty allowed_body_feed_memberships, stating it is not proof of convening. Shared city/topic tokens don't establish identity. Therefore cannot support placement in addison-tx-city-council.\n\ncase_id: \"addison-55864-35a78fa89c7c5c5c-wrong-target\"\n\nRationale under 2000 chars. Raw JSON."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 854,
+      "prompt_tokens": 2429,
+      "total_tokens": 3283,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 533,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+    "supported": false,
+    "proposed_owner": null,
+    "proposed_action": "archive-only",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "maintained-policy"
+    ],
+    "missing_evidence": [
+      "Proof that the City Council actually convened as a body at this event (e.g., council minutes, an agenda showing council business, or records of action/deliberation by the council itself).",
+      "Official metadata identifying the convening body for the recording beyond a precautionary quorum notice."
+    ],
+    "rationale": "Both the retained agenda and provider player show only a 'NOTICE OF POSSIBLE CITY COUNCIL QUORUM': a precautionary open-meeting notice that council members MAY attend the Addison Economic Development Luncheon, where town business 'may be discussed, but no action will be taken.' This does not establish that the City Council convened as a body; per identity policy, the convened body\u2014not venue, topic, or common members\u2014controls ownership. The approved maintainer disposition for this exact source/uid (maintained-policy) is 'archive-only' with allowed_body_feed_memberships empty and scope stating it is 'not proof of convening.' Shared Addison/city-council tokens in the quorum notice do not transfer identity to addison-tx-city-council. The claim that evidence and policy are sufficient to place the recording in addison-tx-city-council is therefore unsupported; the correct action is archive-only per approved policy."
+  },
+  "end_to_end_seconds": 35.12000899994746,
+  "diagnostics": [
+    {
+      "duration_seconds": 33.533418083097786
+    }
+  ]
+}

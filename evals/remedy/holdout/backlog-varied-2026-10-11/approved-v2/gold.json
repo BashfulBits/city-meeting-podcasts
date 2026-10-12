@@ -1,0 +1,1887 @@
+{
+  "version": 2,
+  "cases": {
+    "addison-359742-31b194e3b25f0bf8-member-addison-tx-bond-committees": {
+      "supported": true,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-359742-31b194e3b25f0bf8-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-361917-1ef623b5f2bc909a-member-addison-tx-bond-committees": {
+      "supported": true,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-361917-1ef623b5f2bc909a-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-362796-cb34bf9c6001c32a-member-addison-tx-bond-committees": {
+      "supported": true,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-362796-cb34bf9c6001c32a-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-371625-902400566a6637b5-member-addison-tx-bond-committees": {
+      "supported": true,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-371625-902400566a6637b5-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Advisory Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-55864-35a78fa89c7c5c5c-wrong-target": {
+      "supported": false,
+      "rationale": "Luncheon; possible Council attendance is not Council convening; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56029-63b22f80ce9500ff-member-addison-tx-town-meetings": {
+      "supported": true,
+      "rationale": "Historical citizen advisory compilation; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "citizen-council-june2007",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56029-63b22f80ce9500ff-wrong-target": {
+      "supported": false,
+      "rationale": "Historical citizen advisory compilation; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "citizen-council-june2007",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-276855-4ef85ec6540cf95b-member-addison-tx-city-council": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-276855-4ef85ec6540cf95b-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-276855-4ef85ec6540cf95b-wrong-target": {
+      "supported": false,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-295839-fcc9bde16c7f47fe-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-295839-fcc9bde16c7f47fe-member-addison-tx-comprehensive-plan-advisory-committee": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-295839-fcc9bde16c7f47fe-wrong-target": {
+      "supported": false,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-310072-c95af66385f6cf31-member-addison-tx-city-council": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-310072-c95af66385f6cf31-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-310072-c95af66385f6cf31-member-addison-tx-comprehensive-plan-advisory-committee": {
+      "supported": true,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-310072-c95af66385f6cf31-wrong-target": {
+      "supported": false,
+      "rationale": "Joint convening of the explicitly named bodies; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-55599-e59549e833479e1d-member-addison-tx-city-council": {
+      "supported": true,
+      "rationale": "City Council; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-55599-e59549e833479e1d-wrong-target": {
+      "supported": false,
+      "rationale": "City Council; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56020-235c1c030568dac0-wrong-target": {
+      "supported": false,
+      "rationale": "Ceremony/dedication; official title and approved event policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56021-24d5e7dc230eb900-wrong-target": {
+      "supported": false,
+      "rationale": "Ceremony/dedication; official title and approved event policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56022-ee80c45122c4f9f0-wrong-target": {
+      "supported": false,
+      "rationale": "Ceremony/dedication; official title and approved event policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-56023-1f50e2274a6dd26c-wrong-target": {
+      "supported": false,
+      "rationale": "Ceremony/dedication; official title and approved event policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-394474-757ab2a4aaf9bbca-member-addison-tx-tif": {
+      "supported": true,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-394474-757ab2a4aaf9bbca-wrong-target": {
+      "supported": false,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-148373-4b69d73512792a44-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-148373-4b69d73512792a44-wrong-target": {
+      "supported": false,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-150744-e2e2e4d8c9b5330c-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-150744-e2e2e4d8c9b5330c-wrong-target": {
+      "supported": false,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-153032-52ec3e810707f814-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-153032-52ec3e810707f814-wrong-target": {
+      "supported": false,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-154641-ff8eac28f4881cd2-member-addison-tx-planning-and-zoning-commission": {
+      "supported": true,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "addison-154641-ff8eac28f4881cd2-wrong-target": {
+      "supported": false,
+      "rationale": "P&Z Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force": {
+      "supported": true,
+      "rationale": "Environmental Task Force; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-1792515fdd51c6c2-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Environmental Task Force; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-25e9b8510b0a7a66-ownership-member-arlington-tx-environmental-task-force": {
+      "supported": true,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-25e9b8510b0a7a66-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-2d5dc451df2da130-ownership-member-arlington-tx-environmental-task-force": {
+      "supported": true,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-2d5dc451df2da130-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-35b22fcc8d07967b-ownership-member-arlington-tx-environmental-task-force": {
+      "supported": true,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-35b22fcc8d07967b-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Environmental Task Force Meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-237c28f30496e3e0-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+      "supported": true,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-237c28f30496e3e0-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-30b28efc23346a6d-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+      "supported": true,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-30b28efc23346a6d-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-4357f0c39d1ae58f-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+      "supported": true,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-4357f0c39d1ae58f-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-d8f3b672b482369b-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+      "supported": true,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "arlington-tx-d8f3b672b482369b-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Community and Neighborhood Development Committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-130a7ebded8e0e1d-ownership-member-dallas-tx-2024-community-bond-task-force": {
+      "supported": true,
+      "rationale": "2024 CBTF; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-cbtf-aug15"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-130a7ebded8e0e1d-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "2024 CBTF; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-cbtf-aug15"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "dallas-streets-archive"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-bond-program-meetings": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "dallas-streets-archive",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "dallas-streets-archive",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-16300c982b358fe9-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "dallas-streets-archive"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-june13"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-bond-program-meetings": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-june13",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2b172a76868ad86c-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-june13"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-may25"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-bond-program-meetings": {
+      "supported": true,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-may25",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-2bc4c440c974dba8-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Bond Streets subcommittee; wider feeds are publication policy; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-may25"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-bd172b762dd20b63-ownership-member-dallas-tx-redistricting-commission": {
+      "supported": true,
+      "rationale": "Redistricting Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "dallas-tx-bd172b762dd20b63-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Redistricting Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee": {
+      "supported": true,
+      "rationale": "2019 bond committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-04689e3929ac104e-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "2019 bond committee; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-280db52d91547dd6-ownership-member-denton-tx-health-building-standards-commission": {
+      "supported": true,
+      "rationale": "HBS Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-280db52d91547dd6-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "HBS Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-7abd583b2ed8189a-ownership-member-denton-tx-health-building-standards-commission": {
+      "supported": true,
+      "rationale": "HBS Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-7abd583b2ed8189a-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "HBS Commission; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-b50c6a018b2c08e7-ownership-member-denton-tx-library-board": {
+      "supported": true,
+      "rationale": "Library Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-b50c6a018b2c08e7-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Library Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-c10f3f6cd97ac38f-ownership-member-denton-tx-library-board": {
+      "supported": true,
+      "rationale": "Library Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-c10f3f6cd97ac38f-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Library Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-city-council": {
+      "supported": true,
+      "rationale": "Council/Library joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-library-board": {
+      "supported": true,
+      "rationale": "Council/Library joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-a1aa4af8f26e120c-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Council/Library joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board": {
+      "supported": true,
+      "rationale": "TIRZ No. 2 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-1c91182b70afefb3-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "TIRZ No. 2 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-2493e59c0844a4b4-ownership-member-denton-tx-tirz-1-board": {
+      "supported": true,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-2493e59c0844a4b4-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-2b458f3c556df459-ownership-member-denton-tx-tirz-1-board": {
+      "supported": true,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-2b458f3c556df459-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-5a2ce8afb18c6a82-ownership-member-denton-tx-tirz-1-board": {
+      "supported": true,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "denton-tx-5a2ce8afb18c6a82-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "TIRZ No. 1 Board; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-city-council": {
+      "supported": true,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-gas-drilling-task-force": {
+      "supported": true,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-0d5832dbd08e6dd8-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council": {
+      "supported": true,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-gas-drilling-task-force": {
+      "supported": true,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-27254aa1a700569f-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Council/Gas Task Force joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "prior-manual-opening-review"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council": {
+      "supported": true,
+      "rationale": "Council/EMSISD joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-emsisd-board-joint-meetings": {
+      "supported": true,
+      "rationale": "Council/EMSISD joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "fort-worth-tx-497b3aa05255bfb9-ownership-wrong-target": {
+      "supported": false,
+      "rationale": "Council/EMSISD joint; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-1ba31685c3061fad-wrong-target": {
+      "supported": false,
+      "rationale": "Real Animal Shelter Advisory Committee; no existing local feed; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-345a3a95d050eddf-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-3afe3a4c3aaa04d9-wrong-target": {
+      "supported": false,
+      "rationale": "Real Animal Shelter Advisory Committee; no existing local feed; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-43599790450713d2-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-93bbf0722bbc0edd-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-c33b73995d47d8f3-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-d38106e9b2725a87-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-f1e199354d821412-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-f3eac6548e0da80c-wrong-target": {
+      "supported": false,
+      "rationale": "Real Animal Shelter Advisory Committee; no existing local feed; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-3b7588310856-f9c0123089539a11-wrong-target": {
+      "supported": false,
+      "rationale": "Candidate forum; not a Council meeting; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player",
+        "native-source-chapters",
+        "maintained-policy"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-6540eef2dc2e-00c9f506545d220a-wrong-target": {
+      "supported": false,
+      "rationale": "Institutional owner not established by supplied program/player evidence; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-6540eef2dc2e-00e5a51984f89df0-wrong-target": {
+      "supported": false,
+      "rationale": "Institutional owner not established by supplied program/player evidence; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-6540eef2dc2e-01127a49d16869ef-wrong-target": {
+      "supported": false,
+      "rationale": "Institutional owner not established by supplied program/player evidence; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-6540eef2dc2e-014649318804b782-wrong-target": {
+      "supported": false,
+      "rationale": "Institutional owner not established by supplied program/player evidence; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target": {
+      "supported": false,
+      "rationale": "Institutional owner not established by supplied program/player evidence; apply approved publication/proof question scope.",
+      "evidence_refs": [
+        "provider-player"
+      ],
+      "adjudicator": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "provenance": "verified",
+      "policy_approval_ref": "maintainer chat approval, 2026-10-11, call_dbefc1e2895a46a4ba7a0c1fc7f37c94",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    }
+  }
+}
