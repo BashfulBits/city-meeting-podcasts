@@ -238,6 +238,30 @@ legacy candidate proofs without a method are rechecked. An invalid resolved meth
 showing the lane's remaining pooled routes. The pause also holds through a final provider interval
 before resuming dispatch, protecting shared account capacity spent by unregistered candidates. The
 evidence-report command uses the same planner.
+
+Context-probe artifacts retain parsed provider token counts and bounded diagnostics: a finite
+parser reason code, HTTP/provider error classes, admission/request timing, total and first-byte
+duration, response media type/size, pause/drain state, and allowlisted Groq request/token-rate and
+retry headers. Manually triggered artifacts may retain a sanitized UTF-8 excerpt of HTTP error
+bodies, capped at 4 KiB, with the active Authorization value and generated prompt redacted.
+Successful response bodies and scheduled-run bodies are not retained. Credentials, arbitrary
+headers and prompt/completion content are not retained. Provider text is diagnostic only and does
+not alter context bounds or dispatch authority; it explains why an attempt could not establish
+verified evidence. Groq request counters are its daily request budget (RPD); token counters are
+per-minute (TPM).
+
+New-route request-cap discovery has a separate offline foundation in
+`provider_catalog/discovery.py`: immutable request/admission/observation records, independent
+input/output/two combined-mix brackets, actual-count fixture correction and finite session/run
+budgets. A journal charges attempts before child submission and fsyncs payload-free checkpoints;
+unknown results cannot be resubmitted. The transport shares bounded HTTP collection and process
+cancellation with context calibration, while keeping distinct admission checks. The existing
+configured-route transport still requires a durable Worker admission. Version-1 discovery
+artifacts authenticate trusted main workflow provenance and retain only compatible original-age
+observations for up to 90 days. Provider plugins explicitly declare usage/parser capabilities;
+unknown size errors and combined semantics create no cap proof. This foundation is not wired into
+maintenance or `/apply`; report/retry workflow integration and live activation are still pending.
+
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
 actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing
@@ -589,10 +613,19 @@ and current rate/token headroom. Groq and Gemini scope mappings are supported; u
 mappings defer. Google charges input-only TPM, while other supported routes charge full input plus
 requested output. Context-only exploration may stretch measured caps; ordinary job guards remain.
 `GET /v2/dispatch:pause-status?context=1` is advisory and read-only. The typed pause client has no
-admission retry. Committed route activation is empty and output is disabled; no workflow makes
-context calls. The weekly reconciliation path reads this disabled authority without starting a session or making
-context calls. Separately approved input/output canaries and recurring activation remain gates
+admission retry. The reviewed input pilot enables only `groq_gpt_oss_120b_primary`, at most six weekly
+input admissions with 8,192 input/256 output ceilings. Output remains disabled. The weekly
+main schedule checks deployed catalog identity and exact quota scope before starting a session.
+Output and broader recurring activation remain separately approved gates
 (review/48 §8.11).
+
+Manual context canaries use explicit main-only workflow dispatch and perform context measurement
+only. Separate clustered manual week/attempt tables enforce 24 calls/2,097,152 input/131,072 output
+per UTC week, eight per run and twelve per route weekly. Finished/expired sessions permit newer
+runs without resetting charges; old runners and attempt replays cannot spend again. Typed
+start/admit/finish operations use the existing reservation handler and read-only pause status.
+Manual artifacts authenticate dispatch provenance independently and remain outside scheduled
+cap-offer history. Route/dimension and provider quota approval remain mandatory.
 
 Context calibration uses provider-reported token counts for fixture-local prompt correction and
 separate input/output success/rejection intervals. Input fixtures check unpredictable sentinels at

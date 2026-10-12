@@ -1271,6 +1271,7 @@ def _measure_context_routes(
         advance_context_state,
         context_history_states,
         context_input_ratio,
+        context_rate_wait_ms,
         next_context_probe,
         plan_context_scan,
     )
@@ -1291,13 +1292,15 @@ def _measure_context_routes(
             report.observations.append(f"{rid}: context deferred (disabled or unknown quota scope)")
             continue
         key = None
-        for dimension in ("input", "output"):
+        for dimension in context_run.get("dimensions", ("input", "output")):
             observed = None
-            for _ in range(6):
+            rate_retried_targets = set()
+            for _ in range(8 if context_run.get("manual") else 6):
                 if context_run.get("abandoned"):
                     return
                 budget = context_run["budget"]
                 budget["route_requests"] = context_run.setdefault("route_counts", {}).get(rid, 0)
+                budget["route_limit"] = 12 if context_run.get("manual") else 6
                 budget["remaining_seconds"] = min(
                     (context_run["deadline_ms"] - time.time() * 1000) / 1000,
                     900 - (time.monotonic() - runner.start_time) - cooldown,
@@ -1369,6 +1372,13 @@ def _measure_context_routes(
                 except ValueError as exc:
                     report.observations.append(f"{rid}/{dimension}: context deferred ({exc})")
                     break
+                if request.reserved_input > context_run.get("per_call_input", 524288) or (
+                    request.requested_output > context_run.get("per_call_output", 32768)
+                ):
+                    report.observations.append(
+                        f"{rid}/{dimension}: manual per-call ceiling; deferred"
+                    )
+                    break
                 if request.reserved_input > budget["remaining_input"] or (
                     request.requested_output > budget["remaining_output"]
                 ):
@@ -1395,7 +1405,12 @@ def _measure_context_routes(
                         sleep(rules.canary_interval_seconds)
                     pause.renew()
                     report.context_attempted_routes.add(rid)
-                    admitted = control.client.reserve_context(
+                    reserve = (
+                        control.client.reserve_manual_context
+                        if context_run.get("manual")
+                        else control.client.reserve_context
+                    )
+                    admitted = reserve(
                         run_id=context_run["run_id"],
                         catalog_digest=context_run["catalog_digest"],
                         route_id=rid,
@@ -1421,6 +1436,7 @@ def _measure_context_routes(
                         before_call=before_call,
                         clock=time.monotonic,
                         timeout=120,
+                        retain_error_body=bool(context_run.get("manual")),
                     )
                 except (DispatchPauseError, ProbeBudgetExceeded, RouteBudgetExceeded):
                     context_run["abandoned"] = (
@@ -1464,14 +1480,95 @@ def _measure_context_routes(
                         f"[{lower}, {upper}], basis {current.success.count_basis}; "
                         f"observed {current.success.observed_at} (not an exact maximum)"
                     )
-                if observed.outcome != "verified" or current.status in {"uncertain", "converged"}:
-                    break
+                if observed.rate_limit_requested_tokens is not None:
+                    rate_probe_steered = current.rate_rejection == observed
+                    report.observations.append(
+                        f"{rid}/{dimension}: provider TPM rejection at "
+                        f"{observed.rate_limit_requested_tokens} provider-counted input tokens; "
+                        "recorded only as a probe-search hint"
+                    )
+                    if (
+                        context_run.get("manual")
+                        and rate_probe_steered
+                        and current.status == "rate_refining"
+                        and budget["remaining_requests"] > 0
+                    ):
+                        wait_ms = context_rate_wait_ms(observed)
+                        budget["remaining_seconds"] = min(
+                            budget["remaining_seconds"],
+                            (context_run["deadline_ms"] - time.time() * 1000) / 1000,
+                        )
+                        if budget["remaining_seconds"] >= wait_ms / 1000 + 205:
+                            sleep(wait_ms / 1000)
+                            continue
+                elif observed.outcome == "quota" and context_run.get("manual"):
+                    # Untyped rate errors get one same-size retry after cooldown. This can
+                    # confirm transient recovery, but never creates a numeric size bound.
+                    retry_target = target.next_target
+                    wait_ms = context_rate_wait_ms(observed)
+                    if (
+                        observed.provider_error_class != "quota"
+                        and retry_target not in rate_retried_targets
+                        and budget["remaining_requests"] > 0
+                    ):
+                        budget["remaining_seconds"] = min(
+                            budget["remaining_seconds"],
+                            (context_run["deadline_ms"] - time.time() * 1000) / 1000,
+                        )
+                        if budget["remaining_seconds"] >= wait_ms / 1000 + 205:
+                            rate_retried_targets.add(retry_target)
+                            states[key] = replace(
+                                current,
+                                next_target=retry_target,
+                                status="retrying",
+                            )
+                            sleep(wait_ms / 1000)
+                            continue
+                    if current.status == "retrying":
+                        current = replace(
+                            current,
+                            next_target=None,
+                            status="exploring" if current.success else "baseline",
+                        )
+                        states[key] = current
+                    report.observations.append(
+                        f"{rid}/{dimension}: rate limit deferred; no typed size bound"
+                    )
+                if observed.outcome != "verified" or current.status in {
+                    "uncertain",
+                    "converged",
+                    "rate_converged",
+                }:
+                    if current.status != "rate_converged":
+                        # Manual searches may downshift after a typed provider token-rate
+                        # rejection, but never replay an admission or exceed the run budget.
+                        if not (
+                            context_run.get("manual")
+                            and current.rate_rejection == observed
+                            and observed.rate_limit_requested_tokens is not None
+                            and current.status == "rate_refining"
+                            and budget["remaining_requests"] > 0
+                        ):
+                            break
+                        # The typed rejection branch above waits for the Worker cooldown. If
+                        # insufficient deadline remains, retain the next target for a later run.
+                        if (
+                            budget["remaining_seconds"]
+                            < max(60_000, observed.retry_after_ms or 0) / 1000 + 205
+                        ):
+                            break
+                    else:
+                        break
             if dimension == "input" and (
                 key is None
                 or states.get(key) is None
                 or states[key].success is None
                 or states[key].status == "uncertain"
-                or (observed is not None and observed.outcome != "verified")
+                or (
+                    observed is not None
+                    and observed.outcome != "verified"
+                    and states[key].status != "rate_converged"
+                )
             ):
                 break
     report.context_states = list(states.values())

@@ -98,6 +98,21 @@ def rejection(count, **changes):
     )
 
 
+def groq_rate_rejection(requested=10488, *, limit=8000):
+    return replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        http_status=413,
+        provider_error_class="rate_limited",
+        rate_limit_limit_tokens=limit,
+        rate_limit_requested_tokens=requested,
+        rate_limit_parser_version="groq-tpm-rejection-v1",
+        observed_at="2026-10-11T15:00:00+00:00",
+        run_id="1",
+        attempt_id="previous",
+    )
+
+
 def state(observation=None):
     return ContextSearchState(request().identity_digest, "input", success=observation)
 
@@ -111,6 +126,82 @@ def test_chat_success_uses_actual_counts_and_leaves_no_payload_in_observation():
     serialized = json.dumps(asdict(observed))
     assert "messages" not in serialized and "sentinel=" not in serialized
     assert req.messages[0]["content"] not in serialized
+    assert observed.diagnostic_code == "verified_input_fixture"
+
+
+def test_older_context_observations_load_with_diagnostic_defaults():
+    values = asdict(ContextObservation.from_request(request()))
+    for name in (
+        "diagnostic_code",
+        "http_status",
+        "http_error_class",
+        "provider_error_class",
+        "response_media_type",
+        "response_bytes",
+        "duration_ms",
+        "first_byte_ms",
+        "admitted_at_ms",
+        "request_started_at_ms",
+        "request_finished_at_ms",
+        "rate_limit_limit_tokens",
+        "rate_limit_requested_tokens",
+        "rate_limit_parser_version",
+        "rate_limit_remaining_tokens",
+        "rate_limit_reset_tokens_ms",
+        "rate_limit_limit_requests",
+        "rate_limit_remaining_requests",
+        "rate_limit_reset_requests_ms",
+        "retry_after_ms",
+        "error_response_body",
+        "error_response_body_truncated",
+    ):
+        values.pop(name)
+    loaded = ContextObservation(**values)
+    assert loaded.diagnostic_code == "not_recorded"
+    assert loaded.http_status is None and loaded.retry_after_ms is None
+    assert loaded.error_response_body == "" and not loaded.error_response_body_truncated
+
+
+def test_inconclusive_chat_response_records_safe_reason_and_rate_headers():
+    req = request()
+    observed = rules_for("groq").context_observation(
+        Response(
+            200,
+            body=json.dumps({"object": "chat.completion", "choices": [{}]}),
+            context_diagnostics={
+                "diagnostic_code": "response_received",
+                "response_media_type": "application/json",
+                "response_bytes": 47,
+                "duration_ms": 321,
+                "first_byte_ms": 104,
+                "admitted_at_ms": 1_791_679_200_000,
+                "request_started_at_ms": 1_791_679_200_005,
+                "request_finished_at_ms": 1_791_679_200_326,
+                "rate_limit_limit_tokens": 8000,
+                "rate_limit_remaining_tokens": 731,
+                "rate_limit_reset_tokens_ms": 12000,
+                "rate_limit_limit_requests": 14400,
+                "rate_limit_remaining_requests": 14398,
+                "rate_limit_reset_requests_ms": 30000,
+                "retry_after_ms": None,
+            },
+        ),
+        req,
+    )
+    assert observed.outcome == "unsupported"
+    assert observed.diagnostic_code == "usage_missing_or_invalid"
+    assert observed.http_status == 200
+    assert observed.http_error_class == "none"
+    assert observed.response_media_type == "application/json"
+    assert observed.response_bytes == 47 and observed.duration_ms == 321
+    assert observed.first_byte_ms == 104
+    assert observed.rate_limit_limit_tokens == 8000
+    assert observed.rate_limit_remaining_tokens == 731
+    assert observed.rate_limit_reset_tokens_ms == 12000
+    assert observed.rate_limit_limit_requests == 14400
+    assert observed.rate_limit_remaining_requests == 14398
+    assert observed.rate_limit_reset_requests_ms == 30000
+    assert "choices" not in json.dumps(asdict(observed))
 
 
 @pytest.mark.parametrize("count", [True, -1, 0.5, "900", 2**53, None])
@@ -122,10 +213,20 @@ def test_chat_rejects_non_integer_and_unsafe_counts(count):
 
 
 @pytest.mark.parametrize(
-    "mutation",
-    ["total", "native", "jev", "refusal", "tail", "finish", "reasoning", "multiple", "tool"],
+    ("mutation", "diagnostic"),
+    [
+        ("total", "usage_total_inconsistent"),
+        ("native", "unexpected_response_envelope"),
+        ("jev", "unexpected_response_envelope"),
+        ("refusal", "refusal_or_tool_call"),
+        ("tail", "input_sentinel_mismatch"),
+        ("finish", "completion_content_or_finish_invalid"),
+        ("reasoning", "reasoning_count_invalid"),
+        ("multiple", "completion_shape_invalid"),
+        ("tool", "refusal_or_tool_call"),
+    ],
 )
-def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation):
+def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation, diagnostic):
     req = request()
     value = envelope(req)
     if mutation == "total":
@@ -146,7 +247,9 @@ def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation):
         value["choices"] *= 2
     if mutation == "tool":
         value["choices"][0]["message"]["tool_calls"] = [{"name": "anything"}]
-    assert parse(req, value).outcome != "verified"
+    observed = parse(req, value)
+    assert observed.outcome != "verified"
+    assert observed.diagnostic_code == diagnostic
 
 
 def test_unknown_reasoning_permits_input_but_not_output_and_eos_is_inconclusive():
@@ -162,6 +265,19 @@ def test_unknown_reasoning_permits_input_but_not_output_and_eos_is_inconclusive(
     assert parse(req, value).outcome == "inconclusive"
 
 
+def test_short_output_fixture_reports_that_sequence_never_reached_probe_boundary():
+    from citypods.provider_catalog.rules import chat_context_observation
+
+    req = request(dimension="output", target=100)
+    observed = chat_context_observation(
+        Response(200, body=json.dumps(envelope(req, content="1\n2", finish="length"))),
+        req,
+        reasoning_basis="included",
+    )
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic_code == "output_fixture_not_reached"
+
+
 def test_quota_and_undocumented_error_numbers_never_establish_rejection():
     req = request()
     for code in [400, 413, 429]:
@@ -170,6 +286,23 @@ def test_quota_and_undocumented_error_numbers_never_establish_rejection():
         )
         assert observed.reported_ceiling is None
         assert observed.outcome == ("quota" if code == 429 else "inconclusive")
+        assert observed.http_status == code
+        assert observed.reported_ceiling is None
+    rate_limited = rules_for("groq").context_observation(
+        Response(
+            429,
+            body='{"error":{"type":"rate_limit_exceeded","message":"private detail"}}',
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "retry_after_ms": 1200,
+            },
+        ),
+        req,
+    )
+    assert rate_limited.diagnostic_code == "http_429_rate_limited"
+    assert rate_limited.provider_error_class == "rate_limited"
+    assert rate_limited.retry_after_ms == 1200
+    assert "private detail" not in json.dumps(asdict(rate_limited))
 
 
 def test_identity_survives_cap_and_rate_edits_but_not_gateway_or_opposite_changes():
@@ -197,6 +330,258 @@ def test_actual_counts_advance_search_and_observed_mapping_without_blanket_margi
     assert context_input_ratio(state(), 1) == 1
     assert context_input_ratio(replace(updated, count_pairs=((100, 123),)), 1) == Fraction(123, 100)
     assert context_input_ratio(replace(updated, count_pairs=((100, 90),)), 1.2) == Fraction(6, 5)
+
+
+def test_groq_tpm_error_parses_only_structured_matching_limit_and_request_count():
+    req = request()
+    body = {
+        "error": {
+            "type": "tokens",
+            "code": "rate_limit_exceeded",
+            "message": "Request too large on tokens per minute (TPM): "
+            "Limit 8,000, Requested 10,488, please reduce your message size and try again.",
+        }
+    }
+    observed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert observed.outcome == "quota"
+    assert observed.rate_limit_requested_tokens == 10488
+    assert observed.rate_limit_parser_version == "groq-tpm-rejection-v1"
+    assert observed.reported_ceiling is None
+
+    for mutation in (
+        {"error": {**body["error"], "type": "context_length"}},
+        {"error": {**body["error"], "code": "context_length_exceeded"}},
+    ):
+        rejected = rules_for("groq").context_observation(
+            Response(
+                413,
+                body=json.dumps(mutation),
+                context_diagnostics={
+                    "provider_error_class": "rate_limited",
+                    "rate_limit_limit_tokens": 8000,
+                },
+            ),
+            req,
+        )
+        assert rejected.rate_limit_requested_tokens is None
+
+    mismatched_limit = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(body),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 7000,
+            },
+        ),
+        req,
+    )
+    assert mismatched_limit.rate_limit_requested_tokens is None
+
+    malformed = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(
+                {
+                    "error": {
+                        **body["error"],
+                        "message": "tokens per minute (TPM): Limit 8,00, Requested 10,488",
+                    }
+                }
+            ),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert malformed.rate_limit_requested_tokens is None
+
+    malformed_request = rules_for("groq").context_observation(
+        Response(
+            413,
+            body=json.dumps(
+                {
+                    "error": {
+                        **body["error"],
+                        "message": "tokens per minute (TPM): Limit 8,000, Requested 10,48, "
+                        "please retry",
+                    }
+                }
+            ),
+            context_diagnostics={
+                "provider_error_class": "rate_limited",
+                "rate_limit_limit_tokens": 8000,
+            },
+        ),
+        req,
+    )
+    assert malformed_request.rate_limit_requested_tokens is None
+
+
+def test_typed_tpm_rejection_downshifts_then_refines_separate_rate_bracket():
+    rejected = advance_context_state(state(), groq_rate_rejection())
+    assert rejected.status == "rate_refining"
+    assert rejected.rejection is None
+    assert (
+        next_context_probe(
+            rejected, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 5244
+    )
+
+    accepted = advance_context_state(rejected, success(5200))
+    assert accepted.status == "rate_refining"
+    assert accepted.rejection is None
+    assert (
+        next_context_probe(
+            accepted, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 7844
+    )
+
+    closer = advance_context_state(accepted, success(7990))
+    narrow = advance_context_state(closer, groq_rate_rejection(8050))
+    assert narrow.status == "rate_converged"
+    next_week = next_context_probe(narrow, {"baseline": 16384, "opposite_reservation": 256}, BUDGET)
+    assert next_week.next_target == 11985
+    assert next_week.rate_rejection is None
+
+
+def test_other_provider_versioned_rate_parser_can_use_shared_reducer():
+    observation = replace(
+        groq_rate_rejection(),
+        provider="openrouter",
+        rate_limit_parser_version="openrouter-tpm-rejection-v1",
+    )
+    rejected = advance_context_state(state(), observation)
+    assert rejected.status == "rate_refining"
+    assert (
+        next_context_probe(
+            rejected,
+            {"baseline": 16384, "opposite_reservation": 256},
+            BUDGET,
+        ).next_target
+        == 5244
+    )
+
+
+def test_context_rate_wait_uses_only_the_exhausted_quota_reset():
+    from citypods.provider_catalog.limits import context_rate_wait_ms
+
+    base = replace(
+        ContextObservation.from_request(request()),
+        outcome="quota",
+        provider_error_class="rate_limited",
+        retry_after_ms=5000,
+    )
+    token_limited = replace(
+        base,
+        rate_limit_remaining_tokens=0,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=12,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(token_limited) == 90_000
+
+    request_limited = replace(
+        base,
+        rate_limit_remaining_tokens=8,
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(request_limited) == 3_600_000
+
+    typed = replace(
+        groq_rate_rejection(),
+        rate_limit_reset_tokens_ms=90_000,
+        rate_limit_remaining_requests=0,
+        rate_limit_reset_requests_ms=3_600_000,
+    )
+    assert context_rate_wait_ms(typed) == 90_000
+    assert context_rate_wait_ms(base) == 60_000
+
+
+def test_uncertain_search_discards_stale_rate_hint_before_restarting():
+    current = replace(
+        state(success(7000)),
+        rate_rejection=groq_rate_rejection(),
+        status="uncertain",
+    )
+    restarted = next_context_probe(
+        current,
+        {"baseline": 16384, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert restarted.rate_rejection is None
+    assert restarted.next_target == 16384
+    assert restarted.status == "baseline"
+
+
+def test_history_replay_clears_stale_rate_hint_after_uncertain_run():
+    from citypods.provider_catalog.limits import _replay_context_history
+
+    hinted = replace(
+        groq_rate_rejection(),
+        observed_at="2026-10-09T10:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+    overshoot = replace(
+        success(10001),
+        reserved_input=10000,
+        observed_at="2026-10-09T11:00:00+00:00",
+        run_id="run-1",
+        attempt_id="attempt-2",
+    )
+    later_success = replace(
+        success(2000),
+        observed_at="2026-10-10T10:00:00+00:00",
+        run_id="run-2",
+        attempt_id="attempt-3",
+    )
+    replayed, _active = _replay_context_history(
+        hinted.identity_digest,
+        "input",
+        [hinted, overshoot, later_success],
+    )
+    assert replayed.status == "exploring"
+    assert replayed.rate_rejection is None
+
+
+def test_untyped_rate_limit_does_not_steer_probe_or_context_cap():
+    observation = replace(
+        ContextObservation.from_request(request()), outcome="quota", provider_error_class="unknown"
+    )
+    current = state(success(7000))
+    updated = advance_context_state(current, observation)
+    assert updated.rejection is None and updated.rate_rejection is None
+    assert (
+        next_context_probe(
+            updated, {"baseline": 16384, "opposite_reservation": 256}, BUDGET
+        ).next_target
+        == 10500
+    )
+
+
+def test_rate_rejection_below_last_success_does_not_create_search_upper_bound():
+    current = state(success(9000))
+    updated = advance_context_state(current, groq_rate_rejection(8500))
+    assert updated.rate_rejection is None
+    assert updated.success == current.success
+    assert updated.status == current.status
 
 
 @pytest.mark.parametrize(
@@ -302,9 +687,19 @@ def test_fixture_construction_cannot_allocate_above_the_reviewed_call_budget():
 
 
 class ContextFakeResponse:
-    def __init__(self, body, counter=None, *, delay=0, oversized=False):
-        self.status_code = 200
-        self.headers = {"Content-Type": "application/json"}
+    def __init__(self, body, counter=None, *, delay=0, oversized=False, status=200):
+        self.status_code = status
+        self.headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "x-ratelimit-limit-requests": "14400",
+            "x-ratelimit-remaining-requests": "14398",
+            "x-ratelimit-reset-requests": "30s",
+            "x-ratelimit-limit-tokens": "8000",
+            "x-ratelimit-remaining-tokens": "731",
+            "x-ratelimit-reset-tokens": "1.25s",
+            "Retry-After": "0.5",
+            "Authorization": "secret-must-never-be-recorded",
+        }
         self.body, self.counter, self.delay, self.oversized = body, counter, delay, oversized
         self.closed = False
 
@@ -344,6 +739,19 @@ def test_collector_enforces_bytes_closes_response_and_rejects_truncated_sse():
         ContextFakeSession(response, SimpleNamespace(value=0)), req, {}, 120, time.monotonic
     )
     assert observed.timed_out and response.closed
+    assert observed.context_diagnostics["diagnostic_code"] == "response_too_large"
+    assert observed.context_diagnostics["response_media_type"] == "application/json"
+    assert observed.context_diagnostics["response_bytes"] == 4 * 1024 * 1024
+    assert observed.context_diagnostics["rate_limit_limit_requests"] == 14400
+    assert observed.context_diagnostics["rate_limit_remaining_requests"] == 14398
+    assert observed.context_diagnostics["rate_limit_reset_requests_ms"] == 30000
+    assert observed.context_diagnostics["rate_limit_limit_tokens"] == 8000
+    assert observed.context_diagnostics["rate_limit_remaining_tokens"] == 731
+    assert observed.context_diagnostics["rate_limit_reset_tokens_ms"] == 1250
+    assert observed.context_diagnostics["retry_after_ms"] == 500
+    assert "secret-must-never-be-recorded" not in json.dumps(
+        asdict(rules_for("groq").context_observation(observed, req))
+    )
     with pytest.raises(ValueError, match="incomplete"):
         _context_envelope('data: {"choices":[]}\n\n', "text/event-stream")
     frames = [
@@ -361,6 +769,172 @@ def test_collector_enforces_bytes_closes_response_and_rejects_truncated_sse():
             raw.replace("data: [DONE]", f"data: {json.dumps(frames[1])}\n\ndata: [DONE]"),
             "text/event-stream",
         )
+
+
+def test_manual_collector_retains_only_bounded_redacted_error_body():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    req = request()
+    credential = "gsk_live_manual_probe_secret"
+    provider_body = json.dumps(
+        {
+            "error": {
+                "type": "context_length_exceeded",
+                "message": "Request exceeds context limit",
+                "authorization": f"Bearer {credential}",
+                "prompt": req.messages[0]["content"],
+            }
+        }
+    )
+    headers = {"Authorization": f"Bearer {credential}"}
+    response = ContextFakeResponse(provider_body, status=413)
+    captured = _collect_context(
+        ContextFakeSession(response, SimpleNamespace(value=0)),
+        req,
+        headers,
+        120,
+        time.monotonic,
+        retain_error_body=True,
+    )
+    observed = rules_for("groq").context_observation(captured, req)
+    assert observed.http_status == 413
+    assert observed.provider_error_class == "context_size_candidate"
+    assert "Request exceeds context limit" in observed.error_response_body
+    assert "[redacted authorization]" in observed.error_response_body
+    assert "[generated probe prompt redacted]" in observed.error_response_body
+    assert credential not in json.dumps(asdict(observed))
+    assert req.messages[0]["content"] not in json.dumps(asdict(observed))
+    assert observed.error_response_body_truncated
+
+    routine_response = ContextFakeResponse(provider_body, status=413)
+    routine = _collect_context(
+        ContextFakeSession(routine_response, SimpleNamespace(value=0)),
+        req,
+        headers,
+        120,
+        time.monotonic,
+    )
+    assert "error_response_body" not in routine.context_diagnostics
+
+
+def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():
+    from citypods.provider_catalog.evidence import parse_documented_token_rate_headers
+
+    parsed = parse_documented_token_rate_headers(
+        {
+            "x-ratelimit-limit-tokens": "9007199254740992",
+            "x-ratelimit-remaining-tokens": "17",
+            "x-ratelimit-reset-tokens": "1e999999",
+            "x-ratelimit-limit-requests": "6",
+            "x-ratelimit-remaining-requests": "4",
+            "x-ratelimit-reset-requests": "2m",
+            "Retry-After": "1e999999",
+        }
+    )
+    assert parsed == {
+        "rate_limit_limit_requests": 6,
+        "rate_limit_remaining_requests": 4,
+        "rate_limit_reset_requests_ms": 120_000,
+        "rate_limit_limit_tokens": None,
+        "rate_limit_remaining_tokens": 17,
+        "rate_limit_reset_tokens_ms": None,
+        "retry_after_ms": None,
+    }
+    other_provider = rules_for("openrouter").context_rate_diagnostics(
+        {
+            "x-ratelimit-limit-tokens": "8000",
+            "x-ratelimit-remaining-tokens": "17",
+            "x-ratelimit-reset-tokens": "1.25s",
+            "Retry-After": "0.5",
+        }
+    )
+    assert other_provider == {}
+
+
+def test_manual_error_body_excerpt_is_bounded_and_redacts_credential_and_prompt():
+    from citypods.provider_catalog.probe import _manual_error_body_excerpt
+
+    req = request()
+    prompt = req.messages[0]["content"]
+    secret = "gsk_live_do_not_store"
+    body = json.dumps(
+        {
+            "error": {
+                "message": "context limit reached",
+                "credential": f"Bearer {secret}",
+                "echo": prompt,
+            }
+        }
+    ).encode()
+    excerpt, truncated = _manual_error_body_excerpt(
+        body,
+        req,
+        {"Authorization": f"Bearer {secret}"},
+    )
+    assert "context limit reached" in excerpt
+    assert "[redacted authorization]" in excerpt
+    assert "[generated probe prompt redacted]" in excerpt
+    assert secret not in excerpt and prompt not in excerpt
+    # The generated prompt makes the raw source exceed the bound, even though its replacement
+    # marker makes the sanitized excerpt smaller.
+    assert truncated
+
+    excerpt, truncated = _manual_error_body_excerpt(
+        b"x" * 4097,
+        req,
+        {"Authorization": f"Bearer {secret}"},
+    )
+    assert len(excerpt.encode("utf-8")) == 4096 and truncated
+
+
+def test_context_observation_accepts_bounded_body_only_for_http_errors():
+    req = request()
+    observed = ContextObservation.from_request(
+        req,
+        http_status=413,
+        error_response_body='{"error":{"type":"rate_limit_exceeded"}}',
+    )
+    assert "rate_limit_exceeded" in observed.error_response_body
+    with pytest.raises(ValueError, match="bounded error response body"):
+        ContextObservation.from_request(
+            req,
+            http_status=200,
+            error_response_body='{"choices":[]}',
+        )
+    with pytest.raises(ValueError, match="bounded error response body"):
+        ContextObservation.from_request(req, http_status=413, error_response_body="x" * 4097)
+
+
+def test_collector_keeps_only_typed_http_error_diagnostics():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    req = request()
+    body = json.dumps(
+        {
+            "error": {
+                "type": "context_length_exceeded",
+                "message": "private provider text with a claimed token ceiling 123456",
+            }
+        }
+    )
+    response = ContextFakeResponse(body, status=413)
+    raw = _collect_context(
+        ContextFakeSession(response, SimpleNamespace(value=0)), req, {}, 120, time.monotonic
+    )
+    observed = rules_for("groq").context_observation(raw, req)
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic_code == "http_non_success"
+    assert observed.http_status == 413 and observed.http_error_class == "client_error"
+    assert observed.provider_error_class == "context_size_candidate"
+    assert observed.reported_ceiling is None
+    encoded = json.dumps(asdict(observed))
+    assert "private provider text" not in encoded and "123456" not in encoded
 
 
 @pytest.mark.parametrize("mode", ["success", "timeout", "denied"])
@@ -410,7 +984,48 @@ def test_subprocess_requires_admission_and_cancels_slow_stream(monkeypatch, mode
         )
         assert calls.value == 1
         assert observed.outcome == ("verified" if mode == "success" else "transport")
+        if mode == "success":
+            assert observed.http_status == 200
+            assert observed.admitted_at_ms is not None
+            assert observed.request_started_at_ms >= observed.admitted_at_ms
+            assert observed.request_finished_at_ms >= observed.request_started_at_ms
+            assert observed.first_byte_ms is not None
+            assert "secret-must-never-be-recorded" not in json.dumps(asdict(observed))
     assert time.monotonic() - started < 1.5
+
+
+def test_missing_provider_credential_is_distinguished_before_charging_admission(monkeypatch):
+    import multiprocessing
+    import time
+
+    import citypods.security
+    from citypods.provider_catalog.probe import measure_context
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("offline inherited fake transport requires fork")
+    ctx = multiprocessing.get_context("fork")
+    monkeypatch.setattr(multiprocessing, "get_context", lambda _name: ctx)
+    monkeypatch.setattr(citypods.security, "validate_source_url", lambda _url: None)
+    monkeypatch.delenv("CONTEXT_OFFLINE_MISSING_KEY", raising=False)
+    req = request()
+    req = replace(
+        req, shaped_body={**req.shaped_body, "api_key_env": "CONTEXT_OFFLINE_MISSING_KEY"}
+    )
+    calls = ctx.Value("i", 0)
+
+    def no_admission():
+        pytest.fail("missing credential must be detected before durable admission")
+
+    observed = measure_context(
+        req,
+        session=ContextFakeSession(ContextFakeResponse(""), calls),
+        before_call=no_admission,
+        clock=time.monotonic,
+        timeout=3,
+    )
+    assert calls.value == 0
+    assert observed.outcome == "transport"
+    assert observed.diagnostic_code == "worker_credentials_unavailable"
 
 
 def context_artifact_fixture():
@@ -638,6 +1253,46 @@ def test_combined_window_rejection_compares_full_reservation_not_generated_outpu
     assert advance_context_state(current, conflicting).status == "uncertain"
 
 
+@pytest.mark.parametrize(
+    "provider,dimension,count_basis,ceiling,expected",
+    [
+        ("openrouter", "input", "input", 12000, 6000),
+        ("gemini", "output", "output", 8000, 4000),
+        ("nvidia", "input", "combined_reserved", 16000, 8000),
+    ],
+)
+def test_provider_neutral_size_rejection_without_success_downshifts(
+    provider, dimension, count_basis, ceiling, expected
+):
+    from citypods.provider_catalog.evidence import digest
+
+    req = request(provider=provider, dimension=dimension, target=ceiling)
+    attempted = replace(
+        ContextObservation.from_request(req),
+        outcome="inconclusive",
+        evidence_kind="size_rejection",
+        reported_ceiling=ceiling,
+        count_basis=count_basis,
+        reported_input=7000 if count_basis == "combined_reserved" else None,
+        reported_output=256 if count_basis == "combined_reserved" else None,
+        reported_total=7256 if count_basis == "combined_reserved" else None,
+        identity_digest=digest([provider, "model", dimension]),
+    )
+    current = ContextSearchState(
+        attempted.identity_digest,
+        dimension,
+        rejection=attempted,
+        status="refining",
+    )
+    next_probe = next_context_probe(
+        current,
+        {"baseline": 16000, "opposite_reservation": 256},
+        BUDGET,
+    )
+    assert next_probe.status == "refining"
+    assert next_probe.next_target == expected
+
+
 def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
     observed = replace(success(11000), reserved_input=10000, local_input_estimate=9000)
     updated = advance_context_state(state(), observed)
@@ -646,7 +1301,16 @@ def test_accounting_overshoot_updates_fixture_ratio_but_cannot_offer_a_cap():
 
 
 def run_context_orchestration(
-    monkeypatch, *, mode="success", provider="groq", quota=True, previous_requests=0, history=()
+    monkeypatch,
+    *,
+    mode="success",
+    provider="groq",
+    quota=True,
+    previous_requests=0,
+    history=(),
+    manual=False,
+    dimensions=("input", "output"),
+    input_ceiling=1000,
 ):
     import time
     from types import SimpleNamespace
@@ -656,13 +1320,17 @@ def run_context_orchestration(
     from citypods.provider_catalog.reconcile import Report, _measure_context_routes
 
     calls, admissions = [], []
-    route = {**ROUTE, "provider": provider, "hard_input_ceiling": 1000}
+    route = {**ROUTE, "provider": provider, "hard_input_ceiling": input_ceiling}
     context = {
         "run_id": "100",
         "head_sha": "a" * 40,
         "deadline_ms": int((time.time() + 3600) * 1000),
         "catalog_digest": "c" * 64,
         "history": history,
+        "manual": manual,
+        "dimensions": dimensions,
+        "per_call_input": 16384 if manual else 524288,
+        "per_call_output": 256 if manual else 32768,
         "budget": dict(BUDGET),
         "readiness": {
             "r": {"enabled": True, "quota_scope": f"{provider}:primary:test" if quota else None}
@@ -685,6 +1353,21 @@ def run_context_orchestration(
         calls.append(req)
         if mode == "transport":
             return ContextObservation.from_request(req, outcome="transport")
+        if mode in {"rate_then_success", "generic_rate_then_success", "generic_rate_repeat"} and (
+            len(calls) == 1 or mode == "generic_rate_repeat"
+        ):
+            return replace(
+                ContextObservation.from_request(req),
+                outcome="quota",
+                http_status=413 if mode == "rate_then_success" else 429,
+                provider_error_class="rate_limited",
+                rate_limit_limit_tokens=8000 if mode == "rate_then_success" else None,
+                rate_limit_requested_tokens=10488 if mode == "rate_then_success" else None,
+                rate_limit_parser_version=(
+                    "groq-tpm-rejection-v1" if mode == "rate_then_success" else "not_recorded"
+                ),
+                retry_after_ms=19000 if mode == "rate_then_success" else 5000,
+            )
         if req.dimension == "input":
             count = req.reserved_input + 1 if mode == "overshoot" else req.reserved_input
             return parse(req, envelope(req, prompt=count))
@@ -705,9 +1388,14 @@ def run_context_orchestration(
         rules_for(provider),
         runner,
         pause,
-        SimpleNamespace(client=SimpleNamespace(reserve_context=reserve)),
+        SimpleNamespace(
+            client=SimpleNamespace(
+                reserve_context=reserve,
+                reserve_manual_context=reserve,
+            )
+        ),
         None,
-        sleep=lambda _seconds: None,
+        sleep=lambda seconds: context.setdefault("sleeps", []).append(seconds),
         cooldown=0,
     )
     return report, context, runner, calls, admissions
@@ -721,6 +1409,56 @@ def test_context_shared_request_allowance_is_not_a_new_pool(monkeypatch):
     assert context["budget"]["remaining_requests"] == 23
     assert admissions[0]["output_tokens"] == 256
     assert report.context_observations[0].run_id == "100"
+
+
+def test_manual_probe_downshifts_after_typed_groq_rate_rejection(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert [call.reserved_input for call in calls] == [10467, 5243, 7863]
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert context["budget"]["remaining_requests"] == 21
+    assert context["sleeps"] == [60]
+    assert report.context_observations[0].rate_limit_requested_tokens == 10488
+    assert report.context_observations[0].rate_limit_requested_tokens > calls[0].reserved_input
+    assert report.context_observations[1].outcome == "verified"
+    assert report.context_observations[2].outcome == "verified"
+    assert all(call.dimension == "input" for call in calls)
+
+
+def test_manual_untyped_rate_limit_waits_then_retries_same_size(monkeypatch):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_then_success",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == runner.total_requests == 3
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert calls[2].reserved_input > calls[1].reserved_input
+    assert context["sleeps"] == [60]
+    assert [o.outcome for o in report.context_observations] == ["quota", "verified", "verified"]
+    assert not any(o.rate_limit_requested_tokens for o in report.context_observations)
+
+
+def test_repeated_untyped_rate_limit_defers_without_creating_a_size_bound(monkeypatch):
+    report, context, _runner, calls, admissions = run_context_orchestration(
+        monkeypatch,
+        mode="generic_rate_repeat",
+        manual=True,
+        dimensions=("input",),
+        input_ceiling=10479,
+    )
+    assert len(calls) == len(admissions) == 2
+    assert calls[0].reserved_input == calls[1].reserved_input == 10467
+    assert context["sleeps"] == [60]
+    assert all(o.rate_limit_requested_tokens is None for o in report.context_observations)
+    assert not any("context converged" in note for note in report.observations)
 
 
 @pytest.mark.parametrize("mode", ["denied", "transport", "overshoot", "preflight"])
@@ -1269,3 +2007,205 @@ def test_the_context_scan_skips_non_chat_routes():
     chat = {"route_id": "chat", "free": True, "rpd": 10}
     jev = {"route_id": "jev", "free": True, "rpd": 10, "api_shape": "systemone"}
     assert [r["route_id"] for r in plan_context_scan({"routes": [jev, chat]}, {})] == ["chat"]
+
+
+def test_manual_artifact_is_authenticated_but_cannot_become_scheduled_cap_history():
+    from citypods.provider_catalog.evidence import digest, verified_context_history
+
+    now, limits, observed, envelope, run, artifact, reference, api, download = (
+        context_artifact_fixture()
+    )
+    run["event"] = "workflow_dispatch"
+    artifact["name"] = "provider-catalog-manual-context-evidence-1"
+    envelope["payload"]["kind"] = "manual_context"
+    envelope["payload_digest"] = digest(envelope["payload"])
+    reference["payload_digest"] = envelope["payload_digest"]
+    history, accepted, gaps = verified_context_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=now,
+        api=api,
+        download=download,
+        ancestor=lambda _sha: True,
+        manual=True,
+    )
+    assert history == (observed,) and accepted and not gaps
+    history, accepted, gaps = verified_context_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=now,
+        api=api,
+        download=download,
+        ancestor=lambda _sha: True,
+    )
+    assert not history and not accepted and gaps
+
+
+def test_manual_canary_rejects_local_or_non_main_before_provider_io(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from scripts import reconcile_provider_routes as script
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+    control = script.WorkerDispatchControl(SimpleNamespace())
+    monkeypatch.setattr(script, "_control", lambda _flag: control)
+    with pytest.raises(ValueError, match="workflow_dispatch on main"):
+        script.main(["--manual-context", "--context-evidence", str(tmp_path / "out.json")])
+
+
+@pytest.mark.parametrize("fault", [None, "measurement", "cleanup", "both", "status"])
+def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_path, fault):
+    from types import SimpleNamespace
+
+    from citypods.compute.llm_dispatch_pause import ContextSession
+    from citypods.provider_catalog import evidence, reconcile
+    from scripts import reconcile_provider_routes as script
+
+    run_id, sha = "100", "a" * 40
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_RUN_ID": run_id,
+        "GITHUB_SHA": sha,
+    }.items():
+        monkeypatch.setenv(key, value)
+    limits = {"routes": [dict(ROUTE)], "providers": {"groq": dict(PROVIDER)}}
+    monkeypatch.setattr(script.yaml, "safe_load", lambda _text: limits)
+    digest = evidence._context_catalog_digest(
+        json.loads(
+            (script.REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
+        )
+    )
+    status = {
+        "enabled": True,
+        "catalog_digest": digest,
+        "output_enabled": False,
+        "input_ceilings": {"r": 8192},
+        "manual_input_ceilings": {"r": 16384},
+        "routes": {"r": {"enabled": True, "quota_scope": "groq:primary:m"}},
+        "manual_session": {"weekly_requests_used": 0},
+    }
+    status["routes"]["r"]["quota_scope"] = (
+        f"{ROUTE['provider']}:{ROUTE['account_id']}:{ROUTE['upstream_model']}"
+    )
+    finished = []
+    measurement_error = RuntimeError("original measurement failure")
+    cleanup_error = ValueError("cleanup failure")
+    status_error = OSError("status failure")
+    reads = []
+
+    def read_status(_selection):
+        reads.append(True)
+        if fault == "status" and len(reads) == 3:
+            raise status_error
+        return status
+
+    def finish(*_args):
+        finished.append(True)
+        if fault in {"cleanup", "both"}:
+            raise cleanup_error
+
+    client = SimpleNamespace(
+        context_status=read_status,
+        start_manual_context=lambda *_args, **_kwargs: ContextSession(
+            "2026-10-05", run_id, 9999999999999, 16384, 512, 2
+        ),
+        finish_manual_context=finish,
+    )
+    control = script.WorkerDispatchControl(client)
+    from contextlib import contextmanager
+
+    @contextmanager
+    def pause(_provider):
+        yield SimpleNamespace(
+            contended=False,
+            drained=True,
+            in_flight_at_start=0,
+            waited_seconds=0.25,
+            pause_expired=False,
+        )
+
+    monkeypatch.setattr(control, "paused", pause)
+    monkeypatch.setattr(script, "_control", lambda _flag: control)
+    monkeypatch.setattr(
+        evidence,
+        "_gh_json",
+        lambda path: (
+            {"id": 7, "path": evidence.RATE_WORKFLOW}
+            if "/workflows/" in path
+            else {
+                "id": 100,
+                "workflow_id": 7,
+                "event": "workflow_dispatch",
+                "head_branch": "main",
+                "head_sha": sha,
+                "head_repository": {"full_name": "owner/repo"},
+                "status": "in_progress",
+            }
+        ),
+    )
+    monkeypatch.setattr(evidence, "discover_context_references", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        evidence, "verified_context_history", lambda *_args, **_kwargs: ((), (), ())
+    )
+    calls = []
+
+    def measure(report, context, routes, *_args, **_kwargs):
+        assert context["manual"] and context["dimensions"] == ["input"]
+        assert [r["route_id"] for r in routes] == ["r"]
+        calls.append(True)
+        report.context_attempted_routes.add("r")
+        if fault in {"measurement", "both"}:
+            raise measurement_error
+
+    monkeypatch.setattr(reconcile, "_measure_context_routes", measure)
+    monkeypatch.setattr(script, "fetch_quality_index", lambda *_args: pytest.fail("catalog I/O"))
+    target = tmp_path / "out.json"
+    arguments = [
+        "--manual-context",
+        "--context-routes",
+        "r",
+        "--context-purpose",
+        "#2221",
+        "--context-input",
+        "16384",
+        "--context-evidence",
+        str(target),
+    ]
+    if fault is None:
+        assert script.main(arguments) == 0
+    else:
+        expected = (
+            measurement_error
+            if fault in {"measurement", "both"}
+            else (cleanup_error if fault == "cleanup" else status_error)
+        )
+        with pytest.raises(type(expected)) as raised:
+            script.main(arguments)
+        assert raised.value is expected
+    assert calls == [True] and finished == [True]
+    payload = json.loads(target.read_text())["payload"]
+    assert payload["kind"] == "manual_context" and payload["authority"]["max_requests"] == 2
+    assert payload["authority"]["per_call_input"] == 16384
+    assert payload["pause_evidence"] == [
+        {
+            "provider": "groq",
+            "drained": True,
+            "in_flight_at_start": 0,
+            "waited_ms": 250,
+            "pause_expired": False,
+            "contended": False,
+        }
+    ]
+
+    assert payload["run_status"] == ("failed" if fault else "success")
+    assert payload["attempted_routes"] == ["r"]
+    if fault:
+        assert payload["errors"]
+        assert all(set(error) == {"stage", "type"} for error in payload["errors"])
+    if fault == "both":
+        assert [error["stage"] for error in payload["errors"]] == ["measurement", "cleanup"]

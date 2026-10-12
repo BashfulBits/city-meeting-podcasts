@@ -221,3 +221,17 @@ for (let run = 0; run < 3; run++) {
 }
 JS
 ```
+
+## Manual context pool acceptance (#2221)
+
+Local-only `/manual-context?name=<fresh-name>` exercises the production manual admission ledger
+with a synthetic Groq catalog, without provider calls. It injects failures at five SQL mutations
+and the final accounting-flush boundary, requires exact persisted rollback, checks replay is
+write-free, recreates the coordinator, finishes and starts a newer run without refunding charges.
+A separate storage fixture retains 192 attempts across eight weeks; the current-week clustered
+query reads exactly 24 rows and writes zero.
+
+Measured 2026-10-10: start three billed writes; admission seven; replay zero; recreation zero
+writes. Admission reserves twelve writes, covering the observed cost conservatively. Scheduled
+and manual pools share provider quota while retaining independent maintenance totals. The benchmark
+remains local-only and must never be deployed.

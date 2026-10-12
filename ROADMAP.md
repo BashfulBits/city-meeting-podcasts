@@ -297,6 +297,10 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract are accepted; live activation remains gated.
+> The 2026-10-11 provider-neutral probe-search follow-up separates rate recovery from input,
+> output and combined-context search. Groq is the first typed rate-rejection adapter; other
+> providers require their own verified parser before errors can steer a numeric bound. Search
+> evidence cannot alter configured TPM or Worker authority.
 > Slice 2b is tracked in #2187: paid decisions, including the approved
 > disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
@@ -671,3 +675,34 @@ Durable storage/trusted mutation and audit activation follow as separately bound
 Recently shipped review/51: P2c2a guarded source-local decision persistence (#2237).
 Next authorized: authenticate explicit maintainer decisions and recover retries, then compare saved
 cases with current coverage in inspectable reports. Recurring alerts remain unchanged until verified.
+
+Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
+route and immediate first-run evidence review. Output and broader rotation remain separately gated.
+
+Review/48 manual canary follow-up: prepare reusable main-only dispatch for approved routes,
+with separately bounded durable manual budgets; contract review precedes implementation.
+
+Review/48 manual trigger implementation is prepared under #2221 with the approved separate
+finite allowance. Explicit canary execution and acceptance precede output/broader activation.
+
+The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
+reservation. It yielded no provider counts or completion reason, so it does not verify that request
+size. A manual-only, 4 KiB sanitized HTTP error-body excerpt is being added before rerunning the
+same target; scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or
+dimension is enabled.
+
+**Review/48 scope correction and discovery L3 — 2026-10-11.** Complete route
+discovery/addition/removal with bounded new-route input/output/combined request-cap searches at strict 0.5% admitted/refused width.
+Report partial results on a stuck/escape bound; maintainer `test again` resumes authenticated
+progress another day. Ask for missing provider quotas and cap overrides before preparing a PR.
+Existing runtime feedback remains intact. Separate quota-pool configuration/enforcement design
+from route maintenance. Periodic empirical limit verification, burst/refill and pacing redesign
+are Deferred to [review/54](review/54-provider-limit-characterization.md), tracked by #2264; they
+do not block discovery reporting. Review/48 §8.13 defines the offline file/test plan, finite escape
+budgets and authenticated next-day retries; live discovery activation remains separately reviewed.
+Offline foundation implementation is in progress under #2271, followed by report/retry integration.
+
+**Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
+quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing
+values with provenance and scope confirmation, and preserve current adaptive dispatch feedback.
+This is distinct from deferred empirical burst/refill characterization; see review/11.
