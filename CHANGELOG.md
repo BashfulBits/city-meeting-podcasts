@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
+  independent request to the exact route/account after the initial definitive retired/not-served
+  signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous
+  confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
+  timestamp. Removal publication remains behind its separate recovery-canary activation gate.
+
 - **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
   with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
   checkpoints and authenticated partial-run evidence. A separate typed discovery transport
