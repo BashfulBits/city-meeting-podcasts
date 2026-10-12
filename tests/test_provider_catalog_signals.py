@@ -711,7 +711,8 @@ def test_structured_canary_retains_exact_bounded_failure_bytes(delimited):
     assert result["malformed_event_utf8_bytes"] == len(malformed)
 
 
-def test_structured_canary_reports_invalid_utf8_without_replacement_or_secret_leak():
+@pytest.mark.parametrize("api_key", ["test-key", "long-secret-" * 24])
+def test_structured_canary_reports_invalid_utf8_without_replacement_or_secret_leak(api_key):
     import base64
 
     from citypods.provider_catalog.probe import structured_canary
@@ -728,7 +729,7 @@ def test_structured_canary_reports_invalid_utf8_without_replacement_or_secret_le
                 yield (line.encode() if isinstance(line, str) else line) + b"\n"
 
         def iter_lines(self, **kwargs):
-            yield b'data: {"key":"test-key","reasoning_content":"\xe2'
+            yield b'data: {"key":"' + api_key.encode() + b'","reasoning_content":"\xe2'
 
         def close(self):
             self.closed = True
@@ -744,7 +745,7 @@ def test_structured_canary_reports_invalid_utf8_without_replacement_or_secret_le
         all_rules()["nvidia"],
         {"api_base": "https://nvidia.test/v1"},
         "nvidia/test-model",
-        "test-key",
+        api_key,
         Session(),
         before_attempt=lambda: next(attempts),
         methods={"json_schema": {"response_format": "none", "include_schema_in_prompt": True}},
@@ -755,6 +756,6 @@ def test_structured_canary_reports_invalid_utf8_without_replacement_or_secret_le
     assert result["utf8_error_end"] == result["invalid_utf8_line_bytes"]
     excerpt = base64.b64decode(result["invalid_utf8_preview_base64"])
     assert len(excerpt) <= 64
-    assert b"test-key" not in excerpt
+    assert api_key.encode() not in excerpt
     assert excerpt.endswith(b"\xe2")
     assert response.closed

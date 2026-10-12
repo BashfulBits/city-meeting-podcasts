@@ -613,7 +613,10 @@ def structured_canary(
             safe_bytes = (
                 exc.object.replace(api_key.encode(), b"[redacted]") if api_key else exc.object
             )
-            byte_start = max(0, exc.start - 32)
+            safe_prefix = exc.object[: exc.start]
+            if api_key:
+                safe_prefix = safe_prefix.replace(api_key.encode(), b"[redacted]")
+            byte_start = max(0, len(safe_prefix) - 32)
             result["invalid_utf8_line_bytes"] = len(exc.object)
             result["invalid_utf8_preview_start"] = byte_start
             result["invalid_utf8_preview_base64"] = base64.b64encode(
