@@ -1,0 +1,29 @@
+admissions:
+- aa:
+    date: '2026-10-10'
+    score: 44
+    source: https://artificialanalysis.ai/models/kimi-k3/
+    variant: max
+    version: 4.3.2
+  catalog_hash: a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2
+  manifest_hash: 61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017
+  model_family: kimi
+  physical_route_ids:
+  - nvidia_kimi_k3_free
+  prompt_hash: 2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524
+  reasoning_level: max
+  request_params_hash: a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19
+  role: reviewer
+  schema_hash: a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e
+  status: candidate
+  upstream_model: moonshotai/kimi-k3
+limits:
+  active_directional_issues: 12
+  decisions_per_pr: 5
+  evidence_max_age_hours: 24
+  open_prs: 8
+  prs_per_rolling_week: 8
+mode: shadow
+onboarding_exceptions: []
+qualified_alias_types: []
+version: 1

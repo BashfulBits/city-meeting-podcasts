@@ -1,0 +1,74 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 9,
+        "known_provider_attempts": 11,
+        "retried_completed": 1,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 10,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:zone1|verified": {
+            "abstained": 0,
+            "correct": 3,
+            "incorrect": 0,
+            "known_truth": 3
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:zone2|verified": {
+            "abstained": 0,
+            "correct": 3,
+            "incorrect": 0,
+            "known_truth": 3
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 4,
+          "accepted_correct": 4,
+          "correct": 10,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 10,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 1.0
+      },
+      "results_hash": "daa6e7e58e04bc976d73d03556f5a84ea0ca8a3f9872e71fd00150c417499092",
+      "results_path": "/private/tmp/p1-kimi-holdout-final.json"
+    }
+  ],
+  "version": 1
+}

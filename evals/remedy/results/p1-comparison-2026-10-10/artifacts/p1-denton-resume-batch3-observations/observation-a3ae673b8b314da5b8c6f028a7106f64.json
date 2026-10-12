@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "88b934478f270c5d644c6e9c840782be12df4a79e0c09e6516c3669fca4169c5",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:50:04.614892+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The official agenda demonstrates that the convened entity is the Downtown Denton Tax Increment Financing Zone No. 1 Board. In accordance with family policy, distinct numbered boards must remain distinct, meaning this recording belongs in denton-tx-tirz-1-board rather than denton-tx-tirz-2-board.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-wrong-zone",
+      "configuration_id": "dffcd46cce6f3b43dc70ab7d7f17c935375b57143397e9168c154a3bfe4ebb8e",
+      "latency_seconds": 66.2880370831117,
+      "prompt_case_id": "denton-zone1-wrong-zone",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"denton-zone1-wrong-zone\", \"supported\": false, \"proposed_owner\": \"denton-tx-tirz-1-board\", \"proposed_action\": null, \"evidence_ref_ids\": [\"official-agenda\"], \"missing_evidence\": [], \"rationale\": \"The official agenda demonstrates that the convened entity is the Downtown Denton Tax Increment Financing Zone No. 1 Board. In accordance with family policy, distinct numbered boards must remain distinct, meaning this recording belongs in denton-tx-tirz-1-board rather than denton-tx-tirz-2-board.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626852,
+        "id": "ZA7KauP2M_Hoz7IPs-S8qAg",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2775,
+          "completion_tokens_details": {
+            "reasoning_tokens": 606,
+            "text_tokens": 135
+          },
+          "prompt_tokens": 5682,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2890,
+            "video_tokens": null
+          },
+          "total_tokens": 8457
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

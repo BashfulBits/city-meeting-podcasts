@@ -1,0 +1,56 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 1,
+        "known_provider_attempts": 1,
+        "retried_completed": 0,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 0,
+        "breakdown": {
+          "tif|76869ed1994f|dallas-tx:tif|seed": {
+            "abstained": 0,
+            "correct": 1,
+            "incorrect": 0,
+            "known_truth": 1
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 1,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 1,
+          "unattempted": 26,
+          "unknown_truth": 0
+        },
+        "gold_hash": "8db9e3e326c7482cbb683ea327485196ada6c2525496ed2475e0783d7a711f42",
+        "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "50700b6f041109b9ca7014dc5ab90d8ded834095be1906f46c92f1911010f8e1",
+      "results_path": "/private/tmp/p1-kimi-probe.json"
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone2-wrong-zone",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "Reject the claim and assign the recording to denton-tx-tirz-2-board.",
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "rationale": "The official agenda for recording 111521 identifies the officially convened body as the 'Tax Increment Reinvestment Zone No. 2 Board' of the City of Denton, with agenda items concerning 'Tax Increment Reinvestment Zone Number Two (Westpark TIRZ).' Per the approved identity policy, distinct numbered boards stay distinct: the TIRZ No. 2 Board (Westpark) is not the Downtown Denton Tax Increment Financing Zone No. 1 Board that owns slug denton-tx-tirz-1-board. The existing denton-tx-tirz-2-board feed already contains this exact recording (provider_guid 111521) with a matching body label, confirming the correct owner. The claim that the recording belongs in denton-tx-tirz-1-board is therefore contradicted by the supplied evidence.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone2-wrong-zone",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 35.962308291345835,
+      "prompt_case_id": "denton-zone2-wrong-zone",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone2-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Reject the claim and assign the recording to denton-tx-tirz-2-board.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda for recording 111521 identifies the officially convened body as the 'Tax Increment Reinvestment Zone No. 2 Board' of the City of Denton, with agenda items concerning 'Tax Increment Reinvestment Zone Number Two (Westpark TIRZ).' Per the approved identity policy, distinct numbered boards stay distinct: the TIRZ No. 2 Board (Westpark) is not the Downtown Denton Tax Increment Financing Zone No. 1 Board that owns slug denton-tx-tirz-1-board. The existing denton-tx-tirz-2-board feed already contains this exact recording (provider_guid 111521) with a matching body label, confirming the correct owner. The claim that the recording belongs in denton-tx-tirz-1-board is therefore contradicted by the supplied evidence.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this case.\n\nThe claim: \"This recording belongs in denton-tx-tirz-1-board.\"\n\nThe recording: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid 111521.\n\nEvidence:\n- Official agenda for recording 111521 says \"Tax Increment Reinvestment Zone No. 2 Board\" and references \"Tax Increment Reinvestment Zone Number Two (Westpark TIRZ)\".\n\nExisting feeds:\n- denton-tx-tirz-1-board: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" \u2014 distinct body, TIRZ No. 1 (Downtown).\n- denton-tx-tirz-2-board: contains exactly this recording (provider_guid 111521) and another TIRZ No. 2 meeting.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nThe officially convened body per the agenda is Tax Increment Reinvestment Zone No. 2 Board. The claim says it belongs in TIRZ-1 board \u2014 this is contradicted. Per policy, distinct numbered boards stay distinct. The correct owner is denton-tx-tirz-2-board.\n\nSo: supported = false, proposed_owner = \"denton-tx-tirz-2-board\", proposed_action = assign to denton-tx-tirz-2-board (reject claim). Evidence refs: [\"official-agenda\"]. Missing evidence: none.\n\nCase id: \"denton-zone2-wrong-zone\".\n\nRationale: The official agenda identifies the convened body as the Tax Increment Reinvestment Zone No. 2 Board (Westpark TIRZ), distinct from the Downtown Denton TIRZ No. 1 Board. The existing feed denton-tx-tirz-2-board already includes this exact recording (guid 111521). The claim is not supported.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this case.\n\nThe claim: \"This recording belongs in denton-tx-tirz-1-board.\"\n\nThe recording: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid 111521.\n\nEvidence:\n- Official agenda for recording 111521 says \"Tax Increment Reinvestment Zone No. 2 Board\" and references \"Tax Increment Reinvestment Zone Number Two (Westpark TIRZ)\".\n\nExisting feeds:\n- denton-tx-tirz-1-board: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" \u2014 distinct body, TIRZ No. 1 (Downtown).\n- denton-tx-tirz-2-board: contains exactly this recording (provider_guid 111521) and another TIRZ No. 2 meeting.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nThe officially convened body per the agenda is Tax Increment Reinvestment Zone No. 2 Board. The claim says it belongs in TIRZ-1 board \u2014 this is contradicted. Per policy, distinct numbered boards stay distinct. The correct owner is denton-tx-tirz-2-board.\n\nSo: supported = false, proposed_owner = \"denton-tx-tirz-2-board\", proposed_action = assign to denton-tx-tirz-2-board (reject claim). Evidence refs: [\"official-agenda\"]. Missing evidence: none.\n\nCase id: \"denton-zone2-wrong-zone\".\n\nRationale: The official agenda identifies the convened body as the Tax Increment Reinvestment Zone No. 2 Board (Westpark TIRZ), distinct from the Downtown Denton TIRZ No. 1 Board. The existing feed denton-tx-tirz-2-board already includes this exact recording (guid 111521). The claim is not supported.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628425,
+        "id": "chatcmpl-f7f6490f-f96c-4397-876e-0841d238adab",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 653,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 408,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2730,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3383
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

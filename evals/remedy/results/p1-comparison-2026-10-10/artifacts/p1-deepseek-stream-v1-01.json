@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "status": "failed",
+      "error_class": "Timeout",
+      "error": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+      "duration_seconds": 601.4709075833671
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:05:09.441864+00:00",
+      "model": "openai/deepseek-ai/deepseek-v4.1-flash",
+      "status": "failed",
+      "error_class": "Timeout",
+      "error": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+      "duration_seconds": 600.3139519998804
+    }
+  ]
+}

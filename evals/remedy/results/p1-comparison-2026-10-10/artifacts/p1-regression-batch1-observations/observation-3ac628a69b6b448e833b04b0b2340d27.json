@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:53:26.967380+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-wrong-district",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "rationale": "The official metadata in provider-374872 confirms the meeting is for the Dallas Downtown Connection TIF District Board of Directors Meeting. Under the approved policy, official metadata is immutable and separate TIF districts cannot be treated as the same public body.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 84.01603191718459,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"tif-wrong-district\", \"supported\": false, \"proposed_owner\": \"Dallas Downtown Connection TIF District Board of Directors Meeting\", \"proposed_action\": \"reject\", \"evidence_ref_ids\": [\"provider-374872\"], \"missing_evidence\": [], \"rationale\": \"The official metadata in provider-374872 confirms the meeting is for the Dallas Downtown Connection TIF District Board of Directors Meeting. Under the approved policy, official metadata is immutable and separate TIF districts cannot be treated as the same public body.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626116,
+        "id": "hAvKav3GNfHoz7IP79ztoQk",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 1354,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1231,
+            "text_tokens": 123
+          },
+          "prompt_tokens": 882,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 882,
+            "video_tokens": null
+          },
+          "total_tokens": 2236
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject_claim_assign_to_tirz_1",
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The recording's official metadata title and body label read 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM'. The official agenda (official-agenda) independently confirms the convening body as the 'Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas' on Wednesday, May 26, 2021 at 12:00 PM \u2014 matching the recording's date, time, and city. Per the identity policy, distinct numbered boards stay distinct: Zone No. 1 is a different body from TIRZ No. 2. The claim that this recording belongs in denton-tx-tirz-2-board is therefore contradicted by the official metadata. The existing feed denton-tx-tirz-1-board already carries provider_guid 122084 and consistently lists Zone No. 1 meetings, while denton-tx-tirz-2-board lists only No. 2 meetings. The correct owner is denton-tx-tirz-1-board.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-wrong-zone",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 13.462941041681916,
+      "prompt_case_id": "denton-zone1-wrong-zone",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"reject_claim_assign_to_tirz_1\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording's official metadata title and body label read 'Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM'. The official agenda (official-agenda) independently confirms the convening body as the 'Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas' on Wednesday, May 26, 2021 at 12:00 PM \u2014 matching the recording's date, time, and city. Per the identity policy, distinct numbered boards stay distinct: Zone No. 1 is a different body from TIRZ No. 2. The claim that this recording belongs in denton-tx-tirz-2-board is therefore contradicted by the official metadata. The existing feed denton-tx-tirz-1-board already carries provider_guid 122084 and consistently lists Zone No. 1 meetings, while denton-tx-tirz-2-board lists only No. 2 meetings. The correct owner is denton-tx-tirz-1-board.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The body label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" \u2014 that's TIRZ No. 1, not TIRZ No. 2. The claim says it belongs in denton-tx-tirz-2-board. Official agenda confirms Zone No. 1. Existing feed denton-tx-tirz-1-board already includes provider_guid 122084. So claim is false; owner is denton-tx-tirz-1-board.\n\nProposed action: assign to denton-tx-tirz-1-board (reject claim).",
+                "refusal": null
+              },
+              "reasoning_content": "The body label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" \u2014 that's TIRZ No. 1, not TIRZ No. 2. The claim says it belongs in denton-tx-tirz-2-board. Official agenda confirms Zone No. 1. Existing feed denton-tx-tirz-1-board already includes provider_guid 122084. So claim is false; owner is denton-tx-tirz-1-board.\n\nProposed action: assign to denton-tx-tirz-1-board (reject claim).",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628292,
+        "id": "chatcmpl-bbea2afb-94f5-47f1-bbb6-9ed053d2f003",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 417,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 123,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2736,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3153
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

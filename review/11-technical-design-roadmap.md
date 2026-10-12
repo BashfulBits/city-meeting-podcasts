@@ -1765,6 +1765,9 @@ Approved 2026-10-10: evaluate existing free NVIDIA Kimi K3 at documented maximum
 with shared quota accounting and frozen results. Bounded file/test plan in review/51; no
 production route selection, quota or admission change.
 
+P1 comparison diagnostics: approved bounded Gemini/DeepSeek diagnosis, GLM baseline and
+durable evaluation artifacts; see review/51. Production activation remains unchanged.
+
 <!-- review/48 activation checkpoint -->
 Input calibration canary #2221 has a concrete proposed one-route, one-week plan in
 [review/48](48-provider-catalog-reconciliation.md#proposed-input-canary-activation-contract--2221-2026-10-10).

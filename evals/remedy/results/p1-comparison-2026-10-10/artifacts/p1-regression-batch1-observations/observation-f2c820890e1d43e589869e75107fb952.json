@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:53:26.967380+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-grand-park-zone06",
+        "evidence_ref_ids": [
+          "provider-204775"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Reinvestment Zone 06 Board Grand Park South",
+        "rationale": "Official metadata is immutable, and the verified provider record explicitly identifies the body as Reinvestment Zone 06 Board Grand Park South, providing no support for renaming to Farmers Market.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 50.10507966578007,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-grand-park-zone06\",\"supported\":false,\"proposed_owner\":\"Reinvestment Zone 06 Board Grand Park South\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204775\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable, and the verified provider record explicitly identifies the body as Reinvestment Zone 06 Board Grand Park South, providing no support for renaming to Farmers Market.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626972,
+        "id": "9g7Kau_bF8Drz7IPwubeuAk",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 3406,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1273,
+            "text_tokens": 99
+          },
+          "prompt_tokens": 1868,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 983,
+            "video_tokens": null
+          },
+          "total_tokens": 5274
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}
