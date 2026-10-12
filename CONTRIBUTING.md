@@ -283,8 +283,9 @@ Pins are the default (reproducible builds); an automated bot moves them forward.
 
 1. Edit **`pyproject.toml`** only — add the abstract `>=` floor. Never pin exact versions there.
 2. **Recompile constraints** with `scripts/compile_constraints.sh` (runs `pip-compile` in the pinned
-   linux/3.12 image; needs Docker) and commit the updated `constraints/*.txt`. In CI the `lock.yml`
-   workflow does this; the `deps` job in `ci.yml` fails if they are stale.
+   linux/3.12 image; needs Docker; it also regenerates the per-lane `constraints/*.in`) and commit the
+   updated `constraints/*.in` and `constraints/*.txt`. In CI the `lock.yml` workflow does this; the
+   `deps` job in `ci.yml` and `python-compat.yml` fail if they are stale.
 3. **Classify it** — hygiene, or *output-affecting* (touches produced audio/transcript bytes:
    `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`, ffmpeg, the base image, model revisions)?
    Output-affecting bumps follow the `AGENTS.md` pipeline-version-bump contract.

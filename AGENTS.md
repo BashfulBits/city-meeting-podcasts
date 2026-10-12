@@ -97,7 +97,9 @@ When you move a feature along the pipeline, update the listed docs in the **same
   can queue weeks of catalog rework; one that *doesn't* can leave a stale-format catalog while the docs
   claim otherwise — both have bitten this project.
 - **Dependencies are pinned; adding one has a contract.** Declare `>=` floors in `pyproject.toml`,
-  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`), never re-declare deps in the
+  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`, which regenerates the per-lane
+  `constraints/*.in`), set workflow Pythons only via the two `.python-version` files (never a
+  `python-version:` literal; `scripts/python_lanes.py` enforces it), never re-declare deps in the
   external-worker image builders, and treat *output-affecting* bumps (`faster-whisper`, `ctranslate2`,
   `stable-ts`, `Pillow`, ffmpeg, base image, model revisions) as version-coupled per the rule above.
   Full policy + the light-touch update flow: [`review/22`](review/22-dependency-and-reproducibility-policy.md).
