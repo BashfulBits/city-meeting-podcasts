@@ -902,7 +902,9 @@ def _context_envelope(raw, content_type):
         return raw
     content, usage, finish, done = [], None, None, False
     for frame in raw.replace("\r\n", "\n").split("\n\n"):
-        lines = [line[5:].strip() for line in frame.splitlines() if line.startswith("data:")]
+        # JSON may contain Unicode line separators in reasoning strings. Only wire LF
+        # separates SSE lines; str.splitlines() would split those strings into invalid JSON.
+        lines = [line[5:].strip() for line in frame.split("\n") if line.startswith("data:")]
         if not lines:
             continue
         value = "\n".join(lines)

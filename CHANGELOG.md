@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
+
 - **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
   let Requests' inferred response charset and Unicode line splitting split a valid JSON event
   inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
