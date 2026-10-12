@@ -671,3 +671,40 @@ def test_local_restart_does_not_restart_wall_time_budget(tmp_path, monkeypatch):
     )
     assert result.budget["calls"] == 0
     assert result.reason == "deadline_or_reported_usage_overrun"
+
+
+def test_newest_first_history_cannot_restore_an_old_refusal(tmp_path):
+    from datetime import timedelta
+
+    stamp = datetime.now(UTC)
+    oldest = replace(
+        observation(request(attempt="old"), 4500, False),
+        observed_at=(stamp - timedelta(days=2)).isoformat(),
+    )
+    admitted = replace(
+        observation(request(attempt="new-admit"), 5000),
+        observed_at=(stamp - timedelta(days=1)).isoformat(),
+    )
+    refused = replace(
+        observation(request(attempt="new-refuse"), 5100, False), observed_at=stamp.isoformat()
+    )
+
+    def measure(req, admit, timeout):
+        admit()
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 5050, reported_input=req.input_tokens
+        )
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        history=(refused, admitted, oldest),
+        journal=DiscoveryJournal(tmp_path / "ordered-history.json", {}),
+    )
+    bracket = result.brackets[0]
+    assert bracket["status"] == "converged"
+    assert bracket["admitted"] <= 5050 < bracket["refused"]

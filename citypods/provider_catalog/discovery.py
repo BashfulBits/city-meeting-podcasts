@@ -390,6 +390,7 @@ def run_discovery(
             and item.outcome in {"admitted", "refused"}
             and item.verified
         ]
+        previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
         counterpart = 256 if axis in {"input", "total_input_heavy"} else 2048
         control = f"{axis}:v1"
         compatible = previous + [item for item in observations if item.request.axis == axis]
