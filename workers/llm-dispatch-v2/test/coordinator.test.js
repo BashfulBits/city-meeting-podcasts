@@ -2583,6 +2583,8 @@ test("a job pinned to one model gets one output-limit retry, then fails to its p
   const pinned = { allowed_models: ["google/gemma-4-26b-a4b-it"] };
   assert.equal(await completeOutputBudgetCut(pinned, 0), "queued");
   assert.equal(await completeOutputBudgetCut(pinned, 1), "failed");
+  // The count is shared with other transient classes: a job past it keeps failing, not retrying.
+  assert.equal(await completeOutputBudgetCut(pinned, 5), "failed");
 });
 
 test("a job that can move to another model keeps the upstream output-limit budget", async () => {
