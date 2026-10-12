@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
+  Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
+  reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
+  with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
 - **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
   `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
   picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so

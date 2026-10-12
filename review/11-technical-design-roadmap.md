@@ -1153,6 +1153,12 @@ Periodic cap/throughput verification, exact quota scopes, production daily/month
 provider-canonical re-check and dispatcher feedback/parity are future work. This must not block
 review/48 route additions/removals or its bounded discovery-time request-cap search.
 
+**Replace WhisperX alignment with the in-repo MMS_FA CTC aligner — low priority, #2318.**
+WhisperX 3.8.x pins `torch~=2.8.0`, which blocks the torch security fixes and ASR Python 3.14
+(accepted risk in [review/22](22-dependency-and-reproducibility-policy.md)). Moving known-text
+alignment (`asr.py`) onto `ctc_align.py`'s MMS_FA path would free the pin, but it is output-affecting
+and buys little today. Promote only if the review/22 re-review triggers fire and WhisperX hasn't moved.
+
 
 Items intentionally not in a near-term phase; revisit as scale or demand warrants. (Enumerated in §4
 "Deferred backlog".) Notable rationale: **directory index sharding (#42)** remains deferred because
