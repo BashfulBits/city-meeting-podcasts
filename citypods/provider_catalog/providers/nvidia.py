@@ -21,6 +21,7 @@ from citypods.provider_catalog.rules import (
     ProviderRules,
     Signal,
     body_matches,
+    chat_discovery_observation,
     namespaced_identity,
 )
 
@@ -87,7 +88,18 @@ def _links(model: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def discovery_observation(response, request, transient):
+    """NIM prompt usage and completion usage including reasoning; shared strict chat parser.
+
+    https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html
+    """  # noqa: E501
+    return chat_discovery_observation(response, request, transient, reasoning_basis="included")
+
+
 RULES = ProviderRules(
+    discovery_axes=("input", "output"),
+    discovery_parser_version="nvidia-discovery-chat-v1",
+    discovery_observation=discovery_observation,
     model_identity=namespaced_identity(""),
     name="nvidia",
     free_evidence=free_endpoint_label,
