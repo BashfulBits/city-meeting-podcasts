@@ -40,11 +40,12 @@ def observation(req, count, admitted=True, **kwargs):
 
 
 def execute(tmp_path, adapter, **kwargs):
+    supported_axes = kwargs.pop("supported_axes", AXES)
     return run_discovery(
         session_id="session",
         identity="physical",
         parser_version="parser-v1",
-        supported_axes=AXES,
+        supported_axes=supported_axes,
         measure=adapter,
         renew=lambda: None,
         journal=DiscoveryJournal(tmp_path / "journal.json", {"identity": "physical"}),
@@ -176,6 +177,112 @@ def test_budget_exhaustion_and_unknown_response_stay_charged(tmp_path):
     assert result.reason.startswith("measurement_stopped")
 
 
+def test_no_response_retries_up_to_five_charged_calls_then_reports_uncertainty(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            diagnostic="transport_timeout",
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        budget=DiscoveryBudget(max_calls=64),
+    )
+
+    assert len(calls) == result.budget["calls"] == 5
+    assert len({request.attempt_id for request in calls}) == 5
+    assert {request.target for request in calls} == {calls[0].target}
+    assert result.reason == "uncertain_no_response_after_five_calls"
+    assert result.brackets[0]["admitted"] is None
+    assert result.brackets[0]["refused"] is None
+    assert len(result.transport_retries) == 1
+    assert len(result.transport_retries[0]) == 5
+    journal = DiscoveryJournal(tmp_path / "journal.json", {"identity": "physical"})
+    assert len(journal.data["attempts"]) == 5
+
+
+def test_multiple_transport_attempts_are_reported_when_later_call_responds(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        if len(calls) < 3:
+            return DiscoveryObservation(req, STAMP, diagnostic="worker_response_timeout")
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+
+    assert result.reason == "outage"
+    assert result.budget["calls"] == 3
+    assert len(result.transport_retries) == 1
+    assert [row["diagnostic"] for row in result.transport_retries[0]] == [
+        "worker_response_timeout",
+        "worker_response_timeout",
+        "http_503",
+    ]
+
+
+def test_safe_stop_after_charged_discovery_attempt_keeps_retryable_artifact(tmp_path, monkeypatch):
+    from datetime import date
+
+    import citypods.provider_catalog.discovery as discovery
+    from citypods.provider_catalog.reconcile import Candidate, _discover_candidate_caps
+    from citypods.provider_catalog.registry import rules_for
+
+    rules = rules_for("groq")
+    candidate = Candidate(
+        "groq", "meta/llama-new", 20, False, 8192, (), (), "2026-10-12", evidence={"methods": []}
+    )
+    provider_cfg = {
+        "api_base": "https://api.groq.com/openai/v1",
+        "accounts": [{"id": "account", "api_key_env": "GROQ_DISCOVERY_TEST_KEY"}],
+    }
+    monkeypatch.setenv("GROQ_DISCOVERY_TEST_KEY", "test-only")
+
+    def charged_then_stop(**kwargs):
+        request = DiscoveryRequest(
+            kwargs["session_id"],
+            "charged-attempt",
+            kwargs["identity"],
+            "input",
+            2048,
+            2048,
+            256,
+            "input:v1",
+            rules.discovery_parser_version,
+        )
+        kwargs["journal"].charge(request)
+        raise RuntimeError("injected safe stop")
+
+    monkeypatch.setattr(discovery, "run_discovery", charged_then_stop)
+    result = _discover_candidate_caps(
+        candidate,
+        {"context_length": 8192},
+        provider_cfg=provider_cfg,
+        rules=rules,
+        pause=type("Pause", (), {"renew": lambda _self: None})(),
+        session=object(),
+        today=date(2026, 10, 12),
+        run_id="123",
+        receipt_id="receipt",
+        history=(),
+        shared_budget=None,
+        sleep=lambda _seconds: None,
+    )
+
+    assert result["summary"]["retryable"] is True
+    assert result["summary"]["calls"] == 2
+    assert result["artifact"]["attempts"][0]["observation"] is None
+
+
 def test_shared_budget_validation_is_atomic(tmp_path):
     shared = DiscoveryBudget(max_calls=0)
 
@@ -251,6 +358,114 @@ def test_journal_identity_and_observation_round_trip(tmp_path):
         DiscoveryJournal(journal.path, {"session_id": "another"})
 
 
+def test_retry_receipt_is_bound_to_authorized_result_and_next_utc_day():
+    from citypods.provider_catalog.evidence import (
+        discovery_retry_receipt,
+        validate_discovery_retry_receipt,
+    )
+
+    now = datetime(2026, 10, 11, 23, 30, tzinfo=UTC)
+    envelope = discovery_retry_receipt(
+        repository="owner/repo",
+        issue_number=2271,
+        candidate_key="groq/model",
+        result_revision="a" * 64,
+        comment_id=123,
+        comment_created_at="2026-10-11T23:00:00Z",
+        command_run_id="987",
+        command_head_sha="b" * 40,
+        now=now,
+    )
+    assert envelope["payload"]["earliest_date"] == "2026-10-12"
+    with pytest.raises(ValueError, match="date"):
+        validate_discovery_retry_receipt(
+            envelope,
+            repository="owner/repo",
+            now=datetime(2026, 10, 11, 23, 59, tzinfo=UTC),
+        )
+    assert (
+        validate_discovery_retry_receipt(
+            envelope,
+            repository="owner/repo",
+            now=datetime(2026, 10, 12, 8, 0, tzinfo=UTC),
+        )["candidate_key"]
+        == "groq/model"
+    )
+
+    # A slow command run must retain the date selected by the original comment.
+    delayed = discovery_retry_receipt(
+        repository="owner/repo",
+        issue_number=2271,
+        candidate_key="groq/model",
+        result_revision="a" * 64,
+        comment_id=123,
+        comment_created_at="2026-10-11T23:00:00Z",
+        command_run_id="987",
+        command_head_sha="b" * 40,
+        now=datetime(2026, 10, 12, 0, 5, tzinfo=UTC),
+    )
+    assert delayed["payload"]["earliest_date"] == "2026-10-12"
+    tampered = {**envelope, "payload": {**envelope["payload"], "issue_number": 2272}}
+    with pytest.raises(ValueError, match="checksum"):
+        validate_discovery_retry_receipt(tampered, repository="owner/repo", now=now)
+
+
+def test_discovery_reference_scan_includes_manual_and_scheduled_runs():
+    import io
+    import json
+    import zipfile
+    from urllib.parse import parse_qs, urlparse
+
+    from citypods.provider_catalog.evidence import discover_discovery_references
+
+    now = datetime(2026, 10, 11, 12, tzinfo=UTC)
+    envelope = {"payload_digest": "a" * 64}
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("provider-catalog-discovery-evidence.json", json.dumps(envelope))
+    raw = stream.getvalue()
+    events = []
+
+    def api(path):
+        if path.startswith("repos/owner/repo/actions/workflows/") and "/runs?" in path:
+            query = parse_qs(urlparse(path).query)
+            event = query["event"][0]
+            events.append(event)
+            runs = (
+                [
+                    {
+                        "id": 15 if event == "schedule" else 16,
+                        "created_at": "2026-10-11T10:00:00Z",
+                    }
+                ]
+                if query["page"] == ["1"]
+                else []
+            )
+            return {"workflow_runs": runs}
+        if "/actions/runs/15/artifacts?" in path:
+            run_id = "15"
+        elif "/actions/runs/16/artifacts?" in path:
+            run_id = "16"
+        else:
+            return {"default_branch": "main"}
+        return {
+            "artifacts": [
+                {
+                    "id": int(run_id),
+                    "name": f"provider-catalog-discovery-evidence-{run_id}",
+                    "expired": False,
+                    "size_in_bytes": len(raw),
+                }
+            ]
+        }
+
+    refs = discover_discovery_references(
+        repository="owner/repo", now=now, api=api, download=lambda _path: raw
+    )
+    assert [row["run_id"] for row in refs] == ["15", "16"]
+    assert events == ["schedule", "workflow_dispatch"]
+
+
 def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path):
     import io
     import json
@@ -281,8 +496,21 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
         attempts=[dict(request=asdict(req), observation=asdict(observation(req, 2000)))],
         reason="partial",
     )
+    terminal_retry = {
+        "session": {
+            **metadata,
+            "session_id": "terminal-session",
+            "receipt_id": "authorized-retry",
+        },
+        "attempts": [],
+        "reason": "reachability_not_proven",
+    }
     envelope = discovery_artifact(
-        [session], repository="owner/repo", run_id="5", head_sha="a" * 40, now=now
+        [session, terminal_retry],
+        repository="owner/repo",
+        run_id="5",
+        head_sha="a" * 40,
+        now=now,
     )
 
     def archive(value):
@@ -333,6 +561,7 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
 
     values, accepted, deferred = verify()
     assert len(values) == len(accepted) == 1 and not deferred
+    assert accepted[0]["receipt_ids"] == ["authorized-retry"]
 
     # Six newer empty or duplicate-only sessions must not crowd out older useful evidence.
     import copy

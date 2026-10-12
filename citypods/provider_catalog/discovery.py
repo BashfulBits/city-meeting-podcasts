@@ -17,6 +17,14 @@ from citypods.provider_catalog.evidence import digest
 AXES = ("input", "output", "total_input_heavy", "total_output_heavy")
 MAX_INPUT, MAX_OUTPUT = 524_288, 131_072
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
+MAX_NO_RESPONSE_CALLS = 5
+NO_RESPONSE_DIAGNOSTICS = {
+    "transport_timeout",
+    "transport_connection_error",
+    "transport_request_error",
+    "worker_response_timeout",
+    "worker_transport_error",
+}
 OUTCOMES = {"admitted", "refused", "lower_only", "quota", "daily", "outage", "inconclusive"}
 
 
@@ -322,6 +330,7 @@ class DiscoveryResult:
     brackets: tuple
     budget: dict
     reason: str
+    transport_retries: tuple = ()
 
 
 def run_discovery(
@@ -358,6 +367,7 @@ def run_discovery(
         deadline if deadline is not None else float("inf"), clock() + max(0, 1200 - elapsed)
     )
     observations, brackets = [], []
+    transport_retries = []
     reason = "complete"
     seeds = seeds or {}
     restored = []
@@ -419,6 +429,7 @@ def run_discovery(
             if item.request.axis == axis and item.request.control == control:
                 bracket.observe(item)
         fresh_successes, quota_retry = 0, False
+        pending_transport = []
         while not bracket.converged and bracket.nonprogress < 3:
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
                 reason = "deadline_or_reported_usage_overrun"
@@ -504,11 +515,45 @@ def run_discovery(
                     tuple(b.summary() for b in brackets),
                     asdict(budget),
                     reason,
+                    tuple(transport_retries),
                 )
             observations.append(observation)
             budget.settle(observation)
             if shared_budget:
                 shared_budget.settle(observation)
+            if observation.diagnostic in NO_RESPONSE_DIAGNOSTICS:
+                pending_transport.append(
+                    {
+                        "attempt_id": request.attempt_id,
+                        "axis": axis,
+                        "target": target,
+                        "reserved_input": input_tokens,
+                        "requested_output": output_tokens,
+                        "diagnostic": observation.diagnostic,
+                        "outcome": observation.outcome,
+                        "observed_at": observation.observed_at,
+                    }
+                )
+                if len(pending_transport) < MAX_NO_RESPONSE_CALLS:
+                    continue
+                transport_retries.append(tuple(pending_transport))
+                reason = bracket.reason = "uncertain_no_response_after_five_calls"
+                break
+            if pending_transport:
+                pending_transport.append(
+                    {
+                        "attempt_id": request.attempt_id,
+                        "axis": axis,
+                        "target": target,
+                        "reserved_input": input_tokens,
+                        "requested_output": output_tokens,
+                        "diagnostic": observation.diagnostic,
+                        "outcome": observation.outcome,
+                        "observed_at": observation.observed_at,
+                    }
+                )
+                transport_retries.append(tuple(pending_transport))
+                pending_transport = []
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
                 bracket.reason = reason
@@ -586,4 +631,5 @@ def run_discovery(
         tuple(b.summary() for b in brackets),
         asdict(budget),
         reason,
+        tuple(transport_retries),
     )

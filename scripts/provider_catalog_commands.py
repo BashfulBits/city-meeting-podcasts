@@ -40,7 +40,11 @@ from citypods.provider_catalog.apply import (  # noqa: E402
 from citypods.provider_catalog.config_edit import apply_config_edits, load_config  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
 from citypods.provider_catalog.evidence import (  # noqa: E402
+    digest,
+    discover_discovery_references,
     discover_rate_references,
+    discovery_retry_receipt,
+    verified_discovery_history,
     verified_rate_history,
 )
 from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog_issue  # noqa: E402
@@ -96,7 +100,7 @@ def prepare(body, base_commit, proposal_kind=None):
         for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
     )
     snapshot.context_changes = list(context_selected)
-    decisions = parse_decisions(body, snapshot)
+    decisions = tuple(d for d in parse_decisions(body, snapshot) if d.action != "test_again")
     context_selections = tuple(d.model for d in decisions if d.action == "context")
     if proposal_kind == "context" or (
         proposal_kind is None
@@ -438,6 +442,7 @@ def main(argv=None):
     parser.add_argument("--event", required=True)
     parser.add_argument("--permission")
     parser.add_argument("--automatic-limits", action="store_true")
+    parser.add_argument("--retry-receipt", type=Path)
     parser.add_argument("--out", required=True)
     # All publication operations are confined to the repository's own trusted Actions runner.
     args = parser.parse_args(argv)
@@ -507,8 +512,19 @@ def main(argv=None):
                 for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
             ]
             decisions = parse_decisions(body, snapshot)
+            retries = [d for d in decisions if d.action == "test_again"]
+            retry_receipt = None
+            if retries:
+                if len(retries) != 1 or args.retry_receipt is None:
+                    raise ValueError("one test-again choice and a retry artifact path are required")
+                retry_receipt = prepare_discovery_retry(
+                    retries[0],
+                    event=event,
+                    issue_number=number,
+                    now=datetime.now(UTC),
+                )
             kinds = []
-            if any(d.action not in {"increase_rate", "context"} for d in decisions):
+            if any(d.action not in {"increase_rate", "context", "test_again"} for d in decisions):
                 kinds.append("additions")
             if any(d.action == "increase_rate" for d in decisions):
                 kinds.append("limits")
@@ -543,7 +559,14 @@ def main(argv=None):
                         break
                 else:
                     raise ValueError("main changed repeatedly; retry /apply")
-            result["comment"] = "\n\n".join(comments)
+            if retry_receipt:
+                comments.append(
+                    "Request-cap discovery queued for the next eligible UTC day. "
+                    "This command makes no provider request."
+                )
+                result["retry_receipt_id"] = retry_receipt["payload"]["receipt_id"]
+                result["retry_receipt"] = retry_receipt
+            result["comment"] = "\n\n".join(comments) or "No current selections require a PR."
             result["plans"] = plans
     except (
         ValueError,
@@ -562,8 +585,67 @@ def main(argv=None):
                 else "verification or publication command failed"
             ),
         )
+    if result.get("accepted") and result.get("retry_receipt") and args.retry_receipt:
+        args.retry_receipt.write_text(json.dumps(result["retry_receipt"], indent=2) + "\n")
     Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
     return 0 if result["accepted"] else 1
+
+
+def prepare_discovery_retry(decision, *, event, issue_number, now):
+    """Authorize one retry from authenticated result artifacts, never issue numeric state."""
+    from citypods.provider_catalog.discovery import Bracket, discovery_identity
+    from citypods.provider_catalog.probe import chat_url
+    from citypods.provider_catalog.registry import rules_for
+
+    repository = os.environ["GITHUB_REPOSITORY"]
+    provider, model = decision.provider, decision.model
+    texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
+    limits = load_config(texts[SOURCE_PATHS[0]])
+    provider_cfg = (limits.get("providers") or {}).get(provider)
+    rules = rules_for(provider)
+    accounts = (provider_cfg or {}).get("accounts") or []
+    if not accounts:
+        raise ValueError("candidate provider account unavailable")
+    account_id = str(accounts[0].get("id") or "")
+    endpoint = chat_url(rules, provider_cfg)
+    identity = discovery_identity(provider, account_id, model, endpoint)
+    references = discover_discovery_references(repository=repository, now=now)
+    observations, _accepted, gaps = verified_discovery_history(
+        references, repository=repository, now=now
+    )
+    if gaps:
+        raise ValueError("authenticated request-cap evidence is unavailable")
+    compatible = [
+        item
+        for item in observations
+        if item.request.identity == identity
+        and item.request.parser_version == rules.discovery_parser_version
+        and item.request.fixture_version == "discovery-v1"
+    ]
+    if not compatible:
+        raise ValueError("no authenticated request-cap result exists for this candidate")
+    unresolved = False
+    for axis in rules.discovery_axes:
+        bracket = Bracket(axis, 256 if axis == "output" else 2048)
+        for item in compatible:
+            if item.request.axis == axis:
+                bracket.observe(item)
+        unresolved |= not bracket.converged
+    if not unresolved:
+        raise ValueError("all supported request-cap axes are already converged")
+    revision = digest([asdict(item) for item in compatible])
+    comment = event.get("comment") or {}
+    return discovery_retry_receipt(
+        repository=repository,
+        issue_number=issue_number,
+        candidate_key=decision.key,
+        result_revision=revision,
+        comment_id=comment.get("id"),
+        comment_created_at=comment.get("created_at"),
+        command_run_id=os.environ["GITHUB_RUN_ID"],
+        command_head_sha=os.environ["GITHUB_SHA"],
+        now=now,
+    )
 
 
 if __name__ == "__main__":

@@ -78,6 +78,8 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         choices.append(f"{key}: ignore")
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
+        if candidate.discovery and candidate.discovery.get("retryable") is True:
+            choices.append(f"{key}: test again")
     for anomaly in report.anomalies:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
             choices.append(f"`{anomaly.route_id}`: remove route")
@@ -98,6 +100,65 @@ def _score_cell(score: float | None, below_floor: bool | None) -> str:
     if score is None:
         return "unscored"
     return f"{score:g}" + (" (below floor)" if below_floor else "")
+
+
+def _discovery_count(value) -> str:
+    return f"{value:,}" if type(value) is int else "—"
+
+
+def _discovery_transport_groups(value):
+    """Keep editable issue state from injecting unbounded or malformed telemetry into reports."""
+    if not isinstance(value, list):
+        return ()
+    groups = []
+    for group in value[:8]:
+        if not isinstance(group, list) or not 2 <= len(group) <= 5:
+            continue
+        normalized = []
+        for row in group:
+            if not isinstance(row, Mapping):
+                continue
+            axis = row.get("axis")
+            outcome = row.get("outcome")
+            diagnostic = row.get("diagnostic")
+            attempt_id = row.get("attempt_id")
+            if not isinstance(axis, str) or axis not in {
+                "input",
+                "output",
+                "total_input_heavy",
+                "total_output_heavy",
+            }:
+                axis = "unknown"
+            if not isinstance(outcome, str) or outcome not in {
+                "admitted",
+                "refused",
+                "quota",
+                "daily",
+                "outage",
+                "inconclusive",
+                "lower_only",
+            }:
+                outcome = "unknown"
+            if not isinstance(diagnostic, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,64}", diagnostic
+            ):
+                diagnostic = "unknown"
+            if not isinstance(attempt_id, str) or not re.fullmatch(r"[a-f0-9]{64}", attempt_id):
+                attempt_id = "unavailable"
+            normalized.append(
+                {
+                    "axis": axis,
+                    "target": _discovery_count(row.get("target")),
+                    "reserved_input": _discovery_count(row.get("reserved_input")),
+                    "requested_output": _discovery_count(row.get("requested_output")),
+                    "outcome": outcome,
+                    "diagnostic": diagnostic,
+                    "attempt_id": attempt_id[:12],
+                }
+            )
+        if len(normalized) >= 2:
+            groups.append(normalized)
+    return tuple(groups)
 
 
 def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
@@ -255,6 +316,62 @@ def render_body(
         ]
     else:
         lines.append("None this week.")
+    discoveries = [c for c in report.candidates if c.discovery]
+    if discoveries:
+        lines += ["", "## Request-cap discovery", ""]
+        for candidate in discoveries:
+            result = candidate.discovery or {}
+            lines += [f"### `{candidate.key}`", ""]
+            lines += [
+                "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
+                "Count basis / control | Status / note |",
+                "|---|---:|---:|---:|---:|---|---|",
+            ]
+            for axis in result.get("axes", []):
+                claim = axis.get("published")
+                admitted, refused, width = (
+                    axis.get("admitted"),
+                    axis.get("refused"),
+                    axis.get("target_width"),
+                )
+                source = axis.get("source")
+                claim_text = _discovery_count(claim)
+                if source:
+                    claim_text += f" ([source]({source}))"
+                basis = axis.get("count_basis") or "unverified"
+                control = axis.get("control") or "—"
+                note = axis.get("reason") or "—"
+                lines.append(
+                    f"| {axis.get('axis', 'unknown')} | {claim_text} | "
+                    f"{_discovery_count(admitted)} | {_discovery_count(refused)} | "
+                    f"{_discovery_count(width)} | {basis}; `{control}` | "
+                    f"{axis.get('status', 'inconclusive')}; {note} |"
+                )
+            lines += [
+                "",
+                "The admitted count is the largest verified passing value to consider as an "
+                "operational cap; the refused count is its measured upper boundary. These "
+                "results are evidence only and are never written to configuration automatically.",
+                f"Reachability: {result.get('reachability', 'verified')}; "
+                f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
+                f"spent: {result.get('calls', 0)} calls, "
+                f"{_discovery_count(result.get('input_tokens', 0))} reserved input, "
+                f"{_discovery_count(result.get('output_tokens', 0))} requested output tokens.",
+                f"Status: {result.get('reason', 'partial')}. "
+                f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
+            ]
+            for group in _discovery_transport_groups(result.get("transport_retries")):
+                lines.append("No-response attempt telemetry:")
+                for attempt in group:
+                    lines.append(
+                        "- "
+                        f"{attempt.get('axis', 'unknown')} target "
+                        f"{attempt['target']}: "
+                        f"{attempt['reserved_input']} reserved input, "
+                        f"{attempt['requested_output']} requested output; "
+                        f"{attempt['outcome']} / {attempt['diagnostic']} "
+                        f"(attempt `{attempt['attempt_id']}`)"
+                    )
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [
@@ -318,7 +435,9 @@ def render_body(
                 "with those changes (review/48). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
                 "a paid route. Additions/ignore and keep-paid choices are available; "
-                "removal requires deployed Slice 3 rescue. Unavailable proofs remain ticked. "
+                "removal requires deployed Slice 3 rescue. Partial request-cap discovery can be "
+                "resumed with `test again`; that only queues a later bounded run. "
+                "Unavailable proofs remain ticked. "
                 "An open PR does not fulfill a "
                 "selection until it is merged.",
                 "",

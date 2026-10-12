@@ -18,6 +18,11 @@ on:
         required: false
         default: false
         type: boolean
+      discovery_enabled:
+        description: "Run bounded request-cap discovery on newly reachable routes (requires reviewed activation)"
+        required: false
+        default: false
+        type: boolean
 
       context_canary:
         description: "Manual context-only canary on approved routes (main only)"
@@ -97,6 +102,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
+          DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
@@ -120,9 +126,13 @@ jobs:
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             args+=(--rate-evidence provider-catalog-rate-evidence.json)
+            args+=(--discovery-evidence provider-catalog-discovery-evidence.json)
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1" ]; then
             args+=(--context-evidence provider-catalog-context-evidence.json)
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$DISCOVERY_ENABLED" = "true" ]; then
+            args+=(--discovery-enabled --discovery-evidence provider-catalog-discovery-evidence.json)
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CONTEXT_CANARY" = "true" ]; then
             if [ "$DUE_ONLY" = "true" ]; then
@@ -136,6 +146,14 @@ jobs:
               --context-output-budget "$CONTEXT_OUTPUT_BUDGET" --context-purpose "$CONTEXT_PURPOSE")
           fi
           python scripts/reconcile_provider_routes.py "${args[@]}"
+      - name: Retain request-cap discovery evidence
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-discovery-evidence-${{ github.run_id }}
+          path: provider-catalog-discovery-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
       - name: Retain scoped rate evidence
         if: github.event_name == 'schedule'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -151,6 +169,15 @@ jobs:
         with:
           name: provider-catalog-context-evidence-${{ github.run_id }}
           path: provider-catalog-context-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Retain scheduled request-cap discovery evidence
+        if: always() && github.event_name == 'schedule'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-discovery-evidence-${{ github.run_id }}
+          path: provider-catalog-discovery-evidence.json
           retention-days: 90
           if-no-files-found: ignore
 

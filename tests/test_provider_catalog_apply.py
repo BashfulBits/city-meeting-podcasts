@@ -168,6 +168,108 @@ def test_unknown_conflicting_duplicate_decisions_rejected(selection):
         parse_decisions(body, report)
 
 
+def test_discovery_test_again_is_a_single_retry_choice_not_an_addition():
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "retryable": True,
+            "reason": "daily",
+            "calls": 3,
+            "input_tokens": 12000,
+            "output_tokens": 768,
+            "axes": [
+                {
+                    "axis": "input",
+                    "published": 8000,
+                    "source": "https://provider.test/limits",
+                    "admitted": 7900,
+                    "refused": 8000,
+                    "target_width": 40,
+                    "status": "partial",
+                }
+            ],
+        },
+    )
+    report = Report(candidates=[candidate])
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert "## Request-cap discovery" in body
+    assert "| input | 8,000 ([source](https://provider.test/limits))" in body
+    assert "Count basis / control" in body and "unverified" in body
+    selected = body.replace(
+        "- [ ] `host/creator/new`: test again", "- [x] `host/creator/new`: test again"
+    )
+    [decision] = parse_decisions(selected, report)
+    assert decision.action == "test_again"
+    assert decision.key == "host/creator/new"
+
+    conflicting = selected.replace(
+        "- [ ] `host/creator/new`: add route only",
+        "- [x] `host/creator/new`: add route only",
+    )
+    with pytest.raises(ValueError, match="conflicts"):
+        parse_decisions(conflicting, report)
+
+
+def test_discovery_telemetry_and_edited_spend_counters_render_safely():
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "retryable": False,
+            "calls": "bad",
+            "input_tokens": "bad",
+            "output_tokens": None,
+            "axes": [],
+            "transport_retries": [
+                [
+                    {
+                        "attempt_id": "a" * 64,
+                        "axis": "input",
+                        "target": 1000,
+                        "reserved_input": 1000,
+                        "requested_output": 256,
+                        "diagnostic": "transport_timeout",
+                        "outcome": "inconclusive",
+                    },
+                    {
+                        "attempt_id": "b" * 64,
+                        "axis": "input",
+                        "target": 1000,
+                        "reserved_input": 1000,
+                        "requested_output": 256,
+                        "diagnostic": "verified_input_fixture",
+                        "outcome": "admitted",
+                    },
+                ]
+            ],
+        },
+    )
+
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+
+    assert "— reserved input" in body
+    assert "— requested output tokens" in body
+    assert "No-response attempt telemetry" in body
+    assert "`aaaaaaaaaaaa`" in body and "`bbbbbbbbbbbb`" in body
+
+    malformed = replace(
+        candidate,
+        discovery={"transport_retries": "malformed"},
+    )
+    assert "No-response attempt telemetry" not in render_body(
+        Report(candidates=[malformed]), run_date=TODAY.isoformat()
+    )
+
+
+def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
+    report = Report(candidates=[replace(CANDIDATE, discovery={"retryable": False})])
+    body = render_body(report, run_date=TODAY.isoformat()).replace(
+        "- [ ] `host/creator/new`: add route only",
+        "- [x] `host/creator/new`: test again",
+    )
+    with pytest.raises(ValueError, match="unknown or duplicate"):
+        parse_decisions(body, report)
+
+
 def test_explicit_removal_is_parsed_but_deferred_until_rescue():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
@@ -790,6 +892,23 @@ def test_rate_choices_preserve_selection_and_reject_forged_value():
     restored = Report()
     _merge_into_last_full(restored, decode_state(refreshed)["last_full"], set())
     assert restored.rate_changes == [change]
+
+
+def test_due_only_merge_keeps_current_candidate_without_duplicate_choice():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import _merge_into_last_full
+
+    previous = replace(CANDIDATE, discovery={"retryable": True, "reason": "partial"})
+    current = replace(CANDIDATE, discovery={"retryable": False, "reason": "complete"})
+    report = Report(candidates=[current])
+
+    _merge_into_last_full(report, {"candidates": [asdict(previous)]}, set())
+
+    assert report.candidates == [current]
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert body.count("## Request-cap discovery") == 1
+    assert "complete" in body and "partial" not in body
 
 
 def test_prepare_rate_increase_uses_verified_artifact_values_not_issue_observations(

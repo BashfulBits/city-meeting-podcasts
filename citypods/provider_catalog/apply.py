@@ -98,6 +98,13 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
         selected = [x.removeprefix(prefix) for x in checked if x.startswith(prefix)]
         if not selected:
             continue
+        if "test again" in selected:
+            if len(selected) != 1 or not (
+                candidate.discovery and candidate.discovery.get("retryable") is True
+            ):
+                raise ValueError(f"{candidate.key}: test again is unavailable or conflicts")
+            result.append(Decision(candidate.provider, candidate.model, "test_again"))
+            continue
         ignore = "ignore" in selected
         if ignore and len(selected) != 1:
             raise ValueError(f"{candidate.key}: ignore conflicts with addition")

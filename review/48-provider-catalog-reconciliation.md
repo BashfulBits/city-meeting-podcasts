@@ -2048,7 +2048,16 @@ output, contradictory counts, transport deadline or cancellation defer the affec
 report a reason, calls/tokens spent and all admitted/refused bounds found so far. Other axes may
 continue when the remaining envelope and error scope permit. A quota rejection alone never
 becomes a context upper bound. Checkpoint after each usable observation; a lost response is not
-a success and its attempt cannot be reused.
+a success and its attempt cannot be reused. **Maintainer clarification (2026-10-12):** for one
+request-size probe that receives no usable response due to a transport timeout/connection failure,
+make at most five total calls of the same size, each with a fresh charged attempt ID. Do not change
+the probe size during these retries. If all five have no usable response, stop discovery with an
+uncertain result and report the bounds already established; do not interpret transport failure as a
+size limit. If a later call responds, keep the earlier charged attempts and report per-attempt
+telemetry whenever more than one call was needed. This bounded retry direction supersedes the
+previous no-retry wording for new-route request-cap discovery only; it does not alter configured-
+route context-probe retry policy. Every call still consumes the existing per-session and per-run
+budgets.
 
 **`test again` decision.** The maintainer can request another discovery run for the same route
 on a later day. The same maintenance workflow selects that pending route, authenticates prior
@@ -2069,7 +2078,7 @@ enter/override limits, approve preparing an addition PR, ignore or reject. No au
 automatic runtime/YAML ceiling publication occurs. Dead-route removal and structural recovery
 retain their accepted contracts and rollout gates.
 
-#### Offline implementation checkpoint — foundation ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
+#### Offline implementation checkpoint — foundation shipped ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
 
 Implementation is split into a foundation PR and a following report/retry/workflow PR under #2271.
 The foundation supplies the pure planner, bounded distinct transport, charged/fsynced checkpoints,
@@ -2080,11 +2089,12 @@ size-error number as a refused boundary, and combined semantics remain explicitl
 Other endpoints remain unsupported until a provider adapter has verified count/error fixtures.
 Thus simulator convergence does not claim that a live route's caps have been measured.
 
-The foundation is not wired to the maintenance workflow or `/apply`; it adds no new provider calls,
-quota reservations, issue choices or runtime publication. Report rendering, authenticated retry
-receipts, daily selection and activation plumbing remain the next implementation PR. #2271 stays
-open; the complete discovery initiative remains L3, not Shipped. Separate configuration design and
-reviewed live activation gates retain their place after offline integration.
+The foundation added no workflow calls, quota reservations, issue choices or runtime publication.
+The follow-up implementation in #2271 integrates reports, authenticated retry receipts and daily
+selection while keeping live discovery disabled. It reports experimental caps without publishing
+them, and does not turn configured-route maintenance into part of this workflow. The complete
+discovery initiative remains L3, not Shipped, until the implementation merges. Separate quota-pool
+configuration and reviewed live activation gates remain required for their respective scopes.
 
 #### 8.13.1 Execution contract and escape budgets
 
@@ -2104,7 +2114,9 @@ and six-call budgets are unchanged; new candidates use the separate discovery en
 | Transport | 120 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. Token budgets are
+transport process; failed/unknown attempts are never refunded or reused. The five-call no-response
+limit counts the initial send and all retries, not five retries after the initial send. Token
+budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
 4 MiB. Provider/account permissions, free-route evidence, known applicable shared quotas and
