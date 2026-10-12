@@ -17,6 +17,12 @@ Once 1.0 ships, entries move under semver tags.
   reading a large prompt. A typed output-cap refusal halves that counterpart and starts a separate
   input-control history; combined and output searches retain their existing counterparts. Aggregate
   output budgets remain unchanged and bound the number of full-cap attempts per session.
+  
+- **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
+  `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options
+  (`--cert=None`, `--no-index`, `--pip-args=None`, ...) into each `constraints/*.txt` header, and
+  Renovate's pip-compile manager rejects unknown header options, so the locks could not be tracked.
+  The recompile changes only the four header lines; every pinned version is unchanged.
 
 - **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
   and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
