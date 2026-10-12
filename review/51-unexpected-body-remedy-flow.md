@@ -3652,3 +3652,16 @@ Three prior Denton recording overlaps are explicitly separated; source/family is
 pending. Multi-feed correctness needs membership checks rather than a fabricated exclusive owner.
 A lighter-proposer experiment is proposed in the set's `smaller-model-options.md`; it does not
 lower the existing Gemini 3.7 High admission floor or authorize new live model calls.
+
+### Flash-Lite Denton baseline — scoped approval, 2026-10-11
+
+Maintainer approved including existing Gemini 3.5 Flash-Lite in the same ten grounded Denton
+cases, claim-support and blind-owner modes (20 logical jobs). This is an evaluation-only exception
+to the smaller-model admission floor, not production qualification. Use the existing direct-route
+backend, one allowed physical primary route, default reasoning explicitly labelled, 120-second
+requests, 150-second case deadlines, 4,096 output tokens and one provider attempt per job.
+Read Worker route usage and shared local CAS quota accounting before each call; defer on missing
+capacity evidence or fewer than 100 remaining daily calls, never increase limits. Use existing
+route pause/drain/reserve helpers around each call and resume on exit; do not pause the entire
+Google provider or other models. Save immutable observations, capacity and score artifacts under
+`evals/remedy/results/flash-lite-denton-2026-10-11/`. No defaults, catalogs or feeds change.
