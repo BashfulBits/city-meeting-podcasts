@@ -360,16 +360,23 @@ def run_discovery(
     observations, brackets = [], []
     reason = "complete"
     seeds = seeds or {}
+    restored = []
     for row in journal.data["attempts"]:
         request = DiscoveryRequest(**row["request"])
+        if request.session_id != session_id or request.identity != identity:
+            raise ValueError("checkpoint attempt identity mismatch")
+        item = DiscoveryObservation.from_dict(row["observation"]) if row["observation"] else None
+        if item is not None and item.request != request:
+            raise ValueError("checkpoint observation identity mismatch")
+        restored.append((request, item))
+    for request, item in restored:
         budget.charge(request)
         if shared_budget:
             shared_budget.charge(request)
-        if not row["observation"]:
+        if item is None:
             return DiscoveryResult(
                 session_id, identity, (), (), asdict(budget), "indeterminate_attempt_new_receipt"
             )
-        item = DiscoveryObservation.from_dict(row["observation"])
         observations.append(item)
         budget.settle(item)
         if shared_budget:

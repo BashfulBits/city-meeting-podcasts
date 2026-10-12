@@ -333,6 +333,59 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
 
     values, accepted, deferred = verify()
     assert len(values) == len(accepted) == 1 and not deferred
+
+    # Six newer empty or duplicate-only sessions must not crowd out older useful evidence.
+    import copy
+    import re
+
+    from citypods.provider_catalog.evidence import digest
+
+    for duplicate in (False, True):
+        archives = {}
+        for rid in range(5, 12):
+            candidate = copy.deepcopy(envelope)
+            candidate["payload"]["run_id"] = str(rid)
+            rows = candidate["payload"]["sessions"][0]["attempts"]
+            if rid > 5:
+                if duplicate:
+                    rows[0]["request"]["attempt_id"] = "copied"
+                    rows[0]["observation"]["request"]["attempt_id"] = "copied"
+                else:
+                    rows.clear()
+            candidate["payload_digest"] = digest(candidate["payload"])
+            archives[rid] = archive(candidate)
+
+        def history_api(path, archives=archives):
+            match = re.search(r"/runs/([0-9]+)", path)
+            if match:
+                rid = int(match[1])
+                if "artifacts?" in path:
+                    return dict(
+                        artifacts=[
+                            dict(
+                                id=rid,
+                                name=f"provider-catalog-discovery-evidence-{rid}",
+                                expired=False,
+                                size_in_bytes=len(archives[rid]),
+                            )
+                        ]
+                    )
+                return run | {"id": rid}
+            return api(path)
+
+        found, accepted_runs, failures = verified_discovery_history(
+            [dict(run_id=str(rid)) for rid in range(5, 12)],
+            repository="owner/repo",
+            now=now,
+            api=history_api,
+            download=lambda path, archives=archives: archives[
+                int(re.search(r"/artifacts/([0-9]+)", path)[1])
+            ],
+            ancestor=lambda _: True,
+        )
+        assert not failures and len(accepted_runs) == 7
+        assert len(found) == (2 if duplicate else 1)
+        assert any(item.request.attempt_id == "a" for item in found)
     run["event"] = "pull_request"
     assert verify()[2]
     run["event"] = "schedule"
@@ -708,3 +761,29 @@ def test_newest_first_history_cannot_restore_an_old_refusal(tmp_path):
     bracket = result.brackets[0]
     assert bracket["status"] == "converged"
     assert bracket["admitted"] <= 5050 < bracket["refused"]
+
+
+@pytest.mark.parametrize("field", ["identity", "session_id", "observation"])
+def test_checkpoint_foreign_evidence_rejected_before_any_charge(tmp_path, field):
+    journal = DiscoveryJournal(tmp_path / "foreign.json", {})
+    req = request()
+    journal.charge(req)
+    journal.complete(observation(req, 2000))
+    if field == "observation":
+        journal.data["attempts"][0]["observation"]["request"]["identity"] = "foreign"
+    else:
+        journal.data["attempts"][0]["request"][field] = "foreign"
+    budget, shared = DiscoveryBudget(), DiscoveryBudget(max_calls=128)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        run_discovery(
+            session_id="session",
+            identity="physical",
+            parser_version="parser-v1",
+            supported_axes=AXES,
+            measure=lambda *args: pytest.fail("no transport"),
+            renew=lambda: None,
+            journal=journal,
+            budget=budget,
+            shared_budget=shared,
+        )
+    assert budget.calls == shared.calls == 0

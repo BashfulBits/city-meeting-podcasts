@@ -1470,12 +1470,12 @@ def verified_discovery_history(
                 head_sha=run["head_sha"],
                 now=stamp,
             )
-            found = []
+            found, run_counts, run_attempts = [], {}, set()
             for session in payload["sessions"]:
                 identity = session["session"]["identity"]
-                if session_counts.get(identity, 0) >= 6:
+                if session_counts.get(identity, 0) + run_counts.get(identity, 0) >= 6:
                     continue
-                session_counts[identity] = session_counts.get(identity, 0) + 1
+                session_found = []
                 for row in session["attempts"]:
                     if row["observation"] is None:
                         continue
@@ -1484,10 +1484,16 @@ def verified_discovery_history(
                     if not timedelta(0) <= now - original <= timedelta(days=90):
                         continue
                     key = item.request.attempt_id
-                    if key in seen_attempts:
+                    if key in seen_attempts or key in run_attempts:
                         continue
-                    seen_attempts.add(key)
-                    found.append(item)
+                    run_attempts.add(key)
+                    session_found.append(item)
+                if session_found:
+                    run_counts[identity] = run_counts.get(identity, 0) + 1
+                    found.extend(session_found)
+            for identity, count in run_counts.items():
+                session_counts[identity] = session_counts.get(identity, 0) + count
+            seen_attempts.update(run_attempts)
             observations.extend(found)
             accepted.append({"run_id": run_id, "payload_digest": envelope["payload_digest"]})
         except (
