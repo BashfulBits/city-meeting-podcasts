@@ -238,6 +238,11 @@ class ProviderRules:
 
     context_observation: Callable = lambda response, request: unsupported_context(response, request)
     context_rate_diagnostics: Callable = lambda _headers: {}
+    discovery_axes: tuple[str, ...] = ()
+    discovery_parser_version: str = "unsupported-v1"
+    discovery_observation: Callable = lambda response, request, transient: unsupported_discovery(
+        response, request, transient
+    )
 
     @property
     def observation_only(self) -> bool:
@@ -520,3 +525,78 @@ def strict_context_json(raw):
         return fields
 
     return json.loads(raw, object_pairs_hook=unique_fields)
+
+
+def unsupported_discovery(response, request, transient):
+    """No endpoint capability is inferred from OpenAI compatibility or HTTP status."""
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.discovery import DiscoveryObservation
+
+    return DiscoveryObservation(request, datetime.now(UTC).isoformat())
+
+
+def chat_discovery_observation(response, request, transient, *, reasoning_basis="unknown"):
+    """Opt-in actual chat counts; undocumented size-error numbers supply no upper boundary.
+
+    Combined reservation semantics are not implied by usage.total_tokens. Until an adapter proves
+    its two request mixes and typed refusal coordinate, combined axes remain unsupported.
+    """
+    import math
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.discovery import DiscoveryObservation
+
+    stamp = datetime.now(UTC).isoformat()
+    if request.axis.startswith("total_"):
+        return DiscoveryObservation(request, stamp, diagnostic="combined_semantics_unverified")
+    observation = chat_context_observation(response, transient, reasoning_basis=reasoning_basis)
+    try:
+        payload = strict_context_json(response.body)
+        usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
+    except (TypeError, ValueError):
+        usage = {}
+    if not isinstance(usage, dict):
+        usage = {}
+    details = usage.get("completion_tokens_details") or {}
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    cached = prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None
+    if type(reasoning) is not int or not 0 <= reasoning <= (observation.reported_output or 0):
+        reasoning = None
+    if type(cached) is not int or not 0 <= cached <= (observation.reported_input or 0):
+        cached = None
+    values = dict(
+        reasoning_tokens=reasoning,
+        cached_tokens=cached,
+        reported_input=observation.reported_input,
+        reported_output=observation.reported_output,
+        finish_reason=observation.finish_reason,
+        diagnostic=observation.diagnostic_code,
+    )
+    diagnostics = response.context_diagnostics
+    retry = diagnostics.get("retry_after_ms")
+    if type(retry) is int and retry > 0:
+        values["retry_after_seconds"] = math.ceil(retry / 1000)
+    if observation.outcome == "quota":
+        return DiscoveryObservation(request, stamp, outcome="quota", **values)
+    if response.status is not None and response.status >= 500:
+        return DiscoveryObservation(request, stamp, outcome="outage", **values)
+    if observation.outcome == "verified":
+        count = (
+            observation.reported_input if request.axis == "input" else observation.reported_output
+        )
+        return DiscoveryObservation(
+            request,
+            stamp,
+            outcome="admitted",
+            coordinate=count,
+            count_basis=(
+                "completion_including_reasoning"
+                if request.axis == "output" and reasoning_basis == "included"
+                else request.axis
+            ),
+            verified=True,
+            **values,
+        )
+    return DiscoveryObservation(request, stamp, **values)

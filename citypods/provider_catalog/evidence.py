@@ -1251,3 +1251,261 @@ def verified_context_history(
         recent = [o for o in values if o not in anchors][-(16 - len(anchors)) :]
         retained.extend(sorted((*anchors, *recent), key=lambda o: (o.observed_at, o.attempt_id)))
     return tuple(retained), tuple(accepted), tuple(deferred)
+
+
+DISCOVERY_ARTIFACT_FILE = "provider-catalog-discovery-evidence.json"
+
+
+def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
+    """A separate namespace: discovery results cannot authorize configured-route cap edits."""
+    from citypods.provider_catalog.discovery import MAX_ARTIFACT_BYTES, DiscoveryObservation
+
+    if len(sessions) > 2:
+        raise ValueError("too many discovery sessions")
+    normalized = []
+    for session in sessions:
+        if len(session.get("attempts", [])) > 64:
+            raise ValueError("too many discovery attempts")
+        attempts = []
+        for row in session.get("attempts", []):
+            from citypods.provider_catalog.discovery import DiscoveryRequest
+
+            request = DiscoveryRequest(**row["request"])
+            observation = row.get("observation")
+            if observation is not None:
+                parsed = DiscoveryObservation.from_dict(observation)
+                if parsed.request != request:
+                    raise ValueError("discovery artifact attempt mismatch")
+                observation = asdict(parsed)
+            attempts.append({"request": asdict(request), "observation": observation})
+        metadata = session["session"]
+        allowed = {
+            "session_id",
+            "identity",
+            "provider",
+            "account_id",
+            "upstream_model",
+            "endpoint",
+            "catalog_digest",
+            "free_evidence_digest",
+            "parser_version",
+            "fixture_version",
+            "created_at",
+            "sources",
+            "receipt_id",
+        }
+        if set(metadata) - allowed or not all(
+            metadata.get(k)
+            for k in (
+                "session_id",
+                "identity",
+                "provider",
+                "account_id",
+                "upstream_model",
+                "endpoint",
+                "parser_version",
+                "fixture_version",
+                "created_at",
+                "catalog_digest",
+                "free_evidence_digest",
+            )
+        ):
+            raise ValueError("invalid discovery session metadata")
+        if any(
+            not re.fullmatch(r"[a-f0-9]{64}", str(metadata.get(key, "")))
+            for key in ("catalog_digest", "free_evidence_digest")
+        ):
+            raise ValueError("discovery session lacks catalog/free evidence identity")
+        from citypods.provider_catalog.discovery import discovery_identity
+
+        if metadata["identity"] != discovery_identity(
+            metadata["provider"],
+            metadata["account_id"],
+            metadata["upstream_model"],
+            metadata["endpoint"],
+        ):
+            raise ValueError("discovery artifact physical identity mismatch")
+        created = datetime.fromisoformat(metadata["created_at"])
+        if created.tzinfo is None or created > now:
+            raise ValueError("invalid discovery session timestamp")
+        if any(
+            row["request"]["identity"] != metadata["identity"]
+            or row["request"]["session_id"] != metadata["session_id"]
+            for row in attempts
+        ):
+            raise ValueError("discovery session identity mismatch")
+        normalized.append(
+            {"session": metadata, "attempts": attempts, "reason": session.get("reason")}
+        )
+    payload = {
+        "version": 1,
+        "repository": repository,
+        "run_id": str(run_id),
+        "head_sha": head_sha,
+        "observed_at": now.isoformat(),
+        "sessions": normalized,
+    }
+    envelope = {"payload": payload, "payload_digest": digest(payload)}
+    if len(json.dumps(envelope).encode()) > MAX_ARTIFACT_BYTES:
+        raise ValueError("oversized discovery artifact")
+    return envelope
+
+
+def verified_discovery_history(
+    references,
+    *,
+    repository,
+    now,
+    api=_gh_json,
+    download=_gh_download,
+    ancestor=_main_ancestor,
+):
+    """Authenticate terminal observations from trusted main runs, including partial failures.
+
+    Callers supply run references, never numeric issue state. Brackets are rebuilt by the planner.
+    Six sessions per identity and original timestamps bound reuse independently of copies.
+    """
+    from citypods.provider_catalog.discovery import MAX_ARTIFACT_BYTES, DiscoveryObservation
+
+    observations, accepted, deferred = [], [], []
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+        or len(references) > 128
+        or any(
+            not isinstance(row, dict)
+            or not isinstance(row.get("run_id"), str)
+            or not re.fullmatch(r"[0-9]{1,20}", row["run_id"])
+            for row in references
+        )
+    ):
+        return (), (), ("invalid discovery history bounds",)
+    prefix = f"repos/{repository}"
+    try:
+        repo = api(prefix)
+        workflow = api(f"{prefix}/actions/workflows/provider-catalog-reconcile.yml")
+        if (
+            repo.get("full_name") != repository
+            or workflow.get("path") != RATE_WORKFLOW
+            or not isinstance(repo.get("default_branch"), str)
+            or not repo["default_branch"]
+        ):
+            raise ValueError("invalid discovery repository/workflow")
+        if type(workflow.get("id")) is not int or workflow["id"] <= 0:
+            raise ValueError("invalid discovery workflow ID")
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):
+        return (), (), ("discovery metadata unavailable",)
+    seen_runs, seen_attempts, session_counts = set(), set(), {}
+    references = sorted(
+        references,
+        key=lambda r: int(r.get("run_id", "0")) if str(r.get("run_id", "")).isdigit() else 0,
+        reverse=True,
+    )
+    for reference in references:
+        try:
+            run_id = reference["run_id"]
+            if not isinstance(run_id, str) or not re.fullmatch(r"[0-9]+", run_id):
+                raise ValueError("invalid discovery run ID")
+            if run_id in seen_runs:
+                continue
+            seen_runs.add(run_id)
+            run = api(f"{prefix}/actions/runs/{run_id}")
+            if (
+                str(run.get("id")) != run_id
+                or run.get("status") != "completed"
+                or run.get("conclusion") not in {"success", "failure", "cancelled"}
+                or run.get("event") not in {"schedule", "workflow_dispatch"}
+                or run.get("workflow_id") != workflow["id"]
+                or run.get("head_branch") != repo.get("default_branch")
+                or (run.get("head_repository") or {}).get("full_name") != repository
+                or not re.fullmatch(r"[0-9a-f]{40}", str(run.get("head_sha")))
+                or not ancestor(run["head_sha"])
+            ):
+                raise ValueError("untrusted discovery run")
+            listing = api(f"{prefix}/actions/runs/{run_id}/artifacts?per_page=100")
+            matches = [
+                item
+                for item in listing.get("artifacts", [])
+                if item.get("name") == f"provider-catalog-discovery-evidence-{run_id}"
+            ]
+            if len(matches) != 1:
+                raise ValueError("missing or ambiguous discovery artifact")
+            artifact = matches[0]
+            if (
+                artifact.get("expired")
+                or type(artifact.get("id")) is not int
+                or artifact["id"] <= 0
+                or type(artifact.get("size_in_bytes")) is not int
+                or not 0 < artifact["size_in_bytes"] <= MAX_ARTIFACT_BYTES
+            ):
+                raise ValueError("invalid discovery artifact bounds")
+            raw = download(f"{prefix}/actions/artifacts/{artifact['id']}/zip")
+            if len(raw) > MAX_ARTIFACT_BYTES:
+                raise ValueError("oversized discovery ZIP")
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                files = archive.infolist()
+                if (
+                    len(files) != 1
+                    or files[0].filename != DISCOVERY_ARTIFACT_FILE
+                    or files[0].file_size > MAX_ARTIFACT_BYTES
+                ):
+                    raise ValueError("unexpected discovery ZIP contents")
+                envelope = json.loads(archive.read(files[0]))
+            payload = envelope["payload"]
+            stamp = datetime.fromisoformat(payload["observed_at"])
+            if (
+                digest(payload) != envelope["payload_digest"]
+                or payload.get("version") != 1
+                or payload.get("repository") != repository
+                or payload.get("run_id") != run_id
+                or payload.get("head_sha") != run["head_sha"]
+                or stamp.tzinfo is None
+                or not timedelta(0) <= now - stamp <= timedelta(days=90)
+            ):
+                raise ValueError("invalid discovery provenance/digest/age")
+            # Revalidate the closed schema, not just the outer digest.
+            discovery_artifact(
+                payload["sessions"],
+                repository=repository,
+                run_id=run_id,
+                head_sha=run["head_sha"],
+                now=stamp,
+            )
+            found, run_counts, run_attempts = [], {}, set()
+            for session in payload["sessions"]:
+                identity = session["session"]["identity"]
+                if session_counts.get(identity, 0) + run_counts.get(identity, 0) >= 6:
+                    continue
+                session_found = []
+                for row in session["attempts"]:
+                    if row["observation"] is None:
+                        continue
+                    item = DiscoveryObservation.from_dict(row["observation"])
+                    original = datetime.fromisoformat(item.observed_at)
+                    if not timedelta(0) <= now - original <= timedelta(days=90):
+                        continue
+                    key = item.request.attempt_id
+                    if key in seen_attempts or key in run_attempts:
+                        continue
+                    run_attempts.add(key)
+                    session_found.append(item)
+                if session_found:
+                    run_counts[identity] = run_counts.get(identity, 0) + 1
+                    found.extend(session_found)
+            for identity, count in run_counts.items():
+                session_counts[identity] = session_counts.get(identity, 0) + count
+            seen_attempts.update(run_attempts)
+            observations.extend(found)
+            accepted.append({"run_id": run_id, "payload_digest": envelope["payload_digest"]})
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            subprocess.CalledProcessError,
+            zipfile.BadZipFile,
+            zlib.error,
+            RecursionError,
+        ):
+            deferred.append(f"discovery run {reference.get('run_id')}: unverified history")
+    return tuple(observations), tuple(accepted), tuple(deferred)

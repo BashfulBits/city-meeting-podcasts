@@ -738,12 +738,19 @@ def _context_http_worker(pipe, request, session, timeout, retain_error_body):
         session.close()
 
 
-def measure_context(request, *, session, before_call, clock, timeout=120, retain_error_body=False):
+def _measure_response(
+    request,
+    *,
+    session,
+    before_call,
+    clock,
+    admission_type,
+    admission_check,
+    timeout=120,
+    retain_error_body=False,
+):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
-
-    from citypods.compute.llm_dispatch_pause import ContextAdmission
-    from citypods.provider_catalog.registry import rules_for
 
     if not 0 < timeout <= 120:
         raise ValueError("context timeout exceeds reviewed deadline")
@@ -773,7 +780,7 @@ def measure_context(request, *, session, before_call, clock, timeout=120, retain
                 observation = ready
             elif ready == "ready":
                 admission = before_call()
-                if not isinstance(admission, ContextAdmission):
+                if not isinstance(admission, admission_type) or not admission_check(admission):
                     raise ValueError("context call lacks a new durable admission")
                 admitted_at_ms = time.time_ns() // 1_000_000
                 remaining = timeout - (clock() - started)
@@ -821,4 +828,115 @@ def measure_context(request, *, session, before_call, clock, timeout=120, retain
                 process.kill()
                 process.join(0.5)
             process.close()
-    return rules_for(request.provider).context_observation(observation, request)
+    return observation
+
+
+def measure_context(request, *, session, before_call, clock, timeout=120, retain_error_body=False):
+    """Configured-route calls still require the existing durable Worker admission."""
+    from citypods.compute.llm_dispatch_pause import ContextAdmission
+    from citypods.provider_catalog.registry import rules_for
+
+    response = _measure_response(
+        request,
+        session=session,
+        before_call=before_call,
+        clock=clock,
+        admission_type=ContextAdmission,
+        admission_check=lambda _a: True,
+        timeout=timeout,
+        retain_error_body=retain_error_body,
+    )
+    return rules_for(request.provider).context_observation(response, request)
+
+
+def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
+    """Distinct discovery authority; never expands configured-route context builder ceilings."""
+    import json
+
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.provider_catalog.discovery import MAX_INPUT, MAX_OUTPUT, discovery_identity
+    from citypods.provider_catalog.evidence import digest
+
+    physical = discovery_identity(
+        route["provider"],
+        route["account_id"],
+        route["upstream_model"],
+        chat_url(rules, provider_cfg),
+    )
+    if request.identity != physical:
+        raise ValueError("discovery physical identity mismatch")
+    if request.input_tokens > MAX_INPUT or request.output_tokens > MAX_OUTPUT:
+        raise ValueError("discovery per-call ceiling")
+    if not isinstance(nonce, str) or len(nonce) < 32:
+        raise ValueError("discovery needs an unpredictable session nonce")
+    dimension = "output" if request.axis == "output" else "input"
+    transient = build_context_request(
+        route,
+        provider_cfg,
+        rules,
+        dimension=dimension,
+        target=(
+            min(request.output_tokens, 32768) if dimension == "output" else request.input_tokens
+        ),
+        ratio=1,
+        attempt_ordinal=1,
+        nonce=nonce if dimension == "output" else digest([nonce, request.attempt_id]),
+    )
+    messages = transient.messages
+    if dimension == "output" and request.input_tokens > 256:
+        # Hold a small, measured input fixture fixed while varying only the output request.
+        padding = build_context_request(
+            route,
+            provider_cfg,
+            rules,
+            dimension="input",
+            target=request.input_tokens - 256,
+            ratio=1,
+            attempt_ordinal=1,
+            nonce=nonce,
+        )
+        document = padding.messages[0]["content"].split("\n", 1)[1]
+        prompt = (
+            transient.messages[0]["content"] + "\nReference document (not output):\n" + document
+        )
+        messages = ({"role": "user", "content": prompt},)
+    estimated = estimate_tokens(messages)
+    if estimated > request.input_tokens:
+        raise ValueError("discovery fixture exceeds charged input reservation")
+    body = dict(
+        transient.shaped_body["body"], messages=list(messages), max_tokens=request.output_tokens
+    )
+    if len(json.dumps(body).encode()) > _CONTEXT_BYTES:
+        raise ValueError("discovery request body exceeds hard bound")
+    return replace(
+        transient,
+        messages=messages,
+        local_input_estimate=estimated,
+        reserved_input=request.input_tokens,
+        requested_output=request.output_tokens,
+        shaped_body=transient.shaped_body | {"body": body},
+    )
+
+
+def measure_discovery(request, transient, rules, *, session, before_call, clock, timeout=120):
+    """Unconfigured candidate transport needs a distinct charged discovery receipt."""
+    from citypods.provider_catalog.discovery import DiscoveryAdmission, discovery_identity
+
+    physical = discovery_identity(
+        transient.provider,
+        transient.account_id,
+        transient.upstream_model,
+        transient.shaped_body["url"],
+    )
+    if request.identity != physical:
+        raise ValueError("discovery transport physical identity mismatch")
+    response = _measure_response(
+        transient,
+        session=session,
+        before_call=before_call,
+        clock=clock,
+        admission_type=DiscoveryAdmission,
+        admission_check=lambda receipt: receipt.matches(request) and clock() < receipt.deadline,
+        timeout=timeout,
+    )
+    return rules.discovery_observation(response, request, transient)

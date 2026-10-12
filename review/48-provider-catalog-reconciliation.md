@@ -2063,6 +2063,23 @@ enter/override limits, approve preparing an addition PR, ignore or reject. No au
 automatic runtime/YAML ceiling publication occurs. Dead-route removal and structural recovery
 retain their accepted contracts and rollout gates.
 
+#### Offline implementation checkpoint — foundation ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
+
+Implementation is split into a foundation PR and a following report/retry/workflow PR under #2271.
+The foundation supplies the pure planner, bounded distinct transport, charged/fsynced checkpoints,
+strict observation/control semantics and authenticated version-1 history primitives. Deterministic
+adapters exercise all axes, including both combined mixes. Live Groq input and OpenRouter
+input/output parsers opt into verified usage only: neither currently interprets an undocumented
+size-error number as a refused boundary, and combined semantics remain explicitly unsupported.
+Other endpoints remain unsupported until a provider adapter has verified count/error fixtures.
+Thus simulator convergence does not claim that a live route's caps have been measured.
+
+The foundation is not wired to the maintenance workflow or `/apply`; it adds no new provider calls,
+quota reservations, issue choices or runtime publication. Report rendering, authenticated retry
+receipts, daily selection and activation plumbing remain the next implementation PR. #2271 stays
+open; the complete discovery initiative remains L3, not Shipped. Separate configuration design and
+reviewed live activation gates retain their place after offline integration.
+
 #### 8.13.1 Execution contract and escape budgets
 
 This section is development-ready for offline implementation. Live discovery is disabled by

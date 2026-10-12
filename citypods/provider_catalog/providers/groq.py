@@ -13,6 +13,7 @@ from citypods.provider_catalog.rules import (
     ProviderRules,
     account_level,
     chat_context_observation,
+    chat_discovery_observation,
     strict_context_json,
 )
 
@@ -88,7 +89,14 @@ def limit_observations(response):
     return tuple(result)
 
 
+def discovery_observation(response, request, transient):
+    return chat_discovery_observation(response, request, transient, reasoning_basis="unknown")
+
+
 RULES = ProviderRules(
+    discovery_axes=("input",),
+    discovery_parser_version="groq-discovery-chat-v1",
+    discovery_observation=discovery_observation,
     # https://console.groq.com/docs/api-reference (chat usage; reasoning remains unknown).
     context_observation=context_observation,
     context_rate_diagnostics=context_rate_diagnostics,
