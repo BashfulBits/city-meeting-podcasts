@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Renovate tracks every Python lock, one lane at a time.** Each `constraints/<lane>.txt` now
+  compiles from a generated `constraints/<lane>.in` (`scripts/lane_inputs.py`, from
+  `pyproject.toml`), because Renovate's pip-compile manager reads current versions from only the
+  first lock that shares a source file, which was `asr.txt`, so litellm never got a PR. Renovate
+  now manages the four locks: the LLM stack (litellm, instructor, pydantic, openai, tiktoken) is
+  lock-bumped as soon as a release is 3 days old and automerged on green CI; releases whose
+  `requires_python` excludes the lock's Python are skipped; security fixes (GitHub and OSV
+  advisories) open at once; and Python bumps and the monthly full lock refresh wait for
+  Dependency Dashboard approval.
+
 - **Python versions live in two files, with a compatibility gate.** Every workflow's
   `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
   `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
