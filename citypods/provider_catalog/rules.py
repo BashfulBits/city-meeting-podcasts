@@ -659,13 +659,13 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
         return None
     if kind not in (None, "invalid_request_error", "BadRequestError", "context_length_exceeded"):
         return None
-    if code is None and kind is None and error.get("object") != "error":
-        return None
+    untyped = code is None and kind is None and error.get("object") != "error"
     message = error.get("message")
     if not isinstance(message, str) or len(message) > 8192:
         return None
     prefix = r"This (?:model|endpoint)'s maximum context length is (?P<limit>[0-9]+) tokens\. "
     patterns = (
+        prefix + r"However, your messages resulted in (?P<input>[0-9]+) tokens\.",
         prefix
         + r"However, you requested (?P<output>[0-9]+) output tokens and your prompt "
         + r"contains (?P<input>[0-9]+) input tokens, for a total of (?P<total>[0-9]+) tokens\.",
@@ -674,10 +674,29 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
         + r"\((?P<input>[0-9]+) in the messages, (?P<output>[0-9]+) in the completion\)\.",
         prefix + r"However, your request has (?P<input>[0-9]+) input tokens\.",
     )
-    for pattern in patterns:
+    for index, pattern in enumerate(patterns):
         match = re.match(pattern, message)
         if match is None:
             continue
+        # Captured NVIDIA responses use a message-only envelope. Permit only this exact
+        # input-token wording without an error type/code, not arbitrary untyped failures.
+        if untyped:
+            envelope = set(payload) == {"message"} or (
+                set(payload) == {"error"} and set(error) == {"message"}
+            )
+            if index != 0 or not envelope:
+                return None
+        # An appended approximation qualifier invalidates the exact-count claim. Permit
+        # only the empty suffix or standard request-shortening advice, not extra prose.
+        if message[match.end() :] not in {
+            "",
+            " Please reduce the length of the messages.",
+            " Please reduce the length of your messages.",
+            " Please reduce the length of the messages or completion.",
+            " Please reduce the length of the input prompt or the number of requested output "
+            "tokens.",
+        }:
+            return None
         if any(len(value) > 16 for value in match.groupdict().values()):
             return None
         counts = {key: int(value) for key, value in match.groupdict().items()}

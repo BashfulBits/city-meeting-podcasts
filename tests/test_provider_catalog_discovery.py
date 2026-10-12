@@ -1511,3 +1511,123 @@ def test_typed_output_refusals_require_unambiguous_matching_field_authority(bad)
         reasoning_basis="unknown" if bad == "unknown_reasoning" else "included",
     )
     assert observed.outcome == "inconclusive" and observed.coordinate is None
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+@pytest.mark.parametrize("typed", [True, False])
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("suffix", ["", " Please reduce the length of the messages."])
+def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusal(
+    provider, typed, nested, suffix
+):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    # Redacted exact prefix from run 38296813993, without guessing the truncated suffix.
+    error = {
+        "message": "This model's maximum context length is 1000000 tokens. "
+        "However, your messages resulted in 1290360 tokens."
+    }
+    if typed:
+        error.update(type="BadRequestError", code=400)
+    error["message"] += suffix
+    body = {"error": error} if nested else error
+    observed = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.coordinate == 1290360
+    assert observed.reported_input == 1290360 and observed.count_basis == "input"
+    assert observed.reported_output is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "characters",
+        "at_least",
+        "below_limit",
+        "wrong_axis",
+        "quota",
+        "extra_fields",
+        "untyped_other_wording",
+        "approximate_suffix",
+        "outer_conflict",
+    ],
+)
+def test_message_only_size_refusal_is_narrow_and_fail_closed(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    text = "This model's maximum context length is 1000000 tokens. "
+    text += "However, your messages resulted in 1290360 tokens."
+    error = {"message": text}
+    status = 400
+    if bad == "characters":
+        error["message"] = text.replace("1290360 tokens", "1290360 characters")
+    elif bad == "at_least":
+        error["message"] = text.replace("in 1290360", "in at least 1290360")
+    elif bad == "below_limit":
+        error["message"] = text.replace("1290360", "900000")
+    elif bad == "wrong_axis":
+        req = replace(req, axis="output")
+    elif bad == "quota":
+        status = 429
+    elif bad == "extra_fields":
+        error["rpd"] = 1000
+    elif bad == "untyped_other_wording":
+        error["message"] = text.replace("your messages resulted in", "your request has").replace(
+            "1290360 tokens", "1290360 input tokens"
+        )
+    elif bad == "approximate_suffix":
+        error["message"] += " This count is approximate."
+    elif bad == "outer_conflict":
+        error = {"error": error, "quota_exhausted": True}
+    observed = rules.discovery_observation(Response(status, body=json.dumps(error)), req, transient)
+    assert observed.coordinate is None and not observed.verified
+
+
+def test_count_mapping_is_retained_at_ceiling_and_refines_actual_input_boundary(tmp_path):
+    calls = []
+    actual_limit = 980000
+
+    def measure(req, admit, _timeout):
+        admit()
+        calls.append(req)
+        actual = (req.input_tokens * 129) // 100
+        return observation(req, actual, actual <= actual_limit, reported_input=actual)
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+    ceiling_calls = [req for req in calls if req.target == MAX_INPUT]
+    assert ceiling_calls and all(req.input_tokens < MAX_INPUT for req in ceiling_calls)
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= actual_limit < result.brackets[0]["refused"]
+    assert all(req.input_tokens <= MAX_INPUT for req in calls)
+    assert len(calls) < 20
+
+
+@pytest.mark.parametrize("provider", ["nvidia", "openrouter"])
+def test_discovery_output_fixture_has_concrete_long_goal_and_preserves_request_bound(provider):
+    _, req, transient = _chat_discovery_fixture(provider, "output")
+    text = transient.messages[0]["content"]
+    assert "from 1 through 1000000 inclusive, one per line" in text
+    assert "until all integers are written" in text
+    assert "until the output limit" not in text
+    assert transient.shaped_body["body"]["max_tokens"] == req.output_tokens
+    assert transient.local_input_estimate <= req.input_tokens
+
+
+def test_changed_output_control_excludes_old_prompt_history(tmp_path):
+    old = replace(request("output"), control="output:v1")
+    previous = observation(old, 16384)
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(req, STAMP)
+
+    result = execute(tmp_path, measure, supported_axes=("output",), history=(previous,))
+    assert all(req.control == "output:v2" for req in seen)
+    assert result.brackets[1]["admitted"] is None

@@ -2375,6 +2375,38 @@ budgets, deadline and manual activation. Runtime Worker/direct dispatch and prov
 unchanged. Offline acceptance covers provider-reported successes, each refusal envelope, wrong
 axes, mismatched controls, malformed counts, quotas and Unicode SSE normalization.
 
+**Discovery boundary refinement follow-up (2026-10-12).** Run 38296813993 established verified
+input counts of 500,024 and 750,001 for NVIDIA Nemotron Lightning. The local estimate understated
+provider-counted input by roughly 29%. At the 1,000,000-token target, a special-case reservation
+override discarded that learned ratio and submitted roughly 1.29M actual tokens. The planner now
+keeps the count correction at every input target and clamps only the local reservation to the
+existing hard ceiling. It still uses provider-reported counts as bracket coordinates. A local
+regression with 1.29x actual counts must converge to the existing 0.5% goal, with every reservation
+within the approved ceiling. No ceiling or per-run budget increases are authorized by this fix.
+
+The same run captured HTTP 400 JSON with the exact prefix "This model's maximum context length
+is 1000000 tokens. However, your messages resulted in 1290360 tokens." The shared chat parser now
+accepts this explicit input-count shape for any registered compatible provider. A message-only
+error envelope is permitted only for this recorded form, with a positive exact input count above
+the declared ceiling. Character counts, lower-bound counts, quota errors, wrong axes, unknown
+fields and untyped variants of other error shapes remain inconclusive. Validate the complete outer
+envelope for message-only errors and allow only standard request-shortening advice after the count;
+appended uncertainty/approximation qualifiers cannot become exact boundary evidence. The ceiling remains a
+provider claim; the refused bracket coordinate is the reported request count, not the claim itself.
+This additive wording does not reinterpret persisted inconclusive observations as boundary proof;
+existing verified input counts keep their parser/count/control compatibility.
+
+All three output probes in that run stopped naturally before the requested 16,384 completion
+tokens. Discovery-only output fixtures now explicitly request every integer from 1 through
+1,000,000, one per line, without summaries or omissions. The existing completion cap bounds the
+actual generation. `output:v2` identifies this changed prompt and excludes `output:v1` boundary
+history; the old history remains diagnostic. A completed early-stop reply still does not establish
+an output maximum: the existing exact numeric fixture, actual counted output and length finish are
+required. Configured-route calibration keeps its existing prompt and fixture versions. The input
+control, provider pause, spacing, budgets, timeout, session deadline and combined-axis deferrals
+remain unchanged. After review/merge, the next authorized selected-candidate run can refine input
+instead of repeatedly sending the same oversized request, and test the stronger output fixture.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

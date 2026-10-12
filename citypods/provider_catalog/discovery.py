@@ -507,7 +507,7 @@ def run_discovery(
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
         counterpart = INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else 2_048
-        control_version = "v2" if axis in {"input", "total_input_heavy"} else "v1"
+        control_version = "v2" if axis in {"input", "total_input_heavy", "output"} else "v1"
         control = f"{axis}:{control_version}"
         compatible = previous + [item for item in observations if item.request.axis == axis]
         if compatible:
@@ -585,8 +585,10 @@ def run_discovery(
                 input_tokens = max(
                     1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )
-            if axis == "input" and target == MAX_INPUT:
-                input_tokens = MAX_INPUT
+            if axis == "input":
+                # MAX_INPUT caps the reservation; it must not erase provider-count mapping
+                # when the desired provider-counted target reaches that same ceiling.
+                input_tokens = min(input_tokens, MAX_INPUT)
             if input_tokens > MAX_INPUT or output_tokens > MAX_OUTPUT:
                 bracket.reason = "per_call_ceiling"
                 break

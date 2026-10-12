@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **New-route size searches retain token calibration at the hard ceiling.** The input planner
+  now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
+  1,000,000-token local reservation, which overshot NVIDIA's actual count by about 29%. The shared
+  parser accepts the recorded exact "messages resulted in" token-size refusal, including its
+  narrow message-only envelope. Discovery output probes request an explicit long numeric sequence
+  under the unchanged output cap; output control v2 excludes old-prompt boundary history. Existing
+  input evidence stays compatible, and configured-route calibration/production dispatch are unchanged.
+
 - **H15 eval builds provider-align sections like production, and skips ineligible samples.** The
   weekly ASR Quality Eval had produced no results since the WhisperX swap (2026-08-13): runs hung
   until the job timeout (shown as "cancelled"), then failed with `alignment section is too long`.
