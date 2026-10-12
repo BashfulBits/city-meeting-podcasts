@@ -12,6 +12,39 @@
   timezone: "America/Chicago",
   schedule: ["before 9am on monday"],
   labels: ["type:infrastructure", "deps"],
+  // ---- PYTHON LOCKS (constraints/*.txt) ----
+  // The pip-compile manager matches no files by default. Listing the four compiled lock
+  // files makes Renovate read each lane's source (constraints/<lane>.in, generated from
+  // pyproject.toml by scripts/lane_inputs.py) through its header, bump the lock with
+  // `pip-compile --upgrade-package`, and use the Python the header was compiled with.
+  // One source per lock is what makes each lane its own Renovate project: locks sharing
+  // pyproject.toml would read every current version from asr.txt alone.
+  // gh-cli.txt is not a pip lock (custom regex manager below).
+  "pip-compile": {
+    managerFilePatterns: ["/^constraints/(prod|dev|asr|chapter-research)\\.txt$/"],
+  },
+  constraints: {
+    // Keep in sync with the pin in scripts/compile_constraints.sh (>=7.5.1 writes headers
+    // Renovate can parse).
+    pipTools: "==7.6.2",
+  },
+  // Skip releases whose requires_python excludes the Python the locks are compiled for,
+  // instead of opening a PR that python-compat.yml would only fail.
+  constraintsFiltering: "strict",
+  // Security fixes skip the schedule and minimumReleaseAge (Renovate's vulnerabilityAlerts
+  // defaults) and reach indirect locked deps too. They are labeled but never automerged
+  // here: an ASR or output-affecting fix still goes through the smoke gate.
+  vulnerabilityAlerts: {
+    labels: ["type:infrastructure", "deps", "security"],
+  },
+  // OSV adds advisories GitHub lacks, including malicious-package reports (direct deps only).
+  osvVulnerabilityAlerts: true,
+  // Full lock refresh moves every transitive pin, ASR included, so it waits for a ticked box.
+  lockFileMaintenance: {
+    enabled: true,
+    dependencyDashboardApproval: true,
+    schedule: ["before 9am on the first day of the month"],
+  },
   packageRules: [
     // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
@@ -44,12 +77,44 @@
         "pypdf",
         "beautifulsoup4",
         "cairosvg",
-        "pydantic",
-        "litellm",
-        "instructor",
         "scikit-learn",
       ],
       groupName: "python runtime (hygiene)",
+    },
+    {
+      // LLM stack: kept at the latest release (new models and provider fixes land there).
+      // Lock-only bumps (pyproject floors stay put) on any day once a release is 3 days old,
+      // automerged when CI, including python-compat.yml, is green (majors excepted, below).
+      matchManagers: ["pip-compile"],
+      matchPackageNames: ["litellm", "instructor", "pydantic", "openai", "tiktoken"],
+      groupName: "llm stack",
+      rangeStrategy: "update-lockfile",
+      minimumReleaseAge: "3 days",
+      schedule: ["at any time"],
+      automerge: true,
+    },
+    {
+      // ...except majors (e.g. openai 2 -> 3): same lane, but a human reads the changelog.
+      matchManagers: ["pip-compile"],
+      matchPackageNames: ["litellm", "instructor", "pydantic", "openai", "tiktoken"],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+    },
+    {
+      // openai and tiktoken are transitive (via litellm), so pip-compile marks them indirect
+      // and disabled. Enable just these two so the group above can move them.
+      matchManagers: ["pip-compile"],
+      matchDepTypes: ["indirect"],
+      matchPackageNames: ["openai", "tiktoken"],
+      enabled: true,
+    },
+    {
+      // Python itself (.python-version and .github/python/asr/.python-version). A bump must
+      // resolve every lane in python-compat.yml, and an ASR bump also needs the locks
+      // recompiled (python_lanes.py --check fails until they are), so it waits for approval.
+      matchManagers: ["pyenv"],
+      dependencyDashboardApproval: true,
+      automerge: false,
     },
     // Actions & workflow files are SHA-pinned but NEVER auto-merged (a compromised
     // update could move a pinned SHA — see review/22 / the Renovate malicious-SHA caveat).

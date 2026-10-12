@@ -16,6 +16,7 @@ on:
       - .github/python/**
       - .github/workflows/**
       - scripts/python_lanes.py
+      - scripts/lane_inputs.py
       - scripts/compile_constraints.sh
   push:
     branches: [main]
@@ -52,6 +53,7 @@ jobs:
         id: lanes
         run: |
           python -m pip install --quiet "PyYAML>=6.0"
+          python scripts/lane_inputs.py --check
           python scripts/python_lanes.py --check
           echo "matrix=$(python scripts/python_lanes.py)" >> "$GITHUB_OUTPUT"
 
