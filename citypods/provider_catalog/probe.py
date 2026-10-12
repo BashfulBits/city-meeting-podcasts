@@ -24,6 +24,7 @@ from citypods.provider_catalog.rules import ProviderRules, Response, strict_cont
 CANARY_TIMEOUT_SECONDS = 720
 CANARY_PROMPT = "Reply exactly: ok"
 _MAX_FIRST_EVENT_BYTES = 65_536
+_MAX_STRUCTURED_EVENT_BYTES = 131_072
 _MAX_STRUCTURED_PREVIEW_CHARS = 128
 _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
@@ -390,7 +391,7 @@ def structured_canary(
                     result["stream_terminal"] = True
                     break
                 result["event_bytes"] += len(data.encode("utf-8"))
-                if result["event_bytes"] > _MAX_FIRST_EVENT_BYTES:
+                if result["event_bytes"] > _MAX_STRUCTURED_EVENT_BYTES:
                     result["diagnostic"] = "event_data_limit_exceeded"
                     break
                 try:

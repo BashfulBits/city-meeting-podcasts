@@ -45,7 +45,7 @@ transport failures, timeouts and capacity/access errors remain inconclusive. Acc
 stop the remaining method checks. A working alternative is reported without editing route config.
 
 Checks allow 4,096 total completion tokens, including reasoning, with a 720-second read timeout and
-elapsed-time checks against the Worker response ceiling, and cap streamed event data at 64 KiB. The
+elapsed-time checks against the Worker response ceiling, and cap streamed event data at 128 KiB. The
 parser now observes complete SSE event boundaries and joins multiple `data:` fields within each
 event before JSON decoding, as required by the SSE format. The old four-token ping remains a cheap
 availability check, but cannot establish method support. This

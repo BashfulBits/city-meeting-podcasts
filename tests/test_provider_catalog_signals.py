@@ -299,6 +299,57 @@ def test_structured_canary_joins_multiline_sse_data_fields():
     assert {row["events"] for row in result.values()} == {3}
 
 
+@pytest.mark.parametrize(("reasoning_events", "expected"), [(80, "valid"), (140, "inconclusive")])
+def test_structured_canary_allows_reasoning_stream_within_bound_and_rejects_overflow(
+    reasoning_events, expected
+):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS, structured_canary
+
+    class Stream:
+        status_code = 200
+        ok = True
+        headers = {}
+
+        def iter_lines(self, **kwargs):
+            for _ in range(reasoning_events):
+                frame = json.dumps({"choices": [{"delta": {"reasoning_content": "x" * 900}}]})
+                yield "data: " + frame
+                yield ""
+            yield 'data: {"choices":[{"delta":{"content":"{\\"answer\\":\\"ok\\"}"}}]}'
+            yield ""
+            yield 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}'
+            yield ""
+            yield "data: [DONE]"
+
+        def close(self):
+            pass
+
+    class Session:
+        def post(self, *args, **kwargs):
+            return Stream()
+
+    methods = {
+        method: {"response_format": "none", "include_schema_in_prompt": True}
+        for method in STRUCTURED_METHODS
+    }
+    result = structured_canary(
+        all_rules()["openrouter"],
+        {"api_base": "https://openrouter.test/api/v1"},
+        "creator/model:free",
+        "test-key",
+        Session(),
+        before_attempt=lambda: True,
+        methods=methods,
+    )
+
+    assert {row["outcome"] for row in result.values()} == {expected}
+    if expected == "valid":
+        assert all(row["event_bytes"] > 65_536 for row in result.values())
+        assert all(row["diagnostic"] == "fixture_json_valid" for row in result.values())
+    else:
+        assert {row["diagnostic"] for row in result.values()} == {"event_data_limit_exceeded"}
+
+
 def test_structured_probe_preview_is_bounded_and_safe_for_issue_markdown():
     from citypods.provider_catalog.probe import (
         _MAX_STRUCTURED_PREVIEW_CHARS,
