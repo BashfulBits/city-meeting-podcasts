@@ -60,8 +60,10 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
-# A separate reviewed activation change must flip this after offline integration is accepted.
-DISCOVERY_ACTIVATION_ENABLED = False
+# New-route discovery is enabled only for an explicit, single-candidate workflow dispatch and
+# authenticated maintainer retries. Broad weekly discovery remains a separate activation gate.
+DISCOVERY_ACTIVATION_ENABLED = True
+DISCOVERY_SCHEDULED_ENABLED = False
 ANOMALY_VERDICTS = frozenset({"retired", "not_served", "not_entitled", "account_blocked"})
 RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say

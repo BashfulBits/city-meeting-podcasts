@@ -1813,17 +1813,21 @@ quota/cap revalidation, overflow/refill and broader pacing redesign are Deferred
 [review/54](54-provider-limit-characterization.md), tracked by #2264. Previous review/48 §8.12 L3
 automatic runtime ceiling direction is superseded by this scope decision.
 
-Review/48 §8.13 now specifies the offline discovery/report/retry file and test plan: 64 submissions,
-20 minutes and finite token reservations per candidate; two candidates per run; separate authenticated
-90-day histories and next-day `/apply` retry receipts. Live discovery stays disabled pending reviewed
-activation. Combined-cap/shared-quota additions remain gated on their separate configuration design.
+Review/48 §8.13 specifies the offline discovery/report/retry contract: 64 submissions, 20 minutes
+and finite token reservations per candidate; separate authenticated 90-day histories and next-day
+`/apply` retry receipts. The first live activation is restricted to one exact free candidate in a
+manual run; the provider-wide v2 pause is required. The maintainer accepted unknown/shared quota
+scope for this bounded first canary because the candidate is not yet dispatchable by this repo.
+Weekly discovery remains disabled until that evidence is reviewed. Combined-cap/config additions
+remain gated on their separate configuration design.
 
 The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273).
 Report/retry/workflow integration is now under implementation review in #2271: new reachable
 candidates receive bounded size discovery, the issue reports source claims and measured brackets,
 and an authorized `/apply` can queue an authenticated next-day retry without provider calls. Pure
 adapter tests cover all axes; unsupported refusal/combined semantics remain explicit. No new probes
-are enabled until the separate reviewed activation in #2223.
+are enabled until #2223's one-candidate manual activation is merged and deployed; broader weekly
+discovery remains separately gated on review of the first route's evidence.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 

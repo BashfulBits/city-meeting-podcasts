@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Review/48 first live new-route discovery gate (#2223).** A maintainer can manually select one
+  exact new `provider/model` candidate for bounded request-cap discovery after free eligibility and
+  reachability checks. The workflow requires the existing v2 provider-wide pause; authenticated
+  `/apply` retries remain supported. Broad weekly discovery stays disabled pending review of the
+  first route's evidence. Unknown quota scope remains labeled unknown; the bounded canary makes no
+  quota inference or automatic configuration change.
+
 - **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
   independent request to the exact route/account after the initial definitive retired/not-served
   signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous

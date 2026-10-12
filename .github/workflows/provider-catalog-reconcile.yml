@@ -19,10 +19,15 @@ on:
         default: false
         type: boolean
       discovery_enabled:
-        description: "Run bounded request-cap discovery on newly reachable routes (requires reviewed activation)"
+        description: "Run one bounded request-cap discovery canary (manual selection required)"
         required: false
         default: false
         type: boolean
+      discovery_candidate:
+        description: "Exact new route identity, provider/model (required when discovery_enabled is true)"
+        required: false
+        default: ""
+        type: string
 
       context_canary:
         description: "Manual context-only canary on approved routes (main only)"
@@ -103,6 +108,7 @@ jobs:
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
           DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
+          DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
@@ -133,6 +139,11 @@ jobs:
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$DISCOVERY_ENABLED" = "true" ]; then
             args+=(--discovery-enabled --discovery-evidence provider-catalog-discovery-evidence.json)
+            if [ -z "$DISCOVERY_CANDIDATE" ]; then
+              echo "Manual discovery requires discovery_candidate=provider/model" >&2
+              exit 1
+            fi
+            args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CONTEXT_CANARY" = "true" ]; then
             if [ "$DUE_ONLY" = "true" ]; then
