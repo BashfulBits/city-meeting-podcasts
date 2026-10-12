@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Python versions live in two files, with a compatibility gate.** Every workflow's
+  `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
+  `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
+  each version file to the constraints its jobs install and fails on literal pins, on `asr.txt`
+  installed off the ASR Python, and on Modal/Beam/audio-runner/lock-compile Pythons that disagree
+  with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+  only, so a Python or dependency bump that cannot install fails on the PR.
+
 - **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
   and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
   128 KiB cumulative event-data bound accommodates complete reasoning-heavy responses while keeping

@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
@@ -106,7 +106,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
