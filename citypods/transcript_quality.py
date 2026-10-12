@@ -29,8 +29,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from citypods.asr import AlignmentQualityError
 from citypods.bodies import canonical_body
 from citypods.config import load_city_configs, load_site_config
+from citypods.known_text import provider_align_ineligible
 from citypods.models import City
 from citypods.records import load_records, record_to_episode, source_key
 from citypods.review_issues import checked_decisions, render_decision_block
@@ -798,6 +800,10 @@ def _clip_window(sample_id: str, duration: float, clip_seconds: int) -> tuple[fl
 
 def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | None:
     provider_registry = ep.provider_transcript or {}
+    if provider_align_ineligible(provider_registry):
+        # Production already decided this provider text can't be aligned and re-transcribes it, so
+        # there is no provider-align candidate to compare.
+        return None
     provider = None
     for key in ("known_good", "candidate"):
         artifact = provider_registry.get(key)
@@ -1237,10 +1243,66 @@ def _provider_source_text(candidate: dict, *, storage=None) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+# One sample must not be able to consume the whole job: a stalled download previously held the
+# weekly run until its 120-minute timeout, so it was reported as cancelled, not failed.
+_AUDIO_DOWNLOAD_DEADLINE_SECONDS = 15 * 60.0
+
+
 def _download_audio_to_path(audio_url: str, dest: Path) -> None:
     from citypods.stages import _download_audio_file
 
-    _download_audio_file(audio_url, dest)
+    _download_audio_file(audio_url, dest, deadline_seconds=_AUDIO_DOWNLOAD_DEADLINE_SECONDS)
+
+
+def _provider_align_sections(sample: dict, candidate: dict, *, storage=None) -> list[dict]:
+    """Build the alignment sections the production provider-align path would use.
+
+    VTT/SRT keep their per-cue windows (remapped onto the served timeline), as in
+    ``stages._provider_alignment_inputs``. Joining the cue text instead dropped every timestamp, so
+    the whole transcript became one full-duration section that the aligner then rejected. TXT keeps
+    its in-text ``[HH:MM:SS]`` markers via ``provider_sections``.
+    """
+    from citypods.known_text import provider_sections
+    from citypods.stages import (
+        _VTT_WORD_TIMESTAMP_RE,
+        _parse_timed_transcript,
+        _preprocess_align_text,
+    )
+    from citypods.timeline import Segment, Timeline, remap
+
+    fmt = str(candidate.get("provider_source_format") or "txt")
+    duration = sample.get("audio_duration") or sample.get("clip_end")
+    duration = float(duration) if duration else None
+    timeline = sample.get("timeline")
+    if fmt in {"vtt", "srt"}:
+        raw = _read_ref_bytes(
+            candidate.get("provider_source_ref") or candidate.get("provider_source_url"),
+            storage=storage,
+        )
+        cues: list[dict] = []
+        for cue in _parse_timed_transcript(raw, fmt) if raw else []:
+            text = _preprocess_align_text(
+                _VTT_WORD_TIMESTAMP_RE.sub("", str(cue.get("text") or "")).strip()
+            )
+            start, end = cue.get("start"), cue.get("end")
+            if text and start is not None and end is not None and float(end) > float(start):
+                cues.append({"start": float(start), "end": float(end), "text": text})
+        if cues:
+            if not timeline:
+                return cues
+            tl = Timeline(
+                version=str(timeline.get("version") or "persisted"),
+                basis=str(timeline.get("basis") or "served"),
+                segments=tuple(Segment(**seg) for seg in timeline.get("segments") or []),
+            )
+            source_id = next((seg.source_id for seg in tl.segments if seg.source_id), None)
+            mapped = remap(tl, cues, source_id=source_id, clamp_to=duration)
+            return [c for c in mapped if c.get("end") is not None and c["end"] > c["start"]]
+    return provider_sections(
+        _provider_source_text(candidate, storage=storage),
+        duration=duration,
+        timeline=timeline,
+    )
 
 
 def _generate_provider_align_candidate(
@@ -1253,22 +1315,29 @@ def _generate_provider_align_candidate(
 ) -> dict:
     from citypods import asr as asr_mod
 
-    text = _provider_source_text(candidate, storage=storage)
-    if not text:
-        raise ValueError("provider source text unavailable")
+    sections = _provider_align_sections(sample, candidate, storage=storage)
+    if not sections:
+        raise ValueError("provider source text produced no spoken sections")
+    # Same limit align_known_text enforces, checked before the audio download and model load. A
+    # transcript with no usable time markers is one full-duration section; production marks that
+    # provider candidate align-ineligible and re-transcribes, so the eval reports a skip, not an
+    # error.
+    longest = max(
+        (
+            (float(sec["end"]) - float(sec["start"]))
+            for sec in sections
+            if sec.get("end") is not None
+        ),
+        default=0.0,
+    )
+    if longest > asr_mod._MAX_ALIGN_SECTION_SECONDS:
+        raise asr_mod.AlignmentQualityError(
+            "alignment section is too long for WhisperX's CPU memory envelope: "
+            f"{longest:.1f}s > {asr_mod._MAX_ALIGN_SECTION_SECONDS:.1f}s"
+        )
     audio_path = work_dir / "audio.m4a"
     _download_audio_to_path(sample["audio_url"], audio_path)
     cpu_threads = max(1, city.asr_workers)
-    from citypods.known_text import provider_sections
-
-    duration = sample.get("audio_duration") or sample.get("clip_end")
-    sections = provider_sections(
-        text,
-        duration=float(duration) if duration else None,
-        timeline=sample.get("timeline"),
-    )
-    if not sections:
-        raise ValueError("provider source text produced no spoken sections")
     artifacts = asr_mod.align_known_text(
         audio_path,
         sections,
@@ -1808,6 +1877,7 @@ def evaluate_samples(
     raw_log = load_raw_log(state_dir)
     evaluated: list[dict] = []
     errors: list[dict] = []
+    skipped: list[dict] = []
     pending_rows: list[dict] = []
     # L2 budget is per evaluate() run, not per sample -- "a rotating subset, not every meeting"
     # (review/12 §H15). build_sample_manifest's already-sampled exclusion supplies the
@@ -1826,6 +1896,21 @@ def evaluate_samples(
                 storage=storage,
                 l2_budget_remaining=l2_budget_remaining,
             )
+        except AlignmentQualityError as exc:
+            # Production treats this as "provider-align ineligible -> re-transcribe", a normal
+            # outcome, so it is not an evaluation failure. Reported, but kept out of `errors`.
+            skipped.append(
+                {
+                    "sample_id": sample.get("sample_id"),
+                    "episode_uid": sample.get("episode_uid"),
+                    "reason": str(exc),
+                }
+            )
+            print(
+                f"[h15] skip sample={sample.get('sample_id')} provider-align ineligible: {exc}",
+                flush=True,
+            )
+            continue
         except Exception as exc:  # noqa: BLE001 - one bad sample must not lose the whole batch
             error_event = {
                 "id": f"eval-error:{sample.get('sample_id', 'unknown')}",
@@ -1863,6 +1948,7 @@ def evaluate_samples(
         "version": 1,
         "evaluated": evaluated,
         "errors": errors,
+        "skipped": skipped,
         "all_failed": bool(manifest.get("samples")) and not evaluated and bool(errors),
     }
 
@@ -2837,7 +2923,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             f"evaluated {len(result['evaluated'])} H15 sample(s), "
-            f"{len(result.get('errors', []))} error(s)"
+            f"{len(result.get('errors', []))} error(s), "
+            f"{len(result.get('skipped', []))} skipped (provider-align ineligible)"
         )
         if result["all_failed"]:
             print("H15 evaluation failed: every selected sample errored", flush=True)

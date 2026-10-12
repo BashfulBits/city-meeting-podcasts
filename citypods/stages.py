@@ -5994,20 +5994,39 @@ class HostedAudioTooLargeError(RuntimeError):
     """Hosted-audio stream exceeded the configured cap; this is not retried."""
 
 
+class HostedAudioDownloadTimeout(RuntimeError):
+    """Hosted-audio download exceeded its wall-clock budget; this is not retried."""
+
+
 def _download_audio_file(
     url: str,
     dest: Path,
     *,
     max_attempts: int = _AUDIO_DOWNLOAD_MAX_ATTEMPTS,
     sleep: Callable[[float], None] = time.sleep,
+    deadline_seconds: float | None = None,
 ) -> None:
+    """Download hosted audio to ``dest``.
+
+    ``deadline_seconds`` bounds the whole call (all attempts). requests' ``timeout`` only limits
+    the gap between bytes, so a server that trickles data could otherwise hold a caller forever.
+    """
     import requests as _req
 
     from citypods.http import USER_AGENT, clamped_retry_after_seconds
 
     redirect_statuses = {301, 302, 303, 307, 308}
     last: Exception | None = None
+    deadline = None if deadline_seconds is None else time.monotonic() + deadline_seconds
+
+    def _check_deadline() -> None:
+        if deadline is not None and time.monotonic() > deadline:
+            raise HostedAudioDownloadTimeout(
+                f"hosted audio download exceeded {deadline_seconds:.0f}s: {url}"
+            )
+
     for attempt in range(max_attempts):
+        _check_deadline()
         try:
             with _req.Session() as sess:
                 sess.headers["User-Agent"] = USER_AGENT
@@ -6076,6 +6095,7 @@ def _download_audio_file(
                     try:
                         with open(dest, "wb") as f:
                             for chunk in r.iter_content(chunk_size=65536):
+                                _check_deadline()
                                 received += len(chunk)
                                 if received > _MAX_HOSTED_AUDIO_BYTES:
                                     raise HostedAudioTooLargeError(
