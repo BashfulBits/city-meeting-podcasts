@@ -1842,6 +1842,9 @@ diagnostics for the next canary (review/48, runner decoding correction, 2026-10-
 Run 38293878784 verified all four NVIDIA methods and confirmed the decoder diagnosis. NVIDIA
 new-route input/output discovery now reuses shared chat usage and exact size-refusal parsing;
 combined-count semantics and undocumented providers remain deferred (review/48 parser follow-up).
+Run 38296813993 verified 750,001 input tokens. Its follow-up preserves provider-count correction
+at the input ceiling, recognizes the captured exact refusal wording in the shared parser, and
+uses output control v2 with an explicit long sequence; existing budgets and combined-axis gates hold.
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This

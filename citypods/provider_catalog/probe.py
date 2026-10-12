@@ -1289,6 +1289,17 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         max_input_tokens=MAX_INPUT,
     )
     messages = transient.messages
+    if dimension == "output":
+        # A model cannot see max_tokens and often stops after a short natural sequence.
+        # Give it a concrete goal beyond the bounded generation allowance instead.
+        messages = (
+            {
+                "role": "user",
+                "content": "Write every integer from 1 through 1000000 inclusive, one per line. "
+                "No prose, code fences, summaries, ellipses, or omissions. "
+                "Do not stop early; continue the sequence until all integers are written.",
+            },
+        )
     if dimension == "output" and request.input_tokens > 256:
         # Hold a small, measured input fixture fixed while varying only the output request.
         padding = build_context_request(
@@ -1303,9 +1314,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             max_input_tokens=MAX_INPUT,
         )
         document = padding.messages[0]["content"].split("\n", 1)[1]
-        prompt = (
-            transient.messages[0]["content"] + "\nReference document (not output):\n" + document
-        )
+        prompt = messages[0]["content"] + "\nReference document (not output):\n" + document
         messages = ({"role": "user", "content": prompt},)
     estimated = estimate_tokens(messages)
     if estimated > request.input_tokens:
