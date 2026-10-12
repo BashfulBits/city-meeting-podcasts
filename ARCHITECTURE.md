@@ -270,8 +270,12 @@ and resumes compatible history. Provider plugins explicitly declare usage/parser
 unknown size errors and combined semantics create no cap proof. A request that receives no usable
 transport response may be sent up to five times at the same size, with a fresh charged attempt for
 each send. Five unanswered calls produce an uncertain result, never a size bound; when multiple
-sends were needed, the issue includes per-attempt diagnostics. The workflow wiring remains disabled
-until the separate reviewed activation gate #2223 is approved and merged. This flow does not probe
+sends were needed, the issue includes per-attempt diagnostics: response status/media type/size,
+bounded message/finish/usage shape states, actual reported token counts and safe provider request
+IDs. Failed attempts may also retain a 128-character escaped provider error or returned model-text
+excerpt after prompt/credential redaction; successful text and full bodies are never retained. The
+workflow wiring remains disabled until the separate reviewed activation gate #2223 is approved and
+merged. This flow does not probe
 configured routes for recurring maintenance or publish cap changes automatically.
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane

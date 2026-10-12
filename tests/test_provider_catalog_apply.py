@@ -17,7 +17,7 @@ from citypods.provider_catalog.apply import (
     plan_apply,
 )
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest
-from citypods.provider_catalog.issue import MARKER, render_body
+from citypods.provider_catalog.issue import MARKER, _discovery_attempt_diagnostics, render_body
 from citypods.provider_catalog.reconcile import Anomaly, Candidate, Report
 from scripts.provider_catalog_commands import process_event, publish
 
@@ -219,6 +219,28 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
             "input_tokens": "bad",
             "output_tokens": None,
             "axes": [],
+            "attempt_diagnostics": [
+                {
+                    "axis": "input",
+                    "target": 500000,
+                    "reserved_input": 500000,
+                    "requested_output": 256,
+                    "outcome": "inconclusive",
+                    "diagnostic": "completion_content_null",
+                    "response_status": 200,
+                    "response_media_type": "application/json",
+                    "response_bytes": 900,
+                    "message_content_state": "null",
+                    "finish_reason_state": "missing",
+                    "finish_reason": "",
+                    "usage_state": "valid",
+                    "reported_input": 490000,
+                    "reported_output": 0,
+                    "provider_request_id": "request-123",
+                    "response_id": "response-456",
+                    "response_preview": '"Provider suggests reduce the request"',
+                }
+            ],
             "transport_retries": [
                 [
                     {
@@ -250,6 +272,11 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
     assert "— requested output tokens" in body
     assert "No-response attempt telemetry" in body
     assert "`aaaaaaaaaaaa`" in body and "`bbbbbbbbbbbb`" in body
+    assert "Recent request diagnostics" in body
+    assert "completion_content_null" in body
+    assert "490,000 / 0" in body
+    assert "request-123" in body and "response-456" in body
+    assert '"Provider suggests reduce the request"' in body
 
     malformed = replace(
         candidate,
@@ -258,6 +285,16 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
     assert "No-response attempt telemetry" not in render_body(
         Report(candidates=[malformed]), run_date=TODAY.isoformat()
     )
+
+
+def test_edited_discovery_preview_cannot_inject_issue_markup():
+    preview = json.dumps("](https://example.test)|@everyone`*_[x]~")
+
+    rendered = _discovery_attempt_diagnostics([{"response_preview": preview}])[0][
+        "response_preview"
+    ]
+
+    assert all(char not in rendered for char in "[]()|@`*_~")
 
 
 def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():

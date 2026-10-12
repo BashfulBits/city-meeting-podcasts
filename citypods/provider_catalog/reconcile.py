@@ -1385,7 +1385,47 @@ def _discovery_history_summary(
         "input_tokens": sum(item.request.input_tokens for item in compatible),
         "output_tokens": sum(item.request.output_tokens for item in compatible),
         "axes": axes,
+        "attempt_diagnostics": _discovery_attempt_diagnostics(compatible),
     }
+
+
+def _discovery_attempt_diagnostics(attempts):
+    """Keep recent bounded response metadata visible with the candidate's discovery result."""
+    rows = []
+    for item in list(attempts)[-12:]:
+        if isinstance(item, Mapping):
+            request_data = item.get("request") or {}
+            observation_data = item.get("observation") or {}
+        else:
+            request_data = item.request
+            observation_data = item
+
+        def field(data, key):
+            return data.get(key) if isinstance(data, Mapping) else getattr(data, key, None)
+
+        rows.append(
+            {
+                "axis": field(request_data, "axis"),
+                "target": field(request_data, "target"),
+                "reserved_input": field(request_data, "input_tokens"),
+                "requested_output": field(request_data, "output_tokens"),
+                "outcome": field(observation_data, "outcome"),
+                "diagnostic": field(observation_data, "diagnostic"),
+                "response_status": field(observation_data, "response_status"),
+                "response_media_type": field(observation_data, "response_media_type"),
+                "response_bytes": field(observation_data, "response_bytes"),
+                "message_content_state": field(observation_data, "message_content_state"),
+                "finish_reason_state": field(observation_data, "finish_reason_state"),
+                "finish_reason": field(observation_data, "finish_reason"),
+                "usage_state": field(observation_data, "usage_state"),
+                "reported_input": field(observation_data, "reported_input"),
+                "reported_output": field(observation_data, "reported_output"),
+                "provider_request_id": field(observation_data, "provider_request_id"),
+                "response_id": field(observation_data, "response_id"),
+                "response_preview": field(observation_data, "response_preview"),
+            }
+        )
+    return rows
 
 
 def _discover_candidate_caps(
@@ -1551,6 +1591,7 @@ def _discover_candidate_caps(
                 row["request"]["output_tokens"] for row in journal.data["attempts"]
             ),
             "axes": axes,
+            "attempt_diagnostics": _discovery_attempt_diagnostics(journal.data["attempts"]),
         }
         if result is not None and result.transport_retries:
             summary["transport_retries"] = [

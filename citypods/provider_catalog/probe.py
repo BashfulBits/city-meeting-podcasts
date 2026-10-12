@@ -26,6 +26,7 @@ CANARY_PROMPT = "Reply exactly: ok"
 _MAX_FIRST_EVENT_BYTES = 65_536
 _MAX_STRUCTURED_EVENT_BYTES = 131_072
 _MAX_STRUCTURED_PREVIEW_CHARS = 128
+_MAX_STRUCTURED_PREVIEW_BYTES = 1_024
 _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
 
@@ -82,24 +83,30 @@ def _safe_structured_preview(content: str, *, secret: str = "") -> str:
     """Return a short JSON-escaped preview safe to include in a GitHub issue."""
     if secret:
         content = content.replace(secret, "[redacted]")
-    preview = json.dumps(content[:_MAX_STRUCTURED_PREVIEW_CHARS], ensure_ascii=True)
     # Model output is untrusted issue content: prevent markdown/HTML/mention interpretation.
-    return (
-        preview.replace("`", r"\u0060")
-        .replace("@", r"\u0040")
-        .replace("<", r"\u003c")
-        .replace(">", r"\u003e")
-        .replace("[", r"\u005b")
-        .replace("]", r"\u005d")
-        .replace("(", r"\u0028")
-        .replace(")", r"\u0029")
-        .replace("!", r"\u0021")
-        .replace("#", r"\u0023")
-        .replace("|", r"\u007c")
-        .replace("*", r"\u002a")
-        .replace("_", r"\u005f")
-        .replace("~", r"\u007e")
+    replacements = (
+        ("`", r"\u0060"),
+        ("@", r"\u0040"),
+        ("<", r"\u003c"),
+        (">", r"\u003e"),
+        ("[", r"\u005b"),
+        ("]", r"\u005d"),
+        ("(", r"\u0028"),
+        (")", r"\u0029"),
+        ("!", r"\u0021"),
+        ("#", r"\u0023"),
+        ("|", r"\u007c"),
+        ("*", r"\u002a"),
+        ("_", r"\u005f"),
+        ("~", r"\u007e"),
     )
+    for end in range(min(len(content), _MAX_STRUCTURED_PREVIEW_CHARS), -1, -1):
+        preview = json.dumps(content[:end], ensure_ascii=True)
+        for char, escaped in replacements:
+            preview = preview.replace(char, escaped)
+        if len(preview.encode("ascii")) <= _MAX_STRUCTURED_PREVIEW_BYTES:
+            return preview
+    return '""'
 
 
 def _bounded_error_preview(response: Any, *, secret: str = "") -> tuple[int, str, bool]:
@@ -660,6 +667,35 @@ def _manual_error_body_excerpt(raw, request, request_headers):
     return text, truncated
 
 
+def _discovery_response_excerpt(raw, request, request_headers):
+    """Prefer a provider's short error/message text over JSON envelope boilerplate."""
+    text = bytes(raw).decode("utf-8", errors="replace")
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        payload = None
+    excerpt = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            for key in ("message", "detail", "type"):
+                if isinstance(error.get(key), str) and error[key]:
+                    excerpt = error[key]
+                    break
+        choices = payload.get("choices")
+        if excerpt is None and isinstance(choices, list) and choices:
+            choice = choices[0]
+            message = choice.get("message") if isinstance(choice, dict) else None
+            if isinstance(message, dict):
+                candidate = message.get("content") or message.get("refusal")
+                if isinstance(candidate, str) and candidate:
+                    excerpt = candidate
+    if excerpt is None:
+        excerpt = text
+    redacted, _ = _manual_error_body_excerpt(excerpt.encode("utf-8"), request, request_headers)
+    return _safe_structured_preview(redacted)
+
+
 class ContextEnvelopeError(ValueError):
     """A bounded, payload-free reason why a provider stream could not be normalized."""
 
@@ -676,6 +712,19 @@ def _response_media_type(headers):
     if media_type in {"application/json", "text/event-stream"}:
         return media_type
     return "other"
+
+
+def _context_provider_request_id(headers):
+    """Keep a short upstream correlation ID without retaining arbitrary header text."""
+    for key in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
+        value = next(
+            (v for name, v in headers.items() if str(name).lower() == key),
+            None,
+        )
+        if isinstance(value, str) and value.isascii():
+            if safe_id := _safe_provider_id(value):
+                return safe_id
+    return None
 
 
 def _provider_error_class(body):
@@ -766,7 +815,16 @@ def _context_envelope(raw, content_type):
     )
 
 
-def _collect_context(session, request, headers, timeout, clock, *, retain_error_body=False):
+def _collect_context(
+    session,
+    request,
+    headers,
+    timeout,
+    clock,
+    *,
+    retain_error_body=False,
+    retain_response_preview=False,
+):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
     from citypods.provider_catalog.registry import rules_for
 
@@ -797,6 +855,10 @@ def _collect_context(session, request, headers, timeout, clock, *, retain_error_
             "request_finished_at_ms": finished_at_ms,
             **rules_for(request.provider).context_rate_diagnostics(response_headers),
         }
+        if request_id := _context_provider_request_id(response_headers):
+            diagnostics["provider_request_id"] = request_id
+        if retain_response_preview and raw:
+            diagnostics["response_preview"] = _discovery_response_excerpt(raw, request, headers)
         if retain_error_body and status is not None and status >= 400:
             excerpt, truncated = _manual_error_body_excerpt(raw, request, headers)
             diagnostics["error_response_body"] = excerpt
@@ -887,7 +949,9 @@ def _collect_context(session, request, headers, timeout, clock, *, retain_error_
             response.close()
 
 
-def _context_http_worker(pipe, request, session, timeout, retain_error_body):
+def _context_http_worker(
+    pipe, request, session, timeout, retain_error_body, retain_response_preview
+):
     """Preflight before admission; parent permission is required before any provider submission."""
     from citypods.provider_catalog.registry import rules_for
     from citypods.security import validate_source_url
@@ -921,6 +985,7 @@ def _context_http_worker(pipe, request, session, timeout, retain_error_body):
                 timeout,
                 time.monotonic,
                 retain_error_body=retain_error_body,
+                retain_response_preview=retain_response_preview,
             )
         )
     except (OSError, ValueError, KeyError, EOFError):
@@ -949,6 +1014,7 @@ def _measure_response(
     admission_check,
     timeout=120,
     retain_error_body=False,
+    retain_response_preview=False,
 ):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
@@ -960,7 +1026,7 @@ def _measure_response(
     parent, child = ctx.Pipe()
     process = ctx.Process(
         target=_context_http_worker,
-        args=(child, request, session, timeout, retain_error_body),
+        args=(child, request, session, timeout, retain_error_body, retain_response_preview),
     )
     observation = Response(
         None,
@@ -1141,5 +1207,6 @@ def measure_discovery(request, transient, rules, *, session, before_call, clock,
         admission_type=DiscoveryAdmission,
         admission_check=lambda receipt: receipt.matches(request) and clock() < receipt.deadline,
         timeout=timeout,
+        retain_response_preview=True,
     )
     return rules.discovery_observation(response, request, transient)
