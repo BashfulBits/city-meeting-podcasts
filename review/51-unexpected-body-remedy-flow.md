@@ -3682,3 +3682,24 @@ policies and5 insufficient-owner-proof programs.113 draft membership/proof quest
 awaiting maintainer test-answer approval. Body identity and publication aggregation stay distinct;
 known-policy controls do not inflate independent identity accuracy. No new live model calls,
 production dispositions, evaluator schemas or route limits changed in preparation.
+
+### Varied-packet evaluation — maintainer approved 2026-10-11
+
+Maintainer approved the60-recording packet's113 membership/proof answers and staged testing of
+nine previously compared candidates. Freeze input-only evidence separately from approved gold;
+retain historical challenge/regression status, overlap/event groups and separate identity,
+publication-compliance and insufficient-proof metrics. Existing exclusion/aggregation approvals
+must be supplied as policy, never silently treated as independently inferred identity.
+Allowed changes: evaluation-only scaffolding and frozen/results files under `evals/remedy/`,
+and lifecycle docs. Reuse direct backend, structured answer schema, local CAS quota accounting
+and Worker pause/drain/reserve helpers. No evaluator core schema, production code/config, feeds,
+route catalogs, budgets, provider limits or model activation change.
+Run a balanced pilot of eight questions, then resume the same frozen113-case comparison without
+repeating completed route/case pairs. Each route/case permits one provider attempt per invocation;
+failed observations are retained and never silently replaced. Use the prior approved evaluation
+controls: Gemini120s request/150s case/4096 output; patient alternatives600s/650s/16384 output.
+Gemini3.7/3.8 High and Kimi Max retain verified controls; other candidates are labelled default
+reasoning, not maximum-effort qualification. Scoped Flash-Lite evaluation remains below-floor
+and diagnostic-only. Separate quota project/account uncertainty and production headroom remain
+visible. BeatAPI's shared JEV capacity and NVIDIA's production lanes retain priority. Insufficient
+capacity defers work across resets; no paid capacity, duplicate requests or unbounded retry loop.
