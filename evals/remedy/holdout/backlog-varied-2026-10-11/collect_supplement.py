@@ -7,6 +7,8 @@ path = Path(__file__).resolve().parent / "collect_packet_v2.py"
 spec = importlib.util.spec_from_file_location("collector", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+if (m.OUT / "supplement-retrieval.json").exists():
+    raise SystemExit("Refusing existing supplementary evidence")
 rows = json.load(open(m.OUT / "source-records.json"))["records"]
 requests = {}
 for r in rows:

@@ -5,6 +5,8 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[4]
 out = root / "evals/remedy/holdout/backlog-varied-2026-10-11/packet-v2"
+if (out / "REVIEW.md").exists():
+    raise SystemExit("Refusing existing review packet")
 rows = json.load(open(out / "review-decisions.json"))["cases"]
 inputs = json.load(open(out / "model-inputs-draft.json"))["cases"]
 index = {r["case_id"]: r for r in rows}

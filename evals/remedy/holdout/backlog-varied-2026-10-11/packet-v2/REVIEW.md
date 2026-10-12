@@ -123,3 +123,8 @@ Gemini high routes have low daily limits; multiple keys are not assumed to multi
 BeatAPI calls share capacity with JEV. Larger batches will span resets rather than raise limits.
 Provider identity/maximum-effort holds remain explicit; diagnostic accuracy is not admission.
 A timed-out NVIDIA DeepSeek route is not relaunched into a full batch merely to accumulate timeouts.
+
+Additional official-domain context leads are documented in context-search-notes.md. They support
+municipal/community programming as possibilities for the five Fort Worth records. They do not
+bind individual episodes or justify declaring them non-government media. These five remain
+proof-sufficiency checks with unknown institutional owner; no new exclusion is proposed.
