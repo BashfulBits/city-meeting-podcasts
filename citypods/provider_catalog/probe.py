@@ -26,6 +26,7 @@ CANARY_PROMPT = "Reply exactly: ok"
 _MAX_FIRST_EVENT_BYTES = 65_536
 _MAX_STRUCTURED_EVENT_BYTES = 131_072
 _MAX_STRUCTURED_PREVIEW_CHARS = 128
+_MAX_STRUCTURED_PREVIEW_BYTES = 1_024
 _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
 
@@ -82,24 +83,30 @@ def _safe_structured_preview(content: str, *, secret: str = "") -> str:
     """Return a short JSON-escaped preview safe to include in a GitHub issue."""
     if secret:
         content = content.replace(secret, "[redacted]")
-    preview = json.dumps(content[:_MAX_STRUCTURED_PREVIEW_CHARS], ensure_ascii=True)
     # Model output is untrusted issue content: prevent markdown/HTML/mention interpretation.
-    return (
-        preview.replace("`", r"\u0060")
-        .replace("@", r"\u0040")
-        .replace("<", r"\u003c")
-        .replace(">", r"\u003e")
-        .replace("[", r"\u005b")
-        .replace("]", r"\u005d")
-        .replace("(", r"\u0028")
-        .replace(")", r"\u0029")
-        .replace("!", r"\u0021")
-        .replace("#", r"\u0023")
-        .replace("|", r"\u007c")
-        .replace("*", r"\u002a")
-        .replace("_", r"\u005f")
-        .replace("~", r"\u007e")
+    replacements = (
+        ("`", r"\u0060"),
+        ("@", r"\u0040"),
+        ("<", r"\u003c"),
+        (">", r"\u003e"),
+        ("[", r"\u005b"),
+        ("]", r"\u005d"),
+        ("(", r"\u0028"),
+        (")", r"\u0029"),
+        ("!", r"\u0021"),
+        ("#", r"\u0023"),
+        ("|", r"\u007c"),
+        ("*", r"\u002a"),
+        ("_", r"\u005f"),
+        ("~", r"\u007e"),
     )
+    for end in range(min(len(content), _MAX_STRUCTURED_PREVIEW_CHARS), -1, -1):
+        preview = json.dumps(content[:end], ensure_ascii=True)
+        for char, escaped in replacements:
+            preview = preview.replace(char, escaped)
+        if len(preview.encode("ascii")) <= _MAX_STRUCTURED_PREVIEW_BYTES:
+            return preview
+    return '""'
 
 
 def _bounded_error_preview(response: Any, *, secret: str = "") -> tuple[int, str, bool]:

@@ -865,6 +865,15 @@ def test_discovery_response_preview_is_bounded_redacted_and_correlated():
     assert preview.startswith('"Provider says reduce')
 
 
+def test_structured_preview_byte_bound_handles_expanded_unicode_escapes():
+    from citypods.provider_catalog.probe import _safe_structured_preview
+
+    preview = _safe_structured_preview("😀" * 128)
+
+    assert len(preview.encode("ascii")) <= 1_024
+    assert len(json.loads(preview)) < 128
+
+
 def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():
     from citypods.provider_catalog.evidence import parse_documented_token_rate_headers
 
