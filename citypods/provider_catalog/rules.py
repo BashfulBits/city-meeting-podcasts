@@ -442,7 +442,7 @@ def chat_context_observation(
             outcome="inconclusive",
             **observed_counts,
         )
-    if finish not in {"stop", "length"}:
+    if finish not in ("stop", "length"):
         return make(
             diagnostic_code="finish_reason_unsupported",
             outcome="inconclusive",
@@ -725,6 +725,96 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
     return None
 
 
+def _chat_input_capacity(payload, response):
+    """API input admission; text retrieval accuracy is deliberately a separate signal."""
+    if response.status != 200 or response.timed_out or response.transport_error:
+        return False
+    if not isinstance(payload, dict) or payload.get("object") != "chat.completion":
+        return False
+    if payload.get("error"):
+        return False
+    usage, choices = payload.get("usage"), payload.get("choices")
+    if not isinstance(usage, dict) or not isinstance(choices, list) or len(choices) != 1:
+        return False
+    counts = [usage.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")]
+    if any(type(count) is not int or not 0 <= count <= 2**53 - 1 for count in counts):
+        return False
+    if counts[0] <= 0 or counts[1] <= 0 or counts[2] != counts[0] + counts[1]:
+        return False
+    for key, token_key, limit in (
+        ("completion_tokens_details", "reasoning_tokens", counts[1]),
+        ("prompt_tokens_details", "cached_tokens", counts[0]),
+    ):
+        details = usage.get(key)
+        if details is None:
+            continue
+        if not isinstance(details, dict):
+            return False
+        count = details.get(token_key)
+        if count is not None and (type(count) is not int or not 0 <= count <= limit):
+            return False
+    choice = choices[0]
+    if (
+        not isinstance(choice, dict)
+        or choice.get("error")
+        or choice.get("finish_reason") not in ("stop", "length")
+    ):
+        return False
+    message = choice.get("message")
+    return (
+        isinstance(message, dict)
+        and not message.get("refusal")
+        and not message.get("tool_calls")
+        and isinstance(message.get("content"), str)
+        and bool(message["content"])
+    )
+
+
+def _discovery_sentinel_verification(request, transient, payload):
+    """Grade completed retrieval independently of the provider's usage-count evidence."""
+    if (
+        request.axis != "input"
+        or not isinstance(payload, dict)
+        or payload.get("object") != "chat.completion"
+        or payload.get("error")
+    ):
+        return "not_checked"
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        return "not_checked"
+    choice = choices[0]
+    message = choice.get("message")
+    if (
+        choice.get("error")
+        or choice.get("finish_reason") != "stop"
+        or not isinstance(message, dict)
+    ):
+        return "not_checked"
+    content = message.get("content")
+    if (
+        not isinstance(content, str)
+        or not content
+        or message.get("refusal")
+        or message.get("tool_calls")
+    ):
+        return "not_checked"
+    messages = getattr(transient, "messages", ())
+    if not messages or not isinstance(messages[0], Mapping):
+        return "not_checked"
+    expected = dict(
+        re.findall(
+            r"\b(start|middle|tail)_sentinel=([a-f0-9]{32})\b", messages[0].get("content", "")
+        )
+    )
+    if len(expected) != 3:
+        return "not_checked"
+    try:
+        actual = strict_context_json(content)
+    except ValueError:
+        return "failed"
+    return "passed" if actual == expected else "failed"
+
+
 def chat_discovery_observation(response, request, transient, *, reasoning_basis="unknown"):
     """Opt-in actual chat counts; undocumented size-error numbers supply no upper boundary.
 
@@ -772,7 +862,7 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         else "null"
         if finish is None
         else finish
-        if finish in {"stop", "length"}
+        if finish in ("stop", "length")
         else "other"
     )
     usage_state = "missing" if payload is not None and "usage" not in payload else "unknown"
@@ -791,7 +881,9 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             or not 0 <= usage["completion_tokens"] <= 2**53 - 1
         ):
             usage_state = "completion_invalid"
-        elif usage.get("total_tokens") is not None and (
+        elif "total_tokens" not in usage:
+            usage_state = "total_missing"
+        elif (
             type(usage["total_tokens"]) is not int
             or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]
         ):
@@ -835,6 +927,7 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             diagnostics_value(response.context_diagnostics, "provider_request_id")
         ),
         response_id=response_id,
+        sentinel_verification=_discovery_sentinel_verification(request, transient, payload),
     )
     if observation.outcome != "verified":
         values["response_preview"] = (
@@ -855,6 +948,20 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         return DiscoveryObservation(
             request, stamp, outcome="refused", verified=True, **(values | refusal)
         )
+    if request.axis == "input":
+        if _chat_input_capacity(payload, response):
+            return DiscoveryObservation(
+                request,
+                stamp,
+                outcome="admitted",
+                coordinate=usage["prompt_tokens"],
+                count_basis="input",
+                verified=True,
+                **(values | {"diagnostic": "api_input_admitted"}),
+            )
+        if observation.outcome == "verified" or usage_state in {"total_missing", "total_invalid"}:
+            values["diagnostic"] = "api_input_usage_incomplete"
+        return DiscoveryObservation(request, stamp, **values)
     if observation.outcome == "verified":
         count = (
             observation.reported_input if request.axis == "input" else observation.reported_output

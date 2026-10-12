@@ -428,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--discovery-enabled", action="store_true")
+    parser.add_argument("--discovery-axis", choices=("all", "input", "output"), default="all")
     parser.add_argument(
         "--discovery-candidate",
         help="exact provider/model identity for a one-route manual discovery canary",
@@ -474,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("manual request-cap discovery is disabled by the activation gate")
     if args.discovery_candidate and not args.discovery_enabled:
         parser.error("a discovery candidate requires manual request-cap discovery")
+    if args.discovery_axis != "all" and not (args.discovery_enabled and args.discovery_candidate):
+        parser.error("axis selection requires an exact manual discovery candidate")
     if args.discovery_candidate:
         provider, separator, model = args.discovery_candidate.partition("/")
         if (
@@ -720,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
         early_rate_checks=early,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
+        discovery_axis=args.discovery_axis,
         discovery_history=discovery_history,
         discovery_history_calls=discovery_history_calls,
         discovery_run_id=os.environ.get("GITHUB_RUN_ID", ""),

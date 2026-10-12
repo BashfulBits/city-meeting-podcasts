@@ -2407,6 +2407,47 @@ control, provider pause, spacing, budgets, timeout, session deadline and combine
 remain unchanged. After review/merge, the next authorized selected-candidate run can refine input
 instead of repeatedly sending the same oversized request, and test the stronger output fixture.
 
+**Approved API-capacity / retrieval-quality separation (2026-10-12).** Run 38301430270 verified
+16,384 and 24,576 output tokens including reasoning, then reached the 20-minute session deadline
+on the 36,864-token attempt. Its input completions reported about 750K tokens but miscopied or
+missed the three sentinels. The maintainer approved separating these two measurements: API request
+admission measures capacity; sentinel retrieval measures quality and can also warn of truncation.
+This supersedes only new-route discovery's input-sentinel admission gate in §8.13. Configured-route
+calibration under §8.11 retains its existing processing/sentinel proof requirements.
+
+For discovery input, HTTP 200 plus a completed ordinary chat response with nonempty visible text,
+`stop` or `length`, and positive exact integer prompt/completion counts and a consistent reported
+total establishes an API-admitted size. Validate the documented envelope, single choice, absence
+of errors/refusals/tool calls and any provided reasoning/cache breakdown. Missing, malformed or
+inconsistent usage remains inconclusive. Use provider-reported input counts for count correction
+and bracket coordinates; only explicit comparable token-size refusals establish upper bounds.
+Retrieval mistakes, early stopping, timeouts and quotas never establish a refused size.
+
+Add backward-compatible `sentinel_verification` (`passed`, `failed`, `not_checked`, legacy
+`unknown`) to discovery observations and expose it separately in the rolling issue. Grade a
+completed sentinel reply independently of usage evidence. Failed retrieval on an API-admitted
+request may retain the existing bounded/redacted failure preview; full successful bodies remain
+excluded. Trusting provider usage does not prove that every submitted token received model
+attention: failed sentinel checks remain an explicit retrieval/truncation warning for the
+maintainer. This does not add a blanket margin or automatically change route limits.
+
+The authenticated manual workflow adds `discovery_axis=all|input|output` (default `all`), wired to
+CLI `--discovery-axis`. Narrowed selection requires the existing exact candidate/manual activation
+gate, provider pause and evidence path. Filter requested axes against provider-supported axes;
+unsupported axes cannot become enabled by selection. Skipped axes report `not_selected`. An
+output-only run can resume compatible `output:v2` history from 24,576 in its own existing 20-minute
+session, including the existing two fresh baseline successes. Reachability/JSON checks still run
+and remain charged. Budgets, deadlines, concurrency, quotas and recurring-discovery gates remain
+unchanged; the selector narrows work rather than adding a quota override.
+
+Existing positive input observations remain stronger, compatible API-admission evidence. Old
+inconclusive observations are never retroactively upgraded, and absent sentinel metadata defaults
+to `unknown`. Output proof still requires the exact numeric fixture, actual generated counts and
+a length finish; combined axes remain deferred. Keep discovery parser/count/control identities
+compatible because original count coordinates and request fixtures are unchanged by this policy.
+The allowed implementation extends `discovery.py`, `rules.py`, `reconcile.py`, `issue.py`, the
+existing reconciliation script/workflow and their offline tests; no Worker/YAML/runtime changes.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

@@ -205,16 +205,18 @@ def _discovery_attempt_diagnostics(value):
             "completion_missing",
             "completion_invalid",
             "total_invalid",
+            "total_missing",
             "valid",
         },
         "response_media_type": {"unknown", "application/json", "text/event-stream", "other"},
+        "sentinel_verification": {"unknown", "passed", "failed", "not_checked"},
     }
     for item in value[-12:]:
         if not isinstance(item, Mapping):
             continue
         row = dict(item)
         for name, allowed in choices.items():
-            if row.get(name) not in allowed:
+            if not isinstance(row.get(name), str) or row.get(name) not in allowed:
                 row[name] = "unknown"
         diagnostic = row.get("diagnostic")
         row["diagnostic"] = (
@@ -487,8 +489,9 @@ def render_body(
                     "bounded preview on failed attempts):",
                     "",
                     "| Axis / target | Outcome / diagnostic | HTTP / media / bytes | "
-                    "Content / finish / usage | Provider counts | Correlation IDs | Preview |",
-                    "|---|---|---|---|---:|---|---|",
+                    "Content / finish / usage | Provider counts | Sentinel accuracy | "
+                    "Correlation IDs | Preview |",
+                    "|---|---|---|---|---:|---|---|---|",
                 ]
                 for attempt in attempts:
                     status = attempt["response_status"] or "—"
@@ -511,9 +514,14 @@ def render_body(
                         f"{_discovery_count(attempt['response_bytes'])} | "
                         f"{attempt['message_content_state']} / "
                         f"{attempt['finish_reason_state']} ({attempt['finish_reason']}) / "
-                        f"{attempt['usage_state']} | {counts} | {ids} | "
+                        f"{attempt['usage_state']} | {counts} | "
+                        f"{attempt['sentinel_verification']} | {ids} | "
                         f"{attempt['response_preview'] or '—'} |"
                     )
+                lines.append(
+                    "Input admission measures API capacity using provider usage. Sentinel accuracy "
+                    "is a separate retrieval/truncation warning, not a token-size refusal."
+                )
             for group in _discovery_transport_groups(result.get("transport_retries")):
                 lines.append("No-response attempt telemetry:")
                 for attempt in group:

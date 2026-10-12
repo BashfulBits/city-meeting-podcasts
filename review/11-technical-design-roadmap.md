@@ -1845,6 +1845,10 @@ combined-count semantics and undocumented providers remain deferred (review/48 p
 Run 38296813993 verified 750,001 input tokens. Its follow-up preserves provider-count correction
 at the input ceiling, recognizes the captured exact refusal wording in the shared parser, and
 uses output control v2 with an explicit long sequence; existing budgets and combined-axis gates hold.
+Run 38301430270 verified 24,576 output tokens but input retrieval failed at accepted API sizes.
+The maintainer approved measuring new-route API input admission from consistent provider usage
+and reporting sentinel accuracy separately. Manual all/input/output selection gives output its
+own bounded session; configured-route calibration and recurring-discovery gates are unchanged.
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This

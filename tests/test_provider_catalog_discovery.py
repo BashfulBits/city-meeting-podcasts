@@ -1631,3 +1631,145 @@ def test_changed_output_control_excludes_old_prompt_history(tmp_path):
     result = execute(tmp_path, measure, supported_axes=("output",), history=(previous,))
     assert all(req.control == "output:v2" for req in seen)
     assert result.brackets[1]["admitted"] is None
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+@pytest.mark.parametrize("accurate", [True, False])
+def test_api_input_admission_is_separate_from_sentinel_accuracy(provider, accurate):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    expected = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    content = json.dumps(expected if accurate else {"start": "wrong", "middle": None})
+    body = {
+        "object": "chat.completion",
+        "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
+        "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "admitted" and observed.coordinate == 1900
+    assert observed.diagnostic == "api_input_admitted"
+    assert observed.sentinel_verification == ("passed" if accurate else "failed")
+    assert observed.verified and observed.count_basis == "input"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "missing_usage",
+        "missing_total",
+        "inconsistent_total",
+        "boolean_count",
+        "wrong_object",
+        "refusal",
+        "tool_call",
+        "missing_content",
+        "empty_content",
+        "invalid_reasoning",
+        "array_finish",
+        "transport",
+    ],
+)
+def test_api_input_capacity_stays_inconclusive_without_complete_consistent_evidence(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    body = {
+        "object": "chat.completion",
+        "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
+        "choices": [{"message": {"content": "wrong sentinels"}, "finish_reason": "stop"}],
+    }
+    choice = body["choices"][0]
+    if bad == "missing_usage":
+        del body["usage"]
+    elif bad == "missing_total":
+        del body["usage"]["total_tokens"]
+    elif bad == "inconsistent_total":
+        body["usage"]["total_tokens"] = 1963
+    elif bad == "boolean_count":
+        body["usage"]["prompt_tokens"] = True
+    elif bad == "wrong_object":
+        body["object"] = "other"
+    elif bad == "refusal":
+        choice["message"]["refusal"] = "refused"
+    elif bad == "tool_call":
+        choice["message"]["tool_calls"] = ["tool"]
+    elif bad == "missing_content":
+        del choice["message"]["content"]
+    elif bad == "empty_content":
+        choice["message"]["content"] = ""
+    elif bad == "invalid_reasoning":
+        body["usage"]["completion_tokens_details"] = {"reasoning_tokens": 65}
+    elif bad == "array_finish":
+        choice["finish_reason"] = []
+    observed = rules.discovery_observation(
+        Response(200, body=json.dumps(body), timed_out=bad == "transport"), req, transient
+    )
+    assert observed.outcome != "admitted" and observed.coordinate is None
+
+
+def test_output_only_session_resumes_output_history_without_input_probes(tmp_path):
+    previous_req = replace(
+        request("output"), output_tokens=24576, target=24576, control="output:v2"
+    )
+    previous = observation(previous_req, 24576)
+    requests = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        requests.append(req)
+        return observation(req, req.output_tokens, req.output_tokens <= 40000)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input", "output"),
+        selected_axes=("output",),
+        history=(previous,),
+    )
+    assert requests and all(req.axis == "output" for req in requests)
+    assert [req.output_tokens for req in requests[:2]] == [24576, 24576]
+    assert result.brackets[0]["reason"] == "not_selected"
+    assert result.brackets[1]["status"] == "converged"
+
+
+def test_sentinel_metadata_is_backward_compatible_and_rejects_untrusted_types():
+    from dataclasses import asdict
+
+    row = asdict(DiscoveryObservation(request(), STAMP))
+    del row["sentinel_verification"]
+    assert DiscoveryObservation.from_dict(row).sentinel_verification == "unknown"
+    row["sentinel_verification"] = ["passed"]
+    with pytest.raises(ValueError, match="sentinel verification"):
+        DiscoveryObservation.from_dict(row)
+
+
+def test_output_selection_cannot_enable_an_unsupported_provider_axis(tmp_path):
+    def measure(*args):
+        raise AssertionError("unsupported output must never send a size request")
+
+    result = execute(tmp_path, measure, supported_axes=("input",), selected_axes=("output",))
+    assert result.brackets[0]["reason"] == "not_selected"
+    assert result.brackets[1]["reason"] == "unsupported_endpoint_axis"
+
+
+def test_issue_reports_sentinel_failure_separately_from_admitted_api_capacity():
+    from citypods.provider_catalog.issue import _discovery_attempt_diagnostics
+    from citypods.provider_catalog.reconcile import _discovery_attempt_diagnostics as collect
+
+    req = request()
+    observed = replace(
+        observation(req, 1900), diagnostic="api_input_admitted", sentinel_verification="failed"
+    )
+    row = _discovery_attempt_diagnostics(collect([observed]))[0]
+    assert row["outcome"] == "admitted"
+    assert row["sentinel_verification"] == "failed"
+    row["sentinel_verification"] = {"passed": True}
+    assert _discovery_attempt_diagnostics([row])[0]["sentinel_verification"] == "unknown"

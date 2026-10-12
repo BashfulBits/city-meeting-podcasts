@@ -355,6 +355,7 @@ def reconcile(
     early_rate_checks: set[str] | None = None,
     context_run=None,
     discovery_enabled: bool = False,
+    discovery_axis: str = "all",
     discovery_history=(),
     discovery_history_calls: Mapping[str, int] | None = None,
     discovery_receipt_id: str | None = None,
@@ -363,6 +364,10 @@ def reconcile(
     retry_candidate_keys: set[str] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor)
+    if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
+        raise ValueError("invalid discovery axis")
+    if discovery_axis != "all" and not (discovery_enabled and candidate_keys):
+        raise ValueError("axis selection requires an exact manual discovery candidate")
     discovery_shared_budget = None
     if discovery_enabled:
         from citypods.provider_catalog.discovery import MAX_RUN_INPUT, DiscoveryBudget
@@ -987,6 +992,9 @@ def reconcile(
                                 ),
                                 history=discovery_history,
                                 shared_budget=discovery_shared_budget,
+                                selected_axes=(discovery_axis,)
+                                if discovery_axis != "all"
+                                else None,
                                 sleep=sleep,
                             )
                             candidate.discovery = session_record["summary"]
@@ -1422,6 +1430,7 @@ def _discovery_attempt_diagnostics(attempts):
                 "finish_reason_state": field(observation_data, "finish_reason_state"),
                 "finish_reason": field(observation_data, "finish_reason"),
                 "usage_state": field(observation_data, "usage_state"),
+                "sentinel_verification": field(observation_data, "sentinel_verification"),
                 "reported_input": field(observation_data, "reported_input"),
                 "reported_output": field(observation_data, "reported_output"),
                 "provider_request_id": field(observation_data, "provider_request_id"),
@@ -1446,6 +1455,7 @@ def _discover_candidate_caps(
     history,
     shared_budget,
     sleep,
+    selected_axes=None,
 ):
     """Run the separate, charged size search only after candidate reachability is proven."""
     import secrets
@@ -1552,6 +1562,7 @@ def _discover_candidate_caps(
                 identity=identity,
                 parser_version=rules.discovery_parser_version,
                 supported_axes=rules.discovery_axes,
+                selected_axes=selected_axes,
                 measure=measure,
                 renew=pause.renew,
                 journal=journal,
