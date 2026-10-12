@@ -2108,11 +2108,11 @@ unchanged; new candidates use the separate discovery envelope below.
 | Bound | Per candidate/session | Per maintenance run |
 | --- | --- | --- |
 | Provider submissions, including reachability and retries | 64 | 128 |
-| Reserved estimated input tokens | 2,097,152 | 4,194,304 |
+| Reserved estimated input tokens | 8,388,608 | 16,777,216 |
 | Requested output tokens | 524,288 | 1,048,576 |
 | Elapsed time, including cooldowns | 20 minutes | 40 minutes discovery work |
 | Candidate selection | One session per identity | Two candidates, at most one per provider |
-| Individual request | 524,288 input estimate; 131,072 requested output | Same |
+| Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
 | Transport | 120 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
@@ -2150,11 +2150,12 @@ spend: stop as soon as all supported axes converge or no safe progress remains.
 #### 8.13.2 Search, fixtures and evidence semantics
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
-transport and parser cannot edit limits or config. Seed from compatible history or published/API
-values, otherwise 2,048 input and 256 output. Input holds requested output at 256; output holds
-verified small input at approximately 2,048. Combined uses at least two distinct mixes, a small
-output/input-heavy mix and an output-heavy mix. If either fixed counterpart cannot be admitted,
-reduce it and start a new control identity rather than pooling incomparable observations.
+transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
+history, begin input at 500,000 and output at 256. Combined searches retain their 2,048-token seed.
+Input holds requested output at 256; output holds verified small input at approximately 2,048.
+Combined uses at least two distinct mixes, a small output/input-heavy mix and an output-heavy mix.
+If either fixed counterpart cannot be admitted, reduce it and start a new control identity rather
+than pooling incomparable observations.
 
 The fixture includes unpredictable start/middle/end markers for input verification and a repeatable
 long-output task for output. A response must satisfy the verification task; HTTP success alone is
@@ -2162,13 +2163,18 @@ not admission evidence. Record actual prompt, completion, reasoning and cache co
 usage provenance, finish reason, requested sizes and local estimates. Never persist prompts or
 credentials. Native endpoint adapters must shape the same task in their documented native format.
 
-After a typed size rejection without an admitted bound, halve the relevant target until admitted.
-After admission without an upper bound, stretch by 50%. With both bounds, target their midpoint,
-using actual-count feedback to correct fixture sizing. If rounding produces an endpoint target,
-choose an interior integer; no interior integer means integer-resolution convergence. Repeated
-actual counts that do not move the bracket count as non-progress. A contradictory observation
-invalidates the bracket, retains its history and starts fresh verification within the same budget.
-No additional percentage safety discount is applied to the verified admitted endpoint.
+Search wide before spending calls on fine refinement. After a typed size rejection without an
+admitted bound, halve the target until a compatible request passes, with 2,000 input tokens as
+the smallest probe. A refusal at that floor reports no admitted bound and defers the axis. This
+descending sequence finds the first passing region; it is not binary search until both a passing
+lower bound and a refused upper bound exist. After admission without an upper bound, increase by 50%, clamping the next probe
+to the hard per-call ceiling. Once both bounds exist, test their midpoint, using actual-count
+feedback to correct fixture sizing. If the ceiling passes without a refusal, report that value as a
+verified lower bound and stop; do not label it an exact maximum. If rounding produces an endpoint
+target, choose an interior integer; no interior integer means integer-resolution convergence.
+Repeated actual counts that do not move the bracket count as non-progress. A contradictory
+observation invalidates the bracket, retains its history and starts fresh verification within the
+same budget. No additional percentage safety discount is applied to the verified admitted endpoint.
 
 Each bracket has one declared coordinate/count basis. Actual accepted input is comparable only to
 a refusal identifying that same input basis. For output, accepting `max_tokens` is not proof of

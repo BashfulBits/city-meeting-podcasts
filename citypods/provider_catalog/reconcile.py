@@ -365,10 +365,10 @@ def reconcile(
     report = Report(floor=quality.floor)
     discovery_shared_budget = None
     if discovery_enabled:
-        from citypods.provider_catalog.discovery import DiscoveryBudget
+        from citypods.provider_catalog.discovery import MAX_RUN_INPUT, DiscoveryBudget
 
         discovery_shared_budget = DiscoveryBudget(
-            max_calls=128, max_input=4_194_304, max_output=1_048_576
+            max_calls=128, max_input=MAX_RUN_INPUT, max_output=1_048_576
         )
     rechecked_routes: set[str] = set()
     structured_checks = dict(previous_state.get("structured_checks") or {})

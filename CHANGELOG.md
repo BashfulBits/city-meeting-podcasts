@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
+  after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
+  hard ceiling. Once both admitted and refused bounds exist, the planner bisects them to the existing
+  0.5% goal. The per-candidate input allowance is 8,388,608 tokens and the maintenance-run cap is
+  16,777,216; a ceiling pass remains a lower bound. Output authority is unchanged.
+
 - **Review/48 first live new-route discovery gate (#2223).** A maintainer can manually select one
   exact new `provider/model` candidate for bounded request-cap discovery after free eligibility and
   reachability checks. The workflow requires the existing v2 provider-wide pause; authenticated
