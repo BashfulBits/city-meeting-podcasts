@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **New-route probes separate API capacity from retrieval quality.** Successful ordinary chat
+  completions with positive, consistent provider-reported input/output/total usage can establish
+  admitted input sizes even when sentinel retrieval fails. Sentinel accuracy remains separately
+  visible in artifacts and issues; malformed usage, refusals and errors do not establish capacity.
+  Manual discovery adds an all/input/output selector so output can resume in its own bounded
+  session. Existing histories remain readable, and configured-route calibration, production
+  dispatch, budgets, provider pauses and activation gates are unchanged.
+
 - **Changelog fragments and automated compiler workflow.** PRs now add isolated fragment
   files in `changelog.d/<slug>.md` instead of editing `CHANGELOG.md` directly, eliminating
   merge and rebase conflicts on GitHub when multiple PRs land in sequence. A GitHub Action
