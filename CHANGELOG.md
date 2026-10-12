@@ -16,6 +16,14 @@ Once 1.0 ships, entries move under semver tags.
   Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
   reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
   with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+  
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
 
 - **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
   let Requests' inferred response charset and Unicode line splitting split a valid JSON event

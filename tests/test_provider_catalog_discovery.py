@@ -830,7 +830,7 @@ def test_unsupported_current_provider_endpoints_are_explicit():
     from citypods.provider_catalog.rules import Response
 
     for name, rules in all_rules().items():
-        if name not in {"groq", "openrouter"}:
+        if name not in {"groq", "openrouter", "nvidia"}:
             assert not rules.discovery_axes
             assert (
                 rules.discovery_observation(Response(200, body="{}"), request(), None).outcome
@@ -1297,3 +1297,217 @@ def test_checkpoint_foreign_evidence_rejected_before_any_charge(tmp_path, field)
             shared_budget=shared,
         )
     assert budget.calls == shared.calls == 0
+
+
+def _chat_discovery_fixture(provider, axis="input"):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.registry import all_rules
+
+    rules = all_rules()[provider]
+    cfg = dict(api_base="https://provider.test/v1", accounts=[dict(id="a", api_key_env="KEY")])
+    route = dict(
+        route_id="candidate", provider=provider, account_id="a", upstream_model="org/model"
+    )
+    req = replace(
+        request(axis),
+        identity=discovery_identity(
+            provider, "a", "org/model", cfg["api_base"] + "/chat/completions"
+        ),
+        parser_version=rules.discovery_parser_version,
+    )
+    transient = build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
+    return rules, req, transient
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("shape", ["combined", "classic", "input_only"])
+def test_shared_chat_size_refusals_use_exact_provider_input_counts(provider, nested, shape):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    prefix = "This model's maximum context length is 16384 tokens. However, "
+    messages = {
+        "combined": prefix + f"you requested {req.output_tokens} output tokens and your prompt "
+        f"contains 20000 input tokens, for a total of {20000 + req.output_tokens} tokens.",
+        "classic": prefix + f"you requested {20000 + req.output_tokens} tokens "
+        f"(20000 in the messages, {req.output_tokens} in the completion).",
+        "input_only": prefix + "your request has 20000 input tokens.",
+    }
+    error = dict(type="BadRequestError", code=400, message=messages[shape])
+    body = {"error": error} if nested else error
+    observed = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.verified
+    assert observed.coordinate == observed.reported_input == 20000
+    assert observed.count_basis == "input"
+    bracket = Bracket("input", 500000)
+    bracket.observe(observed)
+    assert bracket.upper == 20000 and bracket.target() == 10000
+
+
+@pytest.mark.parametrize("provider", ["openrouter", "nvidia"])
+@pytest.mark.parametrize("axis", ["input", "output"])
+def test_shared_chat_success_uses_usage_counts_and_correct_reasoning_basis(provider, axis):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider, axis)
+    sentinels = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    content = json.dumps(sentinels) if axis == "input" else "1\n2\n3"
+    body = {
+        "object": "chat.completion",
+        "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
+        "choices": [
+            {
+                "message": {"content": content},
+                "finish_reason": "stop" if axis == "input" else "length",
+            }
+        ],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "admitted" and observed.verified
+    assert observed.coordinate == (1900 if axis == "input" else 64)
+    assert observed.count_basis == (
+        "input" if axis == "input" else "completion_including_reasoning"
+    )
+
+
+@pytest.mark.parametrize("provider", ["openrouter", "nvidia"])
+@pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
+def test_shared_chat_typed_output_validation_proves_refused_reservation(provider, field):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider, "output")
+    body = {
+        "detail": [
+            {
+                "type": "less_than_equal",
+                "loc": ["body", field],
+                "input": req.output_tokens,
+                "ctx": {"le": req.output_tokens - 1},
+            }
+        ]
+    }
+    observed = rules.discovery_observation(Response(422, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.coordinate == req.output_tokens
+    assert observed.reported_output is None  # Rejected reservations did not generate these tokens.
+    assert observed.count_basis == "completion_including_reasoning"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "quota",
+        "characters",
+        "at_least",
+        "wrong_output",
+        "wrong_total",
+        "huge_integer",
+        "array_type",
+        "non_overflow",
+        "wrong_axis",
+    ],
+)
+def test_shared_chat_size_parser_rejects_ambiguous_and_conflicting_authority(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    prefix = "This model's maximum context length is 16384 tokens. However, "
+    text = prefix + f"you requested {req.output_tokens} output tokens and your prompt "
+    text += f"contains 20000 input tokens, for a total of {20000 + req.output_tokens} tokens."
+    error = dict(type="BadRequestError", code=400, message=text)
+    status = 400
+    if bad == "quota":
+        status = 429
+    elif bad == "characters":
+        error["message"] = text.replace("20000 input tokens", "20000 characters")
+    elif bad == "at_least":
+        error["message"] = text.replace("20000 input", "at least 20000 input")
+    elif bad == "wrong_output":
+        error["message"] = text.replace(f"{req.output_tokens} output", "1 output")
+    elif bad == "wrong_total":
+        error["message"] = text.replace(f"{20000 + req.output_tokens} tokens.", "20001 tokens.")
+    elif bad == "huge_integer":
+        error["message"] = text.replace("20000 input", "9" * 5000 + " input")
+    elif bad == "array_type":
+        error["type"] = []
+    elif bad == "non_overflow":
+        error["message"] = text.replace("16384 tokens.", "100000 tokens.")
+    elif bad == "wrong_axis":
+        req = replace(req, axis="output")
+    observed = rules.discovery_observation(
+        Response(status, body=json.dumps({"error": error})), req, transient
+    )
+    assert observed.coordinate is None and not observed.verified
+    assert observed.outcome == ("quota" if bad == "quota" else "inconclusive")
+
+
+def test_discovery_sse_normalizer_preserves_unicode_inside_reasoning_json():
+    import json
+
+    from citypods.provider_catalog.probe import _context_envelope
+
+    frames = [
+        {"choices": [{"delta": {"reasoning_content": "ⅅ\u2028\u2029"}}]},
+        {
+            "choices": [{"delta": {"content": '{"answer":"ok"}'}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        },
+    ]
+    raw = "".join("data: " + json.dumps(frame, ensure_ascii=False) + "\n\n" for frame in frames)
+    normalized = json.loads(_context_envelope(raw + "data: [DONE]\n\n", "text/event-stream"))
+    assert normalized["choices"][0]["message"]["content"] == '{"answer":"ok"}'
+    assert normalized["usage"]["total_tokens"] == 30
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "wrong_field",
+        "wrong_value",
+        "boolean_limit",
+        "not_exceeded",
+        "mixed_errors",
+        "unknown_reasoning",
+    ],
+)
+def test_typed_output_refusals_require_unambiguous_matching_field_authority(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response, chat_discovery_observation
+
+    _, req, transient = _chat_discovery_fixture("nvidia", "output")
+    issue = {
+        "type": "less_than_equal",
+        "loc": ["body", "max_tokens"],
+        "input": req.output_tokens,
+        "ctx": {"le": req.output_tokens - 1},
+    }
+    body = {"detail": [issue]}
+    if bad == "wrong_field":
+        issue["loc"] = ["body", "rpm"]
+    elif bad == "wrong_value":
+        issue["input"] -= 1
+    elif bad == "boolean_limit":
+        issue["ctx"]["le"] = True
+    elif bad == "not_exceeded":
+        issue["ctx"]["le"] = req.output_tokens
+    elif bad == "mixed_errors":
+        body["error"] = {"code": "rate_limit_exceeded"}
+    observed = chat_discovery_observation(
+        Response(422, body=json.dumps(body)),
+        req,
+        transient,
+        reasoning_basis="unknown" if bad == "unknown_reasoning" else "included",
+    )
+    assert observed.outcome == "inconclusive" and observed.coordinate is None
