@@ -43,7 +43,7 @@ def _iter_sse_data_events(lines, *, on_line):
             line = line.decode("utf-8", errors="replace")
         if line == "":
             if data_lines:
-                yield "\n".join(data_lines), first_data_at
+                yield "\n".join(data_lines), first_data_at, len(data_lines)
                 data_lines.clear()
                 first_data_at = None
             continue
@@ -54,7 +54,7 @@ def _iter_sse_data_events(lines, *, on_line):
             data_lines.append(value[1:] if value.startswith(" ") else value)
     if data_lines:
         # Some compatible gateways omit the final blank-line separator.
-        yield "\n".join(data_lines), first_data_at
+        yield "\n".join(data_lines), first_data_at, len(data_lines)
 
 
 def _stream_line_guard(started: float, result: dict[str, Any], renew_pause):
@@ -355,6 +355,10 @@ def structured_canary(
                 stream=True,
             )
             result["status"] = response.status_code
+            headers = getattr(response, "headers", {})
+            result["content_type"] = str(headers.get("content-type", ""))[:128] or None
+            result["content_encoding"] = str(headers.get("content-encoding", ""))[:64] or None
+            result["response_encoding"] = str(getattr(response, "encoding", "") or "")[:64] or None
             if not response.ok:
                 result["diagnostic"] = f"http_{response.status_code}"
                 error_bytes, error_preview, truncated = _bounded_error_preview(
@@ -364,7 +368,6 @@ def structured_canary(
                 result["error_body_truncated"] = truncated
                 if error_preview:
                     result["error_preview"] = error_preview
-                headers = getattr(response, "headers", {})
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
                     value = headers.get(header)
                     if isinstance(value, str) and value.isascii():
@@ -381,12 +384,13 @@ def structured_canary(
                 results[method] = result
                 continue
             finished, error = False, False
-            for data, first_data_at in _iter_sse_data_events(
+            for data, first_data_at, data_line_count in _iter_sse_data_events(
                 response.iter_lines(decode_unicode=True),
                 on_line=_stream_line_guard(started, result, renew_pause),
             ):
                 result["events"] += 1
-                headers = getattr(response, "headers", {})
+                result["last_event_data_lines"] = data_line_count
+                result["sse_data_lines"] = result.get("sse_data_lines", 0) + data_line_count
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
                     value = headers.get(header)
                     if isinstance(value, str) and value.isascii():
@@ -404,8 +408,50 @@ def structured_canary(
                     break
                 try:
                     event = json.loads(data)
-                except ValueError:
+                except json.JSONDecodeError as exc:
                     result["diagnostic"] = "malformed_sse_json"
+                    result["json_error"] = exc.msg
+                    result["json_error_line"] = exc.lineno
+                    result["json_error_column"] = exc.colno
+                    result["json_error_offset"] = exc.pos
+                    preview_source = data.replace(api_key, "[redacted]") if api_key else data
+                    before_error = data[: exc.pos]
+                    if api_key:
+                        before_error = before_error.replace(api_key, "[redacted]")
+                    preview_offset = len(before_error)
+                    preview_start = max(
+                        0,
+                        min(
+                            max(0, len(preview_source) - _MAX_STRUCTURED_PREVIEW_CHARS),
+                            preview_offset - _MAX_STRUCTURED_PREVIEW_CHARS // 2,
+                        ),
+                    )
+                    result["malformed_event_preview_start"] = preview_start
+                    result["malformed_event_preview"] = _safe_structured_preview(
+                        preview_source[
+                            preview_start : preview_start + _MAX_STRUCTURED_PREVIEW_CHARS
+                        ]
+                    )
+                    encoding = getattr(response, "encoding", None)
+                    result["malformed_event_source_bytes"] = None
+                    result["utf8_redecode_differs"] = None
+                    result["utf8_redecode_parses"] = None
+                    if encoding:
+                        try:
+                            source_bytes = data.encode(encoding)
+                            result["malformed_event_source_bytes"] = len(source_bytes)
+                            utf8_text = source_bytes.decode("utf-8")
+                        except (LookupError, UnicodeError):
+                            result["utf8_redecode_differs"] = None
+                            result["utf8_redecode_parses"] = False
+                        else:
+                            result["utf8_redecode_differs"] = utf8_text != data
+                            try:
+                                json.loads(utf8_text)
+                            except ValueError:
+                                result["utf8_redecode_parses"] = False
+                            else:
+                                result["utf8_redecode_parses"] = True
                     error = True
                     break
                 if not isinstance(event, dict) or event.get("error"):
