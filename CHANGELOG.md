@@ -16,6 +16,12 @@ Once 1.0 ships, entries move under semver tags.
   Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
   reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
   with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+- **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
+  content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
+  failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would
+  parse the event, without changing the existing parser verdict. Full bodies and credentials remain
+  excluded.
+
 - **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
   `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
   picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so

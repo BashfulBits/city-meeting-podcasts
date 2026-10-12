@@ -2308,6 +2308,12 @@ structured-output checks retain at most a 1-KiB escaped error-body preview, and 
 errors retain a similarly bounded preview. These diagnostics remain in the rolling issue even when
 no route candidate or request-cap artifact is produced.
 
+For malformed SSE JSON, also retain the response content type/encoding, number of `data:` lines in
+the event, a bounded escaped preview around the parser's failure offset, JSON parser message and
+line/column/offset, plus whether re-encoding with the response charset and decoding as UTF-8 would
+make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
+structured-method verdict. Credentials and full response bodies remain excluded.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first
