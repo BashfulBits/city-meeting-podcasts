@@ -12,6 +12,15 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Renovate leaves pyproject.toml to the lane inputs.** The first hosted run after per-lane
+  locks showed the pep621 and poetry managers also reading `pyproject.toml` and raising its floors
+  on security fixes (`torch>=2.0` -> `>=2.13.0`), which would leave `constraints/*.in` stale and
+  fail every such PR. Renovate now ignores `pyproject.toml` (the `.in` files carry it). The
+  pip-tools and Python constraints moved into a pip-compile-only rule, because as globals they
+  reached the npm deps (an "invalid constraint" warning). Python is now given as a bare `3.12`,
+  the only form Renovate's requires_python filter matches. `python_lanes.py` checks that pin
+  against the ASR version file.
+
 - **Renovate tracks every Python lock, one lane at a time.** Each `constraints/<lane>.txt` now
   compiles from a generated `constraints/<lane>.in` (`scripts/lane_inputs.py`, from
   `pyproject.toml`), because Renovate's pip-compile manager reads current versions from only the
