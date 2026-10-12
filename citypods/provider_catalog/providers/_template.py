@@ -9,6 +9,12 @@
    `Signal` per response shape you have actually seen, dated in its `note`.
 4. Record those shapes in a fixture under tests/fixtures/provider_catalog/ and pin their verdicts
    in tests/test_provider_catalog_signals.py.
+5. For documented chat token/finish/error meanings, reuse `chat_discovery_observation` from
+   `rules.py`, declare `discovery_axes` and a version, and test each supported axis. Set the
+   included-reasoning basis only when verified by the endpoint contract. The shared helper
+   supports exact chat/vLLM input errors and typed output-field validation; unknown forms defer.
+   Do not enable combined axes or native/non-chat envelopes by assuming compatibility. See
+   review/48's parser-onboarding checklist and the NVIDIA/OpenRouter adapters for examples.
 """
 
 from citypods.provider_catalog.rules import ProviderRules

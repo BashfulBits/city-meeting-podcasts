@@ -2314,6 +2314,67 @@ line/column/offset, plus whether re-encoding with the response charset and decod
 make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
 structured-method verdict. Credentials and full response bodies remain excluded.
 
+**Runner stream decoding correction (2026-10-12).** The NVIDIA candidate worked in local direct
+submissions, but runner run 38291210125 failed all four methods with a 127-byte malformed event
+inside `reasoning_content`; Requests inferred ISO-8859-1 for `text/event-stream` without a charset.
+Requests' Unicode `splitlines()` recognizes U+0085 and Unicode paragraph/line separators, which
+can split valid JSON inside decoded reasoning text. In particular, Latin-1 decoding maps UTF-8
+continuation byte 0x85 to U+0085. A real-Requests offline response reproduces this failure without
+provider calls. Structured canaries therefore frame LF, CRLF and CR lines directly from transport bytes,
+preserving delimiters across chunk boundaries, then strictly decode complete lines as UTF-8 before
+assembling SSE events. A single buffered line is bounded by the existing 128-KiB ceiling. This applies to every provider, not a model-specific exception.
+
+The next run records `stream_decoder`, Python/Requests/urllib3/platform versions,
+`legacy_unicode_extra_line_breaks` (the breaks the previous decoder would introduce), bytes/chunks
+read, clean HTTP-stream EOF, and whether
+the last event had a blank-line delimiter. A positive legacy-break count with a verified completion
+confirms the framing diagnosis. Malformed JSON retains a redacted 128-byte base64 window and its
+byte offset; invalid UTF-8 retains a redacted 64-byte window, decode location/reason and line length.
+These preserve exact bytes independently of issue markup escaping, separating invalid provider
+bytes, incomplete framing, JSON errors and transport exceptions. Existing request counts, provider
+pause/spacing, 128-KiB event ceiling, deadlines and qualification rules remain binding. No extra
+provider calls or workflow permissions are introduced; the rolling issue carries diagnostics even
+when discovery produces no artifact. The maintainer requested this correction and diagnostics after
+the inconclusive merged #2317 rerun.
+
+**Shared new-route chat parser follow-up (2026-10-12).** Runner run 38293878784 verified all four
+NVIDIA JSON methods and confirmed the old Unicode line-splitting hazard. Size discovery then
+deferred because NVIDIA had no registered discovery axes. The maintainer requested a general
+parser correction rather than a Nemotron exception. NVIDIA now explicitly registers input/output
+discovery using the shared `chat_discovery_observation` adapter; it applies to any of that
+provider's chat models with the documented response envelope. Native Gemini and other unverified
+endpoints remain explicitly unsupported. This does not enable configured-route calibration.
+
+Success requires strict chat usage, consistent totals, the existing input sentinels or counted
+output fixture, and the appropriate finish reason. NVIDIA's NIM documentation defines
+`completion_tokens` as generated tokens including reasoning, with reasoning details as a breakdown:
+[NIM reasoning usage](https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html).
+This provider opt-in sets the existing included-reasoning basis; compatibility branding alone never
+registers an endpoint. Other providers can reuse the same adapter after confirming these meanings.
+
+The shared refusal parser accepts documented chat/vLLM token-size messages in either nested or
+top-level typed error envelopes. It validates exact input counts, a matching fixed output
+reservation, an overflow and internally consistent total counts. A prompt-only refusal must
+report a count above its explicit context ceiling. This establishes a conditional input bracket
+at the reported output control; it does not establish an independent output or combined cap.
+Character counts, `at least` tokenizer counts, unsupported envelopes and quota errors are not
+refused coordinates. Primary reference:
+[vLLM token validation](https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/).
+Typed FastAPI/Pydantic upper-bound validation for `max_tokens`/`max_completion_tokens` can establish
+an output refusal only when its integer request value matches this attempt and the provider has
+verified included-reasoning semantics. Numeric field types and the bound must be consistent; other
+fields, mixed errors and unknown shapes remain inconclusive. Primary reference:
+[Pydantic upper-bound errors](https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal).
+
+Groq and OpenRouter share the new refusal handling with incremented discovery parser versions;
+old histories do not silently become new-version boundary proof. Combined axes remain deferred
+until their request-reservation versus generated-total semantics are verified. The buffered SSE
+usage normalizer also uses wire LF rather than Unicode line splitting, preserving reasoning text.
+No new calls occur outside the existing selected-candidate admission, pause, spacing, token/call
+budgets, deadline and manual activation. Runtime Worker/direct dispatch and provider YAML remain
+unchanged. Offline acceptance covers provider-reported successes, each refusal envelope, wrong
+axes, mismatched controls, malformed counts, quotas and Unicode SSE normalization.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

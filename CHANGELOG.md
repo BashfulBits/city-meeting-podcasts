@@ -21,6 +21,26 @@ Once 1.0 ships, entries move under semver tags.
   (production marks it align-ineligible and re-transcribes) instead of failing the run, and the
   sampler leaves out episodes production already marked ineligible. Audio downloads get a 15-minute
   wall-clock deadline, and the evaluate step a 100-minute timeout so a stall reports as a failure.
+  
+- **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
+  Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
+  reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
+  with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+  
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
+
+- **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
+  let Requests' inferred response charset and Unicode line splitting split a valid JSON event
+  inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
+  had its blank-line terminator, legacy Unicode splitting hazards, and a bounded, secret-redacted
+  base64 byte excerpt for malformed JSON or invalid UTF-8. Request budgets and deadlines are unchanged.
+
 - **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
   content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
   failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would

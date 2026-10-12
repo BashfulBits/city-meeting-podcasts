@@ -601,6 +601,111 @@ def unsupported_discovery(response, request, transient):
     return DiscoveryObservation(request, datetime.now(UTC).isoformat())
 
 
+def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis):
+    """Recognize explicit token coordinates in documented chat/vLLM size errors.
+
+    Exact input counts, fixed output reservation and consistent totals are mandatory.
+    Character counts, tokenizer lower bounds and arbitrary error numbers supply no authority.
+    https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/
+    """
+    if response.status not in {400, 422} or response.timed_out or response.transport_error:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    detail = payload.get("detail")
+    if (
+        reasoning_basis == "included"
+        and request.axis == "output"
+        and isinstance(detail, list)
+        and set(payload) == {"detail"}
+    ):
+        # FastAPI/Pydantic numeric field validation is typed, not free-text token guessing.
+        # https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal
+        if len(detail) != 1 or not isinstance(detail[0], dict):
+            return None
+        issue = detail[0]
+        field = issue.get("loc")
+        if field not in (["body", "max_tokens"], ["body", "max_completion_tokens"]):
+            return None
+        kind = issue.get("type")
+        context = issue.get("ctx")
+        if kind not in ("less_than", "less_than_equal") or not isinstance(context, dict):
+            return None
+        limit = context.get("lt" if kind == "less_than" else "le")
+        count = issue.get("input")
+        if (
+            type(limit) is not int
+            or not 0 < limit <= 2**53 - 1
+            or type(count) is not int
+            or count != request.output_tokens
+            or count < limit
+            or (kind == "less_than_equal" and count == limit)
+        ):
+            return None
+        return {
+            "coordinate": count,
+            "count_basis": "completion_including_reasoning",
+            "diagnostic": "verified_output_size_refusal",
+        }
+    if response.status != 400:
+        return None
+    if detail is not None:
+        return None
+    error = payload.get("error", payload)
+    if not isinstance(error, dict):
+        return None
+    code, kind = error.get("code"), error.get("type")
+    if code not in (None, 400, "context_length_exceeded", "maximum_context_length_exceeded"):
+        return None
+    if kind not in (None, "invalid_request_error", "BadRequestError", "context_length_exceeded"):
+        return None
+    if code is None and kind is None and error.get("object") != "error":
+        return None
+    message = error.get("message")
+    if not isinstance(message, str) or len(message) > 8192:
+        return None
+    prefix = r"This (?:model|endpoint)'s maximum context length is (?P<limit>[0-9]+) tokens\. "
+    patterns = (
+        prefix
+        + r"However, you requested (?P<output>[0-9]+) output tokens and your prompt "
+        + r"contains (?P<input>[0-9]+) input tokens, for a total of (?P<total>[0-9]+) tokens\.",
+        prefix
+        + r"However, you requested (?P<total>[0-9]+) tokens "
+        + r"\((?P<input>[0-9]+) in the messages, (?P<output>[0-9]+) in the completion\)\.",
+        prefix + r"However, your request has (?P<input>[0-9]+) input tokens\.",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, message)
+        if match is None:
+            continue
+        if any(len(value) > 16 for value in match.groupdict().values()):
+            return None
+        counts = {key: int(value) for key, value in match.groupdict().items()}
+        if any(not 0 < value <= 2**53 - 1 for value in counts.values()):
+            return None
+        input_count, limit = counts["input"], counts["limit"]
+        if "output" in counts:
+            if (
+                counts["output"] != request.output_tokens
+                or counts["total"] != input_count + counts["output"]
+                or counts["total"] <= limit
+            ):
+                return None
+        elif input_count <= limit:
+            return None
+        # A combined overflow with fixed output bounds the conditional input search only.
+        # It is not an independent output cap or a proven combined-count contract.
+        if request.axis == "input":
+            return {
+                "coordinate": input_count,
+                "reported_input": input_count,
+                "count_basis": "input",
+                "diagnostic": "verified_input_size_refusal",
+            }
+        return None
+    return None
+
+
 def chat_discovery_observation(response, request, transient, *, reasoning_basis="unknown"):
     """Opt-in actual chat counts; undocumented size-error numbers supply no upper boundary.
 
@@ -724,6 +829,13 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         return DiscoveryObservation(request, stamp, outcome="quota", **values)
     if response.status is not None and response.status >= 500:
         return DiscoveryObservation(request, stamp, outcome="outage", **values)
+    refusal = _chat_discovery_size_refusal(
+        response, request, payload, reasoning_basis=reasoning_basis
+    )
+    if refusal is not None:
+        return DiscoveryObservation(
+            request, stamp, outcome="refused", verified=True, **(values | refusal)
+        )
     if observation.outcome == "verified":
         count = (
             observation.reported_input if request.axis == "input" else observation.reported_output

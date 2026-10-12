@@ -113,6 +113,22 @@ approve it, and let `python-compat.yml` decide. An ASR bump also means recompili
 new Python (`compile_constraints.sh`'s image, the worker images and Renovate's `constraints.python`
 move with it; `python_lanes.py --check` lists every place).
 
+### Accepted risk: torch 2.8 under WhisperX (#2318)
+
+OSV flags `torch==2.8.0` in `asr.txt` (CVE-2025-55551/55552/55554, GHSA-vgrw, GHSA-qfhq,
+CVE-2026-24747, GHSA-rrmf; fixes in 2.9.0–2.13.0), but WhisperX 3.8.x pins `torch~=2.8.0`, so no
+fixed torch resolves and Renovate's security PR fails (#2298, closed). Accepted on 2026-10-12 because:
+torch runs only in batch ASR workers, never on a request path; its inputs are decoded meeting audio
+fed to fixed alignment models, never user-supplied tensors, TorchScript or pickles. The one
+meaningful class is CVE-2026-24747 (malicious checkpoint): the MMS_FA judge model is SHA256-pinned
+(`ctc_align.MMS_FA_SHA256`), and WhisperX's default `WAV2VEC2_ASR_BASE_960H` bundle comes from
+download.pytorch.org over HTTPS but is not hash-pinned by us.
+
+Revisit when WhisperX relaxes its torch pin (then let Renovate bump torch and retry ASR Python
+3.14), an advisory becomes reachable from audio input or our model loading, we load a checkpoint
+from a new source, or on **2027-01-12** at the latest. Dropping WhisperX alignment for the in-repo
+MMS_FA aligner would remove the pin; it is in the review/11 §6 deferred backlog, not planned.
+
 ## Manual-approval flow (light-touch, issue-driven)
 
 Hygiene updates flow through with ~zero attention; output-affecting updates cost a human exactly **one
