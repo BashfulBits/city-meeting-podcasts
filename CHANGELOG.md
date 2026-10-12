@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+<!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
+     changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
+     upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+     
 - **New-route size searches retain token calibration at the hard ceiling.** The input planner
   now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
   1,000,000-token local reservation, which overshot NVIDIA's actual count by about 29%. The shared

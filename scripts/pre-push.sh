@@ -15,6 +15,9 @@ echo "==> Compiling & checking LLM limits..."
 python scripts/compile_llm_limits.py
 git diff --exit-code workers/llm-dispatch-v2/src/dispatch_limits.json citypods/compute/llm_routes.json
 
+echo "==> Validating changelog fragments..."
+python scripts/compile_changelog.py --check
+
 echo "==> Running offline test suite..."
 pytest -q
 

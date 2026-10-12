@@ -1,0 +1,2 @@
+# Defense-in-depth: keep lines from both branches on direct CHANGELOG.md merges
+CHANGELOG.md merge=union
