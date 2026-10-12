@@ -250,6 +250,18 @@ not alter context bounds or dispatch authority; it explains why an attempt could
 verified evidence. Groq request counters are its daily request budget (RPD); token counters are
 per-minute (TPM).
 
+New-route request-cap discovery has a separate offline foundation in
+`provider_catalog/discovery.py`: immutable request/admission/observation records, independent
+input/output/two combined-mix brackets, actual-count fixture correction and finite session/run
+budgets. A journal charges attempts before child submission and fsyncs payload-free checkpoints;
+unknown results cannot be resubmitted. The transport shares bounded HTTP collection and process
+cancellation with context calibration, while keeping distinct admission checks. The existing
+configured-route transport still requires a durable Worker admission. Version-1 discovery
+artifacts authenticate trusted main workflow provenance and retain only compatible original-age
+observations for up to 90 days. Provider plugins explicitly declare usage/parser capabilities;
+unknown size errors and combined semantics create no cap proof. This foundation is not wired into
+maintenance or `/apply`; report/retry workflow integration and live activation are still pending.
+
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
 actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing

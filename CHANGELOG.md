@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
+  with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
+  checkpoints and authenticated partial-run evidence. A separate typed discovery transport
+  preserves existing Worker context admission. Provider callbacks fail closed on unsupported
+  refusal/combined semantics. No workflow integration, new live probes or runtime limit changes;
+  report/retry integration remains under #2271.
+
 - **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
   comma after the requested-token count while still rejecting malformed grouped numbers. A
   regression fixture matches the full live response shape.
