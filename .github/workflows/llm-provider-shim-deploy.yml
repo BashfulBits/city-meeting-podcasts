@@ -31,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
 
@@ -48,4 +48,4 @@ jobs:
           # Exact pin per review/22 (Node/Cloudflare Worker class: "exact / lockfile"). "4" would
           # resolve ^4.0.0, so a later deploy could use a different Wrangler than the one this
           # Worker was verified with. Renovate tracks this pin as npm tooling (GH#1328).
-          wranglerVersion: "4.147.0"
+          wranglerVersion: "4.149.0"

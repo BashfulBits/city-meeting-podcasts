@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
@@ -79,7 +79,7 @@ jobs:
           exit "$code"
       - name: Retain authorized discovery retry receipt
         if: always() && github.event_name == 'issue_comment'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-discovery-retry-${{ github.run_id }}
           path: provider-catalog-discovery-retry.json
@@ -106,7 +106,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt

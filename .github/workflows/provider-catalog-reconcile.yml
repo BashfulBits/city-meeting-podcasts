@@ -85,7 +85,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - run: pip install -e ".[llm]" -c constraints/prod.txt
       - name: Reconcile provider catalogs
@@ -148,7 +148,7 @@ jobs:
           python scripts/reconcile_provider_routes.py "${args[@]}"
       - name: Retain request-cap discovery evidence
         if: always() && github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-discovery-evidence-${{ github.run_id }}
           path: provider-catalog-discovery-evidence.json
@@ -156,7 +156,7 @@ jobs:
           if-no-files-found: ignore
       - name: Retain scoped rate evidence
         if: github.event_name == 'schedule'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-rate-evidence-${{ github.run_id }}
           path: provider-catalog-rate-evidence.json
@@ -165,7 +165,7 @@ jobs:
 
       - name: Retain scoped context evidence
         if: github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-context-evidence-${{ github.run_id }}
           path: provider-catalog-context-evidence.json
@@ -174,7 +174,7 @@ jobs:
 
       - name: Retain scheduled request-cap discovery evidence
         if: always() && github.event_name == 'schedule'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-discovery-evidence-${{ github.run_id }}
           path: provider-catalog-discovery-evidence.json
@@ -183,7 +183,7 @@ jobs:
 
       - name: Retain manual context evidence
         if: always() && github.event_name == 'workflow_dispatch' && inputs.context_canary == true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-manual-context-evidence-${{ github.run_id }}
           path: provider-catalog-context-evidence.json

@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       - name: Install dependencies
         run: pip install pyyaml -c constraints/prod.txt
@@ -60,7 +60,7 @@ jobs:
       - name: Check for dispatch_tuning.json drift
         run: python scripts/compile_dispatch_tuning.py --check
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
 
@@ -74,4 +74,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_LLM_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-dispatch-v2
-          wranglerVersion: "4.147.0"
+          wranglerVersion: "4.149.0"

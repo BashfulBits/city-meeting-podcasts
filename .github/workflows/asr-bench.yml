@@ -78,7 +78,7 @@ jobs:
           # resolves inside python:3.12-slim-bookworm) -- not the fleet-wide "3.14" a Renovate
           # actions bump landed everywhere (#1353). whisperx==3.8.6 (asr-bench) has no
           # distribution satisfying the 3.14 resolver; see asr.yml for the same fix.
-          python-version: "3.12"
+          python-version: "3.15"
           cache: pip
 
       - name: Install
@@ -251,7 +251,7 @@ jobs:
 
       - name: Upload benchmark report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: asr-bench-report
           path: artifacts/asr-bench.txt
