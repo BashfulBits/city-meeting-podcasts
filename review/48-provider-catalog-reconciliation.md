@@ -2314,6 +2314,29 @@ line/column/offset, plus whether re-encoding with the response charset and decod
 make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
 structured-method verdict. Credentials and full response bodies remain excluded.
 
+**Runner stream decoding correction (2026-10-12).** The NVIDIA candidate worked in local direct
+submissions, but runner run 38291210125 failed all four methods with a 127-byte malformed event
+inside `reasoning_content`; Requests inferred ISO-8859-1 for `text/event-stream` without a charset.
+Requests' Unicode `splitlines()` recognizes U+0085 and Unicode paragraph/line separators, which
+can split valid JSON inside decoded reasoning text. In particular, Latin-1 decoding maps UTF-8
+continuation byte 0x85 to U+0085. A real-Requests offline response reproduces this failure without
+provider calls. Structured canaries therefore frame LF, CRLF and CR lines directly from transport bytes,
+preserving delimiters across chunk boundaries, then strictly decode complete lines as UTF-8 before
+assembling SSE events. A single buffered line is bounded by the existing 128-KiB ceiling. This applies to every provider, not a model-specific exception.
+
+The next run records `stream_decoder`, Python/Requests/urllib3/platform versions,
+`legacy_unicode_extra_line_breaks` (the breaks the previous decoder would introduce), bytes/chunks
+read, clean HTTP-stream EOF, and whether
+the last event had a blank-line delimiter. A positive legacy-break count with a verified completion
+confirms the framing diagnosis. Malformed JSON retains a redacted 128-byte base64 window and its
+byte offset; invalid UTF-8 retains a redacted 64-byte window, decode location/reason and line length.
+These preserve exact bytes independently of issue markup escaping, separating invalid provider
+bytes, incomplete framing, JSON errors and transport exceptions. Existing request counts, provider
+pause/spacing, 128-KiB event ceiling, deadlines and qualification rules remain binding. No extra
+provider calls or workflow permissions are introduced; the rolling issue carries diagnostics even
+when discovery produces no artifact. The maintainer requested this correction and diagnostics after
+the inconclusive merged #2317 rerun.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

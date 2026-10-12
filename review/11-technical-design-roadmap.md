@@ -1830,6 +1830,9 @@ for authenticated `test again`.
 The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned
 HTTP 200 for all four JSON methods but did not produce verified fixture JSON, so request-size
 discovery did not run. Expanded diagnostics shipped in [#2284](https://github.com/BashfulBits/city-meeting-podcasts/pull/2284).
+The NVIDIA follow-up exposed runner-specific Unicode line splitting: discovery now frames SSE
+as bytes before UTF-8 decoding, with real-Requests regression coverage and bounded byte/framing
+diagnostics for the next canary (review/48, runner decoding correction, 2026-10-12).
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This
