@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Renovate's pyproject.toml exclusion survives GitHub security alerts.** The file-level
+  `enabled: false` rule from the previous fix did not hold for GitHub-advisory PRs: Renovate appends
+  its alert rules after ours with `force`, which re-enabled the pep621/poetry deps, so #2298/#2299
+  kept raising `pyproject.toml` floors. The pep621 and poetry managers are now disabled outright,
+  so `pyproject.toml` is never extracted; the generated `constraints/*.in` remain the only path.
+
 - **Renovate leaves pyproject.toml to the lane inputs.** The first hosted run after per-lane
   locks showed the pep621 and poetry managers also reading `pyproject.toml` and raising its floors
   on security fixes (`torch>=2.0` -> `>=2.13.0`), which would leave `constraints/*.in` stale and
