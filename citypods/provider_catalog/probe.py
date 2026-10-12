@@ -29,6 +29,49 @@ _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
 
 
+def _iter_sse_data_events(lines, *, on_line):
+    """Yield complete SSE data payloads while observing each streamed line."""
+    data_lines: list[str] = []
+    first_data_at = None
+    for line in lines:
+        if not on_line():
+            return
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
+        if line == "":
+            if data_lines:
+                yield "\n".join(data_lines), first_data_at
+                data_lines.clear()
+                first_data_at = None
+            continue
+        if line.startswith("data:"):
+            if first_data_at is None:
+                first_data_at = time.monotonic()
+            value = line[5:]
+            data_lines.append(value[1:] if value.startswith(" ") else value)
+    if data_lines:
+        # Some compatible gateways omit the final blank-line separator.
+        yield "\n".join(data_lines), first_data_at
+
+
+def _stream_line_guard(started: float, result: dict[str, Any], renew_pause):
+    """Enforce elapsed-time and pause-renewal checks for every streamed line."""
+    next_renewal = started + 60
+
+    def check() -> bool:
+        nonlocal next_renewal
+        now = time.monotonic()
+        if now - started > CANARY_TIMEOUT_SECONDS:
+            result["diagnostic"] = "stream_timeout"
+            return False
+        if now >= next_renewal:
+            renew_pause()
+            next_renewal = now + 60
+        return True
+
+    return check
+
+
 def _safe_provider_id(value: str) -> str:
     """Keep a bounded correlation ID without allowing issue markup or control characters."""
     return _SAFE_PROVIDER_ID.sub("", value[:128])
@@ -329,20 +372,10 @@ def structured_canary(
                 results[method] = result
                 continue
             finished, error = False, False
-            next_renewal = started + 60
-            for line in response.iter_lines(decode_unicode=True):
-                now = time.monotonic()
-                if now - started > CANARY_TIMEOUT_SECONDS:
-                    error = True
-                    result["diagnostic"] = "stream_timeout"
-                    break
-                if now >= next_renewal:
-                    renew_pause()
-                    next_renewal = now + 60
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8", errors="replace")
-                if not line or not line.startswith("data:"):
-                    continue
+            for data, first_data_at in _iter_sse_data_events(
+                response.iter_lines(decode_unicode=True),
+                on_line=_stream_line_guard(started, result, renew_pause),
+            ):
                 result["events"] += 1
                 headers = getattr(response, "headers", {})
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
@@ -351,9 +384,8 @@ def structured_canary(
                         if safe_id := _safe_provider_id(value):
                             result["provider_request_id"] = safe_id
                             break
-                if "first_byte_seconds" not in result:
-                    result["first_byte_seconds"] = round(time.monotonic() - started, 3)
-                data = line[5:].strip()
+                if "first_byte_seconds" not in result and first_data_at is not None:
+                    result["first_byte_seconds"] = round(first_data_at - started, 3)
                 if data == "[DONE]":
                     result["stream_terminal"] = True
                     break
@@ -425,6 +457,8 @@ def structured_canary(
                         error = True
                 if error:
                     break
+            if result["diagnostic"] == "stream_timeout":
+                error = True
             text = "".join(content)
             if finished and not error:
                 if not text:

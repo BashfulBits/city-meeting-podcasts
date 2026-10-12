@@ -157,8 +157,11 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
                     "choices": [{"delta": {"reasoning_content": "thinking"}}],
                 }
             )
+            yield ""
             yield "data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
+            yield ""
             yield "data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": finish}]})
+            yield ""
             yield "data: " + json.dumps(
                 {
                     "choices": [],
@@ -171,6 +174,7 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
                     },
                 }
             )
+            yield ""
             yield "data: [DONE]"
 
         def close(self):
@@ -248,6 +252,51 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
         assert all(r["diagnostic"] == "empty_content" for r in result.values())
     else:
         assert all(r["diagnostic"] == "fixture_json_mismatch" for r in result.values())
+
+
+def test_structured_canary_joins_multiline_sse_data_fields():
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS, structured_canary
+
+    class Stream:
+        status_code = 200
+        ok = True
+        headers = {}
+
+        def iter_lines(self, **kwargs):
+            content_frame = json.dumps(
+                {"choices": [{"delta": {"content": '{"answer":"ok"}'}}]}, indent=2
+            )
+            for line in content_frame.splitlines():
+                yield "data: " + line
+            yield ""
+            yield 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}'
+            yield ""
+            yield "data: [DONE]"
+            yield ""
+
+        def close(self):
+            pass
+
+    class Session:
+        def post(self, *args, **kwargs):
+            return Stream()
+
+    methods = {
+        method: {"response_format": "none", "include_schema_in_prompt": True}
+        for method in STRUCTURED_METHODS
+    }
+    result = structured_canary(
+        all_rules()["openrouter"],
+        {"api_base": "https://openrouter.test/api/v1"},
+        "creator/model:free",
+        "test-key",
+        Session(),
+        before_attempt=lambda: True,
+        methods=methods,
+    )
+
+    assert {row["outcome"] for row in result.values()} == {"valid"}
+    assert {row["events"] for row in result.values()} == {3}
 
 
 def test_structured_probe_preview_is_bounded_and_safe_for_issue_markdown():
