@@ -19,6 +19,12 @@ Once 1.0 ships, entries move under semver tags.
   first route's evidence. Unknown quota scope remains labeled unknown; the bounded canary makes no
   quota inference or automatic configuration change.
 
+- **Review/48 structured-probe diagnostics.** New-route JSON-mode checks retain bounded HTTP error
+  and failed-completion previews, provider request IDs, stream and content sizes, usage counts,
+  finish reasons, and diagnostic codes. Probe requests go directly from GitHub Actions to provider
+  APIs, so they are not expected in Cloudflare AI Gateway logs. Prompts, credentials, and complete
+  response bodies are not retained; API keys are redacted from bounded previews.
+
 - **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
   independent request to the exact route/account after the initial definitive retired/not-served
   signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous

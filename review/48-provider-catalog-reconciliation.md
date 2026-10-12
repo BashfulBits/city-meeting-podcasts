@@ -2252,6 +2252,17 @@ existing structured-output usability check before request-size discovery. A miss
 candidate results in no model request. Only that candidate may receive discovery in the run, so its
 own bounded canary evidence can be reviewed before broad schedule activation.
 
+The workflow sends catalog and completion requests directly from the GitHub Actions runner to the
+provider API; the v2 Worker is used only for its repo-wide dispatch pause, so these requests do not
+appear in Cloudflare AI Gateway logs. Each structured-output method result records HTTP status,
+provider request ID when returned, stream event/byte counts, visible completion bytes, reported
+usage counts, finish reason and a diagnostic code. For non-valid results it retains only a
+128-character JSON-escaped completion preview; non-success HTTP responses retain at most a
+1-KiB escaped error-body preview, and streamed provider errors retain a similarly bounded preview.
+API keys are redacted. Prompts, credentials and full response bodies are never persisted.
+These diagnostics remain in the rolling issue even when no route candidate or request-cap artifact
+is produced.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

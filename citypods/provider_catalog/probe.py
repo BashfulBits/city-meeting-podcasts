@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
@@ -23,6 +24,59 @@ from citypods.provider_catalog.rules import ProviderRules, Response, strict_cont
 CANARY_TIMEOUT_SECONDS = 720
 CANARY_PROMPT = "Reply exactly: ok"
 _MAX_FIRST_EVENT_BYTES = 65_536
+_MAX_STRUCTURED_PREVIEW_CHARS = 128
+_MAX_STRUCTURED_ERROR_BYTES = 1_024
+_SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
+
+
+def _safe_provider_id(value: str) -> str:
+    """Keep a bounded correlation ID without allowing issue markup or control characters."""
+    return _SAFE_PROVIDER_ID.sub("", value[:128])
+
+
+def _safe_structured_preview(content: str, *, secret: str = "") -> str:
+    """Return a short JSON-escaped preview safe to include in a GitHub issue."""
+    if secret:
+        content = content.replace(secret, "[redacted]")
+    preview = json.dumps(content[:_MAX_STRUCTURED_PREVIEW_CHARS], ensure_ascii=True)
+    # Model output is untrusted issue content: prevent markdown/HTML/mention interpretation.
+    return (
+        preview.replace("`", r"\u0060")
+        .replace("@", r"\u0040")
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("[", r"\u005b")
+        .replace("]", r"\u005d")
+        .replace("(", r"\u0028")
+        .replace(")", r"\u0029")
+        .replace("!", r"\u0021")
+        .replace("#", r"\u0023")
+        .replace("|", r"\u007c")
+        .replace("*", r"\u002a")
+        .replace("_", r"\u005f")
+        .replace("~", r"\u007e")
+    )
+
+
+def _bounded_error_preview(response: Any, *, secret: str = "") -> tuple[int, str, bool]:
+    """Read at most one small provider error excerpt, without retaining the full body."""
+    chunks: list[bytes] = []
+    size = 0
+    truncated = False
+    try:
+        for chunk in response.iter_content(chunk_size=_MAX_STRUCTURED_ERROR_BYTES):
+            if not chunk:
+                continue
+            remaining = _MAX_STRUCTURED_ERROR_BYTES - size
+            chunks.append(chunk[:remaining])
+            size += min(len(chunk), remaining)
+            if len(chunk) > remaining or size == _MAX_STRUCTURED_ERROR_BYTES:
+                truncated = True
+                break
+    except (requests.RequestException, AttributeError, TypeError, ValueError):
+        return size, "", truncated
+    body = b"".join(chunks).decode("utf-8", errors="replace")
+    return size, _safe_structured_preview(body, secret=secret), truncated
 
 
 @dataclass
@@ -204,7 +258,8 @@ def structured_canary(
     """Verify all four shapes; the caller spaces, renews and charges every request.
 
     Only visible content counts. Reasoning, malformed JSON, a truncated reply and a schema
-    mismatch cannot establish support. Results contain no provider text or credentials.
+    mismatch cannot establish support. Results exclude prompts and credentials and include only a
+    short escaped completion preview when the fixture is not verified.
     """
     results = {}
     for method in STRUCTURED_METHODS:
@@ -228,8 +283,17 @@ def structured_canary(
         if response_format is not None:
             payload["response_format"] = response_format
         started = time.monotonic()
-        result: dict[str, Any] = {"outcome": "inconclusive"}
+        result: dict[str, Any] = {
+            "outcome": "inconclusive",
+            "diagnostic": "no_terminal_result",
+            "finish_reason": None,
+            "stream_terminal": False,
+            "events": 0,
+            "event_bytes": 0,
+            "content_bytes": 0,
+        }
         response = None
+        content: list[str] = []
         try:
             response = session.post(
                 chat_url(rules, provider_cfg),
@@ -240,6 +304,21 @@ def structured_canary(
             )
             result["status"] = response.status_code
             if not response.ok:
+                result["diagnostic"] = f"http_{response.status_code}"
+                error_bytes, error_preview, truncated = _bounded_error_preview(
+                    response, secret=api_key
+                )
+                result["error_body_bytes"] = error_bytes
+                result["error_body_truncated"] = truncated
+                if error_preview:
+                    result["error_preview"] = error_preview
+                headers = getattr(response, "headers", {})
+                for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
+                    value = headers.get(header)
+                    if isinstance(value, str) and value.isascii():
+                        if safe_id := _safe_provider_id(value):
+                            result["provider_request_id"] = safe_id
+                            break
                 # Capacity failures are not evidence against a method. Stop instead of spending
                 # the same exhausted account's quota on the remaining methods.
                 if response.status_code in (402, 403, 404, 410, 429):
@@ -249,12 +328,13 @@ def structured_canary(
                     result["outcome"] = "rejected"
                 results[method] = result
                 continue
-            content, size, finished, error = [], 0, False, False
+            finished, error = False, False
             next_renewal = started + 60
             for line in response.iter_lines(decode_unicode=True):
                 now = time.monotonic()
                 if now - started > CANARY_TIMEOUT_SECONDS:
                     error = True
+                    result["diagnostic"] = "stream_timeout"
                     break
                 if now >= next_renewal:
                     renew_pause()
@@ -263,44 +343,120 @@ def structured_canary(
                     line = line.decode("utf-8", errors="replace")
                 if not line or not line.startswith("data:"):
                     continue
+                result["events"] += 1
+                headers = getattr(response, "headers", {})
+                for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
+                    value = headers.get(header)
+                    if isinstance(value, str) and value.isascii():
+                        if safe_id := _safe_provider_id(value):
+                            result["provider_request_id"] = safe_id
+                            break
                 if "first_byte_seconds" not in result:
                     result["first_byte_seconds"] = round(time.monotonic() - started, 3)
                 data = line[5:].strip()
                 if data == "[DONE]":
+                    result["stream_terminal"] = True
                     break
-                size += len(data.encode("utf-8"))
-                if size > _MAX_FIRST_EVENT_BYTES:
+                result["event_bytes"] += len(data.encode("utf-8"))
+                if result["event_bytes"] > _MAX_FIRST_EVENT_BYTES:
+                    result["diagnostic"] = "event_data_limit_exceeded"
                     break
-                event = json.loads(data)
-                if not isinstance(event, dict) or event.get("error"):
+                try:
+                    event = json.loads(data)
+                except ValueError:
+                    result["diagnostic"] = "malformed_sse_json"
                     error = True
                     break
+                if not isinstance(event, dict) or event.get("error"):
+                    result["diagnostic"] = "provider_stream_error"
+                    if isinstance(event, dict) and event.get("error"):
+                        try:
+                            error_text = json.dumps(event["error"], ensure_ascii=True)
+                        except (TypeError, ValueError):
+                            error_text = str(type(event["error"]).__name__)
+                        result["provider_error_preview"] = _safe_structured_preview(
+                            error_text, secret=api_key
+                        )
+                    error = True
+                    break
+                response_id = event.get("id")
+                if isinstance(response_id, str) and response_id.isascii():
+                    if safe_id := _safe_provider_id(response_id):
+                        result["response_id"] = safe_id
+                usage = event.get("usage")
+                if isinstance(usage, dict):
+                    counts = {}
+                    for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        value = usage.get(name)
+                        if type(value) is int and 0 <= value <= 2**53 - 1:
+                            counts[name] = value
+                    details = usage.get("completion_tokens_details")
+                    if isinstance(details, dict):
+                        value = details.get("reasoning_tokens")
+                        if type(value) is int and 0 <= value <= 2**53 - 1:
+                            counts["reasoning_tokens"] = value
+                    prompt_details = usage.get("prompt_tokens_details")
+                    if isinstance(prompt_details, dict):
+                        value = prompt_details.get("cached_tokens")
+                        if type(value) is int and 0 <= value <= 2**53 - 1:
+                            counts["cached_tokens"] = value
+                    if counts:
+                        result["usage"] = counts
                 for choice in event.get("choices") or []:
                     if choice.get("index", 0) != 0:
                         continue
                     delta = choice.get("delta") or {}
                     if isinstance(delta.get("content"), str):
                         content.append(delta["content"])
-                    if choice.get("finish_reason") == "stop":
+                    finish_reason = choice.get("finish_reason")
+                    if isinstance(finish_reason, str):
+                        safe_finish_reason = _safe_provider_id(finish_reason)[:64]
+                        result["finish_reason"] = safe_finish_reason
+                        result["stream_terminal"] = True
+                    if finish_reason == "stop":
                         finished = True
-                    elif choice.get("finish_reason"):
+                    elif finish_reason:
+                        reason_label = (
+                            _safe_provider_id(finish_reason)[:48]
+                            if isinstance(finish_reason, str)
+                            else type(finish_reason).__name__
+                        )
+                        result["diagnostic"] = f"finish_reason_{reason_label}"
                         error = True
-                if finished or error:
+                if error:
                     break
+            text = "".join(content)
             if finished and not error:
-                text = "".join(content)
                 if not text:
                     result["outcome"] = "empty"
+                    result["diagnostic"] = "empty_content"
                 else:
                     try:
                         valid = json.loads(text) == {"answer": "ok"}
                     except ValueError:
                         valid = False
                     result["outcome"] = "valid" if valid else "invalid"
-        except (requests.RequestException, ValueError, TypeError, AttributeError):
-            # Neither timeout nor a malformed transport body establishes lack of support.
-            pass
+                    result["diagnostic"] = (
+                        "fixture_json_valid" if valid else "fixture_json_mismatch"
+                    )
+            elif not error and result["diagnostic"] == "no_terminal_result":
+                result["diagnostic"] = (
+                    "stream_done_without_finish_reason"
+                    if result["stream_terminal"]
+                    else "stream_ended_without_finish_reason"
+                )
+        except requests.Timeout:
+            result["diagnostic"] = "transport_timeout"
+        except requests.RequestException as exc:
+            result["diagnostic"] = f"transport_{type(exc).__name__}"
+        except (ValueError, TypeError, AttributeError) as exc:
+            # Neither malformed transport data nor parser errors establish lack of support.
+            result["diagnostic"] = f"probe_{type(exc).__name__}"
         finally:
+            text = "".join(content)
+            result["content_bytes"] = len(text.encode("utf-8"))
+            if text and result["outcome"] != "valid":
+                result["completion_preview"] = _safe_structured_preview(text, secret=api_key)
             result["completion_seconds"] = round(time.monotonic() - started, 3)
             if response is not None:
                 response.close()
