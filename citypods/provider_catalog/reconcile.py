@@ -1226,6 +1226,7 @@ def confirm_retirement_candidates(
             scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
         except (TypeError, ValueError):
             scarce = True
+        confirmation_data: dict[str, Any] | None = None
         with control.paused(anomaly.provider) as pause:
             if pause.contended:
                 report.observations.append(
@@ -1253,7 +1254,7 @@ def confirm_retirement_candidates(
                     f"observed {confirmation.verdict} at {checked_at}; removal deferred"
                 )
                 continue
-            anomaly.retirement_confirmation = {
+            confirmation_data = {
                 "provider": anomaly.provider,
                 "account_id": route.get("account_id"),
                 "route_id": rid,
@@ -1262,12 +1263,22 @@ def confirm_retirement_candidates(
                 "verdict": confirmation.verdict,
                 "status": response.status,
                 "checked_at": checked_at,
-                "contended": False,
             }
+        # paused() records expiry in its context-manager exit path, so the final contention
+        # decision must happen after leaving the block. A result from an expired pause is not
+        # independent of production dispatch and cannot support a removal recommendation.
+        if pause.contended:
             report.observations.append(
-                f"{rid}: independent removal confirmation repeated {confirmation.verdict} "
-                f"at {checked_at} for account {route.get('account_id')}"
+                f"{rid}: fresh removal confirmation deferred; pause expired before completion"
             )
+            continue
+        assert confirmation_data is not None
+        confirmation_data["contended"] = False
+        anomaly.retirement_confirmation = confirmation_data
+        report.observations.append(
+            f"{rid}: independent removal confirmation repeated {confirmation.verdict} "
+            f"at {checked_at} for account {route.get('account_id')}"
+        )
 
 
 @dataclass

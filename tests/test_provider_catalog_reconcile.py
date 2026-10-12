@@ -69,17 +69,21 @@ class FakeOutcome:
 
 
 class FakeControl:
-    def __init__(self, quota=None, contended=False):
+    def __init__(self, quota=None, contended=False, expire_after_yield=False):
         self.quota, self.contended = (
             ({"or_scarce": {"rpd_remaining": 20}} if quota is None else quota),
             contended,
         )
+        self.expire_after_yield = expire_after_yield
         self.paused_providers, self.reserved = [], []
 
     @contextmanager
     def paused(self, provider):
         self.paused_providers.append(provider)
-        yield FakeOutcome(contended=self.contended)
+        outcome = FakeOutcome(contended=self.contended)
+        yield outcome
+        if self.expire_after_yield:
+            outcome.contended = True
 
     def route_quota(self, provider):
         return self.quota
@@ -1646,6 +1650,49 @@ def test_retirement_confirmation_is_a_second_same_route_call(monkeypatch):
         "contended": False,
     }
     assert confirmation["checked_at"].endswith("+00:00")
+
+
+def test_retirement_confirmation_is_rejected_if_pause_expires_during_probe(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    anomaly = Anomaly(
+        "groq",
+        route["route_id"],
+        route["upstream_model"],
+        "retired",
+        "provider says model does not exist",
+        True,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    report = Report(
+        anomalies=[anomaly],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+    control = FakeControl(expire_after_yield=True)
+
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: GONE,
+        sleep=lambda seconds: None,
+    )
+
+    assert anomaly.retirement_confirmation is None
+    assert any("pause expired before completion" in message for message in report.observations)
 
 
 def test_reachable_confirmation_cancels_retirement_evidence(monkeypatch):
