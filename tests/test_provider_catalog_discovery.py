@@ -7,6 +7,9 @@ import pytest
 
 from citypods.provider_catalog.discovery import (
     AXES,
+    DEFAULT_COMBINED_SEED,
+    DEFAULT_OUTPUT_SEED,
+    INPUT_OUTPUT_COUNTERPART,
     MAX_INPUT,
     Bracket,
     DiscoveryBudget,
@@ -21,8 +24,19 @@ STAMP = datetime.now(UTC).isoformat()
 
 
 def request(axis="input", target=2048, attempt="a"):
+    output_tokens = (
+        INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else DEFAULT_OUTPUT_SEED
+    )
     return DiscoveryRequest(
-        "session", attempt, "physical", axis, target, target, 256, f"{axis}:v1", "parser-v1"
+        "session",
+        attempt,
+        "physical",
+        axis,
+        target,
+        target,
+        output_tokens,
+        f"{axis}:v2" if axis in {"input", "total_input_heavy"} else f"{axis}:v1",
+        "parser-v1",
     )
 
 
@@ -54,14 +68,15 @@ def execute(tmp_path, adapter, **kwargs):
     )
 
 
+@pytest.mark.parametrize("axis", AXES)
 @pytest.mark.parametrize("seed", [256, 20_000])
-def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
-    limits = dict(input=4000, output=1800, total_input_heavy=6000, total_output_heavy=6000)
+def test_each_axis_converges_without_more_than_64_calls(tmp_path, axis, seed):
+    limits = dict(input=4000, output=1800, total_input_heavy=25_000, total_output_heavy=25_000)
     calls = []
 
     def measure(req, admit, timeout):
         receipt = admit()
-        assert receipt.matches(req) and 0 < timeout <= 120
+        assert receipt.matches(req) and 0 < timeout <= 600
         actual_input = req.input_tokens
         count = (
             actual_input
@@ -73,16 +88,99 @@ def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
         calls.append((req.axis, count))
         return observation(req, count, count <= limits[req.axis], reported_input=actual_input)
 
-    result = execute(tmp_path, measure, seeds=dict.fromkeys(AXES, seed))
-    assert result.reason == "complete"
+    result = execute(tmp_path, measure, supported_axes=(axis,), seeds={axis: seed})
     assert result.budget["calls"] <= 64
     assert len(result.brackets) == 4
-    for bracket in result.brackets:
-        assert bracket["status"] == "converged"
-        assert bracket["admitted"] <= limits[bracket["axis"]] < bracket["refused"]
-        assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
-    if seed == 20_000:
+    bracket = next(bracket for bracket in result.brackets if bracket["axis"] == axis)
+    assert bracket["status"] == "converged"
+    assert bracket["admitted"] <= limits[axis] < bracket["refused"]
+    assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
+    if seed == 20_000 and axis == "input":
         assert [count for axis, count in calls if axis == "input"][:3] == [20000, 10000, 5000]
+
+
+@pytest.mark.parametrize(
+    ("axis", "expected_target", "expected_input", "expected_output"),
+    [
+        ("output", DEFAULT_OUTPUT_SEED, 2_048, DEFAULT_OUTPUT_SEED),
+        (
+            "total_input_heavy",
+            DEFAULT_COMBINED_SEED,
+            2_048,
+            INPUT_OUTPUT_COUNTERPART,
+        ),
+        (
+            "total_output_heavy",
+            DEFAULT_COMBINED_SEED,
+            2_048,
+            INPUT_OUTPUT_COUNTERPART,
+        ),
+    ],
+)
+def test_default_output_and_combined_probes_leave_reasoning_headroom(
+    tmp_path, axis, expected_target, expected_input, expected_output
+):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    result = execute(tmp_path, measure, supported_axes=(axis,))
+
+    assert result.reason == "outage"
+    assert len(calls) == 1
+    assert calls[0].target == expected_target
+    assert calls[0].input_tokens == expected_input
+    assert calls[0].output_tokens == expected_output
+
+
+@pytest.mark.parametrize("remaining, expected", [(1000, 600), (300, 300)])
+def test_discovery_timeout_uses_600_second_cap_and_session_deadline(tmp_path, remaining, expected):
+    timeouts = []
+
+    def measure(req, admit, timeout):
+        admit()
+        timeouts.append(timeout)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        clock=lambda: 0,
+        deadline=remaining,
+    )
+
+    assert timeouts == [expected]
+    assert result.reason == "outage"
+
+
+def test_slow_no_response_attempts_stop_at_session_deadline_with_partial_evidence(tmp_path):
+    now = [0.0]
+    timeouts = []
+
+    def measure(req, admit, timeout):
+        admit()
+        timeouts.append(timeout)
+        now[0] += timeout
+        return DiscoveryObservation(req, STAMP, diagnostic="worker_response_timeout")
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        clock=lambda: now[0],
+        deadline=1200,
+    )
+
+    assert timeouts == pytest.approx([600, 600])
+    assert result.reason == "uncertain_no_response_before_session_deadline"
+    assert result.brackets[0]["admitted"] is None
+    assert result.brackets[0]["refused"] is None
+    assert len(result.transport_retries) == 1
+    assert len(result.transport_retries[0]) == 2
 
 
 def test_actual_counts_correct_input_estimate(tmp_path):
@@ -114,13 +212,15 @@ def test_default_input_search_starts_high_and_reports_hard_ceiling(tmp_path):
 
     def measure(req, admit, _timeout):
         admit()
-        calls.append(req.input_tokens)
+        calls.append(req)
         count = min(req.input_tokens, MAX_INPUT - 13)
         return observation(req, count, reported_input=count)
 
     result = execute(tmp_path, measure, supported_axes=("input",))
 
-    assert calls == [500_000, 750_000, 1_000_000]
+    assert [req.input_tokens for req in calls] == [500_000, 750_000, 1_000_000]
+    assert all(req.output_tokens == INPUT_OUTPUT_COUNTERPART for req in calls)
+    assert all(req.control.startswith("input:v2") for req in calls)
     assert result.reason == "partial"
     assert result.brackets[0]["admitted"] == MAX_INPUT - 13
     assert result.brackets[0]["refused"] is None
@@ -730,7 +830,7 @@ def test_unsupported_current_provider_endpoints_are_explicit():
     from citypods.provider_catalog.rules import Response
 
     for name, rules in all_rules().items():
-        if name not in {"groq", "openrouter"}:
+        if name not in {"groq", "openrouter", "nvidia"}:
             assert not rules.discovery_axes
             assert (
                 rules.discovery_observation(Response(200, body="{}"), request(), None).outcome
@@ -772,12 +872,86 @@ def test_chat_usage_and_rate_numbers_have_separate_authority():
     )
     result = RULES.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
     assert result.outcome == "admitted" and result.coordinate == 2047
+    assert result.reported_input == 2047 and result.reported_output == 100
+    assert result.response_preview == ""
     error = Response(429, body='{"error":{"message":"TPM limit 8000, requested 9000"}}')
     result = RULES.discovery_observation(error, req, transient)
     assert result.outcome == "quota" and result.coordinate is None
 
 
-def _discovery_transport_worker(pipe, transient, session, timeout, retain_error_body):
+@pytest.mark.parametrize(
+    ("content_state", "finish_state", "diagnostic"),
+    [
+        ("missing", "null", "completion_content_missing"),
+        ("null", "null", "completion_content_null"),
+        ("empty", "missing", "completion_content_empty"),
+        ("other", "other", "completion_content_not_text"),
+    ],
+)
+def test_discovery_records_usage_and_response_shape_when_completion_is_invalid(
+    content_state, finish_state, diagnostic
+):
+    import json
+
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.groq import RULES
+    from citypods.provider_catalog.rules import Response
+
+    cfg = dict(
+        api_base="https://api.groq.com/openai/v1", accounts=[dict(id="a", api_key_env="KEY")]
+    )
+    route = dict(route_id="candidate", provider="groq", account_id="a", upstream_model="model")
+    req = replace(
+        request(),
+        identity=discovery_identity(
+            "groq", "a", "model", "https://api.groq.com/openai/v1/chat/completions"
+        ),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    message = {} if content_state == "missing" else {"content": None}
+    if content_state == "empty":
+        message = {"content": ""}
+    elif content_state == "other":
+        message = {"content": ["not", "text"]}
+    choice = {"message": message}
+    if finish_state != "missing":
+        choice["finish_reason"] = None if finish_state == "null" else "unsupported"
+    body = {
+        "object": "chat.completion",
+        "id": "response-123",
+        "usage": {"prompt_tokens": 2047, "completion_tokens": 100, "total_tokens": 2147},
+        "choices": [choice],
+    }
+    response = Response(
+        200,
+        body=json.dumps(body),
+        context_diagnostics={
+            "response_media_type": "application/json",
+            "response_bytes": len(json.dumps(body).encode()),
+            "provider_request_id": "request-456",
+            "response_preview": '"redacted short provider detail"',
+        },
+    )
+
+    observed = RULES.discovery_observation(response, req, transient)
+
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic == diagnostic
+    assert observed.reported_input == 2047 and observed.reported_output == 100
+    assert observed.usage_state == "valid"
+    assert observed.message_content_state == content_state
+    assert observed.finish_reason_state == finish_state
+    assert observed.response_status == 200
+    assert observed.response_media_type == "application/json"
+    assert observed.response_bytes == len(json.dumps(body).encode())
+    assert observed.provider_request_id == "request-456"
+    assert observed.response_id == "response-123"
+    assert observed.response_preview == '"redacted short provider detail"'
+
+
+def _discovery_transport_worker(
+    pipe, transient, session, timeout, retain_error_body, retain_response_preview=False
+):
     """Spawn-safe IPC fixture; no credentials, URLs or provider network calls."""
     import json
     import re
@@ -813,7 +987,7 @@ def _discovery_transport_worker(pipe, transient, session, timeout, retain_error_
         session.close()
 
 
-@pytest.mark.parametrize("receipt_kind", ["new", "wrong_identity", "wrong_type"])
+@pytest.mark.parametrize("receipt_kind", ["new", "wrong_identity", "wrong_type", "too_long"])
 def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind):
     import time
 
@@ -844,12 +1018,13 @@ def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind)
         req.identity,
         req.input_tokens,
         req.output_tokens,
-        time.monotonic() + 10,
+        time.monotonic() + 700,
     )
     if receipt_kind == "wrong_identity":
         receipt = replace(receipt, identity="different")
     if receipt_kind == "wrong_type":
         receipt = object()
+    timeout = 601 if receipt_kind == "too_long" else 600 if receipt_kind == "new" else 5
 
     def measure():
         return measure_discovery(
@@ -859,11 +1034,14 @@ def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind)
             session=requests.Session(),
             before_call=lambda: receipt,
             clock=time.monotonic,
-            timeout=5,
+            timeout=timeout,
         )
 
     if receipt_kind == "new":
         assert measure().coordinate == 2048
+    elif receipt_kind == "too_long":
+        with pytest.raises(ValueError, match="response timeout exceeds reviewed deadline"):
+            measure()
     else:
         with pytest.raises(ValueError, match="admission"):
             measure()
@@ -1006,7 +1184,7 @@ def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_p
     def measure(req, admit, timeout):
         admit()
         seen.append((req.input_tokens, req.output_tokens, req.control))
-        if req.output_tokens > 128:
+        if req.output_tokens > INPUT_OUTPUT_COUNTERPART // 2:
             return replace(
                 observation(req, req.output_tokens, False), count_basis="requested_output"
             )
@@ -1023,7 +1201,8 @@ def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_p
         renew=lambda: None,
         journal=DiscoveryJournal(tmp_path / "counterpart.json", {}),
     )
-    assert seen[0][1] == 256 and seen[1][1] == 128
+    assert seen[0][1] == INPUT_OUTPUT_COUNTERPART
+    assert seen[1][1] == INPUT_OUTPUT_COUNTERPART // 2
     assert seen[0][2] != seen[1][2]
     assert result.brackets[0]["status"] == "converged"
     assert result.brackets[0]["admitted"] <= 4000 < result.brackets[0]["refused"]
@@ -1118,3 +1297,337 @@ def test_checkpoint_foreign_evidence_rejected_before_any_charge(tmp_path, field)
             shared_budget=shared,
         )
     assert budget.calls == shared.calls == 0
+
+
+def _chat_discovery_fixture(provider, axis="input"):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.registry import all_rules
+
+    rules = all_rules()[provider]
+    cfg = dict(api_base="https://provider.test/v1", accounts=[dict(id="a", api_key_env="KEY")])
+    route = dict(
+        route_id="candidate", provider=provider, account_id="a", upstream_model="org/model"
+    )
+    req = replace(
+        request(axis),
+        identity=discovery_identity(
+            provider, "a", "org/model", cfg["api_base"] + "/chat/completions"
+        ),
+        parser_version=rules.discovery_parser_version,
+    )
+    transient = build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
+    return rules, req, transient
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("shape", ["combined", "classic", "input_only"])
+def test_shared_chat_size_refusals_use_exact_provider_input_counts(provider, nested, shape):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    prefix = "This model's maximum context length is 16384 tokens. However, "
+    messages = {
+        "combined": prefix + f"you requested {req.output_tokens} output tokens and your prompt "
+        f"contains 20000 input tokens, for a total of {20000 + req.output_tokens} tokens.",
+        "classic": prefix + f"you requested {20000 + req.output_tokens} tokens "
+        f"(20000 in the messages, {req.output_tokens} in the completion).",
+        "input_only": prefix + "your request has 20000 input tokens.",
+    }
+    error = dict(type="BadRequestError", code=400, message=messages[shape])
+    body = {"error": error} if nested else error
+    observed = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.verified
+    assert observed.coordinate == observed.reported_input == 20000
+    assert observed.count_basis == "input"
+    bracket = Bracket("input", 500000)
+    bracket.observe(observed)
+    assert bracket.upper == 20000 and bracket.target() == 10000
+
+
+@pytest.mark.parametrize("provider", ["openrouter", "nvidia"])
+@pytest.mark.parametrize("axis", ["input", "output"])
+def test_shared_chat_success_uses_usage_counts_and_correct_reasoning_basis(provider, axis):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider, axis)
+    sentinels = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    content = json.dumps(sentinels) if axis == "input" else "1\n2\n3"
+    body = {
+        "object": "chat.completion",
+        "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
+        "choices": [
+            {
+                "message": {"content": content},
+                "finish_reason": "stop" if axis == "input" else "length",
+            }
+        ],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "admitted" and observed.verified
+    assert observed.coordinate == (1900 if axis == "input" else 64)
+    assert observed.count_basis == (
+        "input" if axis == "input" else "completion_including_reasoning"
+    )
+
+
+@pytest.mark.parametrize("provider", ["openrouter", "nvidia"])
+@pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
+def test_shared_chat_typed_output_validation_proves_refused_reservation(provider, field):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider, "output")
+    body = {
+        "detail": [
+            {
+                "type": "less_than_equal",
+                "loc": ["body", field],
+                "input": req.output_tokens,
+                "ctx": {"le": req.output_tokens - 1},
+            }
+        ]
+    }
+    observed = rules.discovery_observation(Response(422, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.coordinate == req.output_tokens
+    assert observed.reported_output is None  # Rejected reservations did not generate these tokens.
+    assert observed.count_basis == "completion_including_reasoning"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "quota",
+        "characters",
+        "at_least",
+        "wrong_output",
+        "wrong_total",
+        "huge_integer",
+        "array_type",
+        "non_overflow",
+        "wrong_axis",
+    ],
+)
+def test_shared_chat_size_parser_rejects_ambiguous_and_conflicting_authority(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    prefix = "This model's maximum context length is 16384 tokens. However, "
+    text = prefix + f"you requested {req.output_tokens} output tokens and your prompt "
+    text += f"contains 20000 input tokens, for a total of {20000 + req.output_tokens} tokens."
+    error = dict(type="BadRequestError", code=400, message=text)
+    status = 400
+    if bad == "quota":
+        status = 429
+    elif bad == "characters":
+        error["message"] = text.replace("20000 input tokens", "20000 characters")
+    elif bad == "at_least":
+        error["message"] = text.replace("20000 input", "at least 20000 input")
+    elif bad == "wrong_output":
+        error["message"] = text.replace(f"{req.output_tokens} output", "1 output")
+    elif bad == "wrong_total":
+        error["message"] = text.replace(f"{20000 + req.output_tokens} tokens.", "20001 tokens.")
+    elif bad == "huge_integer":
+        error["message"] = text.replace("20000 input", "9" * 5000 + " input")
+    elif bad == "array_type":
+        error["type"] = []
+    elif bad == "non_overflow":
+        error["message"] = text.replace("16384 tokens.", "100000 tokens.")
+    elif bad == "wrong_axis":
+        req = replace(req, axis="output")
+    observed = rules.discovery_observation(
+        Response(status, body=json.dumps({"error": error})), req, transient
+    )
+    assert observed.coordinate is None and not observed.verified
+    assert observed.outcome == ("quota" if bad == "quota" else "inconclusive")
+
+
+def test_discovery_sse_normalizer_preserves_unicode_inside_reasoning_json():
+    import json
+
+    from citypods.provider_catalog.probe import _context_envelope
+
+    frames = [
+        {"choices": [{"delta": {"reasoning_content": "ⅅ\u2028\u2029"}}]},
+        {
+            "choices": [{"delta": {"content": '{"answer":"ok"}'}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        },
+    ]
+    raw = "".join("data: " + json.dumps(frame, ensure_ascii=False) + "\n\n" for frame in frames)
+    normalized = json.loads(_context_envelope(raw + "data: [DONE]\n\n", "text/event-stream"))
+    assert normalized["choices"][0]["message"]["content"] == '{"answer":"ok"}'
+    assert normalized["usage"]["total_tokens"] == 30
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "wrong_field",
+        "wrong_value",
+        "boolean_limit",
+        "not_exceeded",
+        "mixed_errors",
+        "unknown_reasoning",
+    ],
+)
+def test_typed_output_refusals_require_unambiguous_matching_field_authority(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response, chat_discovery_observation
+
+    _, req, transient = _chat_discovery_fixture("nvidia", "output")
+    issue = {
+        "type": "less_than_equal",
+        "loc": ["body", "max_tokens"],
+        "input": req.output_tokens,
+        "ctx": {"le": req.output_tokens - 1},
+    }
+    body = {"detail": [issue]}
+    if bad == "wrong_field":
+        issue["loc"] = ["body", "rpm"]
+    elif bad == "wrong_value":
+        issue["input"] -= 1
+    elif bad == "boolean_limit":
+        issue["ctx"]["le"] = True
+    elif bad == "not_exceeded":
+        issue["ctx"]["le"] = req.output_tokens
+    elif bad == "mixed_errors":
+        body["error"] = {"code": "rate_limit_exceeded"}
+    observed = chat_discovery_observation(
+        Response(422, body=json.dumps(body)),
+        req,
+        transient,
+        reasoning_basis="unknown" if bad == "unknown_reasoning" else "included",
+    )
+    assert observed.outcome == "inconclusive" and observed.coordinate is None
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+@pytest.mark.parametrize("typed", [True, False])
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("suffix", ["", " Please reduce the length of the messages."])
+def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusal(
+    provider, typed, nested, suffix
+):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    # Redacted exact prefix from run 38296813993, without guessing the truncated suffix.
+    error = {
+        "message": "This model's maximum context length is 1000000 tokens. "
+        "However, your messages resulted in 1290360 tokens."
+    }
+    if typed:
+        error.update(type="BadRequestError", code=400)
+    error["message"] += suffix
+    body = {"error": error} if nested else error
+    observed = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
+    assert observed.outcome == "refused" and observed.coordinate == 1290360
+    assert observed.reported_input == 1290360 and observed.count_basis == "input"
+    assert observed.reported_output is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "characters",
+        "at_least",
+        "below_limit",
+        "wrong_axis",
+        "quota",
+        "extra_fields",
+        "untyped_other_wording",
+        "approximate_suffix",
+        "outer_conflict",
+    ],
+)
+def test_message_only_size_refusal_is_narrow_and_fail_closed(bad):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    text = "This model's maximum context length is 1000000 tokens. "
+    text += "However, your messages resulted in 1290360 tokens."
+    error = {"message": text}
+    status = 400
+    if bad == "characters":
+        error["message"] = text.replace("1290360 tokens", "1290360 characters")
+    elif bad == "at_least":
+        error["message"] = text.replace("in 1290360", "in at least 1290360")
+    elif bad == "below_limit":
+        error["message"] = text.replace("1290360", "900000")
+    elif bad == "wrong_axis":
+        req = replace(req, axis="output")
+    elif bad == "quota":
+        status = 429
+    elif bad == "extra_fields":
+        error["rpd"] = 1000
+    elif bad == "untyped_other_wording":
+        error["message"] = text.replace("your messages resulted in", "your request has").replace(
+            "1290360 tokens", "1290360 input tokens"
+        )
+    elif bad == "approximate_suffix":
+        error["message"] += " This count is approximate."
+    elif bad == "outer_conflict":
+        error = {"error": error, "quota_exhausted": True}
+    observed = rules.discovery_observation(Response(status, body=json.dumps(error)), req, transient)
+    assert observed.coordinate is None and not observed.verified
+
+
+def test_count_mapping_is_retained_at_ceiling_and_refines_actual_input_boundary(tmp_path):
+    calls = []
+    actual_limit = 980000
+
+    def measure(req, admit, _timeout):
+        admit()
+        calls.append(req)
+        actual = (req.input_tokens * 129) // 100
+        return observation(req, actual, actual <= actual_limit, reported_input=actual)
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+    ceiling_calls = [req for req in calls if req.target == MAX_INPUT]
+    assert ceiling_calls and all(req.input_tokens < MAX_INPUT for req in ceiling_calls)
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= actual_limit < result.brackets[0]["refused"]
+    assert all(req.input_tokens <= MAX_INPUT for req in calls)
+    assert len(calls) < 20
+
+
+@pytest.mark.parametrize("provider", ["nvidia", "openrouter"])
+def test_discovery_output_fixture_has_concrete_long_goal_and_preserves_request_bound(provider):
+    _, req, transient = _chat_discovery_fixture(provider, "output")
+    text = transient.messages[0]["content"]
+    assert "from 1 through 1000000 inclusive, one per line" in text
+    assert "until all integers are written" in text
+    assert "until the output limit" not in text
+    assert transient.shaped_body["body"]["max_tokens"] == req.output_tokens
+    assert transient.local_input_estimate <= req.input_tokens
+
+
+def test_changed_output_control_excludes_old_prompt_history(tmp_path):
+    old = replace(request("output"), control="output:v1")
+    previous = observation(old, 16384)
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(req, STAMP)
+
+    result = execute(tmp_path, measure, supported_axes=("output",), history=(previous,))
+    assert all(req.control == "output:v2" for req in seen)
+    assert result.brackets[1]["admitted"] is None

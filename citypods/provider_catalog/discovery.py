@@ -16,12 +16,29 @@ from citypods.provider_catalog.evidence import digest
 
 AXES = ("input", "output", "total_input_heavy", "total_output_heavy")
 MAX_INPUT, MAX_OUTPUT = 1_000_000, 131_072
+INPUT_OUTPUT_COUNTERPART = 16_384
 DEFAULT_INPUT_SEED = 500_000
+DEFAULT_OUTPUT_SEED = INPUT_OUTPUT_COUNTERPART
+DEFAULT_COMBINED_SEED = INPUT_OUTPUT_COUNTERPART + 2_048
 MIN_INPUT_PROBE = 2_000
 MAX_SESSION_INPUT = 8_388_608
 MAX_RUN_INPUT = 16_777_216
+
+
+def default_discovery_seed(axis: str) -> int:
+    if axis == "input":
+        return DEFAULT_INPUT_SEED
+    if axis == "output":
+        return DEFAULT_OUTPUT_SEED
+    if axis in {"total_input_heavy", "total_output_heavy"}:
+        return DEFAULT_COMBINED_SEED
+    raise ValueError(f"unsupported discovery axis: {axis}")
+
+
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
+MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
+MAX_RESPONSE_TIMEOUT_SECONDS = 600
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
     "transport_connection_error",
@@ -122,6 +139,15 @@ class DiscoveryObservation:
     verified: bool = False
     diagnostic: str = "unsupported_endpoint"
     retry_after_seconds: int | None = None
+    response_status: int | None = None
+    response_media_type: str = "unknown"
+    response_bytes: int | None = None
+    message_content_state: str = "unknown"
+    finish_reason_state: str = "unknown"
+    usage_state: str = "unknown"
+    provider_request_id: str | None = None
+    response_id: str | None = None
+    response_preview: str = ""
 
     def __post_init__(self):
         if (
@@ -130,6 +156,74 @@ class DiscoveryObservation:
             or type(self.verified) is not bool
         ):
             raise ValueError("invalid discovery observation")
+        if self.response_status is not None and (
+            type(self.response_status) is not int or not 100 <= self.response_status <= 599
+        ):
+            raise ValueError("invalid discovery response status")
+        if self.response_media_type not in {
+            "unknown",
+            "application/json",
+            "text/event-stream",
+            "other",
+        }:
+            raise ValueError("invalid discovery response media type")
+        if self.response_bytes is not None and (
+            type(self.response_bytes) is not int or not 0 <= self.response_bytes <= 4 * 1024 * 1024
+        ):
+            raise ValueError("invalid discovery response byte count")
+        if self.message_content_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "empty",
+            "text",
+            "other",
+        }:
+            raise ValueError("invalid discovery message content state")
+        if self.finish_reason_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "stop",
+            "length",
+            "other",
+        }:
+            raise ValueError("invalid discovery finish reason state")
+        if self.usage_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "not_object",
+            "prompt_missing",
+            "prompt_invalid",
+            "completion_missing",
+            "completion_invalid",
+            "total_invalid",
+            "valid",
+        }:
+            raise ValueError("invalid discovery usage state")
+        for value in (self.provider_request_id, self.response_id):
+            if value is not None and (
+                not isinstance(value, str)
+                or not 1 <= len(value) <= 128
+                or any(
+                    char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+                    for char in value
+                )
+            ):
+                raise ValueError("invalid discovery correlation ID")
+        if not isinstance(self.response_preview, str) or len(self.response_preview) > (
+            MAX_RESPONSE_PREVIEW_CHARS
+        ):
+            raise ValueError("invalid bounded discovery response preview")
+        try:
+            preview_bytes = len(self.response_preview.encode("utf-8"))
+        except UnicodeError as exc:
+            raise ValueError("invalid bounded discovery response preview") from exc
+        if preview_bytes > MAX_RESPONSE_PREVIEW_CHARS:
+            raise ValueError("invalid bounded discovery response preview")
         for value in (
             self.coordinate,
             self.reported_input,
@@ -396,8 +490,7 @@ def run_discovery(
         if shared_budget:
             shared_budget.settle(item)
     for axis in AXES:
-        default_seed = 256 if axis == "output" else DEFAULT_INPUT_SEED if axis == "input" else 2048
-        bracket = Bracket(axis, int(seeds.get(axis, default_seed)))
+        bracket = Bracket(axis, int(seeds.get(axis, default_discovery_seed(axis))))
         brackets.append(bracket)
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
@@ -413,14 +506,15 @@ def run_discovery(
             and item.verified
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
-        counterpart = 256 if axis in {"input", "total_input_heavy"} else 2048
-        control = f"{axis}:v1"
+        counterpart = INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else 2_048
+        control_version = "v2" if axis in {"input", "total_input_heavy", "output"} else "v1"
+        control = f"{axis}:{control_version}"
         compatible = previous + [item for item in observations if item.request.axis == axis]
         if compatible:
             latest = sorted(compatible, key=lambda item: datetime.fromisoformat(item.observed_at))[
                 -1
             ]
-            prefix = f"{axis}:v1:opposite="
+            prefix = f"{axis}:{control_version}:opposite="
             if latest.request.control.startswith(prefix):
                 value = latest.request.control.removeprefix(prefix)
                 if value.isascii() and value.isdigit() and 0 < int(value) <= counterpart:
@@ -491,8 +585,10 @@ def run_discovery(
                 input_tokens = max(
                     1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )
-            if axis == "input" and target == MAX_INPUT:
-                input_tokens = MAX_INPUT
+            if axis == "input":
+                # MAX_INPUT caps the reservation; it must not erase provider-count mapping
+                # when the desired provider-counted target reaches that same ceiling.
+                input_tokens = min(input_tokens, MAX_INPUT)
             if input_tokens > MAX_INPUT or output_tokens > MAX_OUTPUT:
                 bracket.reason = "per_call_ceiling"
                 break
@@ -536,7 +632,11 @@ def run_discovery(
 
             try:
                 renew()
-                observation = measure(request, before_call, min(120, deadline - clock()))
+                observation = measure(
+                    request,
+                    before_call,
+                    min(MAX_RESPONSE_TIMEOUT_SECONDS, deadline - clock()),
+                )
                 if not charged or observation.request != request:
                     raise ValueError("discovery_transport_admission_or_identity_mismatch")
                 journal.complete(observation)
@@ -577,6 +677,7 @@ def run_discovery(
                 if len(pending_transport) < MAX_NO_RESPONSE_CALLS:
                     continue
                 transport_retries.append(tuple(pending_transport))
+                pending_transport = []
                 reason = bracket.reason = "uncertain_no_response_after_five_calls"
                 break
             if pending_transport:
@@ -627,7 +728,7 @@ def run_discovery(
                 # A typed failure of the fixed counterpart supplies no boundary for this axis.
                 # Reduce that counterpart and establish a new, independent control identity.
                 counterpart = max(1, counterpart // 2)
-                control = f"{axis}:v1:opposite={counterpart}"
+                control = f"{axis}:{control_version}:opposite={counterpart}"
                 bracket = Bracket(axis, bracket.seed, reason="fixed_counterpart_reduced")
                 brackets[-1] = bracket
                 previous = []
@@ -663,6 +764,11 @@ def run_discovery(
                 elif observation.outcome == "refused":
                     previous = []
                     bracket.reason = "history_baseline_refused"
+        if pending_transport:
+            transport_retries.append(tuple(pending_transport))
+            pending_transport = []
+            if reason == "deadline_or_reported_usage_overrun":
+                reason = bracket.reason = "uncertain_no_response_before_session_deadline"
         if bracket.nonprogress >= 3:
             bracket.reason = bracket.reason or "stalled"
         if reason != "complete":

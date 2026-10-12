@@ -15,6 +15,116 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+     
+- **New-route size searches retain token calibration at the hard ceiling.** The input planner
+  now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
+  1,000,000-token local reservation, which overshot NVIDIA's actual count by about 29%. The shared
+  parser accepts the recorded exact "messages resulted in" token-size refusal, including its
+  narrow message-only envelope. Discovery output probes request an explicit long numeric sequence
+  under the unchanged output cap; output control v2 excludes old-prompt boundary history. Existing
+  input evidence stays compatible, and configured-route calibration/production dispatch are unchanged.
+
+- **H15 eval builds provider-align sections like production, and skips ineligible samples.** The
+  weekly ASR Quality Eval had produced no results since the WhisperX swap (2026-08-13): runs hung
+  until the job timeout (shown as "cancelled"), then failed with `alignment section is too long`.
+  For VTT/SRT the eval joined cue text and dropped every timestamp, so the whole transcript became
+  one section. It now keeps per-cue windows (remapped to the served timeline) as the production
+  provider-align path does. A candidate with no usable time markers is reported as skipped
+  (production marks it align-ineligible and re-transcribes) instead of failing the run, and the
+  sampler leaves out episodes production already marked ineligible. Audio downloads get a 15-minute
+  wall-clock deadline, and the evaluate step a 100-minute timeout so a stall reports as a failure.
+  
+- **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
+  Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
+  reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
+  with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+  
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
+
+- **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
+  let Requests' inferred response charset and Unicode line splitting split a valid JSON event
+  inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
+  had its blank-line terminator, legacy Unicode splitting hazards, and a bounded, secret-redacted
+  base64 byte excerpt for malformed JSON or invalid UTF-8. Request budgets and deadlines are unchanged.
+
+- **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
+  content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
+  failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would
+  parse the event, without changing the existing parser verdict. Full bodies and credentials remain
+  excluded.
+
+- **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
+  `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
+  picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so
+  every lock update since failed (`install-tool python 3.12`, then `spawn pip-compile ENOENT`).
+  #2298/#2299 ended up as empty commits. It is now a full patch version (`3.12.15`), which both uses
+  accept; Renovate keeps the patch current (automerged), and `python_lanes.py` checks its
+  `major.minor` against the ASR version file.
+
+- **Renovate's pyproject.toml exclusion survives GitHub security alerts.** The file-level
+  `enabled: false` rule from the previous fix did not hold for GitHub-advisory PRs: Renovate appends
+  its alert rules after ours with `force`, which re-enabled the pep621/poetry deps, so #2298/#2299
+  kept raising `pyproject.toml` floors. The pep621 and poetry managers are now disabled outright,
+  so `pyproject.toml` is never extracted; the generated `constraints/*.in` remain the only path.
+
+- **Renovate leaves pyproject.toml to the lane inputs.** The first hosted run after per-lane
+  locks showed the pep621 and poetry managers also reading `pyproject.toml` and raising its floors
+  on security fixes (`torch>=2.0` -> `>=2.13.0`), which would leave `constraints/*.in` stale and
+  fail every such PR. Renovate now ignores `pyproject.toml` (the `.in` files carry it). The
+  pip-tools and Python constraints moved into a pip-compile-only rule, because as globals they
+  reached the npm deps (an "invalid constraint" warning). Python is now given as a bare `3.12`,
+  the only form Renovate's requires_python filter matches. `python_lanes.py` checks that pin
+  against the ASR version file.
+
+- **Renovate tracks every Python lock, one lane at a time.** Each `constraints/<lane>.txt` now
+  compiles from a generated `constraints/<lane>.in` (`scripts/lane_inputs.py`, from
+  `pyproject.toml`), because Renovate's pip-compile manager reads current versions from only the
+  first lock that shares a source file, which was `asr.txt`, so litellm never got a PR. Renovate
+  now manages the four locks: the LLM stack (litellm, instructor, pydantic, openai, tiktoken) is
+  lock-bumped as soon as a release is 3 days old and automerged on green CI; releases whose
+  `requires_python` excludes the lock's Python are skipped; security fixes (GitHub and OSV
+  advisories) open at once; and Python bumps and the monthly full lock refresh wait for
+  Dependency Dashboard approval.
+
+- **Review/48 new-route discovery timeout.** Increase the hard deadline for an individual
+  new-route size-discovery call from 120 to 600 seconds so slow large-input requests can return
+  provider-counted usage or a typed size refusal. Timeouts remain inconclusive. The 20-minute
+  session and other request, response and provider-pause bounds remain in force; incomplete
+  no-response retries are preserved as uncertain evidence. Configured-route calibration remains
+  at 120 seconds.
+
+- **Python versions live in two files, with a compatibility gate.** Every workflow's
+  `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
+  `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
+  each version file to the constraints its jobs install and fails on literal pins, on `asr.txt`
+  installed off the ASR Python, and on Modal/Beam/audio-runner/lock-compile Pythons that disagree
+  with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+  only, so a Python or dependency bump that cannot install fails on the PR.
+
+- **Review/48 size probes reserve room for reasoning.** With no compatible history, output probes
+  now start at 16,384 tokens, and combined probes at 18,432 total tokens (2,048 input plus 16,384
+  output). Input probes retain their 16,384-token output counterpart. This lets reasoning models
+  complete output and combined verification instead of repeatedly ending at a 256-token ceiling.
+  Typed counterpart refusals still reduce that fixed size and create a separate control history;
+  aggregate output budgets are unchanged.
+
+- **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
+  `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options
+  (`--cert=None`, `--no-index`, `--pip-args=None`, ...) into each `constraints/*.txt` header, and
+  Renovate's pip-compile manager rejects unknown header options, so the locks could not be tracked.
+  The recompile changes only the four header lines; every pinned version is unchanged.
+
+- **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
+  and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
+  128 KiB cumulative event-data bound accommodates complete reasoning-heavy responses while keeping
+  streamed evidence bounded; multiline gateway responses no longer appear malformed because one
+  event spans several data fields.
 
 - **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
   after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
@@ -31,9 +141,12 @@ Once 1.0 ships, entries move under semver tags.
 
 - **Review/48 structured-probe diagnostics.** New-route JSON-mode checks retain bounded HTTP error
   and failed-completion previews, provider request IDs, stream and content sizes, usage counts,
-  finish reasons, and diagnostic codes. Probe requests go directly from GitHub Actions to provider
-  APIs, so they are not expected in Cloudflare AI Gateway logs. Prompts, credentials, and complete
-  response bodies are not retained; API keys are redacted from bounded previews.
+  finish reasons, and diagnostic codes. Discovery attempts also report response-shape states and
+  preserve valid provider-reported token counts when malformed content prevents admission. Failed
+  attempts include a 128-character escaped provider error or model-text excerpt when available,
+  after prompt and credential redaction. Probe requests go directly from GitHub Actions to provider
+  APIs, so they are not expected in Cloudflare AI Gateway logs. Successful model text and complete
+  response bodies are not retained.
 
 - **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
   independent request to the exact route/account after the initial definitive retired/not-served

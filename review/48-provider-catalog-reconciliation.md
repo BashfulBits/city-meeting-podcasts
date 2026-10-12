@@ -45,8 +45,10 @@ transport failures, timeouts and capacity/access errors remain inconclusive. Acc
 stop the remaining method checks. A working alternative is reported without editing route config.
 
 Checks allow 4,096 total completion tokens, including reasoning, with a 720-second read timeout and
-elapsed-time checks against the Worker response ceiling, and cap streamed event data at 64 KiB. The
-old four-token ping remains a cheap availability check, but cannot establish method support. This
+elapsed-time checks against the Worker response ceiling, and cap streamed event data at 128 KiB. The
+parser now observes complete SSE event boundaries and joins multiple `data:` fields within each
+event before JSON decoding, as required by the SSE format. The old four-token ping remains a cheap
+availability check, but cannot establish method support. This
 means up to five requests per checked model, rather than one. Every request uses plugin spacing,
 with pause renewal after the wait and during long streams. Configured-route method checks are
 charged individually to the Worker ledger; a failed charge aborts further probing instead of
@@ -2113,12 +2115,14 @@ unchanged; new candidates use the separate discovery envelope below.
 | Elapsed time, including cooldowns | 20 minutes | 40 minutes discovery work |
 | Candidate selection | One session per identity | Two candidates, at most one per provider |
 | Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
-| Transport | 120 seconds; 4 MiB response | Same |
+| Transport | 600 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. The five-call no-response
-limit counts the initial send and all retries, not five retries after the initial send. Token
-budgets are
+transport process; failed/unknown attempts are never refunded or reused. The no-response limit
+allows at most five calls total, counting the initial send. The 20-minute session deadline may stop
+a run earlier; any collected timeout attempts are retained and reported as uncertain, never as a
+refused size boundary. At a 600-second per-call deadline, at most two full-length no-response
+attempts fit in one session. Token budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
 4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
@@ -2128,8 +2132,29 @@ the route is not yet eligible for repo-managed dispatch, and the existing v2 pro
 repo-managed traffic across that provider while probing. The pause cannot control unrelated clients
 using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
 converted into a numeric claim.
+The requested-output budget remains 524,288 tokens per candidate/session and 1,048,576 per run.
+With no compatible history, output searches now start at 16,384 tokens instead of 256, with input
+held near 2,048. Combined searches start at 18,432 total tokens (2,048 input plus 16,384 output);
+the input-heavy combined mix keeps output at 16,384, while the output-heavy mix keeps input near
+2,048. This gives reasoning models room to complete output and combined verification without
+adding blanket margins to later probes. A typed refusal can still reduce the fixed counterpart and
+start a distinct control identity. The 16,384-token input counterpart permits at most 32 such
+reservations per session before accounting for other output reservations. If the finite envelope
+interrupts refinement, preserve the partial bracket and use the authenticated `test again` path; do
+not silently increase aggregate spend.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
+
+**Maintainer-approved discovery timeout increase — 2026-10-12:** after workflow run
+[38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+timed out five times at 120 seconds while probing a larger input after a verified 645,195-token
+input success, the maintainer approved a 600-second hard deadline for new-route discovery calls.
+The larger bound gives a slow high-input request more time to return usable counts or a typed
+size refusal. A timeout remains inconclusive; it never creates a refused boundary. The existing
+20-minute session, 40-minute run, five-call maximum, four-MiB response limit and 900-second
+provider pause remain unchanged. If the session deadline arrives first, preserve its partial
+timeout evidence and report uncertainty. Configured-route calibration retains its separate
+120-second transport deadline.
 
 Take the existing exclusive provider dispatch pause, drain current work and renew its lease before
 calls and during waits. Contention, inability to drain/renew or unclear free endpoint eligibility
@@ -2151,11 +2176,19 @@ spend: stop as soon as all supported axes converge or no safe progress remains.
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
 transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
-history, begin input at 500,000 and output at 256. Combined searches retain their 2,048-token seed.
-Input holds requested output at 256; output holds verified small input at approximately 2,048.
-Combined uses at least two distinct mixes, a small output/input-heavy mix and an output-heavy mix.
-If either fixed counterpart cannot be admitted, reduce it and start a new control identity rather
-than pooling incomparable observations.
+history, begin input at 500,000, output at 16,384, and combined searches at 18,432 total tokens.
+Pure input probes reserve 16,384 output tokens so reasoning-heavy models have substantially more
+room to finish the input verification fixture.
+If the provider rejects that output allowance, halve it and start a new
+control identity; never treat that rejection as an input boundary. Input and input-heavy combined
+control versions are `v2`, so old observations made with a 256-token counterpart are not pooled
+with the new probes.
+Output probes hold verified small input at approximately 2,048. Combined searches use a 2,048 input
+counterpart for the output-heavy mix and a 16,384 output counterpart for the input-heavy mix.
+Combined uses at least two distinct mixes, an input-heavy mix with the 16,384 output counterpart
+and an output-heavy mix with the 2,048 input counterpart. If either fixed counterpart cannot
+be admitted, reduce it and start a new control identity rather than pooling incomparable
+observations.
 
 The fixture includes unpredictable start/middle/end markers for input verification and a repeatable
 long-output task for output. A response must satisfy the verification task; HTTP success alone is
@@ -2262,12 +2295,117 @@ The workflow sends catalog and completion requests directly from the GitHub Acti
 provider API; the v2 Worker is used only for its repo-wide dispatch pause, so these requests do not
 appear in Cloudflare AI Gateway logs. Each structured-output method result records HTTP status,
 provider request ID when returned, stream event/byte counts, visible completion bytes, reported
-usage counts, finish reason and a diagnostic code. For non-valid results it retains only a
-128-character JSON-escaped completion preview; non-success HTTP responses retain at most a
-1-KiB escaped error-body preview, and streamed provider errors retain a similarly bounded preview.
-API keys are redacted. Prompts, credentials and full response bodies are never persisted.
-These diagnostics remain in the rolling issue even when no route candidate or request-cap artifact
-is produced.
+usage counts, finish reason and a diagnostic code. Discovery attempts also record bounded response
+shape states for message content, finish reason and usage, plus response media type/size and response
+or provider request IDs. Valid provider-reported input/output counts are kept even when the response
+content or finish reason prevents the probe from proving an admitted size.
+
+For failed discovery attempts, retain only a 128-character JSON-escaped excerpt. Prefer the
+provider's short error message or returned model text when available; otherwise show the bounded
+response prefix. Escape issue markup and redact the generated prompt and credentials before writing
+the excerpt. Successful completion text and full response bodies are never persisted. Non-success
+structured-output checks retain at most a 1-KiB escaped error-body preview, and streamed provider
+errors retain a similarly bounded preview. These diagnostics remain in the rolling issue even when
+no route candidate or request-cap artifact is produced.
+
+For malformed SSE JSON, also retain the response content type/encoding, number of `data:` lines in
+the event, a bounded escaped preview around the parser's failure offset, JSON parser message and
+line/column/offset, plus whether re-encoding with the response charset and decoding as UTF-8 would
+make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
+structured-method verdict. Credentials and full response bodies remain excluded.
+
+**Runner stream decoding correction (2026-10-12).** The NVIDIA candidate worked in local direct
+submissions, but runner run 38291210125 failed all four methods with a 127-byte malformed event
+inside `reasoning_content`; Requests inferred ISO-8859-1 for `text/event-stream` without a charset.
+Requests' Unicode `splitlines()` recognizes U+0085 and Unicode paragraph/line separators, which
+can split valid JSON inside decoded reasoning text. In particular, Latin-1 decoding maps UTF-8
+continuation byte 0x85 to U+0085. A real-Requests offline response reproduces this failure without
+provider calls. Structured canaries therefore frame LF, CRLF and CR lines directly from transport bytes,
+preserving delimiters across chunk boundaries, then strictly decode complete lines as UTF-8 before
+assembling SSE events. A single buffered line is bounded by the existing 128-KiB ceiling. This applies to every provider, not a model-specific exception.
+
+The next run records `stream_decoder`, Python/Requests/urllib3/platform versions,
+`legacy_unicode_extra_line_breaks` (the breaks the previous decoder would introduce), bytes/chunks
+read, clean HTTP-stream EOF, and whether
+the last event had a blank-line delimiter. A positive legacy-break count with a verified completion
+confirms the framing diagnosis. Malformed JSON retains a redacted 128-byte base64 window and its
+byte offset; invalid UTF-8 retains a redacted 64-byte window, decode location/reason and line length.
+These preserve exact bytes independently of issue markup escaping, separating invalid provider
+bytes, incomplete framing, JSON errors and transport exceptions. Existing request counts, provider
+pause/spacing, 128-KiB event ceiling, deadlines and qualification rules remain binding. No extra
+provider calls or workflow permissions are introduced; the rolling issue carries diagnostics even
+when discovery produces no artifact. The maintainer requested this correction and diagnostics after
+the inconclusive merged #2317 rerun.
+
+**Shared new-route chat parser follow-up (2026-10-12).** Runner run 38293878784 verified all four
+NVIDIA JSON methods and confirmed the old Unicode line-splitting hazard. Size discovery then
+deferred because NVIDIA had no registered discovery axes. The maintainer requested a general
+parser correction rather than a Nemotron exception. NVIDIA now explicitly registers input/output
+discovery using the shared `chat_discovery_observation` adapter; it applies to any of that
+provider's chat models with the documented response envelope. Native Gemini and other unverified
+endpoints remain explicitly unsupported. This does not enable configured-route calibration.
+
+Success requires strict chat usage, consistent totals, the existing input sentinels or counted
+output fixture, and the appropriate finish reason. NVIDIA's NIM documentation defines
+`completion_tokens` as generated tokens including reasoning, with reasoning details as a breakdown:
+[NIM reasoning usage](https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html).
+This provider opt-in sets the existing included-reasoning basis; compatibility branding alone never
+registers an endpoint. Other providers can reuse the same adapter after confirming these meanings.
+
+The shared refusal parser accepts documented chat/vLLM token-size messages in either nested or
+top-level typed error envelopes. It validates exact input counts, a matching fixed output
+reservation, an overflow and internally consistent total counts. A prompt-only refusal must
+report a count above its explicit context ceiling. This establishes a conditional input bracket
+at the reported output control; it does not establish an independent output or combined cap.
+Character counts, `at least` tokenizer counts, unsupported envelopes and quota errors are not
+refused coordinates. Primary reference:
+[vLLM token validation](https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/).
+Typed FastAPI/Pydantic upper-bound validation for `max_tokens`/`max_completion_tokens` can establish
+an output refusal only when its integer request value matches this attempt and the provider has
+verified included-reasoning semantics. Numeric field types and the bound must be consistent; other
+fields, mixed errors and unknown shapes remain inconclusive. Primary reference:
+[Pydantic upper-bound errors](https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal).
+
+Groq and OpenRouter share the new refusal handling with incremented discovery parser versions;
+old histories do not silently become new-version boundary proof. Combined axes remain deferred
+until their request-reservation versus generated-total semantics are verified. The buffered SSE
+usage normalizer also uses wire LF rather than Unicode line splitting, preserving reasoning text.
+No new calls occur outside the existing selected-candidate admission, pause, spacing, token/call
+budgets, deadline and manual activation. Runtime Worker/direct dispatch and provider YAML remain
+unchanged. Offline acceptance covers provider-reported successes, each refusal envelope, wrong
+axes, mismatched controls, malformed counts, quotas and Unicode SSE normalization.
+
+**Discovery boundary refinement follow-up (2026-10-12).** Run 38296813993 established verified
+input counts of 500,024 and 750,001 for NVIDIA Nemotron Lightning. The local estimate understated
+provider-counted input by roughly 29%. At the 1,000,000-token target, a special-case reservation
+override discarded that learned ratio and submitted roughly 1.29M actual tokens. The planner now
+keeps the count correction at every input target and clamps only the local reservation to the
+existing hard ceiling. It still uses provider-reported counts as bracket coordinates. A local
+regression with 1.29x actual counts must converge to the existing 0.5% goal, with every reservation
+within the approved ceiling. No ceiling or per-run budget increases are authorized by this fix.
+
+The same run captured HTTP 400 JSON with the exact prefix "This model's maximum context length
+is 1000000 tokens. However, your messages resulted in 1290360 tokens." The shared chat parser now
+accepts this explicit input-count shape for any registered compatible provider. A message-only
+error envelope is permitted only for this recorded form, with a positive exact input count above
+the declared ceiling. Character counts, lower-bound counts, quota errors, wrong axes, unknown
+fields and untyped variants of other error shapes remain inconclusive. Validate the complete outer
+envelope for message-only errors and allow only standard request-shortening advice after the count;
+appended uncertainty/approximation qualifiers cannot become exact boundary evidence. The ceiling remains a
+provider claim; the refused bracket coordinate is the reported request count, not the claim itself.
+This additive wording does not reinterpret persisted inconclusive observations as boundary proof;
+existing verified input counts keep their parser/count/control compatibility.
+
+All three output probes in that run stopped naturally before the requested 16,384 completion
+tokens. Discovery-only output fixtures now explicitly request every integer from 1 through
+1,000,000, one per line, without summaries or omissions. The existing completion cap bounds the
+actual generation. `output:v2` identifies this changed prompt and excludes `output:v1` boundary
+history; the old history remains diagnostic. A completed early-stop reply still does not establish
+an output maximum: the existing exact numeric fixture, actual counted output and length finish are
+required. Configured-route calibration keeps its existing prompt and fixture versions. The input
+control, provider pause, spacing, budgets, timeout, session deadline and combined-axis deferrals
+remain unchanged. After review/merge, the next authorized selected-candidate run can refine input
+instead of repeatedly sending the same oversized request, and test the stronger output fixture.
 
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other

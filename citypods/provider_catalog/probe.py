@@ -6,8 +6,10 @@ config/provider_limits.yml (`api_base`, `chat_path`, `accounts`).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import platform
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -17,6 +19,7 @@ from typing import Any
 import requests
 
 from citypods.compute.structured_shaping import shape_structured_request
+from citypods.provider_catalog.discovery import MAX_RESPONSE_TIMEOUT_SECONDS
 from citypods.provider_catalog.rules import ProviderRules, Response, strict_context_json
 
 # The Worker's own response ceiling (wrangler.jsonc MAX_RESPONSE_SECONDS): a canary is never
@@ -24,9 +27,85 @@ from citypods.provider_catalog.rules import ProviderRules, Response, strict_cont
 CANARY_TIMEOUT_SECONDS = 720
 CANARY_PROMPT = "Reply exactly: ok"
 _MAX_FIRST_EVENT_BYTES = 65_536
+_MAX_STRUCTURED_EVENT_BYTES = 131_072
 _MAX_STRUCTURED_PREVIEW_CHARS = 128
+_MAX_STRUCTURED_PREVIEW_BYTES = 1_024
 _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
+
+
+class _SSELineLimitError(ValueError):
+    pass
+
+
+def _iter_sse_byte_lines(response, result):
+    """Frame LF, CRLF and CR on bytes, preserving boundaries across transport chunks."""
+    pending = bytearray()
+    skip_lf = False
+    for chunk in response.iter_content(chunk_size=512):
+        result["stream_chunks"] = result.get("stream_chunks", 0) + 1
+        result["stream_bytes"] = result.get("stream_bytes", 0) + len(chunk)
+        for byte in chunk:
+            if skip_lf and byte == 10:
+                skip_lf = False
+                continue
+            skip_lf = False
+            if byte in (10, 13):
+                line = bytes(pending)
+                pending.clear()
+                skip_lf = byte == 13
+                yield line
+            else:
+                pending.append(byte)
+                if len(pending) > _MAX_STRUCTURED_EVENT_BYTES:
+                    raise _SSELineLimitError
+    result["http_stream_eof"] = True
+    if pending:
+        yield bytes(pending)
+
+
+def _iter_sse_data_events(lines, *, on_line):
+    """Yield complete SSE data payloads while observing each streamed line."""
+    data_lines: list[str] = []
+    first_data_at = None
+    for line in lines:
+        if not on_line():
+            return
+        if isinstance(line, bytes):
+            line = line.decode("utf-8")
+        line = line.removesuffix("\r")
+        if line == "":
+            if data_lines:
+                yield "\n".join(data_lines), first_data_at, len(data_lines), True
+                data_lines.clear()
+                first_data_at = None
+            continue
+        if line.startswith("data:"):
+            if first_data_at is None:
+                first_data_at = time.monotonic()
+            value = line[5:]
+            data_lines.append(value[1:] if value.startswith(" ") else value)
+    if data_lines:
+        # Some compatible gateways omit the final blank-line separator.
+        yield "\n".join(data_lines), first_data_at, len(data_lines), False
+
+
+def _stream_line_guard(started: float, result: dict[str, Any], renew_pause):
+    """Enforce elapsed-time and pause-renewal checks for every streamed line."""
+    next_renewal = started + 60
+
+    def check() -> bool:
+        nonlocal next_renewal
+        now = time.monotonic()
+        if now - started > CANARY_TIMEOUT_SECONDS:
+            result["diagnostic"] = "stream_timeout"
+            return False
+        if now >= next_renewal:
+            renew_pause()
+            next_renewal = now + 60
+        return True
+
+    return check
 
 
 def _safe_provider_id(value: str) -> str:
@@ -38,24 +117,30 @@ def _safe_structured_preview(content: str, *, secret: str = "") -> str:
     """Return a short JSON-escaped preview safe to include in a GitHub issue."""
     if secret:
         content = content.replace(secret, "[redacted]")
-    preview = json.dumps(content[:_MAX_STRUCTURED_PREVIEW_CHARS], ensure_ascii=True)
     # Model output is untrusted issue content: prevent markdown/HTML/mention interpretation.
-    return (
-        preview.replace("`", r"\u0060")
-        .replace("@", r"\u0040")
-        .replace("<", r"\u003c")
-        .replace(">", r"\u003e")
-        .replace("[", r"\u005b")
-        .replace("]", r"\u005d")
-        .replace("(", r"\u0028")
-        .replace(")", r"\u0029")
-        .replace("!", r"\u0021")
-        .replace("#", r"\u0023")
-        .replace("|", r"\u007c")
-        .replace("*", r"\u002a")
-        .replace("_", r"\u005f")
-        .replace("~", r"\u007e")
+    replacements = (
+        ("`", r"\u0060"),
+        ("@", r"\u0040"),
+        ("<", r"\u003c"),
+        (">", r"\u003e"),
+        ("[", r"\u005b"),
+        ("]", r"\u005d"),
+        ("(", r"\u0028"),
+        (")", r"\u0029"),
+        ("!", r"\u0021"),
+        ("#", r"\u0023"),
+        ("|", r"\u007c"),
+        ("*", r"\u002a"),
+        ("_", r"\u005f"),
+        ("~", r"\u007e"),
     )
+    for end in range(min(len(content), _MAX_STRUCTURED_PREVIEW_CHARS), -1, -1):
+        preview = json.dumps(content[:end], ensure_ascii=True)
+        for char, escaped in replacements:
+            preview = preview.replace(char, escaped)
+        if len(preview.encode("ascii")) <= _MAX_STRUCTURED_PREVIEW_BYTES:
+            return preview
+    return '""'
 
 
 def _bounded_error_preview(response: Any, *, secret: str = "") -> tuple[int, str, bool]:
@@ -303,6 +388,10 @@ def structured_canary(
                 stream=True,
             )
             result["status"] = response.status_code
+            headers = getattr(response, "headers", {})
+            result["content_type"] = str(headers.get("content-type", ""))[:128] or None
+            result["content_encoding"] = str(headers.get("content-encoding", ""))[:64] or None
+            result["response_encoding"] = str(getattr(response, "encoding", "") or "")[:64] or None
             if not response.ok:
                 result["diagnostic"] = f"http_{response.status_code}"
                 error_bytes, error_preview, truncated = _bounded_error_preview(
@@ -312,7 +401,6 @@ def structured_canary(
                 result["error_body_truncated"] = truncated
                 if error_preview:
                     result["error_preview"] = error_preview
-                headers = getattr(response, "headers", {})
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
                     value = headers.get(header)
                     if isinstance(value, str) and value.isascii():
@@ -328,43 +416,111 @@ def structured_canary(
                     result["outcome"] = "rejected"
                 results[method] = result
                 continue
+            result["stream_decoder"] = "utf8_byte_lines_v1"
+            result["http_stream_eof"] = False
+            result["runtime"] = {
+                "python": platform.python_version(),
+                "requests": requests.__version__,
+                "urllib3": requests.packages.urllib3.__version__,
+                "system": platform.system(),
+            }
             finished, error = False, False
-            next_renewal = started + 60
-            for line in response.iter_lines(decode_unicode=True):
-                now = time.monotonic()
-                if now - started > CANARY_TIMEOUT_SECONDS:
-                    error = True
-                    result["diagnostic"] = "stream_timeout"
-                    break
-                if now >= next_renewal:
-                    renew_pause()
-                    next_renewal = now + 60
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8", errors="replace")
-                if not line or not line.startswith("data:"):
-                    continue
+            # SSE is UTF-8. Unicode splitlines() with an inferred Latin-1 charset
+            # mistakes continuation byte 0x85 for a line separator, truncating JSON.
+            for data, first_data_at, data_line_count, delimited in _iter_sse_data_events(
+                _iter_sse_byte_lines(response, result),
+                on_line=_stream_line_guard(started, result, renew_pause),
+            ):
                 result["events"] += 1
-                headers = getattr(response, "headers", {})
+                result["last_event_delimited"] = delimited
+                result["last_event_data_lines"] = data_line_count
+                raw_data = data.encode("utf-8")
+                encoding = getattr(response, "encoding", None)
+                if encoding:
+                    try:
+                        legacy_lines = raw_data.decode(encoding).splitlines()
+                    except (LookupError, UnicodeError):
+                        pass
+                    else:
+                        extra = max(0, len(legacy_lines) - data_line_count)
+                        result["legacy_unicode_extra_line_breaks"] = (
+                            result.get("legacy_unicode_extra_line_breaks", 0) + extra
+                        )
+                result["sse_data_lines"] = result.get("sse_data_lines", 0) + data_line_count
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
                     value = headers.get(header)
                     if isinstance(value, str) and value.isascii():
                         if safe_id := _safe_provider_id(value):
                             result["provider_request_id"] = safe_id
                             break
-                if "first_byte_seconds" not in result:
-                    result["first_byte_seconds"] = round(time.monotonic() - started, 3)
-                data = line[5:].strip()
+                if "first_byte_seconds" not in result and first_data_at is not None:
+                    result["first_byte_seconds"] = round(first_data_at - started, 3)
                 if data == "[DONE]":
                     result["stream_terminal"] = True
                     break
                 result["event_bytes"] += len(data.encode("utf-8"))
-                if result["event_bytes"] > _MAX_FIRST_EVENT_BYTES:
+                if result["event_bytes"] > _MAX_STRUCTURED_EVENT_BYTES:
                     result["diagnostic"] = "event_data_limit_exceeded"
                     break
                 try:
                     event = json.loads(data)
-                except ValueError:
+                except json.JSONDecodeError as exc:
                     result["diagnostic"] = "malformed_sse_json"
+                    result["json_error"] = exc.msg
+                    result["json_error_line"] = exc.lineno
+                    result["json_error_column"] = exc.colno
+                    result["json_error_offset"] = exc.pos
+                    # Preserve exact bytes independently of issue escaping, with a bounded
+                    # window and secret redaction before encoding. Never retain full bodies.
+                    safe_data = data.replace(api_key, "[redacted]") if api_key else data
+                    safe_prefix = data[: exc.pos]
+                    if api_key:
+                        safe_prefix = safe_prefix.replace(api_key, "[redacted]")
+                    raw_safe = safe_data.encode("utf-8")
+                    byte_start = max(0, len(safe_prefix.encode("utf-8")) - 64)
+                    result["malformed_event_utf8_bytes"] = len(raw_data)
+                    result["malformed_event_byte_preview_start"] = byte_start
+                    result["malformed_event_byte_preview_base64"] = base64.b64encode(
+                        raw_safe[byte_start : byte_start + 128]
+                    ).decode("ascii")
+                    preview_source = data.replace(api_key, "[redacted]") if api_key else data
+                    before_error = data[: exc.pos]
+                    if api_key:
+                        before_error = before_error.replace(api_key, "[redacted]")
+                    preview_offset = len(before_error)
+                    preview_start = max(
+                        0,
+                        min(
+                            max(0, len(preview_source) - _MAX_STRUCTURED_PREVIEW_CHARS),
+                            preview_offset - _MAX_STRUCTURED_PREVIEW_CHARS // 2,
+                        ),
+                    )
+                    result["malformed_event_preview_start"] = preview_start
+                    result["malformed_event_preview"] = _safe_structured_preview(
+                        preview_source[
+                            preview_start : preview_start + _MAX_STRUCTURED_PREVIEW_CHARS
+                        ]
+                    )
+                    encoding = getattr(response, "encoding", None)
+                    result["malformed_event_source_bytes"] = None
+                    result["utf8_redecode_differs"] = None
+                    result["utf8_redecode_parses"] = None
+                    if encoding:
+                        try:
+                            source_bytes = data.encode(encoding)
+                            result["malformed_event_source_bytes"] = len(source_bytes)
+                            utf8_text = source_bytes.decode("utf-8")
+                        except (LookupError, UnicodeError):
+                            result["utf8_redecode_differs"] = None
+                            result["utf8_redecode_parses"] = False
+                        else:
+                            result["utf8_redecode_differs"] = utf8_text != data
+                            try:
+                                json.loads(utf8_text)
+                            except ValueError:
+                                result["utf8_redecode_parses"] = False
+                            else:
+                                result["utf8_redecode_parses"] = True
                     error = True
                     break
                 if not isinstance(event, dict) or event.get("error"):
@@ -425,6 +581,8 @@ def structured_canary(
                         error = True
                 if error:
                     break
+            if result["diagnostic"] == "stream_timeout":
+                error = True
             text = "".join(content)
             if finished and not error:
                 if not text:
@@ -445,6 +603,25 @@ def structured_canary(
                     if result["stream_terminal"]
                     else "stream_ended_without_finish_reason"
                 )
+        except _SSELineLimitError:
+            result["diagnostic"] = "sse_line_data_limit_exceeded"
+        except UnicodeDecodeError as exc:
+            result["diagnostic"] = "invalid_sse_utf8"
+            result["utf8_error_start"] = exc.start
+            result["utf8_error_end"] = exc.end
+            result["utf8_error_reason"] = exc.reason
+            safe_bytes = (
+                exc.object.replace(api_key.encode(), b"[redacted]") if api_key else exc.object
+            )
+            safe_prefix = exc.object[: exc.start]
+            if api_key:
+                safe_prefix = safe_prefix.replace(api_key.encode(), b"[redacted]")
+            byte_start = max(0, len(safe_prefix) - 32)
+            result["invalid_utf8_line_bytes"] = len(exc.object)
+            result["invalid_utf8_preview_start"] = byte_start
+            result["invalid_utf8_preview_base64"] = base64.b64encode(
+                safe_bytes[byte_start : byte_start + 64]
+            ).decode("ascii")
         except requests.Timeout:
             result["diagnostic"] = "transport_timeout"
         except requests.RequestException as exc:
@@ -625,6 +802,35 @@ def _manual_error_body_excerpt(raw, request, request_headers):
     return text, truncated
 
 
+def _discovery_response_excerpt(raw, request, request_headers):
+    """Prefer a provider's short error/message text over JSON envelope boilerplate."""
+    text = bytes(raw).decode("utf-8", errors="replace")
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        payload = None
+    excerpt = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            for key in ("message", "detail", "type"):
+                if isinstance(error.get(key), str) and error[key]:
+                    excerpt = error[key]
+                    break
+        choices = payload.get("choices")
+        if excerpt is None and isinstance(choices, list) and choices:
+            choice = choices[0]
+            message = choice.get("message") if isinstance(choice, dict) else None
+            if isinstance(message, dict):
+                candidate = message.get("content") or message.get("refusal")
+                if isinstance(candidate, str) and candidate:
+                    excerpt = candidate
+    if excerpt is None:
+        excerpt = text
+    redacted, _ = _manual_error_body_excerpt(excerpt.encode("utf-8"), request, request_headers)
+    return _safe_structured_preview(redacted)
+
+
 class ContextEnvelopeError(ValueError):
     """A bounded, payload-free reason why a provider stream could not be normalized."""
 
@@ -641,6 +847,19 @@ def _response_media_type(headers):
     if media_type in {"application/json", "text/event-stream"}:
         return media_type
     return "other"
+
+
+def _context_provider_request_id(headers):
+    """Keep a short upstream correlation ID without retaining arbitrary header text."""
+    for key in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
+        value = next(
+            (v for name, v in headers.items() if str(name).lower() == key),
+            None,
+        )
+        if isinstance(value, str) and value.isascii():
+            if safe_id := _safe_provider_id(value):
+                return safe_id
+    return None
 
 
 def _provider_error_class(body):
@@ -683,7 +902,9 @@ def _context_envelope(raw, content_type):
         return raw
     content, usage, finish, done = [], None, None, False
     for frame in raw.replace("\r\n", "\n").split("\n\n"):
-        lines = [line[5:].strip() for line in frame.splitlines() if line.startswith("data:")]
+        # JSON may contain Unicode line separators in reasoning strings. Only wire LF
+        # separates SSE lines; str.splitlines() would split those strings into invalid JSON.
+        lines = [line[5:].strip() for line in frame.split("\n") if line.startswith("data:")]
         if not lines:
             continue
         value = "\n".join(lines)
@@ -731,7 +952,16 @@ def _context_envelope(raw, content_type):
     )
 
 
-def _collect_context(session, request, headers, timeout, clock, *, retain_error_body=False):
+def _collect_context(
+    session,
+    request,
+    headers,
+    timeout,
+    clock,
+    *,
+    retain_error_body=False,
+    retain_response_preview=False,
+):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
     from citypods.provider_catalog.registry import rules_for
 
@@ -762,6 +992,10 @@ def _collect_context(session, request, headers, timeout, clock, *, retain_error_
             "request_finished_at_ms": finished_at_ms,
             **rules_for(request.provider).context_rate_diagnostics(response_headers),
         }
+        if request_id := _context_provider_request_id(response_headers):
+            diagnostics["provider_request_id"] = request_id
+        if retain_response_preview and raw:
+            diagnostics["response_preview"] = _discovery_response_excerpt(raw, request, headers)
         if retain_error_body and status is not None and status >= 400:
             excerpt, truncated = _manual_error_body_excerpt(raw, request, headers)
             diagnostics["error_response_body"] = excerpt
@@ -852,7 +1086,9 @@ def _collect_context(session, request, headers, timeout, clock, *, retain_error_
             response.close()
 
 
-def _context_http_worker(pipe, request, session, timeout, retain_error_body):
+def _context_http_worker(
+    pipe, request, session, timeout, retain_error_body, retain_response_preview
+):
     """Preflight before admission; parent permission is required before any provider submission."""
     from citypods.provider_catalog.registry import rules_for
     from citypods.security import validate_source_url
@@ -886,6 +1122,7 @@ def _context_http_worker(pipe, request, session, timeout, retain_error_body):
                 timeout,
                 time.monotonic,
                 retain_error_body=retain_error_body,
+                retain_response_preview=retain_response_preview,
             )
         )
     except (OSError, ValueError, KeyError, EOFError):
@@ -913,19 +1150,21 @@ def _measure_response(
     admission_type,
     admission_check,
     timeout=120,
+    max_timeout=120,
     retain_error_body=False,
+    retain_response_preview=False,
 ):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
 
-    if not 0 < timeout <= 120:
-        raise ValueError("context timeout exceeds reviewed deadline")
+    if not 0 < timeout <= max_timeout:
+        raise ValueError("response timeout exceeds reviewed deadline")
     started = clock()
     ctx = multiprocessing.get_context("spawn")
     parent, child = ctx.Pipe()
     process = ctx.Process(
         target=_context_http_worker,
-        args=(child, request, session, timeout, retain_error_body),
+        args=(child, request, session, timeout, retain_error_body, retain_response_preview),
     )
     observation = Response(
         None,
@@ -1050,6 +1289,17 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         max_input_tokens=MAX_INPUT,
     )
     messages = transient.messages
+    if dimension == "output":
+        # A model cannot see max_tokens and often stops after a short natural sequence.
+        # Give it a concrete goal beyond the bounded generation allowance instead.
+        messages = (
+            {
+                "role": "user",
+                "content": "Write every integer from 1 through 1000000 inclusive, one per line. "
+                "No prose, code fences, summaries, ellipses, or omissions. "
+                "Do not stop early; continue the sequence until all integers are written.",
+            },
+        )
     if dimension == "output" and request.input_tokens > 256:
         # Hold a small, measured input fixture fixed while varying only the output request.
         padding = build_context_request(
@@ -1064,9 +1314,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             max_input_tokens=MAX_INPUT,
         )
         document = padding.messages[0]["content"].split("\n", 1)[1]
-        prompt = (
-            transient.messages[0]["content"] + "\nReference document (not output):\n" + document
-        )
+        prompt = messages[0]["content"] + "\nReference document (not output):\n" + document
         messages = ({"role": "user", "content": prompt},)
     estimated = estimate_tokens(messages)
     if estimated > request.input_tokens:
@@ -1086,9 +1334,21 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     )
 
 
-def measure_discovery(request, transient, rules, *, session, before_call, clock, timeout=120):
+def measure_discovery(
+    request,
+    transient,
+    rules,
+    *,
+    session,
+    before_call,
+    clock,
+    timeout=MAX_RESPONSE_TIMEOUT_SECONDS,
+):
     """Unconfigured candidate transport needs a distinct charged discovery receipt."""
-    from citypods.provider_catalog.discovery import DiscoveryAdmission, discovery_identity
+    from citypods.provider_catalog.discovery import (
+        DiscoveryAdmission,
+        discovery_identity,
+    )
 
     physical = discovery_identity(
         transient.provider,
@@ -1106,5 +1366,7 @@ def measure_discovery(request, transient, rules, *, session, before_call, clock,
         admission_type=DiscoveryAdmission,
         admission_check=lambda receipt: receipt.matches(request) and clock() < receipt.deadline,
         timeout=timeout,
+        max_timeout=MAX_RESPONSE_TIMEOUT_SECONDS,
+        retain_response_preview=True,
     )
     return rules.discovery_observation(response, request, transient)

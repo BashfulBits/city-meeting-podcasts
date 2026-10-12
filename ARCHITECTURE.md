@@ -122,6 +122,12 @@ compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/2
 so a fresh install cannot silently drift; third-party GitHub Actions are commit-SHA-pinned and the
 Hugging Face Whisper model revisions are pinned (canonical in `citypods.asr`, baked into the worker
 images), with Renovate opening update PRs and CI guards keeping the pins current and enforced.
+Each lock compiles from a generated per-lane `constraints/<lane>.in` (`scripts/lane_inputs.py`) so
+Renovate tracks every lane as its own project: the LLM stack automerges lock bumps at latest, security
+advisories open PRs in every lane, and Python bumps need Dashboard approval. Workflow Pythons come only
+from `.python-version` (fleet) or `.github/python/asr/.python-version` (ASR, held back by WhisperX's
+torch pin); `python-compat.yml` dry-run installs each (version file, lock) lane on its own interpreter
+so an incompatible Python or dependency bump fails on the PR.
 Modal's build genuinely stages local repo files at build time (`add_local_dir`/`add_local_file`), so
 its image installs directly against `constraints/asr.txt`. Beam's remote build has **no** such
 access — its `add_local_path()` only syncs files for the deployed function's own runtime import, not
@@ -230,10 +236,12 @@ provider is a plugin (`providers/<name>.py`: free evidence, response signals, re
 contract tests keep in step with `config/provider_limits.yml`; lanes come only from `load_lanes()`.
 A successful availability ping is followed by four schema-method checks using the shared Python
 request renderer. Only completed visible schema-valid JSON verifies a method; reasoning alone does
-not. Checks allow 4,096 completion tokens including reasoning, with a 720-second read timeout and
-elapsed-time checks. Plugin spacing covers every request, including BeatAPI's shared account window;
-configured-route method checks are charged individually, and scarce routes defer when quota is
-unknown or spent. The compressed, backwards-readable issue state stores method outcomes and latency;
+not. SSE framing is parsed per event, with multiple `data:` fields joined before JSON decoding and a
+128 KiB cumulative event-data bound. Checks allow 4,096 completion tokens including reasoning, with a
+720-second read timeout and elapsed-time checks. Plugin spacing covers every request, including
+BeatAPI's shared account window; configured-route method checks are charged individually, and
+scarce routes defer when quota is unknown or spent. The compressed, backwards-readable issue state
+stores method outcomes and latency;
 legacy candidate proofs without a method are rechecked. An invalid resolved method is an anomaly
 showing the lane's remaining pooled routes. The pause also holds through a final provider interval
 before resuming dispatch, protecting shared account capacity spent by unregistered candidates. The
@@ -253,7 +261,12 @@ per-minute (TPM).
 New-route request-cap discovery uses a separate typed transport in
 `provider_catalog/discovery.py`: immutable request/admission/observation records, independent
 input/output/two combined-mix brackets, actual-count fixture correction and finite session/run
-budgets. It runs only after a new route passes the existing reachability and structured-output
+budgets. Pure input probes request 16,384 output tokens (64 times the previous cap) so reasoning-
+heavy replies have room to complete the input fixture; typed output-cap refusals halve that fixed
+counterpart and start a new `v2` control identity. The existing aggregate output budgets remain
+binding, so an interrupted search reports partial evidence for authenticated `test again`
+refinement. It runs only after a new route
+passes the existing reachability and structured-output
 checks, under the same drained provider pause. The 64-submission candidate budget includes those
 reachability checks; the two-candidate run budget is shared. A journal charges attempts before child
 submission and fsyncs payload-free checkpoints; unknown results cannot be reused as successful
@@ -268,8 +281,12 @@ and resumes compatible history. Provider plugins explicitly declare usage/parser
 unknown size errors and combined semantics create no cap proof. A request that receives no usable
 transport response may be sent up to five times at the same size, with a fresh charged attempt for
 each send. Five unanswered calls produce an uncertain result, never a size bound; when multiple
-sends were needed, the issue includes per-attempt diagnostics. The workflow wiring remains disabled
-until the separate reviewed activation gate #2223 is approved and merged. This flow does not probe
+sends were needed, the issue includes per-attempt diagnostics: response status/media type/size,
+bounded message/finish/usage shape states, actual reported token counts and safe provider request
+IDs. Failed attempts may also retain a 128-character escaped provider error or returned model-text
+excerpt after prompt/credential redaction; successful text and full bodies are never retained. The
+workflow wiring remains disabled until the separate reviewed activation gate #2223 is approved and
+merged. This flow does not probe
 configured routes for recurring maintenance or publish cap changes automatically.
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane

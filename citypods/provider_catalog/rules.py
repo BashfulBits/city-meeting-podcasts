@@ -374,15 +374,80 @@ def chat_context_observation(
         type(total) is not int or total != counts["prompt_tokens"] + counts["completion_tokens"]
     ):
         return make(diagnostic_code="usage_total_inconsistent")
+    observed_counts = dict(
+        reported_input=counts["prompt_tokens"],
+        reported_output=counts["completion_tokens"],
+        reported_total=total,
+        count_basis=request.dimension,
+        reasoning_basis=reasoning_basis,
+    )
     choice = choices[0]
     if not isinstance(choice, dict) or choice.get("error"):
         return make(diagnostic_code="completion_shape_invalid")
     message = choice.get("message")
-    if not isinstance(message, dict) or message.get("refusal") or message.get("tool_calls"):
-        return make(diagnostic_code="refusal_or_tool_call", outcome="inconclusive")
+    if not isinstance(message, dict):
+        return make(
+            diagnostic_code="completion_message_missing"
+            if "message" not in choice
+            else "completion_message_not_object",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if message.get("refusal"):
+        return make(
+            diagnostic_code="completion_refusal",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if message.get("tool_calls"):
+        return make(
+            diagnostic_code="completion_tool_call",
+            outcome="inconclusive",
+            **observed_counts,
+        )
     content, finish = message.get("content"), choice.get("finish_reason")
-    if not isinstance(content, str) or finish not in {"stop", "length"}:
-        return make(diagnostic_code="completion_content_or_finish_invalid", outcome="inconclusive")
+    if "content" not in message:
+        return make(
+            diagnostic_code="completion_content_missing",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if content is None:
+        return make(
+            diagnostic_code="completion_content_null",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if not isinstance(content, str):
+        return make(
+            diagnostic_code="completion_content_not_text",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if not content:
+        return make(
+            diagnostic_code="completion_content_empty",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if "finish_reason" not in choice:
+        return make(
+            diagnostic_code="finish_reason_missing",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if finish is None:
+        return make(
+            diagnostic_code="finish_reason_null",
+            outcome="inconclusive",
+            **observed_counts,
+        )
+    if finish not in {"stop", "length"}:
+        return make(
+            diagnostic_code="finish_reason_unsupported",
+            outcome="inconclusive",
+            **observed_counts,
+        )
     detail = usage.get("completion_tokens_details")
     if detail is not None and not isinstance(detail, dict):
         return make(diagnostic_code="reasoning_details_invalid")
@@ -536,6 +601,130 @@ def unsupported_discovery(response, request, transient):
     return DiscoveryObservation(request, datetime.now(UTC).isoformat())
 
 
+def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis):
+    """Recognize explicit token coordinates in documented chat/vLLM size errors.
+
+    Exact input counts, fixed output reservation and consistent totals are mandatory.
+    Character counts, tokenizer lower bounds and arbitrary error numbers supply no authority.
+    https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/
+    """
+    if response.status not in {400, 422} or response.timed_out or response.transport_error:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    detail = payload.get("detail")
+    if (
+        reasoning_basis == "included"
+        and request.axis == "output"
+        and isinstance(detail, list)
+        and set(payload) == {"detail"}
+    ):
+        # FastAPI/Pydantic numeric field validation is typed, not free-text token guessing.
+        # https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal
+        if len(detail) != 1 or not isinstance(detail[0], dict):
+            return None
+        issue = detail[0]
+        field = issue.get("loc")
+        if field not in (["body", "max_tokens"], ["body", "max_completion_tokens"]):
+            return None
+        kind = issue.get("type")
+        context = issue.get("ctx")
+        if kind not in ("less_than", "less_than_equal") or not isinstance(context, dict):
+            return None
+        limit = context.get("lt" if kind == "less_than" else "le")
+        count = issue.get("input")
+        if (
+            type(limit) is not int
+            or not 0 < limit <= 2**53 - 1
+            or type(count) is not int
+            or count != request.output_tokens
+            or count < limit
+            or (kind == "less_than_equal" and count == limit)
+        ):
+            return None
+        return {
+            "coordinate": count,
+            "count_basis": "completion_including_reasoning",
+            "diagnostic": "verified_output_size_refusal",
+        }
+    if response.status != 400:
+        return None
+    if detail is not None:
+        return None
+    error = payload.get("error", payload)
+    if not isinstance(error, dict):
+        return None
+    code, kind = error.get("code"), error.get("type")
+    if code not in (None, 400, "context_length_exceeded", "maximum_context_length_exceeded"):
+        return None
+    if kind not in (None, "invalid_request_error", "BadRequestError", "context_length_exceeded"):
+        return None
+    untyped = code is None and kind is None and error.get("object") != "error"
+    message = error.get("message")
+    if not isinstance(message, str) or len(message) > 8192:
+        return None
+    prefix = r"This (?:model|endpoint)'s maximum context length is (?P<limit>[0-9]+) tokens\. "
+    patterns = (
+        prefix + r"However, your messages resulted in (?P<input>[0-9]+) tokens\.",
+        prefix
+        + r"However, you requested (?P<output>[0-9]+) output tokens and your prompt "
+        + r"contains (?P<input>[0-9]+) input tokens, for a total of (?P<total>[0-9]+) tokens\.",
+        prefix
+        + r"However, you requested (?P<total>[0-9]+) tokens "
+        + r"\((?P<input>[0-9]+) in the messages, (?P<output>[0-9]+) in the completion\)\.",
+        prefix + r"However, your request has (?P<input>[0-9]+) input tokens\.",
+    )
+    for index, pattern in enumerate(patterns):
+        match = re.match(pattern, message)
+        if match is None:
+            continue
+        # Captured NVIDIA responses use a message-only envelope. Permit only this exact
+        # input-token wording without an error type/code, not arbitrary untyped failures.
+        if untyped:
+            envelope = set(payload) == {"message"} or (
+                set(payload) == {"error"} and set(error) == {"message"}
+            )
+            if index != 0 or not envelope:
+                return None
+        # An appended approximation qualifier invalidates the exact-count claim. Permit
+        # only the empty suffix or standard request-shortening advice, not extra prose.
+        if message[match.end() :] not in {
+            "",
+            " Please reduce the length of the messages.",
+            " Please reduce the length of your messages.",
+            " Please reduce the length of the messages or completion.",
+            " Please reduce the length of the input prompt or the number of requested output "
+            "tokens.",
+        }:
+            return None
+        if any(len(value) > 16 for value in match.groupdict().values()):
+            return None
+        counts = {key: int(value) for key, value in match.groupdict().items()}
+        if any(not 0 < value <= 2**53 - 1 for value in counts.values()):
+            return None
+        input_count, limit = counts["input"], counts["limit"]
+        if "output" in counts:
+            if (
+                counts["output"] != request.output_tokens
+                or counts["total"] != input_count + counts["output"]
+                or counts["total"] <= limit
+            ):
+                return None
+        elif input_count <= limit:
+            return None
+        # A combined overflow with fixed output bounds the conditional input search only.
+        # It is not an independent output cap or a proven combined-count contract.
+        if request.axis == "input":
+            return {
+                "coordinate": input_count,
+                "reported_input": input_count,
+                "count_basis": "input",
+                "diagnostic": "verified_input_size_refusal",
+            }
+        return None
+    return None
+
+
 def chat_discovery_observation(response, request, transient, *, reasoning_basis="unknown"):
     """Opt-in actual chat counts; undocumented size-error numbers supply no upper boundary.
 
@@ -553,11 +742,70 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
     observation = chat_context_observation(response, transient, reasoning_basis=reasoning_basis)
     try:
         payload = strict_context_json(response.body)
-        usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
+        payload = payload if isinstance(payload, dict) else None
     except (TypeError, ValueError):
-        usage = {}
-    if not isinstance(usage, dict):
-        usage = {}
+        payload = None
+    usage = payload.get("usage") if payload is not None else None
+    choices = payload.get("choices") if payload is not None else None
+    choice = choices[0] if isinstance(choices, list) and len(choices) == 1 else None
+    message = choice.get("message") if isinstance(choice, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+    content_state = (
+        "not_applicable"
+        if payload is None or not isinstance(choice, dict) or not isinstance(message, dict)
+        else "missing"
+        if "content" not in message
+        else "null"
+        if content is None
+        else "other"
+        if not isinstance(content, str)
+        else "empty"
+        if not content
+        else "text"
+    )
+    finish_state = (
+        "not_applicable"
+        if payload is None or not isinstance(choice, dict)
+        else "missing"
+        if "finish_reason" not in choice
+        else "null"
+        if finish is None
+        else finish
+        if finish in {"stop", "length"}
+        else "other"
+    )
+    usage_state = "missing" if payload is not None and "usage" not in payload else "unknown"
+    if isinstance(usage, dict):
+        if "prompt_tokens" not in usage:
+            usage_state = "prompt_missing"
+        elif (
+            type(usage.get("prompt_tokens")) is not int
+            or not 0 <= usage["prompt_tokens"] <= 2**53 - 1
+        ):
+            usage_state = "prompt_invalid"
+        elif "completion_tokens" not in usage:
+            usage_state = "completion_missing"
+        elif (
+            type(usage.get("completion_tokens")) is not int
+            or not 0 <= usage["completion_tokens"] <= 2**53 - 1
+        ):
+            usage_state = "completion_invalid"
+        elif usage.get("total_tokens") is not None and (
+            type(usage["total_tokens"]) is not int
+            or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]
+        ):
+            usage_state = "total_invalid"
+        else:
+            usage_state = "valid"
+    elif usage is not None:
+        usage_state = "not_object"
+    response_id = payload.get("id") if payload is not None else None
+    if isinstance(response_id, str) and response_id.isascii():
+        response_id = re.sub(r"[^A-Za-z0-9._:-]", "", response_id[:128]) or None
+    else:
+        response_id = None
+    usage = usage if isinstance(usage, dict) else {}
     details = usage.get("completion_tokens_details") or {}
     prompt_details = usage.get("prompt_tokens_details") or {}
     reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
@@ -571,9 +819,27 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         cached_tokens=cached,
         reported_input=observation.reported_input,
         reported_output=observation.reported_output,
-        finish_reason=observation.finish_reason,
+        finish_reason=(
+            finish
+            if isinstance(finish, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", finish)
+            else ""
+        ),
         diagnostic=observation.diagnostic_code,
+        response_status=response.status,
+        response_media_type=diagnostics_value(response.context_diagnostics, "response_media_type"),
+        response_bytes=diagnostics_value(response.context_diagnostics, "response_bytes"),
+        message_content_state=content_state,
+        finish_reason_state=finish_state,
+        usage_state=usage_state,
+        provider_request_id=_safe_discovery_id(
+            diagnostics_value(response.context_diagnostics, "provider_request_id")
+        ),
+        response_id=response_id,
     )
+    if observation.outcome != "verified":
+        values["response_preview"] = (
+            diagnostics_value(response.context_diagnostics, "response_preview") or ""
+        )
     diagnostics = response.context_diagnostics
     retry = diagnostics.get("retry_after_ms")
     if type(retry) is int and retry > 0:
@@ -582,6 +848,13 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         return DiscoveryObservation(request, stamp, outcome="quota", **values)
     if response.status is not None and response.status >= 500:
         return DiscoveryObservation(request, stamp, outcome="outage", **values)
+    refusal = _chat_discovery_size_refusal(
+        response, request, payload, reasoning_basis=reasoning_basis
+    )
+    if refusal is not None:
+        return DiscoveryObservation(
+            request, stamp, outcome="refused", verified=True, **(values | refusal)
+        )
     if observation.outcome == "verified":
         count = (
             observation.reported_input if request.axis == "input" else observation.reported_output
@@ -600,3 +873,25 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             **values,
         )
     return DiscoveryObservation(request, stamp, **values)
+
+
+def diagnostics_value(diagnostics, name):
+    """Read a collector diagnostic only when its type and bounds are expected."""
+    value = diagnostics.get(name)
+    if name == "response_media_type":
+        allowed = {"unknown", "application/json", "text/event-stream", "other"}
+        return value if value in allowed else "unknown"
+    if name == "response_bytes":
+        return value if type(value) is int and 0 <= value <= 4 * 1024 * 1024 else None
+    if name == "provider_request_id":
+        return value if isinstance(value, str) and len(value) <= 128 else None
+    if name == "response_preview":
+        return value if isinstance(value, str) and len(value) <= 1_024 else ""
+    return None
+
+
+def _safe_discovery_id(value):
+    if not isinstance(value, str) or not value:
+        return None
+    safe = re.sub(r"[^A-Za-z0-9._:-]", "", value[:128])
+    return safe or None

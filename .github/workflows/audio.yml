@@ -64,7 +64,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
 
       - name: Install planner
@@ -98,7 +98,7 @@ jobs:
           echo "shard_count=$(python -c 'import json; print(len(json.load(open("audio-plan/matrix.json"))["shard"]))')" >> "$GITHUB_OUTPUT"
 
       - name: Upload canonical Audio snapshot and plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: audio-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: audio-plan
@@ -140,11 +140,11 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
 
       - name: Download canonical Audio snapshot and plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: audio-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: audio-plan
@@ -295,7 +295,7 @@ jobs:
 
       - name: Upload H16 shard evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: h16-evidence/*.json
@@ -313,7 +313,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
 
       - name: Install report dependencies
@@ -321,7 +321,7 @@ jobs:
 
       - name: Download H16 shard evidence
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: h16-input
@@ -339,7 +339,7 @@ jobs:
 
       - name: Upload H16 acceptance report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: audio-h16-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: h16-report

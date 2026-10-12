@@ -34,7 +34,8 @@ to the existing content-addressed model.
 
 | Class | Pin location | Granularity | Update mechanism | Determinism class |
 |---|---|---|---|---|
-| Python libraries | `constraints/*.txt` compiled from `pyproject.toml`, consumed via `pip install … -c` | exact `==` version pins (hash-verified `--require-hashes` for the immutable images is a documented follow-up) | Renovate (pip) → recompile | **output-affecting:** `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`; **hygiene:** everything else |
+| Python libraries | `constraints/<lane>.txt` compiled from a generated `constraints/<lane>.in` (itself rendered from `pyproject.toml`), consumed via `pip install … -c` | exact `==` version pins (hash-verified `--require-hashes` for the immutable images is a documented follow-up) | Renovate (pip-compile, one project per lane) → lock-only bump | **output-affecting:** the Renovate output-affecting group (`faster-whisper`, `ctranslate2`, `whisperx`, `torch`, `Pillow`, …); **LLM stack:** kept at latest; **hygiene:** everything else |
+| Python interpreter | `.python-version` (fleet) and `.github/python/asr/.python-version` (ASR lane); every `actions/setup-python` reads one of them | `major.minor` | Renovate (pyenv) → **Dashboard approval** | hygiene, gated by `python-compat.yml` |
 | GitHub Actions | `.github/workflows/*.yml` | full 40-hex commit SHA + `# vN` comment | Renovate (github-actions) | hygiene (build-time) |
 | Base runner image | `.github/audio-runner/Dockerfile` | `@sha256:` digest | Renovate (docker) | output-affecting (toolchain) |
 | Static ffmpeg | `FFMPEG_URL` + `FFMPEG_SHA256` (`audio-runner-image.yml`, `audio.yml`, `asr.yml`, `asr-bench.yml`, `asr-quality-eval.yml`, `ci.yml`, `dep-bump-smoke.yml`) | immutable release URL + SHA256 | Renovate custom regex, **monthly, smoke-gated** | output-affecting (encode) |
@@ -71,9 +72,17 @@ hardware axis stays explicitly keyed rather than drifting silently.
 `pyproject.toml` remains the **abstract** declaration (`>=` floors only — never pin exact versions
 there). Concrete, fully-resolved pins live in compiled constraint files:
 
-- `constraints/prod.txt` — core runtime + `storage`
-- `constraints/asr.txt` — adds the `asr-*` extras (`faster-whisper`, `ctranslate2`, `stable-ts`, `jiwer`)
-- `constraints/dev.txt` — adds the `dev` extra (`pytest`, `ruff`, `pip-tools`)
+- `constraints/prod.txt` — core runtime + `storage`, `wer`, `llm`
+- `constraints/asr.txt` — core + `storage`, `asr`, `asr-align2` (faster-whisper, WhisperX, torch)
+- `constraints/dev.txt` — core + `storage`, `dev`, `wer`, `llm`
+- `constraints/chapter-research.txt` — core + `chapter-research`
+
+Each lock compiles from its own **generated** input, `constraints/<lane>.in` (base dependencies plus
+the lane's extras), written by `scripts/lane_inputs.py`, which also owns the lane → extras map.
+`pyproject.toml` stays the only place dependencies are declared. The per-lane inputs exist because
+Renovate's pip-compile manager treats every lock sharing a source file as one project and reads
+current versions from the first lock only (`asr.txt`); with `pyproject.toml` as the shared source,
+packages absent from `asr.txt` (the whole LLM stack) never got an update.
 
 Every install site adds `-c constraints/<profile>.txt`. Constraints are **version-pinned** (exact `==`)
 rather than hashed: they are consumed alongside editable `pip install -e .`, and pip's hash-checking
@@ -87,6 +96,39 @@ wheels. The canonical compile runs inside `python:3.12-slim-bookworm` (the runne
 `scripts/compile_constraints.sh`, driven by the `lock.yml` workflow (and reproducible locally with
 Docker). See `constraints/README.md`.
 
+### Python versions and lanes
+
+Workflows never pin a Python literal. Every `actions/setup-python` step reads
+`python-version-file:` — `.python-version` for the fleet, or `.github/python/asr/.python-version`
+for the ASR stack, which lags because WhisperX pins `torch~=2.8.0` (no newer-Python wheels). A
+**lane** is a (version file, constraints file) pair some job actually uses; `scripts/python_lanes.py`
+derives them from the workflows and fails on a literal pin, a mixed or unknown version file,
+`asr.txt` installed off the ASR Python, or any Python set outside setup-python (the compile image,
+Modal/Beam/audio-runner images, lock headers, Renovate's `constraints.python`) that disagrees with
+the ASR version file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+only, so a Python or dependency bump that cannot install fails on the PR instead of in production.
+
+To move a lane to a new Python: let Renovate propose the version-file bump (Dashboard approval),
+approve it, and let `python-compat.yml` decide. An ASR bump also means recompiling the locks on the
+new Python (`compile_constraints.sh`'s image, the worker images and Renovate's `constraints.python`
+move with it; `python_lanes.py --check` lists every place).
+
+### Accepted risk: torch 2.8 under WhisperX (#2318)
+
+OSV flags `torch==2.8.0` in `asr.txt` (CVE-2025-55551/55552/55554, GHSA-vgrw, GHSA-qfhq,
+CVE-2026-24747, GHSA-rrmf; fixes in 2.9.0–2.13.0), but WhisperX 3.8.x pins `torch~=2.8.0`, so no
+fixed torch resolves and Renovate's security PR fails (#2298, closed). Accepted on 2026-10-12 because:
+torch runs only in batch ASR workers, never on a request path; its inputs are decoded meeting audio
+fed to fixed alignment models, never user-supplied tensors, TorchScript or pickles. The one
+meaningful class is CVE-2026-24747 (malicious checkpoint): the MMS_FA judge model is SHA256-pinned
+(`ctc_align.MMS_FA_SHA256`), and WhisperX's default `WAV2VEC2_ASR_BASE_960H` bundle comes from
+download.pytorch.org over HTTPS but is not hash-pinned by us.
+
+Revisit when WhisperX relaxes its torch pin (then let Renovate bump torch and retry ASR Python
+3.14), an advisory becomes reachable from audio input or our model loading, we load a checkpoint
+from a new source, or on **2027-01-12** at the latest. Dropping WhisperX alignment for the in-repo
+MMS_FA aligner would remove the pin; it is in the review/11 §6 deferred backlog, not planned.
+
 ## Manual-approval flow (light-touch, issue-driven)
 
 Hygiene updates flow through with ~zero attention; output-affecting updates cost a human exactly **one
@@ -96,6 +138,23 @@ checkbox + one bot comment**, and everything after approval is automated. Built 
 **Hygiene lane** (`ruff`, `pytest`, `boto3`, `requests`, `PyYAML`, `Jinja2`, `defusedxml`, `jiwer`, Node
 dev tools): Renovate opens grouped PRs weekly; patch/minor of dev/test tools auto-merge on green CI.
 Actions / workflow-file PRs are **never** auto-merged (a compromised update could move a pinned SHA).
+
+**LLM stack lane** (`litellm`, `instructor`, `pydantic`, and the transitive `openai`, `tiktoken`):
+kept at the latest release. Renovate bumps the locks only (`rangeStrategy: update-lockfile`; the
+`pyproject.toml` floors stay put) at any time once a release is 3 days old, and automerges minor/patch
+on green CI, including `python-compat.yml`. Majors open a PR for review.
+
+**Security lane:** GitHub (Dependabot) and OSV advisories open a `security`-labeled PR immediately,
+skipping schedules and release age, for direct and transitive pins in every lane. None automerge: a fix
+in the ASR lane is still output-affecting, and one that conflicts with an upstream pin (e.g. a torch
+fix vs. WhisperX's `torch~=2.8.0`) shows up as a failed lock update that needs a human decision.
+
+**Python and full lock refresh:** Python version-file bumps and the monthly full lock refresh
+(`lockFileMaintenance`, which moves every transitive pin) wait for Dashboard approval. Renovate skips
+releases whose `requires_python` excludes the compile Python (`constraintsFiltering: strict`).
+
+Renovate never edits `pyproject.toml`: the pep621/poetry managers are disabled for it, since a floor
+change there would leave the generated `.in` files stale.
 
 **Output-affecting lane** (`faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`, the ffmpeg URL+SHA,
 the base-image digest, the HF model revision): grouped with `dependencyDashboardApproval: true`. Renovate
@@ -128,16 +187,18 @@ Net approver effort per output-affecting bump: **tick one box, read one comment,
 ## Adding or changing a dependency (contract for future contributors & agents)
 
 1. Edit **`pyproject.toml`** only — add the abstract `>=` floor. Never pin exact versions there.
-2. **Recompile constraints** (`scripts/compile_constraints.sh`) and commit the updated `constraints/*.txt`.
-3. **Classify it.** Hygiene, or output-affecting (touches produced audio/transcript bytes)? If
-   output-affecting, add it to the Renovate `output-affecting` group **and** the table above.
+2. **Recompile constraints** (`scripts/compile_constraints.sh`, which also regenerates
+   `constraints/*.in`) and commit the updated `constraints/*.in` and `constraints/*.txt`. A new
+   lane is a new `LANES` entry in `scripts/lane_inputs.py` plus a Renovate `managerFilePatterns` entry.
+3. **Classify it.** Hygiene, LLM stack, or output-affecting (touches produced audio/transcript bytes)?
+   If output-affecting, add it to the Renovate `output-affecting` group **and** the table above.
 4. **Do not** re-list it in `scripts/compute/modal_app.py` / `beam_app.py` — external workers install
    from the same constraints automatically.
 5. Open the PR; CI does the rest.
 
 ### CI validator tooling
 
-The `deps` job pins its npm Renovate validator to **44.139.0** in `.github/workflows/ci.yml`.
+The `deps` job pins its npm Renovate validator in `.github/workflows/ci.yml` (44.151.5 as of 2026-10-12).
 The custom npm regex manager tracks that pin as reviewed hygiene tooling alongside Wrangler;
 it is excluded from the output-affecting group and is never auto-merged. Validate upgrades with
 CI's Node 24 runtime and the exact validator invocation before merging. This tool does not change
@@ -153,11 +214,13 @@ verbose install output, and prints its debug logs on failure while retaining the
 
 ### Enforcement (the anti-staleness mechanism)
 
-Three CI guards keep the policy live rather than aspirational (see `scripts/check_dependency_policy.py`
-and the `deps` job in `ci.yml`):
+CI guards keep the policy live rather than aspirational (see `scripts/check_dependency_policy.py`,
+the `deps` job in `ci.yml`, and `python-compat.yml`):
 
 - **Constraints-drift gate** — recompile in the pinned env and `git diff --exit-code`; fails if
-  `pyproject.toml` changed without a matching `constraints/*.txt` update, or the lock is stale.
+  `pyproject.toml` changed without a matching `constraints/*.in` / `*.txt` update, or the lock is stale.
+- **Python compatibility gate** (`python-compat.yml`) — stale `.in` inputs, Python pins that bypass the
+  version files, and a wheels-only dry-run install of every lane on its own interpreter.
 - **Pinned-Actions guard** — every `uses:` in `.github/workflows/*.yml` must match
   `@[0-9a-f]{40} # v…`; any tag-pin fails the build (OpenSSF pinned-dependencies posture).
 - **External-worker-dep guard** — `modal_app.py` / `beam_app.py` must not declare ad-hoc
