@@ -299,6 +299,75 @@ def test_structured_canary_joins_multiline_sse_data_fields():
     assert {row["events"] for row in result.values()} == {3}
 
 
+def test_malformed_sse_records_bounded_parse_and_encoding_diagnostics():
+    from citypods.provider_catalog.probe import structured_canary
+
+    class Stream:
+        status_code = 200
+        ok = True
+        closed = False
+        encoding = "ISO-8859-1"
+        headers = {
+            "content-type": "text/event-stream; charset=utf-8",
+            "content-encoding": "identity",
+            "x-request-id": "req-debug-123",
+        }
+
+        def iter_lines(self, **kwargs):
+            malformed = (
+                '{"choices":[{"delta":{"reasoning_content":"' + ("x" * 180) + '"}}]} trailing'
+            )
+            yield "data: " + malformed
+            yield ""
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        def __init__(self):
+            self.response = Stream()
+
+        def post(self, *args, **kwargs):
+            return self.response
+
+    methods = {
+        "json_schema": {
+            "response_format": "json_schema",
+            "include_schema_in_prompt": False,
+        }
+    }
+    attempts = iter((True, False))
+    session = Session()
+    result = structured_canary(
+        all_rules()["openrouter"],
+        {"api_base": "https://openrouter.test/api/v1"},
+        "creator/model:free",
+        "test-key",
+        session,
+        before_attempt=lambda: next(attempts),
+        methods=methods,
+    )["json_schema"]
+
+    assert result["outcome"] == "inconclusive"
+    assert result["diagnostic"] == "malformed_sse_json"
+    assert result["json_error"] == "Extra data"
+    assert result["json_error_line"] == 1
+    assert result["json_error_offset"] > 128
+    assert result["last_event_data_lines"] == 1
+    assert result["sse_data_lines"] == 1
+    assert result["content_type"] == "text/event-stream; charset=utf-8"
+    assert result["content_encoding"] == "identity"
+    assert result["response_encoding"] == "ISO-8859-1"
+    assert result["provider_request_id"] == "req-debug-123"
+    assert result["utf8_redecode_parses"] is False
+    preview = json.loads(result["malformed_event_preview"])
+    assert len(preview) <= 128
+    assert "trailing" in preview
+    assert result["malformed_event_preview_start"] > 0
+    assert "test-key" not in str(result)
+    assert session.response.closed
+
+
 @pytest.mark.parametrize(("reasoning_events", "expected"), [(80, "valid"), (140, "inconclusive")])
 def test_structured_canary_allows_reasoning_stream_within_bound_and_rejects_overflow(
     reasoning_events, expected
