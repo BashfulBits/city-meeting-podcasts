@@ -2042,7 +2042,16 @@ output, contradictory counts, transport deadline or cancellation defer the affec
 report a reason, calls/tokens spent and all admitted/refused bounds found so far. Other axes may
 continue when the remaining envelope and error scope permit. A quota rejection alone never
 becomes a context upper bound. Checkpoint after each usable observation; a lost response is not
-a success and its attempt cannot be reused.
+a success and its attempt cannot be reused. **Maintainer clarification (2026-10-12):** for one
+request-size probe that receives no usable response due to a transport timeout/connection failure,
+make at most five total calls of the same size, each with a fresh charged attempt ID. Do not change
+the probe size during these retries. If all five have no usable response, stop discovery with an
+uncertain result and report the bounds already established; do not interpret transport failure as a
+size limit. If a later call responds, keep the earlier charged attempts and report per-attempt
+telemetry whenever more than one call was needed. This bounded retry direction supersedes the
+previous no-retry wording for new-route request-cap discovery only; it does not alter configured-
+route context-probe retry policy. Every call still consumes the existing per-session and per-run
+budgets.
 
 **`test again` decision.** The maintainer can request another discovery run for the same route
 on a later day. The same maintenance workflow selects that pending route, authenticates prior
@@ -2099,7 +2108,9 @@ and six-call budgets are unchanged; new candidates use the separate discovery en
 | Transport | 120 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. Token budgets are
+transport process; failed/unknown attempts are never refunded or reused. The five-call no-response
+limit counts the initial send and all retries, not five retries after the initial send. Token
+budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
 4 MiB. Provider/account permissions, free-route evidence, known applicable shared quotas and

@@ -265,9 +265,12 @@ rolling issue reports provider API claims and source separately from admitted/re
 Artificial Analysis quality, conditional limits and spent budget. An authorized `/apply` can queue a
 next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
-unknown size errors and combined semantics create no cap proof. The workflow wiring remains
-disabled until the separate reviewed activation gate #2223 is approved and merged. This flow does
-not probe configured routes for recurring maintenance or publish cap changes automatically.
+unknown size errors and combined semantics create no cap proof. A request that receives no usable
+transport response may be sent up to five times at the same size, with a fresh charged attempt for
+each send. Five unanswered calls produce an uncertain result, never a size bound; when multiple
+sends were needed, the issue includes per-attempt diagnostics. The workflow wiring remains disabled
+until the separate reviewed activation gate #2223 is approved and merged. This flow does not probe
+configured routes for recurring maintenance or publish cap changes automatically.
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is

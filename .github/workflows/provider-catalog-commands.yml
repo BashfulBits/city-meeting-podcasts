@@ -75,7 +75,6 @@ jobs:
           code=$?
           set -e
           jq -r '.comment' provider-catalog-command.json > provider-catalog-command.md
-          jq -e '.retry_receipt' provider-catalog-command.json > provider-catalog-discovery-retry.json || true
           gh issue comment "$ISSUE_NUMBER" --body-file provider-catalog-command.md
           exit "$code"
       - name: Retain authorized discovery retry receipt

@@ -589,24 +589,72 @@ def reconcile(
             and not rules.observation_only
             and not catalog.error
         ):
+            retry_models_seen: set[str] = set()
+
+            def terminal_retry(
+                model,
+                record,
+                reason,
+                calls=0,
+                _provider=provider,
+                _cfg=cfg,
+                _rules=rules,
+            ):
+                key = f"{_provider}/{model}"
+                receipt_id = (discovery_receipt_ids or {}).get(key)
+                if (
+                    not discovery_enabled
+                    or not receipt_id
+                    or key not in (retry_candidate_keys or set())
+                    or any(
+                        row.get("session", {}).get("receipt_id") == receipt_id
+                        for row in report.discovery_sessions
+                    )
+                ):
+                    return
+                report.discovery_sessions.append(
+                    _terminal_discovery_session(
+                        _provider,
+                        model,
+                        record,
+                        _cfg,
+                        _rules,
+                        run_id=discovery_run_id or "local",
+                        today=today,
+                        receipt_id=receipt_id,
+                        reason=reason,
+                        calls=calls,
+                    )
+                )
+
             for model, record in sorted(catalog.models.items()):
                 key = f"{provider}/{model}"
+                if key in (retry_candidate_keys or set()):
+                    retry_models_seen.add(key)
                 if candidate_keys is not None and key not in candidate_keys:
                     continue
                 if retry_candidate_keys is not None and key not in retry_candidate_keys:
                     continue
-                if model in configured_models or not rules.chat_filter(model, record):
+                if model in configured_models:
+                    terminal_retry(model, record, "route_already_configured")
+                    continue
+                if not rules.chat_filter(model, record):
+                    terminal_retry(model, record, "unsupported_chat_route")
                     continue
                 if decisions.is_ignored(provider, model, today):
+                    terminal_retry(model, record, "route_ignored_by_maintainer")
                     continue
                 alias_of = configured_identities.get(_identity(model, rules.free_suffix))
                 if alias_of:
+                    terminal_retry(model, record, "route_alias_already_configured")
                     continue  # the same model under another name is already configured
                 context = _context_limit(record)
                 if context is not None and context < min_context:
+                    terminal_retry(model, record, "catalog_context_below_candidate_floor")
                     continue
                 free = rules.free_evidence(model, record, ctx) if rules.free_evidence else False
                 if free is False:
+                    terminal_retry(model, record, "free_route_evidence_no_longer_eligible")
                     continue
                 memory = canary_memory.get(f"{provider}/{model}")
                 age = _days_since(memory.get("on") if memory else None, today)
@@ -641,6 +689,16 @@ def reconcile(
                     continue
                 score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
                 candidates.append((model, record, score, memory is not None))
+            for key in retry_candidate_keys or set():
+                provider_prefix, separator, model = key.partition("/")
+                if (
+                    provider_prefix == provider
+                    and separator
+                    and model
+                    and key not in retry_models_seen
+                    and not catalog.error
+                ):
+                    terminal_retry(model, {}, "route_absent_from_current_catalog")
             # Never-tried first, then retries of inconclusive results; best-scored first within
             # each, unscored last. So a candidate that keeps failing cannot starve new ones.
             candidates.sort(key=lambda c: (c[3], c[2] is None, -(c[2] or 0), c[0]))
@@ -903,6 +961,7 @@ def reconcile(
                     candidate = report.candidates[-1]
                     if (
                         discovery_enabled
+                        and not pause.contended
                         and len(report.discovery_sessions) < 2
                         and not any(
                             row.get("session", {}).get("provider") == provider
@@ -940,6 +999,12 @@ def reconcile(
                                 "output_tokens": 0,
                             }
                 else:
+                    terminal_retry(
+                        model,
+                        record,
+                        "reachability_not_proven",
+                        1 + len((_evidence or {}).get("methods") or ()),
+                    )
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
@@ -1163,7 +1228,10 @@ def _merge_into_last_full(
         if c.get("structured_output_method")
     ]
     report.anomalies = carried + report.anomalies
-    report.candidates = candidates + report.candidates
+    current_candidates = report.candidates
+    current_keys = {candidate.key for candidate in current_candidates}
+    report.candidates = [candidate for candidate in candidates if candidate.key not in current_keys]
+    report.candidates.extend(current_candidates)
     report.observations = list(last_full.get("observations") or []) + report.observations
 
 
@@ -1205,6 +1273,67 @@ def _candidate_discovery_identity(provider, model, rules, provider_cfg):
     )
 
 
+def _terminal_discovery_session(
+    provider, model, record, provider_cfg, rules, *, run_id, today, receipt_id, reason, calls=0
+):
+    """Record a selected retry that reached a terminal eligibility result without size probes."""
+    from citypods.provider_catalog.discovery import discovery_identity
+    from citypods.provider_catalog.evidence import digest
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    account_id = str(accounts[0].get("id") or "") if accounts else ""
+    endpoint = chat_url(rules, provider_cfg)
+    identity = discovery_identity(provider, account_id, model, endpoint)
+    key = f"{provider}/{model}"
+    metadata = {
+        "session_id": digest([run_id, receipt_id, key, identity, today.isoformat(), reason]),
+        "identity": identity,
+        "provider": provider,
+        "account_id": account_id,
+        "upstream_model": model,
+        "endpoint": endpoint,
+        "catalog_digest": digest(record),
+        "free_evidence_digest": digest([provider, model, record]),
+        "parser_version": rules.discovery_parser_version,
+        "fixture_version": "discovery-v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "sources": [
+            rules.catalog.url
+            or f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+        ],
+        "receipt_id": receipt_id,
+    }
+    if calls:
+        metadata["reachability_calls"] = calls
+    return {"session": metadata, "attempts": [], "reason": reason}
+
+
+def _discovery_claims(record):
+    """Extract the same published size claims for fresh and history-built reports."""
+    return {
+        "input": positive_bound(
+            record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
+        ),
+        "output": positive_bound(
+            record,
+            (
+                "outputTokenLimit",
+                "max_output_tokens",
+                "max_completion_tokens",
+                "top_provider.max_completion_tokens",
+                "output_context_limit",
+            ),
+        ),
+        "total_input_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+        "total_output_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+    }
+
+
 def _discovery_history_summary(
     provider, model, record, rules, provider_cfg, history, history_calls=0
 ):
@@ -1229,27 +1358,7 @@ def _discovery_history_summary(
     ]
     if not compatible:
         return None
-    claims = {
-        "input": positive_bound(
-            record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
-        ),
-        "output": positive_bound(
-            record,
-            (
-                "outputTokenLimit",
-                "max_output_tokens",
-                "max_completion_tokens",
-                "top_provider.max_completion_tokens",
-                "output_context_limit",
-            ),
-        ),
-        "total_input_heavy": positive_bound(
-            record, ("context_length", "context_window", "max_context_length")
-        ),
-        "total_output_heavy": positive_bound(
-            record, ("context_length", "context_window", "max_context_length")
-        ),
-    }
+    claims = _discovery_claims(record)
     axes = []
     for axis in ("input", "output", "total_input_heavy", "total_output_heavy"):
         bracket = Bracket(axis, 256 if axis == "output" else 2048)
@@ -1355,7 +1464,8 @@ def _discover_candidate_caps(
     budget = DiscoveryBudget(calls=reachability_calls)
     if shared_budget is not None:
         shared_budget.calls += reachability_calls
-    last_submission = None
+    # Reachability/structured-output checks just completed; space the first size probe too.
+    last_submission = time.monotonic()
     try:
         provider_rpm = float(provider_cfg.get("rpm") or 0)
     except (TypeError, ValueError):
@@ -1409,21 +1519,8 @@ def _discover_candidate_caps(
             journal.save()
             result = None
         axes = []
-        claims = {
-            "input": positive_bound(
-                record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
-            ),
-            "output": positive_bound(
-                record, ("outputTokenLimit", "max_output_tokens", "max_completion_tokens")
-            ),
-            "total_input_heavy": positive_bound(
-                record, ("context_length", "context_window", "max_context_length")
-            ),
-            "total_output_heavy": positive_bound(
-                record, ("context_length", "context_window", "max_context_length")
-            ),
-        }
-        for bracket in result.brackets:
+        claims = _discovery_claims(record)
+        for bracket in result.brackets if result is not None else ():
             axes.append(
                 {
                     **bracket,
@@ -1434,8 +1531,12 @@ def _discover_candidate_caps(
             )
         summary = {
             "retryable": bool(journal.data["attempts"])
-            and any(
-                row["axis"] in rules.discovery_axes and row["status"] != "converged" for row in axes
+            and (
+                result is None
+                or any(
+                    row["axis"] in rules.discovery_axes and row["status"] != "converged"
+                    for row in axes
+                )
             ),
             "reason": result.reason if result is not None else journal.data["reason"],
             "detail": "Only verified comparable accepted and refused counts establish a cap.",
@@ -1447,6 +1548,10 @@ def _discover_candidate_caps(
             ),
             "axes": axes,
         }
+        if result is not None and result.transport_retries:
+            summary["transport_retries"] = [
+                [dict(attempt) for attempt in group] for group in result.transport_retries
+            ]
         return {
             "summary": summary,
             "artifact": {

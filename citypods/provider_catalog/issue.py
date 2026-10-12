@@ -300,11 +300,24 @@ def render_body(
                 f"Reachability: {result.get('reachability', 'verified')}; "
                 f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
                 f"spent: {result.get('calls', 0)} calls, "
-                f"{result.get('input_tokens', 0):,} reserved input, "
-                f"{result.get('output_tokens', 0):,} requested output tokens.",
+                f"{_discovery_count(result.get('input_tokens', 0))} reserved input, "
+                f"{_discovery_count(result.get('output_tokens', 0))} requested output tokens.",
                 f"Status: {result.get('reason', 'partial')}. "
                 f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
             ]
+            for group in result.get("transport_retries") or ():
+                lines.append("No-response attempt telemetry:")
+                for attempt in group:
+                    lines.append(
+                        "- "
+                        f"{attempt.get('axis', 'unknown')} target "
+                        f"{_discovery_count(attempt.get('target'))}: "
+                        f"{_discovery_count(attempt.get('reserved_input'))} reserved input, "
+                        f"{_discovery_count(attempt.get('requested_output'))} requested output; "
+                        f"{attempt.get('outcome', 'unknown')} / "
+                        f"{attempt.get('diagnostic', 'unknown')} "
+                        f"(attempt `{attempt.get('attempt_id', 'unknown')}`)"
+                    )
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [

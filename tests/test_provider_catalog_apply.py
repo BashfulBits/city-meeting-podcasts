@@ -210,6 +210,48 @@ def test_discovery_test_again_is_a_single_retry_choice_not_an_addition():
         parse_decisions(conflicting, report)
 
 
+def test_discovery_telemetry_and_edited_spend_counters_render_safely():
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "retryable": False,
+            "calls": "bad",
+            "input_tokens": "bad",
+            "output_tokens": None,
+            "axes": [],
+            "transport_retries": [
+                [
+                    {
+                        "attempt_id": "attempt-1",
+                        "axis": "input",
+                        "target": 1000,
+                        "reserved_input": 1000,
+                        "requested_output": 256,
+                        "diagnostic": "transport_timeout",
+                        "outcome": "inconclusive",
+                    },
+                    {
+                        "attempt_id": "attempt-2",
+                        "axis": "input",
+                        "target": 1000,
+                        "reserved_input": 1000,
+                        "requested_output": 256,
+                        "diagnostic": "verified_input_fixture",
+                        "outcome": "admitted",
+                    },
+                ]
+            ],
+        },
+    )
+
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+
+    assert "— reserved input" in body
+    assert "— requested output tokens" in body
+    assert "No-response attempt telemetry" in body
+    assert "attempt-1" in body and "attempt-2" in body
+
+
 def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
     report = Report(candidates=[replace(CANDIDATE, discovery={"retryable": False})])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
@@ -842,6 +884,23 @@ def test_rate_choices_preserve_selection_and_reject_forged_value():
     restored = Report()
     _merge_into_last_full(restored, decode_state(refreshed)["last_full"], set())
     assert restored.rate_changes == [change]
+
+
+def test_due_only_merge_keeps_current_candidate_without_duplicate_choice():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import _merge_into_last_full
+
+    previous = replace(CANDIDATE, discovery={"retryable": True, "reason": "partial"})
+    current = replace(CANDIDATE, discovery={"retryable": False, "reason": "complete"})
+    report = Report(candidates=[current])
+
+    _merge_into_last_full(report, {"candidates": [asdict(previous)]}, set())
+
+    assert report.candidates == [current]
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert body.count("## Request-cap discovery") == 1
+    assert "complete" in body and "partial" not in body
 
 
 def test_prepare_rate_increase_uses_verified_artifact_values_not_issue_observations(

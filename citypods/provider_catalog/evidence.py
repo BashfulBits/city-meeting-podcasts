@@ -1842,7 +1842,9 @@ def verified_discovery_history(
                         {
                             session["session"].get("receipt_id")
                             for session in payload["sessions"]
-                            if session["session"].get("receipt_id") and session["attempts"]
+                            if session["session"].get("receipt_id")
+                            and isinstance(session.get("reason"), str)
+                            and session["reason"]
                         }
                     ),
                     "call_counts": run_call_counts,

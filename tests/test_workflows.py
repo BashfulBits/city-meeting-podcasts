@@ -1775,6 +1775,7 @@ def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock(
     step = job["steps"][_step_index(job, "provider_catalog_commands.py")]
     assert "collaborators/$ACTOR/permission" in step["run"]
     assert "--body-file provider-catalog-command.md" in step["run"]
+    assert "jq -e '.retry_receipt'" not in step["run"]
     assert "github.event.comment.body" not in step["run"]
     assert all("${{ github.event" not in s.get("run", "") for s in job["steps"])
     for provider in yaml.safe_load((REPO_ROOT / "config/provider_limits.yml").read_text())[

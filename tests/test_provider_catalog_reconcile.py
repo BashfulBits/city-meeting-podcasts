@@ -275,6 +275,23 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
     configured = {f"{route['provider']}/{route['upstream_model']}" for route in LIMITS["routes"]}
     assert all(key not in configured for key, _ in calls)
 
+    calls.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(contended=True),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="contended-run",
+    )
+    assert not calls
+
 
 def test_observation_only_provider_is_health_checked_but_never_proposes(monkeypatch):
     report, sent, _ = _run(monkeypatch)

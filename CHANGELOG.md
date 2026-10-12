@@ -22,9 +22,12 @@ Once 1.0 ships, entries move under semver tags.
 - **New-route discovery reporting and retry integration (review/48 §8.13).** Connects bounded
   input/output/combined searches to newly reachable candidates, reports API claims and empirical
   brackets in the rolling issue, and lets an authorized `/apply` queue an authenticated next-day
-  retry that resumes compatible evidence. The retry command makes no provider call. Workflow
-  activation remains disabled pending #2223; configured-route recurring maintenance and automatic
-  cap publication remain out of scope.
+  retry that resumes compatible evidence. The retry command makes no provider call. If one size
+  probe gets no usable transport response, it can make up to five total same-size sends, each with
+  a fresh charged attempt. Five unanswered sends report uncertainty without claiming a cap; reports
+  include per-attempt diagnostics when multiple sends were needed. Workflow activation remains
+  disabled pending #2223; configured-route recurring maintenance and automatic cap publication
+  remain out of scope.
 
 - **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
   comma after the requested-token count while still rejecting malformed grouped numbers. A

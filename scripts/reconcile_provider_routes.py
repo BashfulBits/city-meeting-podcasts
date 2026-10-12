@@ -667,6 +667,13 @@ def main(argv: list[str] | None = None) -> int:
     discovery_enabled = DISCOVERY_ACTIVATION_ENABLED and (
         args.discovery_enabled or activated_schedule or bool(retry_receipts)
     )
+    if discovery_enabled and (
+        args.provider
+        or args.no_pause
+        or not isinstance(control, WorkerDispatchControl)
+        or args.discovery_evidence is None
+    ):
+        parser.error("request-cap discovery requires Worker pause and an evidence path")
     if retry_receipts and not discovery_enabled:
         print("request-cap retries deferred until the reviewed discovery activation is enabled")
         retry_receipts = {}
@@ -772,7 +779,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
-    if args.discovery_evidence:
+    if args.discovery_evidence and report.discovery_sessions:
         envelope = discovery_artifact(
             report.discovery_sessions,
             repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
