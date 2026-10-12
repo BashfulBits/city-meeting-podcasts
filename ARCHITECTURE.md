@@ -275,12 +275,12 @@ calibration, while keeping distinct admission checks. The existing configured-ro
 requires a durable Worker admission. Version-1 discovery artifacts authenticate trusted main
 workflow provenance and retain only compatible original-age observations for up to 90 days. The
 rolling issue reports provider API claims and source separately from admitted/refused evidence,
-Artificial Analysis quality, conditional limits and spent budget. New-route API input admission is based on completed responses and consistent provider usage.
+Artificial Analysis quality, conditional limits and spent budget. New-route API input admission
+is based on completed responses and consistent provider usage.
 Sentinel accuracy is separately reported as a retrieval/truncation warning. Configured-route
 calibration retains its sentinel proof gate. Manual discovery can select all, input or output;
 output-only selection resumes compatible history in its own existing bounded session.
-An authorized `/apply` can queue a
-next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
+An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors and combined semantics create no cap proof. A request that receives no usable
 transport response may be sent up to five times at the same size, with a fresh charged attempt for
