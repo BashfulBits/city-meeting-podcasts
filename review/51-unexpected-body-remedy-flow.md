@@ -3672,3 +3672,13 @@ provider-default reasoning, not maximum-effort or broad admission. Immutable raw
 explicit-gold content reports, route capacity snapshots and request hashes are retained under
 `evals/remedy/results/flash-lite-denton-2026-10-11/`. Current main pins Gemini3.1 Flash-Lite as
 primary tagger; 3.5 is available for other lanes. No production defaults/floor changed.
+
+Entire varied backlog packet v2 prepared under `evals/remedy/holdout/backlog-varied-2026-10-11/`:
+all60 source/UID/GUID pairs found with source media;38 retained agendas plus official supplemental
+minutes/native headings/provider pages collected.121 linked document responses and65 supplements
+retained; two current Addison pages returned403 and remain documented gaps. Raw evidence is sealed
+with per-entry hashes. Proposed answers cover40 assignments,15 existing archive/event/untracked
+policies and5 insufficient-owner-proof programs.113 draft membership/proof questions remain
+awaiting maintainer test-answer approval. Body identity and publication aggregation stay distinct;
+known-policy controls do not inflate independent identity accuracy. No new live model calls,
+production dispositions, evaluator schemas or route limits changed in preparation.

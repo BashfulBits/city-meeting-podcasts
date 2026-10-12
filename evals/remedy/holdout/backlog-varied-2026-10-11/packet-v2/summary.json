@@ -1,0 +1,16 @@
+{
+  "recordings": 60,
+  "with_source_media": 60,
+  "outcomes": {
+    "assignment": 40,
+    "archive-only": 1,
+    "event-exclusion": 4,
+    "real-body-untracked": 3,
+    "archive-series": 7,
+    "insufficient-owner-proof": 5
+  },
+  "multiple_body_feeds": 10,
+  "retained_agendas": 38,
+  "approved_test_answers": 0,
+  "provider_calls": 0
+}

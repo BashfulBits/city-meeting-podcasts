@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en"> 
+ <head> 
+  <title>Agenda - View Meetings (All)</title> 
+  <meta http-equiv="content-type" content="text/html; charset=utf-8"> 
+  <meta name="robots" content="noindex,follow"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1"> 
+ <style> .easyReading {max-width:700px; margin:auto; line-height:2.5em;} body { margin:0; padding:0.6em; background:#FFF; font-family:Verdana, Arial, Helvetica, sans-serif; font-size:10pt; /* consider changing this to screen-friendly unit */ } /* change the background color on required fields that don't get filled in */ .focus {background-color:#ffb;} .label {font-weight:bold;} .section#fs_phdob label { width:40%; white-space:nowrap; } .section#fs_name label { width:30%; white-space:nowrap; } .section label.rc {font-weight:normal;}	/* override 'normal' bold on section label */ span.red, .section span.red { color:#F00; float:none; margin:0; } tr.highlighted, td.highlighted {background-color:#CCC;} td.subhdg { background-color:#CCC; font-weight:bold; text-align:center; } td.alt_subhdg { background-color:#CDF; font-weight:bold; text-align:center; } /* content + header + footer */ #wrap { width:850px; background:white; } #header h1 { margin:0; padding:0.25em 0; text-align:center; font-size:2em; border-bottom:1px solid; } .f_right {float:right;} #content { padding:0 1em; margin-left:12.5em; } #meeting-table td, #meeting-table th { white-space: nowrap; padding-right:4ex; } #meeting-table td:nth-child(2), #meeting-table th:nth-child(2) { width:100%; white-space:normal; } #footer {clear:both;} </style> <script> function toggleEasyRead() { bodyTag = document.getElementsByTagName("body")[0]; result = bodyTag.classList.toggle("easyReading"); } </script><link rel="stylesheet" href="public/styles/global.css?v=2026-1-9">
+	<link rel="stylesheet" href="public/styles/board_order.css">
+	<link rel="stylesheet" href="public/styles/buttons.css"><style> body { background-color: #FFF; } a.ai_link { text-decoration: none; } dt { float: left; clear: left; width: 15px; } dd { padding: 0 0 0.25em 1em;	/* top, right, bottom, left */ margin-left: 4em; } div#srchEngine { text-align:right; width:100%; background-color:#FFFFCC; padding: .25em 0 .25em 0; border-bottom:#000000 solid 3px; } div#srchEngine h4 { float:left; margin:2px; display:inline; } table { clear: both; } tr.galter td { background-color: #f1f1f1; } #nav td, .navclass td, #list td, .listclass td {padding-left:0.5em;} #list thead td, .listclass thead td {padding-bottom:0.5em;} #list tbody td, .listclass tbody td {padding:0.5em;} #nav label, .navclass label {display:block; font-weight:bold; text-align:center;} #nav td.relative, .navclass td.relative {white-space:nowrap; padding:0 2em;} #nav, .navclass {margin-bottom:1em;} /* use this to style the Logged in as Note Taker message */ #noteTaker { text-align: center !important; font-weight: bold !important; background-color: yellow !important; } #go-Subscribe, #go-show, #go-hide, #go-Apply { background: #E1E1E1 !important; border: 1px solid #000; border-top: 1px solid #000; border-left: 1px solid #000; } </style> <style media="print"> #print { display:none; } div.xform { page-break-before: always; } </style><script src="public/js/destiny.js"></script>
+	<script src="public/publish/js/adv_search.js"></script>
+	<script src="public/publish/js/agenda_publish.js"></script>
+	<script src="public/js/swagitCopy.js?v=2"></script>
+	
+
+	<script>
+		
+		
+			var returnHash = '';
+		
+
+		function doReturn() {
+			if (returnHash != '' && window.location.hash.replace(/^#/,'') != returnHash)
+				window.location = "#" + returnHash;
+		}
+
+		function popupNarr(iLine) {
+			if (! window.focus)
+				return true;
+
+			window.open('print_agenda_narrative.cfm?line=' + iLine, 'NARRATIVE', 'width=400,height=400,scrollbars=yes,resizable=yes');
+			return false;
+		}
+
+		function printNewPopup(newlink) {
+			if (! window.focus)
+				return true;
+
+			window.open(newlink, 'AGENDA_ATTACHMENT','width=800,height=400,scrollbars=yes,resizable=yes');
+		}
+
+		function popupAttachments(iLink,iWindowName) {
+			if (!window.focus)
+				return true;
+
+			window.open(iLink, iWindowName, 'width=640,height=400,scrollbars=yes,resizable=yes');
+			return false;
+		}
+
+		function printPopup(mylink, windowname, iMode, iSeq, iAILabel, iRev) {
+			if (iSeq != "") {
+				if (! window.focus)
+					return true;
+				var href = mylink + '?seq=' + iSeq + '&mode=' + iMode + '&reloaded=true';
+				if (iRev) 
+					href += '&rev_num=' + iRev;
+				window.open(href, windowname, 'width=800,height=400,scrollbars=yes,resizable=yes');
+			}
+			else 
+				alert("Please select a meeting");
+
+			return false;
+		}
+
+		function printMinPopup(mylink, windowname, iMode, iSeq, iAILabel, iRev) {
+			if (iSeq != "") {
+				if (! window.focus)
+					return true;
+				var href = mylink + '?seq=' + iSeq + '&mode=' + iMode + '&reloaded=true';
+				if (iRev)
+					href += '&rev_num=' + iRev;
+				window.open(href, windowname, 'width=800,height=400,scrollbars=yes,resizable=yes,menubar=yes');
+			}
+			else 
+				alert("Please select a meeting");
+
+			return false;
+		}
+
+		function printAGItem(mylink, windowname,iMode) {
+			if (! window.focus)
+				return true;
+
+			var href = 'print_ag_memo.cfm?seq=' + document.form1.disp_agmemo.value + '&rev_num=' + document.form1.disp_agmemo_rev.value + '&form=AG_MEMO&reloaded=true';				// don't display the 'saving agenda item message
+			if (iMode)
+				href += '&mode=' + iMode;
+			window.open(href, windowname, 'width=640,height=400,scrollbars=yes,resizable=yes,left=50,top=50,menubar=yes');
+			return false;
+		}
+
+		function saveExtNotes(iAction,iReturn){
+			var df = document.form1;
+			df.formaction.value = iAction;
+			df.action = iReturn;
+			df.method = "POST";
+			df.submit();
+			return false;
+		}
+
+		function hsNote(iID,iMode) {
+			var fldS = 'sNote' + iID,
+				fldH = 'hNote' + iID;
+
+			if (iMode == 'hide') {
+				document.getElementById(fldS).style.display = "none";
+				document.getElementById(fldH).style.display = "";
+			}
+			else {
+				document.getElementById(fldS).style.display = "";
+				document.getElementById(fldH).style.display = "none";
+			}
+		}
+
+		function FieldSelected(aField, initValue) {
+			if (!aField.readOnly && aField.value == initValue)
+				aField.value = "";
+		}
+	</script><style>
+.ada-button, .ada-button2 {display:block; padding:5px; font-size:15px; font-weight:bold; color:#00f; background-color:#F5F5F5;}
+.ada-button {text-align:center; margin:auto;}
+.ada-h1 {font-size:16pt; font-weight:bold; text-align:center; background-color:rgb(241,241,241);}
+</style></head> 
+ <body onload="doReturn();"> 
+  <div id="content"> 
+   <form action="agenda_publish.cfm&#x3f;id&#x3d;&amp;mt&#x3d;ALL&amp;get_month&#x3d;10&amp;get_year&#x3d;2026" method="get" name="form1"> 
+    <div> 
+     <table class="tableCollapsed btnsTbl" style="width:100%" role="presentation"> 
+      <tbody> 
+       <tr class="buttons"> 
+        <td colspan="7" class="center"> <a href="/print_prompt.cfm?seq=3222&amp;reloaded=true&amp;id=" class="popup" aria-label="Click to print agenda - opens in new window" target="_blank">PRINT AGENDA</a> 
+         <div class="mobilehide2"> <a href="#nothing" class="popup" onclick="toggleEasyRead()">READING MODE</a> 
+          <br> 
+          <br> 
+         </div> <a href="/agenda_publish.cfm&#x3f;id&#x3d;&amp;mt&#x3d;ALL&amp;get_month&#x3d;10&amp;get_year&#x3d;2026">RETURN TO THE SEARCH PAGE</a> 
+         <div class="mobilehide2"> 
+          <br> 
+          <br> 
+         </div> </td> 
+       </tr> 
+      </tbody> 
+     </table> 
+    </div> 
+    <div> 
+     <table class=" no-reflow" style="width:100%" role="presentation"> 
+      <tbody> 
+       <tr class="top"> 
+        <td colspan="7" class="contentwrapper padleft10" style=" font-family:'Arial';"> 
+         <div style="text-align: center"> 
+          <img alt="Image of Addison" src="/shareddocs/image/Addison.jpg" style="width: 150px; height: 150px"> 
+         </div> </td> 
+       </tr> 
+       <tr class="top"> 
+        <td colspan="7" class="contentwrapper padleft10" style=" font-family:'Arial';"> 
+         <div style="text-align: center;"> <span style="font-size: small;"><strong><span style="font-family: arial;">NOTICE OF POSSIBLE CITY COUNCIL QUORUM<br> TOWN OF ADDISON, TEXAS<br> <br> ADDISON ECONOMIC DEVELOPMENT LUNCHEON<br> <span style="background-color: rgb(255, 255, 255);">11:30 </span><span style="background-color: rgb(255, 255, 255);">AM</span><br> <br> <span style="font-family: arial;"><span style="background-color: rgb(255, 255, 255);">June 2, 2017</span><br> <br> <span style="background-color: rgb(255, 255, 255);">INTERCONTINENTAL DALLAS</span><br> <span style="background-color: rgb(255, 255, 255);">15201 DALLAS PARKWAY</span><br> <span style="background-color: rgb(255, 255, 255);">ADDISON, TEXAS 75001</span></span></span></strong></span> 
+         </div> </td> 
+       </tr> 
+      </tbody> 
+      <tfoot> 
+       <tr> 
+        <td colspan="7" class="tdempty">&nbsp;</td> 
+       </tr> 
+      </tfoot> 
+      <tbody> 
+       <tr class="top"> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="90%">&nbsp;<input type="hidden" name="display_ID"></td> 
+        <td class="mediumText tdempty" style=" font-family:'Arial';" width="1%">&nbsp;</td> 
+       </tr> 
+       <tr class=" top"> 
+        <td colspan="7" class="mediumText" style="font-family:'Arial'; padding-left: 10px;"> <a aria-label="Play video in a new tab, on the external website, swaggit.com." href="#" onclick="swagitPlay('http://addisontx.swagit.com/play/06022017-583/#3'); return false;"><img src="/public/images/camera.jpg" height="25" width="25" class="cameraimg" alt="camera icon"></a> 
+         <div> 
+          <div style="text-align: center;"> <span style="font-size: small;"><span style="font-family: arial;">OPEN MEETING</span></span> 
+          </div> 
+          <div> <span style="font-size: small;"><span style="font-family: arial;">&nbsp;<br> Notice is hereby given that a quorum of the City Council of the Town of Addison, Texas may be in attendance at Addison Economic Development Luncheon on Friday June 2, 2017&nbsp;beginning at 11:30 am at InterContinental Hotel located at&nbsp;15201 Dallas Parkway Addison, Texas 75001 at which time Town business/issues may be discussed, but no action will be taken.&nbsp;&nbsp;</span></span> 
+          </div> 
+         </div> </td> 
+       </tr> 
+       <tr class=" top"> 
+        <td colspan="7" class="tdempty" style="padding-bottom: 5px;">&nbsp;</td> 
+       </tr> 
+       <tr class="top"> 
+        <td colspan="7"><span style="font-size: small;"><span style="font-family: arial;">Posted:<br> Laura Bell, 05/25/2017, no later than 5:00 pm</span></span><br> &nbsp; 
+         <div style="text-align: center;"> <span style="font-size: small;"><span style="font-family: arial;"><strong>THE TOWN OF ADDISON IS ACCESSIBLE TO PERSONS </strong><strong>WITH DISABILITIES. PLEASE CALL (972) 450-7017 AT LEAST</strong><br> <strong>48 HOURS IN ADVANCE IF YOU NEED ASSISTANCE.</strong></span></span> 
+         </div> </td> 
+       </tr> 
+      </tbody> 
+     </table> 
+    </div> 
+    <script>
+	document.getElementById("pdf").focus();
+</script> 
+    <input type="hidden" name="downloadFile" value=""> 
+    <input type="hidden" name="id" value=""> 
+    <input type="hidden" name="loc" value=""> 
+    <input type="hidden" name="term" value="N"> 
+   </form> 
+   <script>
+function validateAgendaMinuteText() {
+    if (document.forms["form2"]["sstr"].value == "") {
+		e = document.getElementById("errorMessage");
+
+        e.innerHTML = "<p>Please enter search text!</p>";
+		e.focus();
+        return false;
+    }
+}
+
+function validateDocSearch() {
+    if (document.forms["srchEngine_form"]["criteria"].value == "") {
+		e = document.getElementById("errorMessage2");
+
+        e.innerHTML = "<p>Please enter search text!</p>";
+		e.focus();
+        return false;
+    }
+}
+</script> 
+   <br> 
+   <div class="aligncenter"> <button type="button" class="bold bottombtn" onclick="history.go(-1)">&nbsp;GO TO PREVIOUS PAGE&nbsp;</button> &nbsp;&nbsp;&nbsp;&nbsp;<button type="button" class="bold bottombtn" onclick="goToTop()">&nbsp;GO TO THE TOP OF THE PAGE&nbsp;</button> 
+   </div> 
+   <br> 
+   <script>
+	function goToTop() {
+		document.body.scrollTop = 0; 
+		document.documentElement.scrollTop = 0; 
+		document.getElementById( document.getElementById("pdf") ? "pdf" : "mt" ).focus();
+	}
+</script> 
+   <div style="display:table; margin:0 auto; text-align:center;"> <a href="https://www.w3.org/WAI/WCAG2AA-Conformance" title="Explanation of WCAG 2.0 Level AA Conformance - opens in new window" target="_blank" aria-label="Explanation of WCAG 2.0 Level AA Conformance - opens in new window - opens in new window"> <img height="32" width="88" class="wcagimg" src="/public/images/wcag2AA.png" alt="Level double AA conformance, W3C WAI Web Content Accessibility Guidelines 2.0"> </a> 
+   </div> 
+   <p style="font-family:Verdana,Arial,Helvetica,sans-serif; margin:0; padding:2px 0; text-align:center; font-size:10px;">AgendaQuick &copy;2005 - 2026 Destiny Software Inc.<span class="mobile-break"> </span>All Rights Reserved.</p> 
+   <script>
+	if (false == true)
+		document.getElementById('agendaID1').focus();
+	else if (document.getElementById("pdf"))
+		document.getElementById('pdf').focus();
+	else if (document.getElementById('nothingfound'))
+		document.getElementById('nothingFound').focus();
+</script> 
+   <style></style> 
+  </div>  
+ </body>
+</html> 

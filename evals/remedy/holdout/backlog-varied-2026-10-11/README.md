@@ -50,3 +50,29 @@ still needs audit before any admission-holdout label. Character counts are not t
 outputs refuse overwrite. Do not rerun against existing outputs. No model calls occurred.
 See `smaller-model-options.md` for an evaluation-only lighter-proposer proposal and the existing
 admission-floor constraint.
+
+## Entire packet v2
+
+`packet-v2/REVIEW.md` supersedes the earlier 20-agenda preparation count. Exact retained records
+for all 60 were found and bound to their source/UID/GUID; all have source media. 38 retained
+agendas, additional Dallas minutes, native chapter headings, provider pages and prior manually
+verified opening evidence support a proposed review packet. Five Fort Worth title-only program
+records remain owner-unknown and are proposed proof-sufficiency tests, not invented exclusions.
+The expected answers are drafts until approved for this evaluation. Nothing reopens P0 dispositions.
+
+121 linked document responses and 65 supplemental responses were retained. The two unavailable
+supplements are the current Addison bond-program page and FY2007 budget (403). Successful HTTP
+responses include placeholders; retrieval and content adjudication are distinct. Exact raw bytes
+are compressed in `packet-v2/raw-evidence.zip`, verified by per-entry hashes. To reconstruct local
+working files on a new checkout, extract that inert archive into packet-v2; do not execute contents.
+
+The proposed 113 membership/proof questions represent 60 recording/source pairs, not 113 distinct
+meetings. Publication policy, actual body identity, prior controls and missing-proof behavior must
+be scored separately. Thirty single-feed assignments include a policy-based citizen-input
+compilation: blind-owner scoring cannot silently demand knowledge of hidden publication preferences.
+Multi-feed correctness is tested with existing per-feed claim checks; no evaluator schema was widened.
+
+Known decisions/rules would ordinarily suppress these calls in production. This is a historical
+challenge comparison, not a count of new live unresolved meetings or an independent admission
+holdout. Distinct event statistics group Fort Worth125/127, and prior Denton overlap remains marked.
+No model calls occurred while collecting/preparing packet v2.
