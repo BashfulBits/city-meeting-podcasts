@@ -57,18 +57,29 @@
       matchManagers: ["pip-compile"],
       constraintsFiltering: "strict",
       constraints: {
-        // A bare version: Renovate's pep440 matcher rejects ==3.12.* against ">=3.9".
-        python: "3.12",
+        // One value, two uses: requires_python filtering here, and the Python the hosted app
+        // installs to run pip-compile. It must be a full patch version: the filter's pep440
+        // matcher rejects ranges (==3.12.*) against ">=3.9", and the installer treats a bare
+        // "3.12" as an exact build that doesn't exist ("install-tool python 3.12" fails).
+        python: "3.12.15",
         // Keep in sync with scripts/compile_constraints.sh (>=7.5.1 writes parseable headers).
         pipTools: "==7.6.2",
       },
     },
     {
       // The python constraint above follows .github/python/asr/.python-version (the pyenv
-      // rule below proposes that bump); don't let Renovate bump its own copy separately.
+      // rule below proposes minor bumps there); Renovate only keeps its patch current.
       matchManagers: ["renovate-config"],
       matchDepNames: ["python"],
+      matchUpdateTypes: ["minor", "major"],
       enabled: false,
+    },
+    {
+      matchManagers: ["renovate-config"],
+      matchDepNames: ["python"],
+      matchUpdateTypes: ["patch"],
+      groupName: "renovate python patch",
+      automerge: true,
     },
     // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
