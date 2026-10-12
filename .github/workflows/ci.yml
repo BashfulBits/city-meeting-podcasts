@@ -89,7 +89,7 @@ jobs:
       - name: Test (pytest)
         run: PATH="${FFMPEG_DIR}/bin:${PATH}" pytest -q
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
 
@@ -129,7 +129,7 @@ jobs:
       - name: Policy guard (pinned Actions + no re-declared external-worker deps)
         run: python scripts/check_dependency_policy.py
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
 
