@@ -12,12 +12,20 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Python versions live in two files, with a compatibility gate.** Every workflow's
+  `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
+  `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
+  each version file to the constraints its jobs install and fails on literal pins, on `asr.txt`
+  installed off the ASR Python, and on Modal/Beam/audio-runner/lock-compile Pythons that disagree
+  with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+  only, so a Python or dependency bump that cannot install fails on the PR.
+
 - **Review/48 input probes reserve room for reasoning.** Pure input-size checks can request up to
   16,384 output tokens, 64 times the earlier 256-token cap, so the model can finish fixture verification after
   reading a large prompt. A typed output-cap refusal halves that counterpart and starts a separate
   input-control history; combined and output searches retain their existing counterparts. Aggregate
   output budgets remain unchanged and bound the number of full-cap attempts per session.
-  
+
 - **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
   `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options
   (`--cert=None`, `--no-index`, `--pip-args=None`, ...) into each `constraints/*.txt` header, and
