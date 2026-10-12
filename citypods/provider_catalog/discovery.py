@@ -16,6 +16,7 @@ from citypods.provider_catalog.evidence import digest
 
 AXES = ("input", "output", "total_input_heavy", "total_output_heavy")
 MAX_INPUT, MAX_OUTPUT = 1_000_000, 131_072
+INPUT_OUTPUT_COUNTERPART = 16_384
 DEFAULT_INPUT_SEED = 500_000
 MIN_INPUT_PROBE = 2_000
 MAX_SESSION_INPUT = 8_388_608
@@ -491,14 +492,21 @@ def run_discovery(
             and item.verified
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
-        counterpart = 256 if axis in {"input", "total_input_heavy"} else 2048
-        control = f"{axis}:v1"
+        counterpart = (
+            INPUT_OUTPUT_COUNTERPART
+            if axis == "input"
+            else 256
+            if axis == "total_input_heavy"
+            else 2048
+        )
+        control_version = "v2" if axis == "input" else "v1"
+        control = f"{axis}:{control_version}"
         compatible = previous + [item for item in observations if item.request.axis == axis]
         if compatible:
             latest = sorted(compatible, key=lambda item: datetime.fromisoformat(item.observed_at))[
                 -1
             ]
-            prefix = f"{axis}:v1:opposite="
+            prefix = f"{axis}:{control_version}:opposite="
             if latest.request.control.startswith(prefix):
                 value = latest.request.control.removeprefix(prefix)
                 if value.isascii() and value.isdigit() and 0 < int(value) <= counterpart:
@@ -705,7 +713,7 @@ def run_discovery(
                 # A typed failure of the fixed counterpart supplies no boundary for this axis.
                 # Reduce that counterpart and establish a new, independent control identity.
                 counterpart = max(1, counterpart // 2)
-                control = f"{axis}:v1:opposite={counterpart}"
+                control = f"{axis}:{control_version}:opposite={counterpart}"
                 bracket = Bracket(axis, bracket.seed, reason="fixed_counterpart_reduced")
                 brackets[-1] = bracket
                 previous = []
