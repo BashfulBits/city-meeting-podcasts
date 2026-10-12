@@ -1,0 +1,87 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-farmers-city-center",
+        "evidence_ref_ids": [
+          "provider-204708"
+        ],
+        "missing_evidence": [
+          "official record or ordinance establishing that the Dallas City Center TIF District and the Farmers Market district are the same public body",
+          "any provider label, agenda, or GUID evidence naming the Farmers Market district for recording 204708"
+        ],
+        "proposed_action": "reject_claim_assign_recording_to_labeled_body",
+        "proposed_owner": "Dallas City Center TIF District Board of Directors",
+        "rationale": "The sole evidence reference (provider-204708) immutably labels the recording as 'Dallas City Center TIF District Board of Directors Meeting' dated 2020-03-12. No supplied evidence mentions a Farmers Market district or establishes that the City Center TIF District and the Farmers Market district are the same public body. Under policy, official metadata is immutable and shared city/topic tokens (Dallas, TIF) do not establish identity, so the claim to assign this recording to the Farmers Market district as the same body is unsupported. Independently selecting the owner from the frozen metadata yields the Dallas City Center TIF District Board of Directors; the Farmers Market assignment must be abstained from absent identifying evidence.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 31.593296874780208,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"tif-farmers-city-center\", \"supported\": false, \"proposed_owner\": \"Dallas City Center TIF District Board of Directors\", \"proposed_action\": \"reject_claim_assign_recording_to_labeled_body\", \"evidence_ref_ids\": [\"provider-204708\"], \"missing_evidence\": [\"official record or ordinance establishing that the Dallas City Center TIF District and the Farmers Market district are the same public body\", \"any provider label, agenda, or GUID evidence naming the Farmers Market district for recording 204708\"], \"rationale\": \"The sole evidence reference (provider-204708) immutably labels the recording as 'Dallas City Center TIF District Board of Directors Meeting' dated 2020-03-12. No supplied evidence mentions a Farmers Market district or establishes that the City Center TIF District and the Farmers Market district are the same public body. Under policy, official metadata is immutable and shared city/topic tokens (Dallas, TIF) do not establish identity, so the claim to assign this recording to the Farmers Market district as the same body is unsupported. Independently selecting the owner from the frozen metadata yields the Dallas City Center TIF District Board of Directors; the Farmers Market assignment must be abstained from absent identifying evidence.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this case carefully.\n\nThe claim is: \"Assign this recording to Farmers Market district as the same public body.\"\n\nThe body label is \"Dallas City Center TIF District Board of Directors Meeting\".\n\nThe evidence shows:\n- provider-204708: A recording with body \"Dallas City Center TIF District Board of Directors Meeting\", title \"Dallas City Center TIF District Board of Directors Meeting \u2013 Mar 12, 2020\", published 2020-03-12, GUID 204708.\n\nThe claim wants to assign this recording (City Center TIF District) to \"Farmers Market district\" as the same public body.\n\nKey policy: \"Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently.\"\n\nThe official metadata says \"Dallas City Center TIF District Board of Directors Meeting\". There is no evidence that links City Center TIF District to Farmers Market district. These are different district names. The claim asserts they are the same public body, but the evidence only shows \"City Center TIF District\" \u2014 there's no mention of \"Farmers Market\" anywhere in the evidence.\n\nThe metadata label says City Center TIF District. The claim wants to override this to Farmers Market district. Since official metadata is immutable, we can't just reassign based on shared city/topic tokens (both are Dallas TIF districts). Shared city/topic tokens (Dallas, TIF) do not establish identity.\n\nThere's no evidence supporting that City Center TIF District = Farmers Market district as the same public body. So the claim is NOT supported.\n\nThe proper action: The owner should be independently selected based on the evidence \u2014 \"Dallas City Center TIF District Board of Directors\" (the body in the metadata). We should abstain from assigning to Farmers Market.\n\nproposed_owner: Based on evidence, the owner is the \"Dallas City Center TIF District Board of Directors\". But wait \u2014 the claim is to assign to Farmers Market. Since we reject the claim, proposed_owner should reflect the independently-selected owner based on evidence. The body's own label is \"Dallas City Center TIF District Board of Directors Meeting\". So proposed_owner should be something like \"Dallas City Center TIF District Board of Directors\".\n\nsupported: false \u2014 the claim to assign to Farmers Market is not supported.\n\nproposed_action: reject the claim / keep recording under City Center TIF District Board of Directors; abstain from Farmers Market assignment.\n\nevidence_ref_ids: [\"provider-204708\"]\n\nmissing_evidence: Any evidence linking City Center TIF District to Farmers Market district (e.g., ordinance, official city record establishing same public body, or provider metadata naming Farmers Market).\n\nrationale: The only evidence names the body as Dallas City Center TIF District Board of Directors. Official metadata is immutable. There is no supplied evidence that the City Center TIF District and Farmers Market district are the same public body; shared Dallas/TIF tokens do not establish identity. Therefore the claim is unsupported; assign recording to the City Center TIF District body per metadata and abstain on Farmers Market.\n\ncase_id: \"tif-farmers-city-center\"\n\nLet me formulate the JSON.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this case carefully.\n\nThe claim is: \"Assign this recording to Farmers Market district as the same public body.\"\n\nThe body label is \"Dallas City Center TIF District Board of Directors Meeting\".\n\nThe evidence shows:\n- provider-204708: A recording with body \"Dallas City Center TIF District Board of Directors Meeting\", title \"Dallas City Center TIF District Board of Directors Meeting \u2013 Mar 12, 2020\", published 2020-03-12, GUID 204708.\n\nThe claim wants to assign this recording (City Center TIF District) to \"Farmers Market district\" as the same public body.\n\nKey policy: \"Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing. Select an owner independently.\"\n\nThe official metadata says \"Dallas City Center TIF District Board of Directors Meeting\". There is no evidence that links City Center TIF District to Farmers Market district. These are different district names. The claim asserts they are the same public body, but the evidence only shows \"City Center TIF District\" \u2014 there's no mention of \"Farmers Market\" anywhere in the evidence.\n\nThe metadata label says City Center TIF District. The claim wants to override this to Farmers Market district. Since official metadata is immutable, we can't just reassign based on shared city/topic tokens (both are Dallas TIF districts). Shared city/topic tokens (Dallas, TIF) do not establish identity.\n\nThere's no evidence supporting that City Center TIF District = Farmers Market district as the same public body. So the claim is NOT supported.\n\nThe proper action: The owner should be independently selected based on the evidence \u2014 \"Dallas City Center TIF District Board of Directors\" (the body in the metadata). We should abstain from assigning to Farmers Market.\n\nproposed_owner: Based on evidence, the owner is the \"Dallas City Center TIF District Board of Directors\". But wait \u2014 the claim is to assign to Farmers Market. Since we reject the claim, proposed_owner should reflect the independently-selected owner based on evidence. The body's own label is \"Dallas City Center TIF District Board of Directors Meeting\". So proposed_owner should be something like \"Dallas City Center TIF District Board of Directors\".\n\nsupported: false \u2014 the claim to assign to Farmers Market is not supported.\n\nproposed_action: reject the claim / keep recording under City Center TIF District Board of Directors; abstain from Farmers Market assignment.\n\nevidence_ref_ids: [\"provider-204708\"]\n\nmissing_evidence: Any evidence linking City Center TIF District to Farmers Market district (e.g., ordinance, official city record establishing same public body, or provider metadata naming Farmers Market).\n\nrationale: The only evidence names the body as Dallas City Center TIF District Board of Directors. Official metadata is immutable. There is no supplied evidence that the City Center TIF District and Farmers Market district are the same public body; shared Dallas/TIF tokens do not establish identity. Therefore the claim is unsupported; assign recording to the City Center TIF District body per metadata and abstain on Farmers Market.\n\ncase_id: \"tif-farmers-city-center\"\n\nLet me formulate the JSON.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626445,
+        "id": "chatcmpl-4ec640b5-2846-4f3c-8f86-f133de6ffcee",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 926,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 656,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1062,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1988
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

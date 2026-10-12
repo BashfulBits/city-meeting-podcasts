@@ -2545,6 +2545,61 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
   );
 });
 
+async function completeOutputBudgetCut(policy, transientRetryCount) {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count, token_reservation, purpose
+    ) VALUES (
+      'j-cut', 'idem-cut', 'digest-cut', ?, 'leased', 'b1', 'route-a',
+      'ltok', 'judge', 1000, 8192, 'payloads/j-cut/request.json', ?, ?, ?, 9192, 'judge:sibling'
+    )`,
+    JSON.stringify({ purpose: "judge:sibling", ...policy }), now, now, transientRetryCount
+  );
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-cut",
+      lease_token: "ltok",
+      attempt_id: `att-cut-${transientRetryCount}`,
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "output_budget_exhausted",
+      observed_input_tokens: 1000,
+      observed_output_tokens: 8192,
+    },
+  ]);
+  return sql.exec("SELECT state FROM jobs WHERE id = 'j-cut'")[0].state;
+}
+
+test("a job pinned to one model gets one output-limit retry, then fails to its producer", async () => {
+  // review/49 dispatch requirement 1: the cut-off is the model's, so it recurs on every retry.
+  const pinned = { allowed_models: ["google/gemma-4-26b-a4b-it"] };
+  assert.equal(await completeOutputBudgetCut(pinned, 0), "queued");
+  assert.equal(await completeOutputBudgetCut(pinned, 1), "failed");
+  // The count is shared with other transient classes: a job past it keeps failing, not retrying.
+  assert.equal(await completeOutputBudgetCut(pinned, 5), "failed");
+});
+
+test("a job that can move to another model keeps the upstream output-limit budget", async () => {
+  const pooled = { allowed_models: ["google/gemma-4-31b-it", "google/gemma-4-26b-a4b-it"] };
+  assert.equal(await completeOutputBudgetCut(pooled, 1), "queued");
+  const withBackup = {
+    allowed_models: ["google/gemma-4-26b-a4b-it"],
+    backup_models: ["google/gemma-4-31b-it"],
+    backup_after_attempts: 3,
+  };
+  assert.equal(await completeOutputBudgetCut(withBackup, 1), "queued");
+  // No allowed_models: any model is eligible.
+  assert.equal(await completeOutputBudgetCut({}, 1), "queued");
+});
+
 test("usage_today keeps a retired job's lane and leaves unmeasured calls out of the percentiles", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();

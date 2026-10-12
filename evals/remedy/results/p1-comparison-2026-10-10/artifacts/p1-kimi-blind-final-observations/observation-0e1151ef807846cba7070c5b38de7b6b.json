@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "27d9cbe60b929129f6733ff10c63c73e89f01dc5483864f19b7a3e46eebe42a4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:34:14.164501+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone2-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "attach",
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "rationale": "The official agenda (official-agenda) explicitly identifies this meeting as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, convening Wednesday, January 13, 2021 at 11:00 a.m. in a Special Called Meeting (agenda items TIRZ21-001 through TIRZ21-003, Westpark TIRZ). The body label and recording title match this exactly, including the date, time, and special-called status. Among candidate existing feeds, 'Denton: TIRZ No. 2 Board' (denton-tx-tirz-2-board) is the exact board match: its listed source items include this very recording with provider_guid 111521, identical to the recording's provider_guid and canonical URL (videos/111521). The identifier 'No. 2' is decisive and distinguishes it from the TIRZ No. 1 Board feed; shared city/topic words with other feeds (City Council, Library Board, Health & Building Standards) do not establish identity. Attachment to the TIRZ No. 2 Board feed is supported; no additional evidence is needed.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone2-council",
+      "configuration_id": "cfed5340c776b744aacdc9b06384f896f61cd27877e910d8f3df8751a1550770",
+      "latency_seconds": 33.38816904090345,
+      "prompt_case_id": "case-5ee62c04818060308ed8e4de",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5ee62c04818060308ed8e4de\",\"supported\":true,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"attach\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda (official-agenda) explicitly identifies this meeting as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, convening Wednesday, January 13, 2021 at 11:00 a.m. in a Special Called Meeting (agenda items TIRZ21-001 through TIRZ21-003, Westpark TIRZ). The body label and recording title match this exactly, including the date, time, and special-called status. Among candidate existing feeds, 'Denton: TIRZ No. 2 Board' (denton-tx-tirz-2-board) is the exact board match: its listed source items include this very recording with provider_guid 111521, identical to the recording's provider_guid and canonical URL (videos/111521). The identifier 'No. 2' is decisive and distinguishes it from the TIRZ No. 1 Board feed; shared city/topic words with other feeds (City Council, Library Board, Health & Building Standards) do not establish identity. Attachment to the TIRZ No. 2 Board feed is supported; no additional evidence is needed.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this case.\n\nThe recording/body label: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\"\n\nThe evidence (official agenda) confirms the meeting is for the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas on January 13, 2021 at 11:00 AM, Special Called Meeting.\n\nExisting feeds include \"Denton: TIRZ No. 2 Board\" (slug: denton-tx-tirz-2-board) which has body_includes entries with the exact recording: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid \"111521\" \u2014 matching the recording's provider_guid \"111521\".\n\nSo the evidence clearly establishes identity with the TIRZ No. 2 Board feed. Both body label and provider_guid match exactly.\n\nproposed_action: what are the options? The schema says anyOf string or null. Likely \"attach\" or \"assign\" to existing feed. Given the task \u2014 select owning existing feed \u2014 the action would be something like \"attach\" or \"merge\". Since the recording already appears in the feed's body_includes... Actually the recording appears to already be part of the feed. But the task is to select the owner and assign. I'll use \"attach\" as the action. Hmm, common action values might be \"attach\" or \"create_feed\". Since evidence establishes identity, propose attaching to existing feed denton-tx-tirz-2-board.\n\nEvident refs: only \"official-agenda\" is usable for citing evidence-reference IDs. The existing_feeds matching is part of the supplied data. evidence_ref_ids should cite only supplied evidence-reference IDs \u2014 so [\"official-agenda\"].\n\nmissing_evidence: none needed? Could be empty list.\n\nsupported: true. proposed_owner: \"denton-tx-tirz-2-board\". proposed_action: \"attach\".",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this case.\n\nThe recording/body label: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\"\n\nThe evidence (official agenda) confirms the meeting is for the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas on January 13, 2021 at 11:00 AM, Special Called Meeting.\n\nExisting feeds include \"Denton: TIRZ No. 2 Board\" (slug: denton-tx-tirz-2-board) which has body_includes entries with the exact recording: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid \"111521\" \u2014 matching the recording's provider_guid \"111521\".\n\nSo the evidence clearly establishes identity with the TIRZ No. 2 Board feed. Both body label and provider_guid match exactly.\n\nproposed_action: what are the options? The schema says anyOf string or null. Likely \"attach\" or \"assign\" to existing feed. Given the task \u2014 select owning existing feed \u2014 the action would be something like \"attach\" or \"merge\". Since the recording already appears in the feed's body_includes... Actually the recording appears to already be part of the feed. But the task is to select the owner and assign. I'll use \"attach\" as the action. Hmm, common action values might be \"attach\" or \"create_feed\". Since evidence establishes identity, propose attaching to existing feed denton-tx-tirz-2-board.\n\nEvident refs: only \"official-agenda\" is usable for citing evidence-reference IDs. The existing_feeds matching is part of the supplied data. evidence_ref_ids should cite only supplied evidence-reference IDs \u2014 so [\"official-agenda\"].\n\nmissing_evidence: none needed? Could be empty list.\n\nsupported: true. proposed_owner: \"denton-tx-tirz-2-board\". proposed_action: \"attach\".",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628686,
+        "id": "chatcmpl-2ac062ec-5d5f-46c5-9282-f361f1cf1d36",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 734,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 428,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2577,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3311
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

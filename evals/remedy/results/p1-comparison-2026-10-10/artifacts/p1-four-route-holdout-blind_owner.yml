@@ -1,0 +1,84 @@
+admissions:
+- aa:
+    date: '2026-10-10'
+    score: 39
+    source: https://artificialanalysis.ai/models/gemini-3-7-flash
+    variant: high
+    version: 4.3.2
+  catalog_hash: 19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e
+  manifest_hash: 61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017
+  model_family: gemini
+  physical_route_ids:
+  - gemini_3_7_flash_primary
+  prompt_hash: 5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1
+  reasoning_level: high
+  request_params_hash: 68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f
+  role: proposer
+  schema_hash: a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e
+  status: candidate
+  upstream_model: gemini-3.7-flash
+- aa:
+    date: '2026-10-10'
+    score: 41
+    source: https://artificialanalysis.ai/models/gemini-3-8-flash
+    variant: high
+    version: 4.3.2
+  catalog_hash: 19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e
+  manifest_hash: 61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017
+  model_family: gemini
+  physical_route_ids:
+  - gemini_3_8_flash_primary
+  prompt_hash: 5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1
+  reasoning_level: high
+  request_params_hash: 68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f
+  role: proposer
+  schema_hash: a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e
+  status: candidate
+  upstream_model: gemini-3.8-flash
+- aa:
+    date: '2026-10-10'
+    score: 39
+    source: https://artificialanalysis.ai/models/gemini-3-7-flash
+    variant: high
+    version: 4.3.2
+  catalog_hash: 19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e
+  manifest_hash: 61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017
+  model_family: gemini
+  physical_route_ids:
+  - gemini_3_7_flash_secondary
+  prompt_hash: 5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1
+  reasoning_level: high
+  request_params_hash: 68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f
+  role: proposer
+  schema_hash: a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e
+  status: candidate
+  upstream_model: gemini-3.7-flash
+- aa:
+    date: '2026-10-10'
+    score: 41
+    source: https://artificialanalysis.ai/models/gemini-3-8-flash
+    variant: high
+    version: 4.3.2
+  catalog_hash: 19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e
+  manifest_hash: 61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017
+  model_family: gemini
+  physical_route_ids:
+  - gemini_3_8_flash_secondary
+  prompt_hash: 5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1
+  reasoning_level: high
+  request_params_hash: 68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f
+  role: proposer
+  schema_hash: a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e
+  status: candidate
+  upstream_model: gemini-3.8-flash
+limits:
+  active_directional_issues: 12
+  decisions_per_pr: 5
+  evidence_max_age_hours: 24
+  open_prs: 8
+  prs_per_rolling_week: 8
+mode: shadow
+onboarding_exceptions: []
+policy_templates: []
+qualified_alias_types: []
+version: 1

@@ -14,6 +14,7 @@ import pytest
 
 from citypods.compute.llm_lanes import LaneConfig, parse_lanes
 from citypods.provider_catalog.decisions import Decisions
+from citypods.provider_catalog.evidence import digest
 from citypods.provider_catalog.issue import (
     MARKER,
     decision_choices,
@@ -22,7 +23,12 @@ from citypods.provider_catalog.issue import (
     sync_issue,
 )
 from citypods.provider_catalog.quality import QualityIndex
-from citypods.provider_catalog.reconcile import reconcile
+from citypods.provider_catalog.reconcile import (
+    Anomaly,
+    Report,
+    confirm_retirement_candidates,
+    reconcile,
+)
 from citypods.provider_catalog.rules import Response
 
 TODAY = date(2026, 9, 24)
@@ -63,17 +69,21 @@ class FakeOutcome:
 
 
 class FakeControl:
-    def __init__(self, quota=None, contended=False):
+    def __init__(self, quota=None, contended=False, expire_after_yield=False):
         self.quota, self.contended = (
             ({"or_scarce": {"rpd_remaining": 20}} if quota is None else quota),
             contended,
         )
+        self.expire_after_yield = expire_after_yield
         self.paused_providers, self.reserved = [], []
 
     @contextmanager
     def paused(self, provider):
         self.paused_providers.append(provider)
-        yield FakeOutcome(contended=self.contended)
+        outcome = FakeOutcome(contended=self.contended)
+        yield outcome
+        if self.expire_after_yield:
+            outcome.contended = True
 
     def route_quota(self, provider):
         return self.quota
@@ -1642,3 +1652,154 @@ def test_a_non_chat_configured_route_is_never_health_canaried(monkeypatch):
         sleep=lambda seconds: None,
     )
     assert sent == []
+
+
+def test_retirement_confirmation_is_a_second_same_route_call(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    report = Report(
+        anomalies=[
+            Anomaly(
+                "groq",
+                route["route_id"],
+                route["upstream_model"],
+                "retired",
+                "provider says model does not exist",
+                True,
+                observed_on=TODAY.isoformat(),
+                config_digest=digest(route),
+                contended=False,
+            )
+        ],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+
+    def ping(rules, provider_cfg, model, api_key, session):
+        sent.append((rules.name, provider_cfg, model, api_key))
+        return Response(
+            status=404,
+            body='{"error":{"message":"The model does not exist"}}',
+        )
+
+    control = FakeControl()
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=control,
+        today=TODAY,
+        canary_fn=ping,
+        sleep=lambda seconds: None,
+    )
+
+    assert len(sent) == 1
+    assert sent[0][0] == "groq" and sent[0][2:] == (route["upstream_model"], "test-key")
+    assert control.reserved == [route["route_id"]]
+    confirmation = report.anomalies[0].retirement_confirmation
+    assert confirmation is not None
+    assert {key: value for key, value in confirmation.items() if key != "checked_at"} == {
+        "provider": "groq",
+        "account_id": route["account_id"],
+        "route_id": route["route_id"],
+        "model": route["upstream_model"],
+        "config_digest": digest(route),
+        "verdict": "retired",
+        "status": 404,
+        "contended": False,
+    }
+    assert confirmation["checked_at"].endswith("+00:00")
+
+
+def test_retirement_confirmation_is_rejected_if_pause_expires_during_probe(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    anomaly = Anomaly(
+        "groq",
+        route["route_id"],
+        route["upstream_model"],
+        "retired",
+        "provider says model does not exist",
+        True,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    report = Report(
+        anomalies=[anomaly],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+    control = FakeControl(expire_after_yield=True)
+
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: GONE,
+        sleep=lambda seconds: None,
+    )
+
+    assert anomaly.retirement_confirmation is None
+    assert any("pause expired before completion" in message for message in report.observations)
+
+
+def test_reachable_confirmation_cancels_retirement_evidence(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    anomaly = Anomaly(
+        "groq",
+        route["route_id"],
+        route["upstream_model"],
+        "not_served",
+        "provider says model does not exist",
+        True,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    report = Report(
+        anomalies=[anomaly],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        sleep=lambda seconds: None,
+    )
+
+    assert anomaly.retirement_confirmation is None
+    assert any("observed proven" in message for message in report.observations)

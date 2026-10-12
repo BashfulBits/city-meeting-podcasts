@@ -1,0 +1,14 @@
+{
+  "kind": "numeric-control-diagnostic-only",
+  "qualified": false,
+  "case_id": "tif-wrong-district",
+  "max_effort_verified": false,
+  "requested_controls": {
+    "reasoning_effort": 100
+  },
+  "override_scope": "this diagnostic process only",
+  "status": "failed",
+  "error_class": "Timeout",
+  "provider_attempts": 1,
+  "latency_seconds": 122.93339162506163
+}

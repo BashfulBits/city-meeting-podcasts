@@ -1,0 +1,178 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 0,
+        "known_provider_attempts": 2,
+        "retried_completed": 0,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "a7e0e3ead0233adccb05ecf148e8790ef7bc46cec30c3784614cc3a96918faa6",
+      "mode": "blind_owner",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 0,
+        "breakdown": {},
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 0,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "blind_owner",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 2,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 8,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "5103a82c8fd9a7f164f971c0c4e98e50050f02142a6fe48b6d72809063b3bc80",
+      "results_path": "/private/tmp/p1-denton-blind-batch1.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 0,
+        "known_provider_attempts": 3,
+        "retried_completed": 1,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "91ace3b0eace1c1cc449c8ad49ebed192806667ce0e76d254dba91656df66af3",
+      "mode": "blind_owner",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 1,
+        "breakdown": {},
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 0,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "blind_owner",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 1,
+          "evaluated": 1,
+          "failed": 1,
+          "incorrect": 0,
+          "known_truth": 1,
+          "unattempted": 8,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "5103a82c8fd9a7f164f971c0c4e98e50050f02142a6fe48b6d72809063b3bc80",
+      "results_path": "/private/tmp/p1-denton-blind-batch1.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 0,
+        "known_provider_attempts": 3,
+        "retried_completed": 0,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "bc9721f94251f2b525e0f036e58b98199f4adf013585995f8ccb39519114957e",
+      "mode": "blind_owner",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 0,
+        "breakdown": {},
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 0,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "blind_owner",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 2,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 8,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "5103a82c8fd9a7f164f971c0c4e98e50050f02142a6fe48b6d72809063b3bc80",
+      "results_path": "/private/tmp/p1-denton-blind-batch1.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 0,
+        "known_provider_attempts": 4,
+        "retried_completed": 1,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "9c31ff5d1076f3731eff236ff2a6be990dbc5708e96742a7ca3603146d77da6d",
+      "mode": "blind_owner",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 1,
+        "breakdown": {},
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 0,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "blind_owner",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 1,
+          "evaluated": 1,
+          "failed": 1,
+          "incorrect": 0,
+          "known_truth": 1,
+          "unattempted": 8,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "5103a82c8fd9a7f164f971c0c4e98e50050f02142a6fe48b6d72809063b3bc80",
+      "results_path": "/private/tmp/p1-denton-blind-batch1.json"
+    }
+  ],
+  "version": 1
+}

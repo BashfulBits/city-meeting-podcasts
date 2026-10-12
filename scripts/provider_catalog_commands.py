@@ -218,6 +218,7 @@ def prepare_context(base_commit, *, selected=()):
 
 def prepare_retirements(base_commit):
     """Dormant automatic-removal preparation; activation is a separate reviewed change."""
+    from citypods.provider_catalog.reconcile import confirm_retirement_candidates
     from citypods.provider_catalog.retire import RETIREMENTS_ENABLED, plan_retirements
 
     if not RETIREMENTS_ENABLED:
@@ -231,18 +232,29 @@ def prepare_retirements(base_commit):
     if isinstance(control, NoDispatchControl):
         raise ValueError("removals require a configured exclusive dispatch pause")
     route_ids = {r["route_id"] for r in limits.get("routes") or []}
-    report = reconcile(
-        limits,
-        lanes,
-        load_decisions(),
-        QualityIndex(),
-        {},
-        session=requests.Session(),
-        control=control,
-        today=config.today,
-        candidate_keys=set(),
-        route_ids=route_ids,
-    )
+    session = requests.Session()
+    try:
+        report = reconcile(
+            limits,
+            lanes,
+            load_decisions(),
+            QualityIndex(),
+            {},
+            session=session,
+            control=control,
+            today=config.today,
+            candidate_keys=set(),
+            route_ids=route_ids,
+        )
+        confirm_retirement_candidates(
+            report,
+            limits,
+            session=session,
+            control=control,
+            today=config.today,
+        )
+    finally:
+        session.close()
     plan = plan_retirements(report, config)
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:

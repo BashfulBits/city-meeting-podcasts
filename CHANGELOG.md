@@ -12,6 +12,19 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
+  independent request to the exact route/account after the initial definitive retired/not-served
+  signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous
+  confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
+  timestamp. Removal publication remains behind its separate recovery-canary activation gate.
+
+- **Single-model output-limit retry ceiling (review/49 dispatch requirement 1).** A Worker job
+  pinned to one model with no backups (every `per_model` judge lane) now gets one retry, set by
+  `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES`, when its reply stops at the output limit. It previously
+  drew on the 8-retry upstream budget, and the same cut-off recurred on the same model. The job then
+  fails to its producer, which re-plans it. Jobs that can move to another model keep the upstream
+  budget.
+
 - **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
   with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
   checkpoints and authenticated partial-run evidence. A separate typed discovery transport
@@ -7961,3 +7974,9 @@ legacy configuration behavior are unchanged; no feed or source-record changes.
 
 Review/51 P2a shipped in PR #2213 (2026-10-09), including lightweight-render compatibility
 and validated hand-built recording inclusions. Final head passed all CI; no templates activated.
+
+### Review/51 comparison evidence (2026-10-10)
+
+Retain model configurations, original results, scored comparisons and bounded provider
+diagnostics under evals/remedy/results/p1-comparison-2026-10-10/. No production model
+activation, quota, feed, audio, storage-routing or pipeline-version changes.

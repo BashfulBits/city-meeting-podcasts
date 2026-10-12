@@ -1,0 +1,29 @@
+{
+  "admissions_hash": "912ef3ce65a4f769d579402e5f269d9fedbfcd9cd8b5818c911d2de844af6652",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 0,
+  "observed_at": "2026-10-10T09:51:53.496285+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-health-council",
+      "configuration_id": "a7e0e3ead0233adccb05ecf148e8790ef7bc46cec30c3784614cc3a96918faa6",
+      "error_class": "Timeout",
+      "latency_seconds": 120.88055116729811,
+      "prompt_case_id": "case-5a9bffdb8b1a44e186edac01",
+      "provider_attempts": 1,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

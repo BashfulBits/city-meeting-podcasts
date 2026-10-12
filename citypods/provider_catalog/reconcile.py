@@ -63,6 +63,7 @@ SCARCE_CHECK_DAYS = 28
 # A separate reviewed activation change must flip this after offline integration is accepted.
 DISCOVERY_ACTIVATION_ENABLED = False
 ANOMALY_VERDICTS = frozenset({"retired", "not_served", "not_entitled", "account_blocked"})
+RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say
 # nothing durable about the model, so those candidates are retried next run (after fresh ones).
 DEFINITIVE_VERDICTS = ANOMALY_VERDICTS | {"proven"}
@@ -160,6 +161,7 @@ class Anomaly:
     observed_on: str | None = None
     config_digest: str | None = None
     contended: bool = True
+    retirement_confirmation: dict[str, Any] | None = None
 
     @property
     def key(self) -> str:
@@ -1602,6 +1604,132 @@ def _record_health(
     )
     anomaly.new = anomaly.key not in known
     report.anomalies.append(anomaly)
+
+
+def confirm_retirement_candidates(
+    report: Report,
+    limits: Mapping[str, Any],
+    *,
+    session: requests.Session,
+    control: DispatchControl,
+    today: date,
+    canary_fn: CanaryFn = canary,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Make an independent exact-account request before a removal can be recommended.
+
+    The normal reconciliation canary is the initial signal. A second request is made only for a
+    complete same-day catalog absence plus a definitive retired/not-served result, while that
+    provider is paused. The second result must repeat the same verdict; any other outcome leaves
+    the anomaly unconfirmed so retirement planning fails closed.
+    """
+    routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
+    by_id = {str(route.get("route_id")): route for route in routes}
+    rules_by_provider = all_rules()
+    providers = limits.get("providers") or {}
+    for anomaly in report.anomalies:
+        if anomaly.verdict not in RETIREMENT_VERDICTS or not anomaly.absent_from_catalog:
+            continue
+        catalog = (report.state.get("catalogs") or {}).get(anomaly.provider) or {}
+        records = catalog.get("models")
+        if (
+            catalog.get("provider") != anomaly.provider
+            or catalog.get("observed_at") != today.isoformat()
+            or catalog.get("complete") is not True
+            or not isinstance(records, (list, tuple))
+            or any(not isinstance(record, (list, tuple)) or len(record) != 6 for record in records)
+            or any(record[0] == anomaly.model for record in records)
+        ):
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "current complete catalog absence is not verified"
+            )
+            continue
+        route = by_id.get(anomaly.route_id)
+        if (
+            not route
+            or route.get("provider") != anomaly.provider
+            or route.get("upstream_model") != anomaly.model
+            or anomaly.config_digest != digest(route)
+        ):
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "route identity or digest does not match the current config"
+            )
+            continue
+        rules = rules_by_provider.get(anomaly.provider)
+        provider_cfg = providers.get(anomaly.provider)
+        if not rules or not provider_cfg:
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "provider configuration is unavailable"
+            )
+            continue
+        api_key = account_key(provider_cfg, route.get("account_id"))
+        if not api_key:
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "the exact route account has no configured credential"
+            )
+            continue
+        rid = anomaly.route_id
+        try:
+            scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
+        except (TypeError, ValueError):
+            scarce = True
+        confirmation_data: dict[str, Any] | None = None
+        with control.paused(anomaly.provider) as pause:
+            if pause.contended:
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation deferred; provider dispatch pause contended"
+                )
+                continue
+            quota = control.route_quota(anomaly.provider).get(rid) or {}
+            remaining = quota.get("rpd_remaining")
+            if scarce and (remaining is None or remaining <= 0):
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation deferred; "
+                    "daily quota is unavailable or spent"
+                )
+                continue
+            if rules.canary_interval_seconds:
+                sleep(rules.canary_interval_seconds)
+            pause.renew()
+            control.reserve(rid)
+            response = canary_fn(rules, provider_cfg, anomaly.model, api_key, session)
+            confirmation = classify(response, rules)
+            checked_at = datetime.now(UTC).isoformat()
+            if confirmation.verdict != anomaly.verdict:
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation did not repeat {anomaly.verdict}; "
+                    f"observed {confirmation.verdict} at {checked_at}; removal deferred"
+                )
+                continue
+            confirmation_data = {
+                "provider": anomaly.provider,
+                "account_id": route.get("account_id"),
+                "route_id": rid,
+                "model": anomaly.model,
+                "config_digest": anomaly.config_digest,
+                "verdict": confirmation.verdict,
+                "status": response.status,
+                "checked_at": checked_at,
+            }
+        # paused() records expiry in its context-manager exit path, so the final contention
+        # decision must happen after leaving the block. A result from an expired pause is not
+        # independent of production dispatch and cannot support a removal recommendation.
+        if pause.contended:
+            report.observations.append(
+                f"{rid}: fresh removal confirmation deferred; pause expired before completion"
+            )
+            continue
+        assert confirmation_data is not None
+        confirmation_data["contended"] = False
+        anomaly.retirement_confirmation = confirmation_data
+        report.observations.append(
+            f"{rid}: independent removal confirmation repeated {confirmation.verdict} "
+            f"at {checked_at} for account {route.get('account_id')}"
+        )
 
 
 @dataclass

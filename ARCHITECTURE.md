@@ -574,7 +574,9 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   per model (`llm_lanes[...].reasoning`), which the route expresses through `reasoning_controls`
   (e.g. NVIDIA DeepSeek v4.1's thinking switch); models without an entry keep their provider
   default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
-  `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
+  `output_budget_exhausted`, retried without cooling the route, and counted. A job pinned to one model
+  (no backups; every `per_model` judge lane) gets `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES` (1) such
+  retries instead of the upstream budget, then fails to its producer, which re-plans it. `llm-budget-monitor.yml`
   turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
   (per lane/route output percentiles, reservation, slow calls, from the per-day `attempt_usage`
   cells each completion folds its calls into) -- into one rolling issue that names the lane and the config key to change.

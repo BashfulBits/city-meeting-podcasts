@@ -1,0 +1,236 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 5,
+        "known_provider_attempts": 5,
+        "retried_completed": 0,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "db15c32828413fb5c73614b09a365840267887d5b0d92299efaee75bccd7b938",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 5,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:zone1|verified": {
+            "abstained": 0,
+            "correct": 1,
+            "incorrect": 0,
+            "known_truth": 1
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 3,
+          "accepted_correct": 3,
+          "correct": 5,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 5,
+          "unattempted": 5,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 1.0
+      },
+      "results_hash": "6803011fc6158beec3520348243e330b0ef003fa28081d3263f93db3438218e9",
+      "results_path": "/private/tmp/p1-denton-resumed-batch2.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 4,
+        "known_provider_attempts": 5,
+        "retried_completed": 0,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "dffcd46cce6f3b43dc70ab7d7f17c935375b57143397e9168c154a3bfe4ebb8e",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 4,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 2,
+          "accepted_correct": 2,
+          "correct": 4,
+          "critical_errors": 0,
+          "failed": 1,
+          "incorrect": 0,
+          "known_truth": 4,
+          "unattempted": 5,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 1.0
+      },
+      "results_hash": "6803011fc6158beec3520348243e330b0ef003fa28081d3263f93db3438218e9",
+      "results_path": "/private/tmp/p1-denton-resumed-batch2.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 2,
+        "known_provider_attempts": 7,
+        "retried_completed": 2,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "bbb9fbe9db4326224443193c22fdf960d2517448f9076b9d05492536f2fd82f0",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 4,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 2,
+          "accepted_correct": 2,
+          "correct": 4,
+          "critical_errors": 0,
+          "failed": 1,
+          "incorrect": 0,
+          "known_truth": 4,
+          "unattempted": 5,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 1.0
+      },
+      "results_hash": "6803011fc6158beec3520348243e330b0ef003fa28081d3263f93db3438218e9",
+      "results_path": "/private/tmp/p1-denton-resumed-batch2.json"
+    },
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 2,
+        "known_provider_attempts": 6,
+        "retried_completed": 2,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "5f3c4f594f3df3087c5cb71320145cd53aaef5c1d41f7094df5ea90c2e4aa846",
+      "mode": "claim_support",
+      "report": {
+        "accepted_precision": 1.0,
+        "admission_eligible_cases": 4,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "abstained": 0,
+            "correct": 2,
+            "incorrect": 0,
+            "known_truth": 2
+          }
+        },
+        "counts": {
+          "abstained": 0,
+          "accepted": 2,
+          "accepted_correct": 2,
+          "correct": 4,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 4,
+          "unattempted": 6,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "claim_support",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 0,
+          "evaluated": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": 1.0
+      },
+      "results_hash": "6803011fc6158beec3520348243e330b0ef003fa28081d3263f93db3438218e9",
+      "results_path": "/private/tmp/p1-denton-resumed-batch2.json"
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "27d9cbe60b929129f6733ff10c63c73e89f01dc5483864f19b7a3e46eebe42a4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:34:14.164501+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-library-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "attach_to_existing_feed",
+        "proposed_owner": "denton-tx-library-board",
+        "rationale": "The recording's body label is 'Library Board on 2021-05-13 3:30 PM' (provider_guid 120859), exactly matching the existing Denton: Library Board feed whose approved taxonomy source is body='Library Board' (slug denton-tx-library-board). The official agenda (evidence ref 'official-agenda') independently confirms the meeting is the City of Denton Library Board (Library Advisory Board) meeting on Thursday, May 13, 2021 at 3:30 PM, matching the recording's date/time and city. Body identity and official metadata align; no other existing feed matches this body.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-library-own",
+      "configuration_id": "cfed5340c776b744aacdc9b06384f896f61cd27877e910d8f3df8751a1550770",
+      "latency_seconds": 21.219557667151093,
+      "prompt_case_id": "case-0bec25e6b2c38e4f00fc5462",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-0bec25e6b2c38e4f00fc5462\",\"supported\":true,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"attach_to_existing_feed\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording's body label is 'Library Board on 2021-05-13 3:30 PM' (provider_guid 120859), exactly matching the existing Denton: Library Board feed whose approved taxonomy source is body='Library Board' (slug denton-tx-library-board). The official agenda (evidence ref 'official-agenda') independently confirms the meeting is the City of Denton Library Board (Library Advisory Board) meeting on Thursday, May 13, 2021 at 3:30 PM, matching the recording's date/time and city. Body identity and official metadata align; no other existing feed matches this body.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The recording is \"Library Board on 2021-05-13 3:30 PM\" in denton-tx. Existing feed \"Denton: Library Board\" (slug denton-tx-library-board) has source body \"Library Board\" \u2014 exact match on body. The official agenda confirms Library Board, City of Denton. So proposed_owner = denton-tx-library-board, supported=true, action likely \"add_to_existing_feed\" \u2014 but action enum not specified; I'll use something like \"attach_to_existing\" \u2014 schema allows any string. Use \"attach_to_existing_feed\". Evidence ref ids: \"official-agenda\". Missing evidence: none.",
+                "refusal": null
+              },
+              "reasoning_content": "The recording is \"Library Board on 2021-05-13 3:30 PM\" in denton-tx. Existing feed \"Denton: Library Board\" (slug denton-tx-library-board) has source body \"Library Board\" \u2014 exact match on body. The official agenda confirms Library Board, City of Denton. So proposed_owner = denton-tx-library-board, supported=true, action likely \"add_to_existing_feed\" \u2014 but action enum not specified; I'll use something like \"attach_to_existing\" \u2014 schema allows any string. Use \"attach_to_existing_feed\". Evidence ref ids: \"official-agenda\". Missing evidence: none.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628500,
+        "id": "chatcmpl-d54eddfe-8ac4-4661-98ad-1c4cd1d78d73",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 335,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 138,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2472,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 2807
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}
