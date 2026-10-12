@@ -2098,10 +2098,12 @@ configuration and reviewed live activation gates remain required for their respe
 
 #### 8.13.1 Execution contract and escape budgets
 
-This section is development-ready for offline implementation. Live discovery is disabled by
-an explicit `discovery_enabled` workflow input/default until a reviewed activation is approved.
-Design approval does not authorize provider calls. Existing configured-route calibration authority
-and six-call budgets are unchanged; new candidates use the separate discovery envelope below.
+This section's offline implementation is shipped. Live discovery requires the explicit
+`discovery_enabled` workflow input. The first activation accepts one exact `provider/model`
+candidate per manual run; broad weekly candidate discovery stays disabled until the first route's
+evidence is reviewed in a later activation. Authenticated maintainer retry receipts remain eligible
+for the daily workflow. Existing configured-route calibration authority and six-call budgets are
+unchanged; new candidates use the separate discovery envelope below.
 
 | Bound | Per candidate/session | Per maintenance run |
 | --- | --- | --- |
@@ -2119,8 +2121,13 @@ limit counts the initial send and all retries, not five retries after the initia
 budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
-4 MiB. Provider/account permissions, free-route evidence, known applicable shared quotas and
-provider-enforced cooldowns always bind; unknown RPD does not acquire an invented value.
+4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
+provider-enforced cooldowns always bind; unknown RPD does not acquire an invented value. The
+maintainer approved the first-route canary even when a new model's separate quota scope is unknown:
+the route is not yet eligible for repo-managed dispatch, and the existing v2 provider pause drains
+repo-managed traffic across that provider while probing. The pause cannot control unrelated clients
+using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
+converted into a numeric claim.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
 
@@ -2235,7 +2242,32 @@ An override must be an explicit reviewed decision with rationale/source, never a
 issue marker interpreted as authenticated probe evidence. The exact numeric-entry/config migration
 format belongs to that separate design before implementing addition of such constrained routes.
 
-#### 8.13.5 Closed file/function plan and acceptance
+#### 8.13.5 First live activation — one manually selected new route
+
+The first activation is manual and deliberately narrower than recurring discovery. The workflow
+requires both `discovery_enabled=true` and one exact `discovery_candidate=provider/model` value.
+Reconciliation must find that exact identity in the current provider catalog, establish verified
+free eligibility, reject configured/ignored/alias routes, prove chat reachability and run the
+existing structured-output usability check before request-size discovery. A missing or ineligible
+candidate results in no model request. Only that candidate may receive discovery in the run, so its
+own bounded canary evidence can be reviewed before broad schedule activation.
+
+The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
+that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
+clients using the same upstream account. The maintainer explicitly accepted this bounded first
+canary with unknown/shared provider quota scope because the route is not yet configured for
+repo-managed jobs. The existing 64-submission, token-reservation and 20-minute session limits still
+apply; known published or configured limits and provider cooldowns are honored. Unknown scope and
+unreported quotas stay labeled unknown; this change does not infer or publish quota values.
+
+Authenticated `/apply` retry receipts remain restricted to the exact new candidate and its saved
+history. The daily workflow may resume an explicitly approved retry, but it does not scan fresh
+candidates for size discovery. The weekly schedule remains discovery-off. After reviewing the first
+route's reachability, usage, cap brackets, scope uncertainty, spend, deferrals and pause evidence,
+broader scheduled discovery requires a separate reviewed activation change. No config values are
+automatically added or changed.
+
+#### 8.13.6 Closed file/function plan and acceptance
 
 Allowed implementation files and responsibilities:
 
@@ -2251,11 +2283,13 @@ Allowed implementation files and responsibilities:
   integration, pending daily retry selection and separate budget accounting.
 - `citypods/provider_catalog/issue.py`, `apply.py`: result rendering, mutually exclusive retry
   choices, required-limit/dependency gating and no guessed provider-canonical facts.
-- `scripts/reconcile_provider_routes.py`: disabled discovery switch, pause renewal, history/receipt
-  loading, artifacts and shared run deadlines. `scripts/provider_catalog_commands.py`: authenticated
-  retry queueing and result receipts without provider calls; preserve ordinary `/apply` behavior.
+- `scripts/reconcile_provider_routes.py`: manual single-candidate discovery switch, pause renewal,
+  history/receipt loading, artifacts and shared run deadlines.
+  `scripts/provider_catalog_commands.py`: authenticated retry queueing and result receipts without
+  provider calls; preserve ordinary `/apply` behavior.
 - `.github/workflows/provider-catalog-reconcile.yml`, `provider-catalog-commands.yml`: explicit
-  discovery option, existing daily selection, bounded artifact uploads and receipt plumbing;
+  single-candidate discovery option, existing daily retry selection, bounded artifact uploads and
+  receipt plumbing;
   existing concurrency/security settings and configured-route canary authority stay intact.
 - New `tests/test_provider_catalog_discovery.py` and
   `tests/fixtures/provider_catalog/discovery/*.json`; existing catalog evidence/reconcile/apply/

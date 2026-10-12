@@ -1663,6 +1663,22 @@ def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config()
         assert env.get(name) == f"${{{{ secrets.{name} }}}}", name
 
 
+def test_new_route_discovery_requires_one_explicit_manual_candidate():
+    wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["discovery_enabled"]["default"] is False
+    assert inputs["discovery_candidate"]["default"] == ""
+    step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert step["env"]["DISCOVERY_CANDIDATE"] == "${{ inputs.discovery_candidate }}"
+    run = step["run"]
+    assert "Manual discovery requires discovery_candidate=provider/model" in run
+    assert 'args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")' in run
+    assert (
+        "DISCOVERY_SCHEDULED_ENABLED = False"
+        in (REPO_ROOT / "citypods" / "provider_catalog" / "reconcile.py").read_text()
+    )
+
+
 def test_contracts_probe_artificial_analysis_with_production_secret():
     _wf, job = _job("contracts.yml", "artificial-analysis")
     assert job["permissions"] == {"contents": "read"}

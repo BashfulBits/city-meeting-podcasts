@@ -286,6 +286,28 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
     assert all(key not in configured for key, _ in calls)
 
     calls.clear()
+    selected = "groq/meta-llama/llama-new"
+    control = FakeControl()
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="selected-run",
+        candidate_keys={selected},
+    )
+    assert {candidate.key for candidate in report.candidates} == {selected}
+    assert [key for key, _ in calls] == [selected]
+    assert control.paused_providers == ["groq"]
+
+    calls.clear()
     reconcile(
         LIMITS,
         LANES,
