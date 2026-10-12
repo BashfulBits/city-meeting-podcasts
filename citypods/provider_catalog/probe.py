@@ -6,8 +6,10 @@ config/provider_limits.yml (`api_base`, `chat_path`, `accounts`).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import platform
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -32,6 +34,36 @@ _MAX_STRUCTURED_ERROR_BYTES = 1_024
 _SAFE_PROVIDER_ID = re.compile(r"[^A-Za-z0-9._:-]")
 
 
+class _SSELineLimitError(ValueError):
+    pass
+
+
+def _iter_sse_byte_lines(response, result):
+    """Frame LF, CRLF and CR on bytes, preserving boundaries across transport chunks."""
+    pending = bytearray()
+    skip_lf = False
+    for chunk in response.iter_content(chunk_size=512):
+        result["stream_chunks"] = result.get("stream_chunks", 0) + 1
+        result["stream_bytes"] = result.get("stream_bytes", 0) + len(chunk)
+        for byte in chunk:
+            if skip_lf and byte == 10:
+                skip_lf = False
+                continue
+            skip_lf = False
+            if byte in (10, 13):
+                line = bytes(pending)
+                pending.clear()
+                skip_lf = byte == 13
+                yield line
+            else:
+                pending.append(byte)
+                if len(pending) > _MAX_STRUCTURED_EVENT_BYTES:
+                    raise _SSELineLimitError
+    result["http_stream_eof"] = True
+    if pending:
+        yield bytes(pending)
+
+
 def _iter_sse_data_events(lines, *, on_line):
     """Yield complete SSE data payloads while observing each streamed line."""
     data_lines: list[str] = []
@@ -40,10 +72,11 @@ def _iter_sse_data_events(lines, *, on_line):
         if not on_line():
             return
         if isinstance(line, bytes):
-            line = line.decode("utf-8", errors="replace")
+            line = line.decode("utf-8")
+        line = line.removesuffix("\r")
         if line == "":
             if data_lines:
-                yield "\n".join(data_lines), first_data_at, len(data_lines)
+                yield "\n".join(data_lines), first_data_at, len(data_lines), True
                 data_lines.clear()
                 first_data_at = None
             continue
@@ -54,7 +87,7 @@ def _iter_sse_data_events(lines, *, on_line):
             data_lines.append(value[1:] if value.startswith(" ") else value)
     if data_lines:
         # Some compatible gateways omit the final blank-line separator.
-        yield "\n".join(data_lines), first_data_at, len(data_lines)
+        yield "\n".join(data_lines), first_data_at, len(data_lines), False
 
 
 def _stream_line_guard(started: float, result: dict[str, Any], renew_pause):
@@ -383,13 +416,36 @@ def structured_canary(
                     result["outcome"] = "rejected"
                 results[method] = result
                 continue
+            result["stream_decoder"] = "utf8_byte_lines_v1"
+            result["http_stream_eof"] = False
+            result["runtime"] = {
+                "python": platform.python_version(),
+                "requests": requests.__version__,
+                "urllib3": requests.packages.urllib3.__version__,
+                "system": platform.system(),
+            }
             finished, error = False, False
-            for data, first_data_at, data_line_count in _iter_sse_data_events(
-                response.iter_lines(decode_unicode=True),
+            # SSE is UTF-8. Unicode splitlines() with an inferred Latin-1 charset
+            # mistakes continuation byte 0x85 for a line separator, truncating JSON.
+            for data, first_data_at, data_line_count, delimited in _iter_sse_data_events(
+                _iter_sse_byte_lines(response, result),
                 on_line=_stream_line_guard(started, result, renew_pause),
             ):
                 result["events"] += 1
+                result["last_event_delimited"] = delimited
                 result["last_event_data_lines"] = data_line_count
+                raw_data = data.encode("utf-8")
+                encoding = getattr(response, "encoding", None)
+                if encoding:
+                    try:
+                        legacy_lines = raw_data.decode(encoding).splitlines()
+                    except (LookupError, UnicodeError):
+                        pass
+                    else:
+                        extra = max(0, len(legacy_lines) - data_line_count)
+                        result["legacy_unicode_extra_line_breaks"] = (
+                            result.get("legacy_unicode_extra_line_breaks", 0) + extra
+                        )
                 result["sse_data_lines"] = result.get("sse_data_lines", 0) + data_line_count
                 for header in ("x-request-id", "request-id", "x-openrouter-id", "cf-ray"):
                     value = headers.get(header)
@@ -414,6 +470,19 @@ def structured_canary(
                     result["json_error_line"] = exc.lineno
                     result["json_error_column"] = exc.colno
                     result["json_error_offset"] = exc.pos
+                    # Preserve exact bytes independently of issue escaping, with a bounded
+                    # window and secret redaction before encoding. Never retain full bodies.
+                    safe_data = data.replace(api_key, "[redacted]") if api_key else data
+                    safe_prefix = data[: exc.pos]
+                    if api_key:
+                        safe_prefix = safe_prefix.replace(api_key, "[redacted]")
+                    raw_safe = safe_data.encode("utf-8")
+                    byte_start = max(0, len(safe_prefix.encode("utf-8")) - 64)
+                    result["malformed_event_utf8_bytes"] = len(raw_data)
+                    result["malformed_event_byte_preview_start"] = byte_start
+                    result["malformed_event_byte_preview_base64"] = base64.b64encode(
+                        raw_safe[byte_start : byte_start + 128]
+                    ).decode("ascii")
                     preview_source = data.replace(api_key, "[redacted]") if api_key else data
                     before_error = data[: exc.pos]
                     if api_key:
@@ -534,6 +603,25 @@ def structured_canary(
                     if result["stream_terminal"]
                     else "stream_ended_without_finish_reason"
                 )
+        except _SSELineLimitError:
+            result["diagnostic"] = "sse_line_data_limit_exceeded"
+        except UnicodeDecodeError as exc:
+            result["diagnostic"] = "invalid_sse_utf8"
+            result["utf8_error_start"] = exc.start
+            result["utf8_error_end"] = exc.end
+            result["utf8_error_reason"] = exc.reason
+            safe_bytes = (
+                exc.object.replace(api_key.encode(), b"[redacted]") if api_key else exc.object
+            )
+            safe_prefix = exc.object[: exc.start]
+            if api_key:
+                safe_prefix = safe_prefix.replace(api_key.encode(), b"[redacted]")
+            byte_start = max(0, len(safe_prefix) - 32)
+            result["invalid_utf8_line_bytes"] = len(exc.object)
+            result["invalid_utf8_preview_start"] = byte_start
+            result["invalid_utf8_preview_base64"] = base64.b64encode(
+                safe_bytes[byte_start : byte_start + 64]
+            ).decode("ascii")
         except requests.Timeout:
             result["diagnostic"] = "transport_timeout"
         except requests.RequestException as exc:

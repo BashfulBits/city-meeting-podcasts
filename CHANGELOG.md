@@ -16,6 +16,13 @@ Once 1.0 ships, entries move under semver tags.
   Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
   reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
   with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+
+- **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
+  let Requests' inferred response charset and Unicode line splitting split a valid JSON event
+  inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
+  had its blank-line terminator, legacy Unicode splitting hazards, and a bounded, secret-redacted
+  base64 byte excerpt for malformed JSON or invalid UTF-8. Request budgets and deadlines are unchanged.
+
 - **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
   content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
   failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would
