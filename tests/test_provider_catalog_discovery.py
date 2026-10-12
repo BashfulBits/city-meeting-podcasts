@@ -7,6 +7,8 @@ import pytest
 
 from citypods.provider_catalog.discovery import (
     AXES,
+    DEFAULT_COMBINED_SEED,
+    DEFAULT_OUTPUT_SEED,
     INPUT_OUTPUT_COUNTERPART,
     MAX_INPUT,
     Bracket,
@@ -22,7 +24,9 @@ STAMP = datetime.now(UTC).isoformat()
 
 
 def request(axis="input", target=2048, attempt="a"):
-    output_tokens = INPUT_OUTPUT_COUNTERPART if axis == "input" else 256
+    output_tokens = (
+        INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else DEFAULT_OUTPUT_SEED
+    )
     return DiscoveryRequest(
         "session",
         attempt,
@@ -31,7 +35,7 @@ def request(axis="input", target=2048, attempt="a"):
         target,
         target,
         output_tokens,
-        f"{axis}:v2" if axis == "input" else f"{axis}:v1",
+        f"{axis}:v2" if axis in {"input", "total_input_heavy"} else f"{axis}:v1",
         "parser-v1",
     )
 
@@ -64,9 +68,10 @@ def execute(tmp_path, adapter, **kwargs):
     )
 
 
+@pytest.mark.parametrize("axis", AXES)
 @pytest.mark.parametrize("seed", [256, 20_000])
-def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
-    limits = dict(input=4000, output=1800, total_input_heavy=6000, total_output_heavy=6000)
+def test_each_axis_converges_without_more_than_64_calls(tmp_path, axis, seed):
+    limits = dict(input=4000, output=1800, total_input_heavy=25_000, total_output_heavy=25_000)
     calls = []
 
     def measure(req, admit, timeout):
@@ -83,16 +88,52 @@ def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
         calls.append((req.axis, count))
         return observation(req, count, count <= limits[req.axis], reported_input=actual_input)
 
-    result = execute(tmp_path, measure, seeds=dict.fromkeys(AXES, seed))
-    assert result.reason == "complete"
+    result = execute(tmp_path, measure, supported_axes=(axis,), seeds={axis: seed})
     assert result.budget["calls"] <= 64
     assert len(result.brackets) == 4
-    for bracket in result.brackets:
-        assert bracket["status"] == "converged"
-        assert bracket["admitted"] <= limits[bracket["axis"]] < bracket["refused"]
-        assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
-    if seed == 20_000:
+    bracket = next(bracket for bracket in result.brackets if bracket["axis"] == axis)
+    assert bracket["status"] == "converged"
+    assert bracket["admitted"] <= limits[axis] < bracket["refused"]
+    assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
+    if seed == 20_000 and axis == "input":
         assert [count for axis, count in calls if axis == "input"][:3] == [20000, 10000, 5000]
+
+
+@pytest.mark.parametrize(
+    ("axis", "expected_target", "expected_input", "expected_output"),
+    [
+        ("output", DEFAULT_OUTPUT_SEED, 2_048, DEFAULT_OUTPUT_SEED),
+        (
+            "total_input_heavy",
+            DEFAULT_COMBINED_SEED,
+            2_048,
+            INPUT_OUTPUT_COUNTERPART,
+        ),
+        (
+            "total_output_heavy",
+            DEFAULT_COMBINED_SEED,
+            2_048,
+            INPUT_OUTPUT_COUNTERPART,
+        ),
+    ],
+)
+def test_default_output_and_combined_probes_leave_reasoning_headroom(
+    tmp_path, axis, expected_target, expected_input, expected_output
+):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    result = execute(tmp_path, measure, supported_axes=(axis,))
+
+    assert result.reason == "outage"
+    assert len(calls) == 1
+    assert calls[0].target == expected_target
+    assert calls[0].input_tokens == expected_input
+    assert calls[0].output_tokens == expected_output
 
 
 @pytest.mark.parametrize("remaining, expected", [(1000, 600), (300, 300)])
