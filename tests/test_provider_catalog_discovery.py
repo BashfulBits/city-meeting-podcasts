@@ -7,6 +7,7 @@ import pytest
 
 from citypods.provider_catalog.discovery import (
     AXES,
+    MAX_INPUT,
     Bracket,
     DiscoveryBudget,
     DiscoveryJournal,
@@ -101,10 +102,106 @@ def test_actual_counts_correct_input_estimate(tmp_path):
         measure=measure,
         renew=lambda: None,
         journal=DiscoveryJournal(tmp_path / "counts.json", {}),
+        seeds={"input": 2048},
     )
     assert result.brackets[0]["status"] == "converged"
     assert inputs[:2] == [2048, 3072]
     assert result.budget["input_tokens"] >= sum(inputs) * 2
+
+
+def test_default_input_search_starts_high_and_reports_hard_ceiling(tmp_path):
+    calls = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        calls.append(req.input_tokens)
+        count = min(req.input_tokens, MAX_INPUT - 13)
+        return observation(req, count, reported_input=count)
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+
+    assert calls == [500_000, 750_000, 1_000_000]
+    assert result.reason == "partial"
+    assert result.brackets[0]["admitted"] == MAX_INPUT - 13
+    assert result.brackets[0]["refused"] is None
+    assert result.brackets[0]["reason"] == "hard_ceiling_lower_bound"
+
+
+def test_input_search_stops_after_refusal_at_two_thousand_tokens(tmp_path):
+    calls = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        calls.append(req.input_tokens)
+        return observation(req, req.input_tokens, admitted=False)
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+
+    assert calls == [
+        500_000,
+        250_000,
+        125_000,
+        62_500,
+        31_250,
+        15_625,
+        7_812,
+        3_906,
+        2_000,
+    ]
+    assert result.reason == "partial"
+    assert result.brackets[0]["admitted"] is None
+    assert result.brackets[0]["refused"] == 2_000
+    assert result.brackets[0]["reason"] == "minimum_probe_refused"
+
+
+def test_search_stops_cleanly_at_existing_smaller_budget(tmp_path):
+    calls = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        calls.append(req.input_tokens)
+        return observation(req, req.input_tokens, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        budget=DiscoveryBudget(max_input=2_097_152),
+    )
+
+    assert calls == [500_000, 750_000]
+    assert result.reason == "budget_exhausted"
+    assert result.brackets[0]["admitted"] == 750_000
+    assert result.brackets[0]["refused"] is None
+
+
+def test_discovery_input_request_accepts_one_million_token_ceiling():
+    from citypods.provider_catalog.discovery import DiscoveryRequest
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.groq import RULES
+
+    cfg = dict(
+        api_base="https://api.groq.com/openai/v1",
+        accounts=[dict(id="a", api_key_env="KEY")],
+    )
+    route = dict(route_id="candidate", provider="groq", account_id="a", upstream_model="model")
+    req = DiscoveryRequest(
+        "session",
+        "attempt",
+        discovery_identity("groq", "a", "model", "https://api.groq.com/openai/v1/chat/completions"),
+        "input",
+        MAX_INPUT,
+        MAX_INPUT,
+        256,
+        "input:v1",
+        RULES.discovery_parser_version,
+    )
+
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    assert transient.local_input_estimate <= MAX_INPUT
+
+    with pytest.raises(ValueError, match="invalid discovery request"):
+        replace(req, target=MAX_INPUT + 1, input_tokens=MAX_INPUT + 1)
 
 
 def test_rate_rejection_never_establishes_upper(tmp_path):
@@ -174,7 +271,7 @@ def test_budget_exhaustion_and_unknown_response_stay_charged(tmp_path):
 
     result = execute(other, successful, budget=DiscoveryBudget(max_calls=1))
     assert result.budget["calls"] == 1
-    assert result.reason.startswith("measurement_stopped")
+    assert result.reason == "budget_exhausted"
 
 
 def test_no_response_retries_up_to_five_charged_calls_then_reports_uncertainty(tmp_path):
@@ -339,7 +436,12 @@ def test_pause_loss_and_reported_overrun_stop(tmp_path):
         admit()
         return observation(req, 100000, reported_input=100000)
 
-    result = execute(tmp_path, measure, budget=DiscoveryBudget(max_input=3000))
+    result = execute(
+        tmp_path,
+        measure,
+        budget=DiscoveryBudget(max_input=3000),
+        seeds={"input": 2048},
+    )
     assert result.budget["calls"] == 1
     assert result.reason == "deadline_or_reported_usage_overrun"
 

@@ -1819,11 +1819,19 @@ and finite token reservations per candidate; separate authenticated 90-day histo
 manual run; the provider-wide v2 pause is required. The maintainer accepted unknown/shared quota
 scope for this bounded first canary because the candidate is not yet dispatchable by this repo.
 One-candidate activation shipped in [#2281](https://github.com/BashfulBits/city-meeting-podcasts/pull/2281).
-The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned HTTP 200
-for all four JSON methods but did not produce verified fixture JSON, so request-size discovery did
-not run. Expanded method-level diagnostics are being added after this run. A successful first-route
-cap result still needs review before a separate change can enable broad scheduled discovery.
-Combined-cap/config additions remain gated on their separate configuration design.
+A high-first search follow-up starts new input searches at 500,000, halves typed refusals down to
+a 2,000-token floor, grows successful probes toward the 1,000,000-token input ceiling, and uses
+midpoint refinement once it has both admitted and refused bounds. Its bounded allowance is
+8,388,608 input tokens per candidate and 16,777,216 per maintenance run; output request ceilings are
+unchanged. The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned
+HTTP 200 for all four JSON methods but did not produce verified fixture JSON, so request-size
+discovery did not run. Expanded diagnostics shipped in [#2284](https://github.com/BashfulBits/city-meeting-podcasts/pull/2284).
+The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
+verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
+had no usable completion counts or finish reasons, so it established no request-cap bracket. This
+high-first search follow-up is intended to make the next authorized run explore useful input sizes;
+broad scheduled discovery remains gated on review of successful first-route evidence. Combined-cap
+configuration remains gated on its separate schema design.
 
 The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273)
 and report/retry/workflow integration shipped in [PR #2275](https://github.com/BashfulBits/city-meeting-podcasts/pull/2275).

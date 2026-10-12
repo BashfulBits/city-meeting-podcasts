@@ -15,7 +15,11 @@ from pathlib import Path
 from citypods.provider_catalog.evidence import digest
 
 AXES = ("input", "output", "total_input_heavy", "total_output_heavy")
-MAX_INPUT, MAX_OUTPUT = 524_288, 131_072
+MAX_INPUT, MAX_OUTPUT = 1_000_000, 131_072
+DEFAULT_INPUT_SEED = 500_000
+MIN_INPUT_PROBE = 2_000
+MAX_SESSION_INPUT = 8_388_608
+MAX_RUN_INPUT = 16_777_216
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_NO_RESPONSE_CALLS = 5
 NO_RESPONSE_DIAGNOSTICS = {
@@ -234,7 +238,7 @@ class Bracket:
 @dataclass
 class DiscoveryBudget:
     max_calls: int = 64
-    max_input: int = 2_097_152
+    max_input: int = MAX_SESSION_INPUT
     max_output: int = 524_288
     calls: int = 0
     input_tokens: int = 0
@@ -355,7 +359,7 @@ def run_discovery(
     for selected, multiplier in ((budget, 1), (shared_budget, 2)):
         if selected and (
             selected.max_calls > 64 * multiplier
-            or selected.max_input > 2_097_152 * multiplier
+            or selected.max_input > MAX_SESSION_INPUT * multiplier
             or selected.max_output > 524_288 * multiplier
         ):
             raise ValueError("discovery envelope exceeds reviewed ceiling")
@@ -392,7 +396,8 @@ def run_discovery(
         if shared_budget:
             shared_budget.settle(item)
     for axis in AXES:
-        bracket = Bracket(axis, int(seeds.get(axis, 256 if axis == "output" else 2048)))
+        default_seed = 256 if axis == "output" else DEFAULT_INPUT_SEED if axis == "input" else 2048
+        bracket = Bracket(axis, int(seeds.get(axis, default_seed)))
         brackets.append(bracket)
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
@@ -434,11 +439,41 @@ def run_discovery(
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
                 reason = "deadline_or_reported_usage_overrun"
                 break
+            request_ceiling = (
+                MAX_INPUT if axis == "input" else MAX_OUTPUT if axis == "output" else None
+            )
+            if (
+                request_ceiling is not None
+                and bracket.lower is not None
+                and bracket.lower >= request_ceiling
+            ):
+                bracket.reason = "hard_ceiling_lower_bound"
+                break
+            if (
+                axis == "input"
+                and bracket.lower is None
+                and bracket.upper is not None
+                and bracket.upper <= MIN_INPUT_PROBE
+            ):
+                bracket.reason = "minimum_probe_refused"
+                break
+            if request_ceiling is not None and any(
+                item.request.axis == axis
+                and item.request.target >= request_ceiling
+                and item.outcome == "admitted"
+                for item in observations
+            ):
+                bracket.reason = "hard_ceiling_lower_bound"
+                break
             target = (
                 pending.lower
                 if previous and fresh_successes < 2 and pending.lower
                 else bracket.target()
             )
+            if axis == "input" and bracket.lower is None and bracket.upper is not None:
+                target = max(target, MIN_INPUT_PROBE)
+            if request_ceiling is not None and target > request_ceiling:
+                target = request_ceiling
             if axis == "input":
                 input_tokens, output_tokens = target, counterpart
             elif axis == "output":
@@ -456,6 +491,8 @@ def run_discovery(
                 input_tokens = max(
                     1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )
+            if axis == "input" and target == MAX_INPUT:
+                input_tokens = MAX_INPUT
             if input_tokens > MAX_INPUT or output_tokens > MAX_OUTPUT:
                 bracket.reason = "per_call_ceiling"
                 break
@@ -504,6 +541,9 @@ def run_discovery(
                     raise ValueError("discovery_transport_admission_or_identity_mismatch")
                 journal.complete(observation)
             except Exception as exc:
+                if isinstance(exc, ValueError) and str(exc) == "discovery_budget_exhausted":
+                    reason = bracket.reason = "budget_exhausted"
+                    break
                 reason = f"measurement_stopped:{type(exc).__name__}"
                 bracket.reason = reason
                 journal.data["reason"] = reason
@@ -594,6 +634,13 @@ def run_discovery(
                 fresh_successes = 0
                 continue
             bracket.observe(observation)
+            if (
+                request_ceiling is not None
+                and request.target >= request_ceiling
+                and observation.outcome == "admitted"
+            ):
+                bracket.reason = "hard_ceiling_lower_bound"
+                break
             if previous and fresh_successes < 2:
                 compatible = (
                     observation.outcome == "admitted"

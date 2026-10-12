@@ -465,7 +465,16 @@ def structured_canary(
 
 
 def build_context_request(
-    route, provider_cfg, rules, *, dimension, target, ratio, attempt_ordinal, nonce
+    route,
+    provider_cfg,
+    rules,
+    *,
+    dimension,
+    target,
+    ratio,
+    attempt_ordinal,
+    nonce,
+    max_input_tokens=524_288,
 ):
     """Shape a transient fixture using this identity's count mapping, never a universal ratio.
 
@@ -479,7 +488,8 @@ def build_context_request(
 
     if dimension not in {"input", "output"} or type(target) is not int or target <= 0:
         raise ValueError("invalid context target")
-    if target > (524288 if dimension == "input" else 32768):
+    input_ceiling = max_input_tokens if dimension == "input" else 32768
+    if target > input_ceiling:
         raise ValueError("context target exceeds reviewed per-call ceiling")
     ratio = Fraction(ratio)
     if ratio < 1 or not isinstance(nonce, str) or len(nonce) < 32:
@@ -1037,6 +1047,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         ratio=1,
         attempt_ordinal=1,
         nonce=nonce if dimension == "output" else digest([nonce, request.attempt_id]),
+        max_input_tokens=MAX_INPUT,
     )
     messages = transient.messages
     if dimension == "output" and request.input_tokens > 256:
@@ -1050,6 +1061,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             ratio=1,
             attempt_ordinal=1,
             nonce=nonce,
+            max_input_tokens=MAX_INPUT,
         )
         document = padding.messages[0]["content"].split("\n", 1)[1]
         prompt = (
