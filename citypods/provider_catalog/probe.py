@@ -883,7 +883,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         nonce=nonce if dimension == "output" else digest([nonce, request.attempt_id]),
     )
     messages = transient.messages
-    if dimension == "output":
+    if dimension == "output" and request.input_tokens > 256:
         # Hold a small, measured input fixture fixed while varying only the output request.
         padding = build_context_request(
             route,

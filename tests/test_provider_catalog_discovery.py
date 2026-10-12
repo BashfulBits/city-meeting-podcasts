@@ -584,3 +584,90 @@ def test_invalid_history_references_fail_closed_without_network():
             api=lambda _: pytest.fail("malformed identity must not make an API call"),
         )
         assert not observations and not accepted and deferred
+
+
+@pytest.mark.parametrize("current_limit", [4005, 9000])
+def test_resumed_boundaries_are_merged_once_and_fresh_evidence_wins(tmp_path, current_limit):
+    history = [observation(request(), 4000), observation(request(attempt="b"), 4500, False)]
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.input_tokens)
+        # An altered tokenizer makes the old lower-bound shape count 4600 tokens.
+        count = req.input_tokens + (600 if current_limit == 9000 else 0)
+        return observation(req, count, count <= current_limit, reported_input=count)
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        history=history,
+        journal=DiscoveryJournal(tmp_path / "resume.json", {}),
+    )
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= current_limit < result.brackets[0]["refused"]
+    if current_limit == 9000:
+        assert result.brackets[0]["admitted"] > 4500
+    # A wide old bracket must not stall after only the two baseline successes.
+    assert len(seen) > 3
+
+
+def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append((req.input_tokens, req.output_tokens, req.control))
+        if req.output_tokens > 128:
+            return replace(
+                observation(req, req.output_tokens, False), count_basis="requested_output"
+            )
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+        )
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        journal=DiscoveryJournal(tmp_path / "counterpart.json", {}),
+    )
+    assert seen[0][1] == 256 and seen[1][1] == 128
+    assert seen[0][2] != seen[1][2]
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= 4000 < result.brackets[0]["refused"]
+    assert result.brackets[0]["refused"] != 256
+
+
+def test_local_restart_does_not_restart_wall_time_budget(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    import citypods.provider_catalog.discovery as discovery
+
+    journal = DiscoveryJournal(tmp_path / "expired.json", {})
+    start = datetime.fromisoformat(journal.data["started_at"])
+
+    class LaterDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return start + timedelta(seconds=1201)
+
+    monkeypatch.setattr(discovery, "datetime", LaterDateTime)
+    result = run_discovery(
+        session_id="s",
+        identity="physical",
+        parser_version="v",
+        supported_axes=("input",),
+        measure=lambda *args: pytest.fail("expired session cannot submit"),
+        renew=lambda: None,
+        journal=journal,
+    )
+    assert result.budget["calls"] == 0
+    assert result.reason == "deadline_or_reported_usage_overrun"

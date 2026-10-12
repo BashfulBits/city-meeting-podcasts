@@ -9,7 +9,7 @@ import tempfile
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.provider_catalog.evidence import digest
@@ -261,7 +261,12 @@ class DiscoveryJournal:
 
     def __init__(self, path: Path, session: Mapping):
         self.path = path
-        self.data = {"session": dict(session), "attempts": [], "reason": None}
+        self.data = {
+            "session": dict(session),
+            "attempts": [],
+            "reason": None,
+            "started_at": datetime.now(UTC).isoformat(),
+        }
         if path.exists():
             if path.stat().st_size > MAX_ARTIFACT_BYTES:
                 raise ValueError("oversized discovery checkpoint")
@@ -345,7 +350,13 @@ def run_discovery(
             or selected.max_output > 524_288 * multiplier
         ):
             raise ValueError("discovery envelope exceeds reviewed ceiling")
-    deadline = min(deadline or float("inf"), clock() + 1200)
+    started = datetime.fromisoformat(journal.data["started_at"])
+    if started.tzinfo is None or started > datetime.now(UTC):
+        raise ValueError("invalid discovery session start")
+    elapsed = (datetime.now(UTC) - started).total_seconds()
+    deadline = min(
+        deadline if deadline is not None else float("inf"), clock() + max(0, 1200 - elapsed)
+    )
     observations, brackets = [], []
     reason = "complete"
     seeds = seeds or {}
@@ -376,12 +387,28 @@ def run_discovery(
             and item.request.axis == axis
             and item.request.parser_version == parser_version
             and item.request.fixture_version == "discovery-v1"
+            and item.outcome in {"admitted", "refused"}
+            and item.verified
         ]
+        counterpart = 256 if axis in {"input", "total_input_heavy"} else 2048
+        control = f"{axis}:v1"
+        compatible = previous + [item for item in observations if item.request.axis == axis]
+        if compatible:
+            latest = sorted(compatible, key=lambda item: datetime.fromisoformat(item.observed_at))[
+                -1
+            ]
+            prefix = f"{axis}:v1:opposite="
+            if latest.request.control.startswith(prefix):
+                value = latest.request.control.removeprefix(prefix)
+                if value.isascii() and value.isdigit() and 0 < int(value) <= counterpart:
+                    counterpart = int(value)
+                    control = latest.request.control
+        previous = [item for item in previous if item.request.control == control]
         pending = Bracket(axis, bracket.seed)
         for item in previous:
             pending.observe(item)
         for item in observations:
-            if item.request.axis == axis:
+            if item.request.axis == axis and item.request.control == control:
                 bracket.observe(item)
         fresh_successes, quota_retry = 0, False
         while not bracket.converged and bracket.nonprogress < 3:
@@ -394,13 +421,13 @@ def run_discovery(
                 else bracket.target()
             )
             if axis == "input":
-                input_tokens, output_tokens = target, 256
+                input_tokens, output_tokens = target, counterpart
             elif axis == "output":
-                input_tokens, output_tokens = 2048, target
+                input_tokens, output_tokens = counterpart, target
             elif axis == "total_input_heavy":
-                input_tokens, output_tokens = max(1, target - 256), 256
+                input_tokens, output_tokens = max(1, target - counterpart), counterpart
             else:
-                input_tokens = min(2048, max(1, target // 4))
+                input_tokens = min(counterpart, max(1, target // 4))
                 output_tokens = max(1, target - input_tokens)
             matching = [
                 item for item in observations if item.request.axis == axis and item.reported_input
@@ -422,7 +449,7 @@ def run_discovery(
                 target,
                 input_tokens,
                 output_tokens,
-                f"{axis}:v1",
+                control,
                 parser_version,
             )
             charged = False
@@ -494,15 +521,44 @@ def run_discovery(
                     break
                 continue
             quota_retry = False
+            blocking = (
+                {"output", "requested_output"}
+                if axis in {"input", "total_input_heavy"}
+                else {"input", "prompt_tokens"}
+            )
+            if (
+                observation.outcome == "refused"
+                and observation.count_basis in blocking
+                and counterpart > 1
+            ):
+                # A typed failure of the fixed counterpart supplies no boundary for this axis.
+                # Reduce that counterpart and establish a new, independent control identity.
+                counterpart = max(1, counterpart // 2)
+                control = f"{axis}:v1:opposite={counterpart}"
+                bracket = Bracket(axis, bracket.seed, reason="fixed_counterpart_reduced")
+                brackets[-1] = bracket
+                previous = []
+                fresh_successes = 0
+                continue
             bracket.observe(observation)
             if previous and fresh_successes < 2:
-                if observation.outcome == "admitted":
+                compatible = (
+                    observation.outcome == "admitted"
+                    and (pending.basis is None or observation.count_basis == pending.basis)
+                    and (pending.control is None or observation.request.control == pending.control)
+                    and observation.coordinate >= (pending.lower or 0)
+                )
+                if compatible:
                     fresh_successes += 1
                     if fresh_successes == 2:
+                        # Rebuild chronologically: each boundary is consumed exactly once,
+                        # with current evidence taking precedence over contradicted old limits.
+                        bracket = Bracket(axis, bracket.seed)
+                        brackets[-1] = bracket
                         for item in previous:
                             bracket.observe(item)
                         for item in observations:
-                            if item.request.axis == axis:
+                            if item.request.axis == axis and item.request.control == control:
                                 bracket.observe(item)
                 elif observation.outcome == "refused":
                     previous = []

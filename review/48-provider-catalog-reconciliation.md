@@ -2063,7 +2063,7 @@ enter/override limits, approve preparing an addition PR, ignore or reject. No au
 automatic runtime/YAML ceiling publication occurs. Dead-route removal and structural recovery
 retain their accepted contracts and rollout gates.
 
-#### Offline implementation checkpoint — foundation
+#### Offline implementation checkpoint — foundation ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
 
 Implementation is split into a foundation PR and a following report/retry/workflow PR under #2271.
 The foundation supplies the pure planner, bounded distinct transport, charged/fsynced checkpoints,
