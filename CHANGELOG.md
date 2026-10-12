@@ -18,6 +18,13 @@ Once 1.0 ships, entries move under semver tags.
   confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
   timestamp. Removal publication remains behind its separate recovery-canary activation gate.
 
+- **Single-model output-limit retry ceiling (review/49 dispatch requirement 1).** A Worker job
+  pinned to one model with no backups (every `per_model` judge lane) now gets one retry, set by
+  `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES`, when its reply stops at the output limit. It previously
+  drew on the 8-retry upstream budget, and the same cut-off recurred on the same model. The job then
+  fails to its producer, which re-plans it. Jobs that can move to another model keep the upstream
+  budget.
+
 - **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
   with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
   checkpoints and authenticated partial-run evidence. A separate typed discovery transport

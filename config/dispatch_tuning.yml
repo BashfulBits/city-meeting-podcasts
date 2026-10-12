@@ -104,6 +104,9 @@ UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
 # fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.
 MAX_UPSTREAM_CAPACITY_RETRIES: 8
+# A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
+# on that model, so it gets this many retries, not the upstream budget, then fails to its producer.
+MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES: 1
 MAX_5XX_RETRIES: 1
 MAX_5XX_BACKOFF_SECONDS: 300
 MAX_ROUTE_BUFFER_SECONDS: 120
