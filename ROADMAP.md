@@ -685,10 +685,12 @@ with separately bounded durable manual budgets; contract review precedes impleme
 Review/48 manual trigger implementation is prepared under #2221 with the approved separate
 finite allowance. Explicit canary execution and acceptance precede output/broader activation.
 
-Review/48 new-route discovery/report/retry is implemented in #2271. #2223 prepares the first
-live activation as a manually selected, verified-free route under a required provider-wide v2
-pause. Weekly discovery stays disabled until the first route's evidence is reviewed; unknown quota
-scope remains explicitly unknown and no limits are published automatically.
+Review/48 new-route discovery/report/retry shipped in #2275, and its single-candidate manual live
+activation shipped in #2281. The first selected OpenRouter candidate returned HTTP 200 for all
+four JSON methods but did not produce verified fixture JSON, so request-size discovery did not
+run. Its detailed diagnostics are being improved before the next attempt. Broad weekly discovery
+stays disabled until successful first-route evidence is reviewed; unknown quota scope remains
+explicitly unknown and no limits are published automatically.
 
 The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
 reservation. It yielded no provider counts or completion reason, so it does not verify that request

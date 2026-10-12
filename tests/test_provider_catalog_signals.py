@@ -147,12 +147,30 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
         status_code = 200
         ok = True
         closed = False
+        headers = {"x-request-id": "request-123"}
 
         def iter_lines(self, **kwargs):
             # BeatAPI's reasoning-only first event is legitimate but is not JSON evidence.
-            yield 'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}'
+            yield "data: " + json.dumps(
+                {
+                    "id": "chatcmpl-test",
+                    "choices": [{"delta": {"reasoning_content": "thinking"}}],
+                }
+            )
             yield "data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
             yield "data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": finish}]})
+            yield "data: " + json.dumps(
+                {
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": 12,
+                        "completion_tokens": 4,
+                        "total_tokens": 16,
+                        "completion_tokens_details": {"reasoning_tokens": 2},
+                        "prompt_tokens_details": {"cached_tokens": 3},
+                    },
+                }
+            )
             yield "data: [DONE]"
 
         def close(self):
@@ -185,6 +203,27 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
     assert {r["outcome"] for r in result.values()} == {expected}
     assert all(r.closed for r in session.responses)
     assert all(r["max_tokens"] > 16 for r in session.requests)
+    expected_events = 5 if finish == "stop" else 3
+    assert all(result["events"] == expected_events for result in result.values())
+    assert all(result["content_bytes"] == len(content.encode()) for result in result.values())
+    assert all(result["finish_reason"] == finish for result in result.values())
+    assert all(result["stream_terminal"] for result in result.values())
+    assert all(result["provider_request_id"] == "request-123" for result in result.values())
+    assert all(result["response_id"] == "chatcmpl-test" for result in result.values())
+    if finish == "stop":
+        assert all(
+            result["usage"]
+            == {
+                "prompt_tokens": 12,
+                "completion_tokens": 4,
+                "total_tokens": 16,
+                "reasoning_tokens": 2,
+                "cached_tokens": 3,
+            }
+            for result in result.values()
+        )
+    else:
+        assert all("usage" not in result for result in result.values())
     assert "response_format" not in session.requests[-1]
     assert (
         session.requests[0]["response_format"]["json_schema"]["schema"]["properties"]["answer"][
@@ -199,6 +238,80 @@ def test_structured_canary_requires_visible_completed_schema_valid_json(content,
         ]
     )
     assert all("first_byte_seconds" in r and "completion_seconds" in r for r in result.values())
+    if expected == "valid":
+        assert all(r["diagnostic"] == "fixture_json_valid" for r in result.values())
+        assert all("completion_preview" not in r for r in result.values())
+    elif finish != "stop":
+        assert all(r["diagnostic"] == f"finish_reason_{finish}" for r in result.values())
+        assert all("completion_preview" in r for r in result.values())
+    elif not content:
+        assert all(r["diagnostic"] == "empty_content" for r in result.values())
+    else:
+        assert all(r["diagnostic"] == "fixture_json_mismatch" for r in result.values())
+
+
+def test_structured_probe_preview_is_bounded_and_safe_for_issue_markdown():
+    from citypods.provider_catalog.probe import (
+        _MAX_STRUCTURED_PREVIEW_CHARS,
+        _safe_structured_preview,
+    )
+
+    source = "`@owner <tag> [label](url) !#|*_~\n" + ("x" * 500)
+    preview = _safe_structured_preview(source)
+    assert len(json.loads(preview)) == _MAX_STRUCTURED_PREVIEW_CHARS
+    assert all(char not in preview for char in "`@<>[]()!#|*_~")
+    assert "\\u0060" in preview and "\\u0040" in preview
+
+
+def test_structured_probe_records_a_bounded_http_error_preview():
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS, structured_canary
+
+    class Failed:
+        status_code = 400
+        ok = False
+        closed = False
+        headers = {"x-request-id": "req-400"}
+
+        def iter_content(self, chunk_size):
+            yield (
+                b'{"error":{"message":"unsupported response_format","echo":"test-key"}}'
+                + b"x" * 2_000
+            )
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        def post(self, *args, **kwargs):
+            return response
+
+    response = Failed()
+    result = structured_canary(
+        all_rules()["beatapi"],
+        {"api_base": "https://beat.test/v1"},
+        "chat-free",
+        "test-key",
+        Session(),
+        before_attempt=lambda: True,
+        methods={
+            method: {
+                "response_format": "json_schema",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+            for method in STRUCTURED_METHODS
+        },
+    )
+    assert response.closed
+    assert result["json_schema"]["outcome"] == "rejected"
+    assert result["json_schema"]["diagnostic"] == "http_400"
+    assert result["json_schema"]["provider_request_id"] == "req-400"
+    error_preview = json.loads(result["json_schema"]["error_preview"])
+    assert "unsupported response_format" in error_preview
+    assert "test-key" not in error_preview
+    assert "[redacted]" in error_preview
+    assert result["json_schema"]["error_body_bytes"] == 1_024
+    assert result["json_schema"]["error_body_truncated"]
 
 
 def test_beatapi_plugin_excludes_jev_and_classifies_account_window_exhaustion():

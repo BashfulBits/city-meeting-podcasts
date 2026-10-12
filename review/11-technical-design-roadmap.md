@@ -1818,16 +1818,20 @@ and finite token reservations per candidate; separate authenticated 90-day histo
 `/apply` retry receipts. The first live activation is restricted to one exact free candidate in a
 manual run; the provider-wide v2 pause is required. The maintainer accepted unknown/shared quota
 scope for this bounded first canary because the candidate is not yet dispatchable by this repo.
-Weekly discovery remains disabled until that evidence is reviewed. Combined-cap/config additions
-remain gated on their separate configuration design.
+One-candidate activation shipped in [#2281](https://github.com/BashfulBits/city-meeting-podcasts/pull/2281).
+The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned HTTP 200
+for all four JSON methods but did not produce verified fixture JSON, so request-size discovery did
+not run. Expanded method-level diagnostics are being added after this run. A successful first-route
+cap result still needs review before a separate change can enable broad scheduled discovery.
+Combined-cap/config additions remain gated on their separate configuration design.
 
-The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273).
-Report/retry/workflow integration is now under implementation review in #2271: new reachable
-candidates receive bounded size discovery, the issue reports source claims and measured brackets,
-and an authorized `/apply` can queue an authenticated next-day retry without provider calls. Pure
-adapter tests cover all axes; unsupported refusal/combined semantics remain explicit. No new probes
-are enabled until #2223's one-candidate manual activation is merged and deployed; broader weekly
-discovery remains separately gated on review of the first route's evidence.
+The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273)
+and report/retry/workflow integration shipped in [PR #2275](https://github.com/BashfulBits/city-meeting-podcasts/pull/2275).
+New reachable candidates receive bounded size discovery, the issue reports source claims and
+measured brackets, and an authorized `/apply` can queue an authenticated next-day retry without
+provider calls. Pure adapter tests cover supported axes; unsupported refusal/combined semantics
+remain explicit. Broad scheduled discovery remains disabled pending review of successful first-route
+evidence.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 
