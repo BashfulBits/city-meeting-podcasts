@@ -231,7 +231,7 @@ contract tests keep in step with `config/provider_limits.yml`; lanes come only f
 A successful availability ping is followed by four schema-method checks using the shared Python
 request renderer. Only completed visible schema-valid JSON verifies a method; reasoning alone does
 not. SSE framing is parsed per event, with multiple `data:` fields joined before JSON decoding and a
-64 KiB cumulative event-data bound. Checks allow 4,096 completion tokens including reasoning, with a
+128 KiB cumulative event-data bound. Checks allow 4,096 completion tokens including reasoning, with a
 720-second read timeout and elapsed-time checks. Plugin spacing covers every request, including
 BeatAPI's shared account window; configured-route method checks are charged individually, and
 scarce routes defer when quota is unknown or spent. The compressed, backwards-readable issue state
