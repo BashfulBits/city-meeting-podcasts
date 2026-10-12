@@ -3665,3 +3665,10 @@ capacity evidence or fewer than 100 remaining daily calls, never increase limits
 route pause/drain/reserve helpers around each call and resume on exit; do not pause the entire
 Google provider or other models. Save immutable observations, capacity and score artifacts under
 `evals/remedy/results/flash-lite-denton-2026-10-11/`. No defaults, catalogs or feeds change.
+
+Flash-Lite baseline completed: 20/20 Denton answers correct, zero wrong/abstained/failed;
+provider median1.106s versus end-to-end median5.601s. This tests four underlying meetings with
+provider-default reasoning, not maximum-effort or broad admission. Immutable raw/checkpoint,
+explicit-gold content reports, route capacity snapshots and request hashes are retained under
+`evals/remedy/results/flash-lite-denton-2026-10-11/`. Current main pins Gemini3.1 Flash-Lite as
+primary tagger; 3.5 is available for other lanes. No production defaults/floor changed.
