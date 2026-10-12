@@ -54,7 +54,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.15"
+          python-version: "3.14"
           cache: pip
 
       # Latency optimization only: the object bucket is the source of truth for build state
@@ -151,7 +151,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.15"
+          python-version: "3.14"
           cache: pip
       - name: Download same-run render handoff
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
