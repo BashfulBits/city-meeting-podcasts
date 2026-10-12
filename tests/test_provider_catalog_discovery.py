@@ -1,0 +1,789 @@
+"""Discovery acceptance uses deterministic limits, usage drift and failures, never live quota."""
+
+from dataclasses import asdict, replace
+from datetime import UTC, datetime
+
+import pytest
+
+from citypods.provider_catalog.discovery import (
+    AXES,
+    Bracket,
+    DiscoveryBudget,
+    DiscoveryJournal,
+    DiscoveryObservation,
+    DiscoveryRequest,
+    discovery_identity,
+    run_discovery,
+)
+
+STAMP = datetime.now(UTC).isoformat()
+
+
+def request(axis="input", target=2048, attempt="a"):
+    return DiscoveryRequest(
+        "session", attempt, "physical", axis, target, target, 256, f"{axis}:v1", "parser-v1"
+    )
+
+
+def observation(req, count, admitted=True, **kwargs):
+    return DiscoveryObservation(
+        req,
+        STAMP,
+        outcome="admitted" if admitted else "refused",
+        coordinate=count,
+        count_basis=("prompt_plus_requested_output" if req.axis.startswith("total_") else req.axis),
+        verified=True,
+        reported_output=count if req.axis == "output" and admitted else None,
+        finish_reason="length" if req.axis == "output" and admitted else None,
+        **kwargs,
+    )
+
+
+def execute(tmp_path, adapter, **kwargs):
+    return run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=AXES,
+        measure=adapter,
+        renew=lambda: None,
+        journal=DiscoveryJournal(tmp_path / "journal.json", {"identity": "physical"}),
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("seed", [256, 20_000])
+def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
+    limits = dict(input=4000, output=1800, total_input_heavy=6000, total_output_heavy=6000)
+    calls = []
+
+    def measure(req, admit, timeout):
+        receipt = admit()
+        assert receipt.matches(req) and 0 < timeout <= 120
+        actual_input = req.input_tokens
+        count = (
+            actual_input
+            if req.axis == "input"
+            else req.output_tokens
+            if req.axis == "output"
+            else actual_input + req.output_tokens
+        )
+        calls.append((req.axis, count))
+        return observation(req, count, count <= limits[req.axis], reported_input=actual_input)
+
+    result = execute(tmp_path, measure, seeds=dict.fromkeys(AXES, seed))
+    assert result.reason == "complete"
+    assert result.budget["calls"] <= 64
+    assert len(result.brackets) == 4
+    for bracket in result.brackets:
+        assert bracket["status"] == "converged"
+        assert bracket["admitted"] <= limits[bracket["axis"]] < bracket["refused"]
+        assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
+    if seed == 20_000:
+        assert [count for axis, count in calls if axis == "input"][:3] == [20000, 10000, 5000]
+
+
+def test_actual_counts_correct_input_estimate(tmp_path):
+    inputs = []
+
+    def measure(req, admit, timeout):
+        admit()
+        count = req.input_tokens * 2
+        inputs.append(req.input_tokens)
+        return observation(req, count, count <= 5000, reported_input=count)
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        journal=DiscoveryJournal(tmp_path / "counts.json", {}),
+    )
+    assert result.brackets[0]["status"] == "converged"
+    assert inputs[:2] == [2048, 3072]
+    assert result.budget["input_tokens"] >= sum(inputs) * 2
+
+
+def test_rate_rejection_never_establishes_upper(tmp_path):
+    calls = []
+    now = [0.0]
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        return DiscoveryObservation(req, STAMP, outcome="quota", retry_after_seconds=3)
+
+    result = execute(
+        tmp_path,
+        measure,
+        clock=lambda: now[0],
+        sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+    assert len(calls) == 2
+    assert calls[0].input_tokens == calls[1].input_tokens
+    assert result.reason == "quota_deferred"
+    assert result.brackets[0]["refused"] is None
+
+
+@pytest.mark.parametrize("outcome", ["daily", "outage"])
+def test_account_errors_stop_all_axes(tmp_path, outcome):
+    def measure(req, admit, timeout):
+        admit()
+        return DiscoveryObservation(req, STAMP, outcome=outcome)
+
+    result = execute(tmp_path, measure)
+    assert result.reason == outcome
+    assert result.budget["calls"] == 1
+
+
+def test_natural_output_never_converges(tmp_path):
+    def measure(req, admit, timeout):
+        admit()
+        return DiscoveryObservation(
+            req, STAMP, outcome="lower_only", reported_output=20, finish_reason="stop"
+        )
+
+    result = execute(tmp_path, measure)
+    assert result.budget["calls"] == 12
+    assert all(b["status"] == "partial" and b["refused"] is None for b in result.brackets)
+    with pytest.raises(ValueError, match="generated"):
+        replace(observation(request("output"), 20), finish_reason="stop")
+
+
+def test_budget_exhaustion_and_unknown_response_stay_charged(tmp_path):
+    def measure(req, admit, timeout):
+        admit()
+        raise TimeoutError("never persist a credential or prompt")
+
+    result = execute(tmp_path, measure)
+    assert result.budget["calls"] == 1
+    assert "credential" not in (tmp_path / "journal.json").read_text()
+    resumed = execute(tmp_path, measure)
+    assert resumed.reason == "indeterminate_attempt_new_receipt"
+    assert resumed.budget["calls"] == 1
+
+    other = tmp_path / "new"
+    other.mkdir()
+
+    def successful(req, admit, timeout):
+        admit()
+        return observation(req, req.input_tokens, reported_input=req.input_tokens)
+
+    result = execute(other, successful, budget=DiscoveryBudget(max_calls=1))
+    assert result.budget["calls"] == 1
+    assert result.reason.startswith("measurement_stopped")
+
+
+def test_shared_budget_validation_is_atomic(tmp_path):
+    shared = DiscoveryBudget(max_calls=0)
+
+    def measure(req, admit, timeout):
+        admit()
+        pytest.fail("must never release transport")
+
+    result = execute(tmp_path, measure, shared_budget=shared)
+    assert result.budget["calls"] == shared.calls == 0
+
+
+def test_contradiction_and_control_mismatch(tmp_path):
+    bracket = Bracket("input", 2048)
+    bracket.observe(observation(request(), 2000))
+    bracket.observe(observation(request(attempt="b"), 3000, False))
+    bracket.observe(observation(request(attempt="c"), 4000))
+    assert bracket.upper is None and bracket.lower == 4000
+    assert bracket.reason == "contradictory_boundary_rebaseline"
+    bracket.observe(observation(replace(request(), control="other"), 5000, False))
+    assert bracket.upper is None
+    assert bracket.reason == "incomparable_count_or_control"
+
+
+def test_resume_requires_two_fresh_successes(tmp_path):
+    history = [observation(request(), 4000), observation(request(attempt="b"), 4010, False)]
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+        )
+
+    result = execute(tmp_path, measure, history=history)
+    assert seen[:2] == [4000, 4000]
+    assert result.brackets[0]["status"] == "converged"
+
+
+def test_pause_loss_and_reported_overrun_stop(tmp_path):
+    journal = DiscoveryJournal(tmp_path / "pause.json", {})
+    result = run_discovery(
+        session_id="s",
+        identity="physical",
+        parser_version="v",
+        supported_axes=AXES,
+        measure=lambda *args: pytest.fail("no transport"),
+        journal=journal,
+        renew=lambda: (_ for _ in ()).throw(RuntimeError("pause lost")),
+    )
+    assert result.budget["calls"] == 0
+
+    def measure(req, admit, timeout):
+        admit()
+        return observation(req, 100000, reported_input=100000)
+
+    result = execute(tmp_path, measure, budget=DiscoveryBudget(max_input=3000))
+    assert result.budget["calls"] == 1
+    assert result.reason == "deadline_or_reported_usage_overrun"
+
+
+def test_journal_identity_and_observation_round_trip(tmp_path):
+    journal = DiscoveryJournal(tmp_path / "checkpoint.json", {"session_id": "s"})
+    req = request()
+    journal.charge(req)
+    with pytest.raises(ValueError, match="already_charged"):
+        journal.charge(req)
+    item = observation(req, 2000)
+    journal.complete(item)
+    assert DiscoveryObservation.from_dict(asdict(item)) == item
+    assert DiscoveryJournal(journal.path, {"session_id": "s"}).data == journal.data
+    with pytest.raises(ValueError, match="identity"):
+        DiscoveryJournal(journal.path, {"session_id": "another"})
+
+
+def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path):
+    import io
+    import json
+    import zipfile
+
+    from citypods.provider_catalog.evidence import discovery_artifact, verified_discovery_history
+
+    now = datetime.now(UTC)
+    req = replace(
+        request(),
+        identity=discovery_identity("groq", "a", "model", "https://api.groq.com/openai/v1"),
+    )
+    metadata = dict(
+        session_id="session",
+        identity=req.identity,
+        provider="groq",
+        account_id="a",
+        upstream_model="model",
+        endpoint="https://api.groq.com/openai/v1",
+        parser_version="parser-v1",
+        fixture_version="discovery-v1",
+        catalog_digest="a" * 64,
+        free_evidence_digest="b" * 64,
+        created_at=now.isoformat(),
+    )
+    session = dict(
+        session=metadata,
+        attempts=[dict(request=asdict(req), observation=asdict(observation(req, 2000)))],
+        reason="partial",
+    )
+    envelope = discovery_artifact(
+        [session], repository="owner/repo", run_id="5", head_sha="a" * 40, now=now
+    )
+
+    def archive(value):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as zipped:
+            zipped.writestr("provider-catalog-discovery-evidence.json", json.dumps(value))
+        return stream.getvalue()
+
+    raw = [archive(envelope)]
+    run = dict(
+        id=5,
+        status="completed",
+        conclusion="failure",
+        event="schedule",
+        workflow_id=2,
+        head_branch="main",
+        head_repository=dict(full_name="owner/repo"),
+        head_sha="a" * 40,
+    )
+
+    def api(path):
+        if path.endswith("/provider-catalog-reconcile.yml"):
+            return dict(id=2, path=".github/workflows/provider-catalog-reconcile.yml")
+        if path.endswith("/artifacts?per_page=100"):
+            return dict(
+                artifacts=[
+                    dict(
+                        id=8,
+                        name="provider-catalog-discovery-evidence-5",
+                        expired=False,
+                        size_in_bytes=len(raw[0]),
+                    )
+                ]
+            )
+        if path.endswith("/runs/5"):
+            return run
+        return dict(full_name="owner/repo", default_branch="main")
+
+    def verify():
+        return verified_discovery_history(
+            [dict(run_id="5")],
+            repository="owner/repo",
+            now=now,
+            api=api,
+            download=lambda _: raw[0],
+            ancestor=lambda _: True,
+        )
+
+    values, accepted, deferred = verify()
+    assert len(values) == len(accepted) == 1 and not deferred
+
+    # Six newer empty or duplicate-only sessions must not crowd out older useful evidence.
+    import copy
+    import re
+
+    from citypods.provider_catalog.evidence import digest
+
+    for duplicate in (False, True):
+        archives = {}
+        for rid in range(5, 12):
+            candidate = copy.deepcopy(envelope)
+            candidate["payload"]["run_id"] = str(rid)
+            rows = candidate["payload"]["sessions"][0]["attempts"]
+            if rid > 5:
+                if duplicate:
+                    rows[0]["request"]["attempt_id"] = "copied"
+                    rows[0]["observation"]["request"]["attempt_id"] = "copied"
+                else:
+                    rows.clear()
+            candidate["payload_digest"] = digest(candidate["payload"])
+            archives[rid] = archive(candidate)
+
+        def history_api(path, archives=archives):
+            match = re.search(r"/runs/([0-9]+)", path)
+            if match:
+                rid = int(match[1])
+                if "artifacts?" in path:
+                    return dict(
+                        artifacts=[
+                            dict(
+                                id=rid,
+                                name=f"provider-catalog-discovery-evidence-{rid}",
+                                expired=False,
+                                size_in_bytes=len(archives[rid]),
+                            )
+                        ]
+                    )
+                return run | {"id": rid}
+            return api(path)
+
+        found, accepted_runs, failures = verified_discovery_history(
+            [dict(run_id=str(rid)) for rid in range(5, 12)],
+            repository="owner/repo",
+            now=now,
+            api=history_api,
+            download=lambda path, archives=archives: archives[
+                int(re.search(r"/artifacts/([0-9]+)", path)[1])
+            ],
+            ancestor=lambda _: True,
+        )
+        assert not failures and len(accepted_runs) == 7
+        assert len(found) == (2 if duplicate else 1)
+        assert any(item.request.attempt_id == "a" for item in found)
+    run["event"] = "pull_request"
+    assert verify()[2]
+    run["event"] = "schedule"
+    envelope["payload"]["sessions"][0]["attempts"][0]["observation"]["coordinate"] = 999999
+    raw[0] = archive(envelope)
+    assert verify()[2]
+
+
+def test_unsupported_current_provider_endpoints_are_explicit():
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import Response
+
+    for name, rules in all_rules().items():
+        if name not in {"groq", "openrouter"}:
+            assert not rules.discovery_axes
+            assert (
+                rules.discovery_observation(Response(200, body="{}"), request(), None).outcome
+                == "inconclusive"
+            )
+    assert not any(
+        axis.startswith("total") for rules in all_rules().values() for axis in rules.discovery_axes
+    )
+
+
+def test_chat_usage_and_rate_numbers_have_separate_authority():
+    import json
+
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.groq import RULES
+    from citypods.provider_catalog.rules import Response
+
+    cfg = dict(
+        api_base="https://api.groq.com/openai/v1", accounts=[dict(id="a", api_key_env="KEY")]
+    )
+    route = dict(route_id="candidate", provider="groq", account_id="a", upstream_model="model")
+    req = request()
+    req = replace(
+        req,
+        identity=discovery_identity(
+            "groq", "a", "model", "https://api.groq.com/openai/v1/chat/completions"
+        ),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    import re
+
+    expected = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    body = dict(
+        object="chat.completion",
+        usage=dict(prompt_tokens=2047, completion_tokens=100, total_tokens=2147),
+        choices=[dict(message=dict(content=json.dumps(expected)), finish_reason="stop")],
+    )
+    result = RULES.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert result.outcome == "admitted" and result.coordinate == 2047
+    error = Response(429, body='{"error":{"message":"TPM limit 8000, requested 9000"}}')
+    result = RULES.discovery_observation(error, req, transient)
+    assert result.outcome == "quota" and result.coordinate is None
+
+
+def _discovery_transport_worker(pipe, transient, session, timeout, retain_error_body):
+    """Spawn-safe IPC fixture; no credentials, URLs or provider network calls."""
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    try:
+        pipe.recv()
+        pipe.send("ready")
+        if pipe.recv() != "new":
+            return
+        expected = dict(
+            re.findall(
+                r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"]
+            )
+        )
+        pipe.send(
+            Response(
+                200,
+                body=json.dumps(
+                    dict(
+                        object="chat.completion",
+                        usage=dict(prompt_tokens=2048, completion_tokens=100, total_tokens=2148),
+                        choices=[
+                            dict(message=dict(content=json.dumps(expected)), finish_reason="stop")
+                        ],
+                    )
+                ),
+            )
+        )
+    finally:
+        pipe.close()
+        session.close()
+
+
+@pytest.mark.parametrize("receipt_kind", ["new", "wrong_identity", "wrong_type"])
+def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind):
+    import time
+
+    import requests
+
+    from citypods.provider_catalog.discovery import DiscoveryAdmission
+    from citypods.provider_catalog.probe import build_discovery_request, measure_discovery
+    from citypods.provider_catalog.providers.groq import RULES
+
+    monkeypatch.setattr(
+        "citypods.provider_catalog.probe._context_http_worker", _discovery_transport_worker
+    )
+    req = request()
+    cfg = dict(
+        api_base="https://api.groq.com/openai/v1", accounts=[dict(id="a", api_key_env="TEST_ONLY")]
+    )
+    route = dict(route_id="candidate", provider="groq", account_id="a", upstream_model="model")
+    req = replace(
+        req,
+        identity=discovery_identity(
+            "groq", "a", "model", "https://api.groq.com/openai/v1/chat/completions"
+        ),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="e" * 32)
+    receipt = DiscoveryAdmission(
+        req.session_id,
+        req.attempt_id,
+        req.identity,
+        req.input_tokens,
+        req.output_tokens,
+        time.monotonic() + 10,
+    )
+    if receipt_kind == "wrong_identity":
+        receipt = replace(receipt, identity="different")
+    if receipt_kind == "wrong_type":
+        receipt = object()
+
+    def measure():
+        return measure_discovery(
+            req,
+            transient,
+            RULES,
+            session=requests.Session(),
+            before_call=lambda: receipt,
+            clock=time.monotonic,
+            timeout=5,
+        )
+
+    if receipt_kind == "new":
+        assert measure().coordinate == 2048
+    else:
+        with pytest.raises(ValueError, match="admission"):
+            measure()
+
+
+def test_envelopes_cannot_be_raised_by_caller(tmp_path):
+    with pytest.raises(ValueError, match="reviewed ceiling"):
+        execute(
+            tmp_path,
+            lambda *args: pytest.fail("no transport"),
+            budget=DiscoveryBudget(max_calls=65),
+        )
+
+
+def test_pause_renewal_crossing_deadline_does_not_release_transport(tmp_path):
+    now = [0.0]
+
+    def renew():
+        now[0] += 10
+
+    def measure(req, admit, timeout):
+        admit()
+        pytest.fail("expired admission must not release transport")
+
+    result = run_discovery(
+        session_id="s",
+        identity="physical",
+        parser_version="v",
+        supported_axes=("input",),
+        measure=measure,
+        renew=renew,
+        clock=lambda: now[0],
+        deadline=15,
+        journal=DiscoveryJournal(tmp_path / "deadline.json", {}),
+    )
+    assert result.budget["calls"] == 0
+
+
+def test_input_only_refusal_cannot_bound_combined_capacity():
+    bracket = Bracket("total_input_heavy", 6000)
+    req = replace(request(), axis="total_input_heavy", control="total_input_heavy:v1")
+    item = replace(observation(req, 5000), count_basis="prompt_plus_requested_output")
+    bracket.observe(item)
+    refused_input = replace(observation(req, 5200, False), count_basis="input")
+    bracket.observe(refused_input)
+    assert bracket.lower == 5000 and bracket.upper is None
+    assert bracket.reason == "conditional_or_unverified_count_basis"
+
+
+def test_output_fixture_ceiling_and_reasoning_are_endpoint_specific():
+    import json
+
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.groq import RULES as GROQ
+    from citypods.provider_catalog.providers.openrouter import RULES
+    from citypods.provider_catalog.rules import Response
+
+    cfg = dict(
+        api_base="https://openrouter.ai/api/v1", accounts=[dict(id="a", api_key_env="TEST_ONLY")]
+    )
+    route = dict(route_id="candidate", provider="openrouter", account_id="a", upstream_model="m")
+    req = replace(
+        request("output"),
+        output_tokens=131072,
+        identity=discovery_identity(
+            "openrouter", "a", "m", "https://openrouter.ai/api/v1/chat/completions"
+        ),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="a" * 32)
+    assert transient.shaped_body["body"]["max_tokens"] == 131072
+    body = dict(
+        object="chat.completion",
+        usage=dict(
+            prompt_tokens=25,
+            completion_tokens=10,
+            total_tokens=35,
+            completion_tokens_details=dict(reasoning_tokens=2),
+            prompt_tokens_details=dict(cached_tokens=0),
+        ),
+        choices=[dict(message=dict(content="1\n2\n3\n4"), finish_reason="length")],
+    )
+    response = Response(200, body=json.dumps(body))
+    result = RULES.discovery_observation(response, req, transient)
+    assert result.outcome == "admitted" and result.reasoning_tokens == 2
+    assert result.count_basis == "completion_including_reasoning"
+    assert GROQ.discovery_observation(response, req, transient).outcome == "inconclusive"
+    body["usage"] = []
+    assert (
+        RULES.discovery_observation(Response(200, body=json.dumps(body)), req, transient).outcome
+        == "inconclusive"
+    )
+
+
+def test_invalid_history_references_fail_closed_without_network():
+    from citypods.provider_catalog.evidence import verified_discovery_history
+
+    for rows in (["forged"], [dict(run_id="9" * 5000)], [dict(run_id=True)]):
+        observations, accepted, deferred = verified_discovery_history(
+            rows,
+            repository="owner/repo",
+            now=datetime.now(UTC),
+            api=lambda _: pytest.fail("malformed identity must not make an API call"),
+        )
+        assert not observations and not accepted and deferred
+
+
+@pytest.mark.parametrize("current_limit", [4005, 9000])
+def test_resumed_boundaries_are_merged_once_and_fresh_evidence_wins(tmp_path, current_limit):
+    history = [observation(request(), 4000), observation(request(attempt="b"), 4500, False)]
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.input_tokens)
+        # An altered tokenizer makes the old lower-bound shape count 4600 tokens.
+        count = req.input_tokens + (600 if current_limit == 9000 else 0)
+        return observation(req, count, count <= current_limit, reported_input=count)
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        history=history,
+        journal=DiscoveryJournal(tmp_path / "resume.json", {}),
+    )
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= current_limit < result.brackets[0]["refused"]
+    if current_limit == 9000:
+        assert result.brackets[0]["admitted"] > 4500
+    # A wide old bracket must not stall after only the two baseline successes.
+    assert len(seen) > 3
+
+
+def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append((req.input_tokens, req.output_tokens, req.control))
+        if req.output_tokens > 128:
+            return replace(
+                observation(req, req.output_tokens, False), count_basis="requested_output"
+            )
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+        )
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        journal=DiscoveryJournal(tmp_path / "counterpart.json", {}),
+    )
+    assert seen[0][1] == 256 and seen[1][1] == 128
+    assert seen[0][2] != seen[1][2]
+    assert result.brackets[0]["status"] == "converged"
+    assert result.brackets[0]["admitted"] <= 4000 < result.brackets[0]["refused"]
+    assert result.brackets[0]["refused"] != 256
+
+
+def test_local_restart_does_not_restart_wall_time_budget(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    import citypods.provider_catalog.discovery as discovery
+
+    journal = DiscoveryJournal(tmp_path / "expired.json", {})
+    start = datetime.fromisoformat(journal.data["started_at"])
+
+    class LaterDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return start + timedelta(seconds=1201)
+
+    monkeypatch.setattr(discovery, "datetime", LaterDateTime)
+    result = run_discovery(
+        session_id="s",
+        identity="physical",
+        parser_version="v",
+        supported_axes=("input",),
+        measure=lambda *args: pytest.fail("expired session cannot submit"),
+        renew=lambda: None,
+        journal=journal,
+    )
+    assert result.budget["calls"] == 0
+    assert result.reason == "deadline_or_reported_usage_overrun"
+
+
+def test_newest_first_history_cannot_restore_an_old_refusal(tmp_path):
+    from datetime import timedelta
+
+    stamp = datetime.now(UTC)
+    oldest = replace(
+        observation(request(attempt="old"), 4500, False),
+        observed_at=(stamp - timedelta(days=2)).isoformat(),
+    )
+    admitted = replace(
+        observation(request(attempt="new-admit"), 5000),
+        observed_at=(stamp - timedelta(days=1)).isoformat(),
+    )
+    refused = replace(
+        observation(request(attempt="new-refuse"), 5100, False), observed_at=stamp.isoformat()
+    )
+
+    def measure(req, admit, timeout):
+        admit()
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 5050, reported_input=req.input_tokens
+        )
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("input",),
+        measure=measure,
+        renew=lambda: None,
+        history=(refused, admitted, oldest),
+        journal=DiscoveryJournal(tmp_path / "ordered-history.json", {}),
+    )
+    bracket = result.brackets[0]
+    assert bracket["status"] == "converged"
+    assert bracket["admitted"] <= 5050 < bracket["refused"]
+
+
+@pytest.mark.parametrize("field", ["identity", "session_id", "observation"])
+def test_checkpoint_foreign_evidence_rejected_before_any_charge(tmp_path, field):
+    journal = DiscoveryJournal(tmp_path / "foreign.json", {})
+    req = request()
+    journal.charge(req)
+    journal.complete(observation(req, 2000))
+    if field == "observation":
+        journal.data["attempts"][0]["observation"]["request"]["identity"] = "foreign"
+    else:
+        journal.data["attempts"][0]["request"][field] = "foreign"
+    budget, shared = DiscoveryBudget(), DiscoveryBudget(max_calls=128)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        run_discovery(
+            session_id="session",
+            identity="physical",
+            parser_version="parser-v1",
+            supported_axes=AXES,
+            measure=lambda *args: pytest.fail("no transport"),
+            renew=lambda: None,
+            journal=journal,
+            budget=budget,
+            shared_budget=shared,
+        )
+    assert budget.calls == shared.calls == 0

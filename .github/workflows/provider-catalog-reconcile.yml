@@ -19,6 +19,44 @@ on:
         default: false
         type: boolean
 
+      context_canary:
+        description: "Manual context-only canary on approved routes (main only)"
+        type: boolean
+        default: false
+      context_routes:
+        description: "Comma-separated approved route IDs (1-8)"
+        type: string
+        default: "groq_gpt_oss_120b_primary"
+      context_dimension:
+        description: "Approved measurement dimensions; unsupported output is rejected"
+        type: choice
+        options: [input, output, both]
+        default: input
+      context_calls:
+        description: "Maximum calls in this run (1-8); consumes manual weekly pool"
+        type: string
+        default: "2"
+      context_input:
+        description: "Per-call input ceiling; server route and provider limits still apply"
+        type: string
+        default: "8192"
+      context_output:
+        description: "Per-call output ceiling (input mode maximum 256)"
+        type: string
+        default: "256"
+      context_input_budget:
+        description: "Run input budget (maximum 2097152); does not refill weekly pool"
+        type: string
+        default: "2097152"
+      context_output_budget:
+        description: "Run output budget (maximum 131072); does not refill weekly pool"
+        type: string
+        default: "131072"
+      context_purpose:
+        description: "Required for context canaries: purpose and tracking issue"
+        type: string
+        default: ""
+
 permissions: {}
 
 concurrency:
@@ -47,6 +85,15 @@ jobs:
       - run: pip install -e ".[llm]" -c constraints/prod.txt
       - name: Reconcile provider catalogs
         env:
+          CONTEXT_CANARY: ${{ inputs.context_canary }}
+          CONTEXT_ROUTES: ${{ inputs.context_routes }}
+          CONTEXT_DIMENSION: ${{ inputs.context_dimension }}
+          CONTEXT_CALLS: ${{ inputs.context_calls }}
+          CONTEXT_INPUT: ${{ inputs.context_input }}
+          CONTEXT_OUTPUT: ${{ inputs.context_output }}
+          CONTEXT_INPUT_BUDGET: ${{ inputs.context_input_budget }}
+          CONTEXT_OUTPUT_BUDGET: ${{ inputs.context_output_budget }}
+          CONTEXT_PURPOSE: ${{ inputs.context_purpose }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
@@ -77,6 +124,17 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1" ]; then
             args+=(--context-evidence provider-catalog-context-evidence.json)
           fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CONTEXT_CANARY" = "true" ]; then
+            if [ "$DUE_ONLY" = "true" ]; then
+              echo "Manual context canary cannot be combined with due-only" >&2
+              exit 1
+            fi
+            args=(--manual-context --context-evidence provider-catalog-context-evidence.json
+              --context-routes "$CONTEXT_ROUTES" --context-dimension "$CONTEXT_DIMENSION"
+              --context-calls "$CONTEXT_CALLS" --context-input "$CONTEXT_INPUT"
+              --context-output "$CONTEXT_OUTPUT" --context-input-budget "$CONTEXT_INPUT_BUDGET"
+              --context-output-budget "$CONTEXT_OUTPUT_BUDGET" --context-purpose "$CONTEXT_PURPOSE")
+          fi
           python scripts/reconcile_provider_routes.py "${args[@]}"
       - name: Retain scoped rate evidence
         if: github.event_name == 'schedule'
@@ -95,3 +153,12 @@ jobs:
           path: provider-catalog-context-evidence.json
           retention-days: 90
           if-no-files-found: ignore
+
+      - name: Retain manual context evidence
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.context_canary == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-manual-context-evidence-${{ github.run_id }}
+          path: provider-catalog-context-evidence.json
+          retention-days: 90
+          if-no-files-found: error

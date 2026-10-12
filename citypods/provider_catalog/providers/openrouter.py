@@ -12,6 +12,7 @@ from citypods.provider_catalog.rules import (
     all_free,
     body_contains,
     chat_context_observation,
+    chat_discovery_observation,
     id_suffix,
     namespaced_identity,
     zero_price,
@@ -33,7 +34,14 @@ def context_observation(response, request):
     return chat_context_observation(response, request, reasoning_basis="included")
 
 
+def discovery_observation(response, request, transient):
+    return chat_discovery_observation(response, request, transient, reasoning_basis="included")
+
+
 RULES = ProviderRules(
+    discovery_axes=("input", "output"),
+    discovery_parser_version="openrouter-discovery-chat-v1",
+    discovery_observation=discovery_observation,
     context_observation=context_observation,
     model_identity=namespaced_identity(":free"),
     name="openrouter",

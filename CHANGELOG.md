@@ -12,6 +12,65 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
+  with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
+  checkpoints and authenticated partial-run evidence. A separate typed discovery transport
+  preserves existing Worker context admission. Provider callbacks fail closed on unsupported
+  refusal/combined semantics. No workflow integration, new live probes or runtime limit changes;
+  report/retry integration remains under #2271.
+
+- **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
+  comma after the requested-token count while still rejecting malformed grouped numbers. A
+  regression fixture matches the full live response shape.
+
+- **Provider catalog scope clarification.** New-route discovery retains an admitted/refused
+  input/output/combined request-cap search with strict 0.5% refinement and resumable maintainer
+  `test again` decisions. Periodic quota/burst/refill characterization and automatic runtime
+  ceiling publication are Deferred under review/54; existing dispatch adaptations remain intact.
+  The new discovery contract is L2, not yet integrated into the live workflow.
+
+- **Provider context canary diagnostics.** Context evidence now records a bounded reason code,
+  HTTP/provider error classes, admission/request/first-byte timing, response media type and byte
+  count, pause/drain state, and parsed Groq request/token-rate/Retry-After headers. Scheduled runs
+  remain body-free; manual artifacts retain a sanitized HTTP error-body excerpt capped at 4 KiB,
+  with the active credential and generated prompt redacted. Successful bodies, prompts, completions,
+  credentials and arbitrary headers remain excluded. Unknown results still cannot change context
+  bounds or dispatch behavior.
+
+- **Context probes use a provider-neutral bidirectional search.** Typed size rejections downshift
+  before a passing sample and then refine against provider-counted success; typed rate rejections
+  remain separate and honor the matching quota reset. Manual untyped 429s get one same-size retry
+  after cooldown; a repeat defers without creating a size bound. Groq is the first adapter with a
+  numeric TPM rejection parser. Unknown provider errors remain inconclusive, and probes cannot
+  change configured TPM or Worker authority.
+
+- **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
+  routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
+  charges across reruns and outages; provider quota and existing activation remain binding.
+  Failed manual runs retain diagnostic artifacts and preserve the original error if cleanup
+  also fails. Manual evidence cannot enter scheduled cap-offer history. No automatic cap changes or backfill.
+
+- **Prepared manual Groq input stretch.** A separate server-owned manual ceiling of
+  16,384 provider input tokens enables bounded probes above the current 6,986-token success.
+  Scheduled probes remain capped at 8,192 and ordinary jobs at 7,125. The PR does not dispatch
+  provider calls or deploy the Worker.
+  
+- **Fix: recovery test injection stays synchronous (#2258 follow-up).** The isolated harness
+  computes its catalog digest before installing its fault wrapper, preventing other requests
+  from encountering that wrapper across an async yield. Production coordinator behavior and
+  recorded sequential recovery evidence are unchanged; no backfill.
+
+- **Prepared reviewed input calibration pilot (#2221).** Enables one verified free Groq route
+  through normal scheduled deployment, with at most six weekly input calls, 8,192 input and
+  256 output tokens per call. Output and broader rotation remain disabled pending separate
+  evidence review. Existing quota/pause admission applies; no cap changes or backfill.
+
+- **Verified isolated rescue recovery (#2220).** The unchanged production coordinator repaired
+  legacy indexes, rolled back an injected mutation failure and resumed across a real Cloudflare
+  instance reset with retry counters preserved. Temporary resources were deleted. Combined with
+  ordinary-run audit evidence, this records the approved recovery acceptance; removal activation
+  remains separately reviewed. No production behavior change or backfill.
+
 - **Prepared independent remedy reviewer candidate (#2253).** The existing free NVIDIA Kimi K3
   route exposes explicit maximum-reasoning controls for evaluation. Production defaults, routing,
   quotas and admissions are unchanged; qualification remains evidence-gated. No backfill.

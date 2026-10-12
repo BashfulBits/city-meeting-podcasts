@@ -325,6 +325,101 @@ MeasureDO.prototype.measureRescue = async function (legacy = false, outage = fal
     ...(recovery ? { recovery } : {}) };
 };
 
+// Local-only manual ledger acceptance. No provider calls or production bindings.
+MeasureDO.prototype.measureManualContext = async function () {
+  const previous = LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS;
+  LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = ["probe"];
+  try {
+    const catalog = { providers: { groq: { accounts: [{ id: "primary", api_key_env: "TEST" }] } },
+      routes_by_id: { probe: { route_id: "probe", provider: "groq", account_id: "primary",
+        upstream_model: "probe", free: true, rpm: 10000, rpd: 10000, tpm: 10000000,
+        input_context_limit: 10000, output_context_limit: 1000 } }, model_routes_map: {} };
+    this.env = { ...this.env, DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0" };
+    const now = Date.now();
+    await this.claimDispatchWindow(now, 30);
+    await this.pauseDispatch({ scope: "provider", target: "groq", seconds: 900 }, now);
+    const digest = await this._contextCatalogDigest();
+    const start = { operation: "context_manual_start", run_id: "12345", catalog_digest: digest,
+      route_ids: ["probe"], dimensions: ["input"], max_requests: 8, max_input: 2097152,
+      max_output: 131072, per_call_input: 8192, per_call_output: 256, purpose: "local bench" };
+    this._take();
+    await this.reserveRouteRequests(start, now);
+    const started = this._take();
+    const call = { operation: "context_manual_admit", run_id: "12345", catalog_digest: digest,
+      route_id: "probe", dimension: "input", attempt_id: "a".repeat(64),
+      request_digest: "b".repeat(64), input_tokens: 1000, output_tokens: 256 };
+    const snapshot = () => JSON.stringify({
+      weeks: [...this._getSql().exec("SELECT * FROM context_manual_weeks")],
+      attempts: [...this._getSql().exec("SELECT * FROM context_manual_attempts")],
+      routes: [...this._getSql().exec("SELECT * FROM routes")],
+      scheduler: [...this._getSql().exec("SELECT * FROM scheduler")],
+    });
+    const failures = [];
+    const original = this._getSql;
+    const persist = this._persistRowCount;
+    for (let failAt = 1; failAt <= 6; failAt++) {
+      const before = snapshot();
+      const real = original.call(this);
+      let writes = 0;
+      this._getSql = () => ({ exec: (...args) => {
+        if (/^\s*(INSERT|UPDATE|DELETE)/i.test(args[0]) && ++writes === failAt) {
+          throw new Error("injected manual write failure");
+        }
+        return real.exec(...args);
+      } });
+      if (failAt === 6) this._persistRowCount = () => {
+        throw new Error("injected manual write failure");
+      };
+      let failed = false;
+      try { await this.reserveRouteRequests(call, now); }
+      catch (error) {
+        if (!String(error).includes("injected manual write failure")) throw error;
+        failed = true;
+      } finally { this._getSql = original; this._persistRowCount = persist; }
+      if (!failed || snapshot() !== before) throw new Error(`manual rollback ${failAt} failed`);
+      failures.push(failAt);
+      this._take();
+    }
+    const admitted = await this.reserveRouteRequests(call, now);
+    const admission = this._take();
+    const replay = await this.reserveRouteRequests(call, now);
+    const replayCost = this._take();
+    const before = snapshot();
+    const recreated = new MeasureDO(this.ctx, this.env);
+    const recreationCost = recreated._take();
+    if (snapshot() !== before) throw new Error("manual recreation changed charges");
+    await recreated.reserveRouteRequests({ operation: "context_manual_finish", run_id: "12345",
+      catalog_digest: digest }, now + 1);
+    recreated._take();
+    const rerun = await recreated.reserveRouteRequests({ ...start, run_id: "12346" }, now + 2);
+    const row = [...recreated._getSql().exec("SELECT * FROM context_manual_weeks")][0];
+    if (row.requests_used !== 1 || row.input_used !== 1000 || row.run_requests_used !== 0) {
+      throw new Error("manual rerun refunded charges");
+    }
+    const week = this._contextWeek(now);
+    for (let age = 0; age < 8; age++) {
+      const retainedWeek = this._contextWeek(now - age * 7 * 86400000);
+      if (age > 0) this._getSql().exec(`INSERT INTO context_manual_weeks
+        (week_start,run_id,catalog_digest,deadline_ms,limits_json,input_used,output_used,requests_used)
+        VALUES (?,?,?,?,?,24000,6144,24)`, retainedWeek, String(10000 + age), digest,
+      now - 1, JSON.stringify({ route_ids: start.route_ids, dimensions: start.dimensions, max_requests: 8,
+        max_input: 2097152, max_output: 131072, per_call_input: 8192, per_call_output: 256, purpose: "fixture" }));
+      for (let i = age === 0 ? 1 : 0; i < 24; i++) this._getSql().exec(`INSERT INTO context_manual_attempts
+        (week_start,attempt_id,run_id,route_id,dimension,request_digest,input_tokens,output_tokens,admitted_at)
+        VALUES (?,?,?,'retained-fixture','input',?,1000,256,?)`,
+      retainedWeek, `retained-${age}-${i}`, String(age === 0 ? 12345 : 10000 + age), digest, now - 1);
+    }
+    this._getSql().exec("UPDATE context_manual_weeks SET input_used=24000,output_used=6144,requests_used=24 WHERE week_start=?", week);
+    this._take();
+    const page = [...this._getSql().exec(
+      "SELECT route_id FROM context_manual_attempts WHERE week_start=? LIMIT 25", week)];
+    const boundedPage = { ...this._take(), current_attempts: page.length, retained_attempts: 192 };
+    if (boundedPage.r !== 24 || boundedPage.w !== 0) throw new Error("unbounded manual attempt scan");
+    return { started, failures, admitted, admission, replay, replayCost, recreationCost,
+      preserved: true, rerun, boundedPage };
+  } finally { LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = previous; }
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -336,6 +431,7 @@ export default {
         Number(url.searchParams.get("n") || 20)
       ));
     }
+    if (url.pathname === "/manual-context") return Response.json(await stub.measureManualContext());
     if (url.pathname === "/schema") return Response.json(await stub.measureSchema());
     if (url.pathname === "/accounting") return Response.json(await stub.measureAccounting());
     if (url.pathname === "/retry") return Response.json(await stub.measureRetry());
