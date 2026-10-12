@@ -241,9 +241,11 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
     import citypods.provider_catalog.reconcile as module
 
     calls = []
+    selected_axes = []
 
     def discover(candidate, *_args, **kwargs):
         calls.append((candidate.key, kwargs["receipt_id"]))
+        selected_axes.append(kwargs.get("selected_axes"))
         return {
             "summary": {
                 "retryable": False,
@@ -301,11 +303,13 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
         canary_fn=lambda *args, **kwargs: OK,
         discovery_enabled=True,
         discovery_run_id="selected-run",
+        discovery_axis="output",
         candidate_keys={selected},
     )
     assert {candidate.key for candidate in report.candidates} == {selected}
     assert [key for key, _ in calls] == [selected]
     assert control.paused_providers == ["groq"]
+    assert selected_axes[-1] == ("output",)
 
     calls.clear()
     reconcile(

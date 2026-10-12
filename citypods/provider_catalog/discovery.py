@@ -148,6 +148,7 @@ class DiscoveryObservation:
     provider_request_id: str | None = None
     response_id: str | None = None
     response_preview: str = ""
+    sentinel_verification: str = "unknown"
 
     def __post_init__(self):
         if (
@@ -167,6 +168,13 @@ class DiscoveryObservation:
             "other",
         }:
             raise ValueError("invalid discovery response media type")
+        if not isinstance(self.sentinel_verification, str) or self.sentinel_verification not in {
+            "unknown",
+            "passed",
+            "failed",
+            "not_checked",
+        }:
+            raise ValueError("invalid discovery sentinel verification")
         if self.response_bytes is not None and (
             type(self.response_bytes) is not int or not 0 <= self.response_bytes <= 4 * 1024 * 1024
         ):
@@ -201,6 +209,7 @@ class DiscoveryObservation:
             "completion_missing",
             "completion_invalid",
             "total_invalid",
+            "total_missing",
             "valid",
         }:
             raise ValueError("invalid discovery usage state")
@@ -437,6 +446,7 @@ def run_discovery(
     identity,
     parser_version,
     supported_axes,
+    selected_axes=None,
     measure,
     renew,
     journal,
@@ -450,6 +460,10 @@ def run_discovery(
 ):
     """Inject transport, pause renewal and time; no provider calls without a charged receipt."""
     budget = budget or DiscoveryBudget()
+    if selected_axes is not None and (
+        not selected_axes or any(axis not in AXES for axis in selected_axes)
+    ):
+        raise ValueError("invalid selected discovery axes")
     for selected, multiplier in ((budget, 1), (shared_budget, 2)):
         if selected and (
             selected.max_calls > 64 * multiplier
@@ -492,6 +506,9 @@ def run_discovery(
     for axis in AXES:
         bracket = Bracket(axis, int(seeds.get(axis, default_discovery_seed(axis))))
         brackets.append(bracket)
+        if selected_axes is not None and axis not in selected_axes:
+            bracket.reason = "not_selected"
+            continue
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
             continue

@@ -28,6 +28,12 @@ on:
         required: false
         default: ""
         type: string
+      discovery_axis:
+        description: "Size search axes for the selected new route; output gets its own bounded session"
+        required: false
+        default: all
+        type: choice
+        options: [all, input, output]
 
       context_canary:
         description: "Manual context-only canary on approved routes (main only)"
@@ -109,6 +115,7 @@ jobs:
           DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
           DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
           DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
+          DISCOVERY_AXIS: ${{ inputs.discovery_axis }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
@@ -144,6 +151,7 @@ jobs:
               exit 1
             fi
             args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")
+            args+=(--discovery-axis "$DISCOVERY_AXIS")
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CONTEXT_CANARY" = "true" ]; then
             if [ "$DUE_ONLY" = "true" ]; then

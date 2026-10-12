@@ -1668,11 +1668,15 @@ def test_new_route_discovery_requires_one_explicit_manual_candidate():
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["discovery_enabled"]["default"] is False
     assert inputs["discovery_candidate"]["default"] == ""
+    assert inputs["discovery_axis"]["default"] == "all"
+    assert inputs["discovery_axis"]["options"] == ["all", "input", "output"]
     step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
     assert step["env"]["DISCOVERY_CANDIDATE"] == "${{ inputs.discovery_candidate }}"
+    assert step["env"]["DISCOVERY_AXIS"] == "${{ inputs.discovery_axis }}"
     run = step["run"]
     assert "Manual discovery requires discovery_candidate=provider/model" in run
     assert 'args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")' in run
+    assert 'args+=(--discovery-axis "$DISCOVERY_AXIS")' in run
     assert (
         "DISCOVERY_SCHEDULED_ENABLED = False"
         in (REPO_ROOT / "citypods" / "provider_catalog" / "reconcile.py").read_text()
