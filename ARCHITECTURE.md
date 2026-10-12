@@ -250,17 +250,24 @@ not alter context bounds or dispatch authority; it explains why an attempt could
 verified evidence. Groq request counters are its daily request budget (RPD); token counters are
 per-minute (TPM).
 
-New-route request-cap discovery has a separate offline foundation in
+New-route request-cap discovery uses a separate typed transport in
 `provider_catalog/discovery.py`: immutable request/admission/observation records, independent
 input/output/two combined-mix brackets, actual-count fixture correction and finite session/run
-budgets. A journal charges attempts before child submission and fsyncs payload-free checkpoints;
-unknown results cannot be resubmitted. The transport shares bounded HTTP collection and process
-cancellation with context calibration, while keeping distinct admission checks. The existing
-configured-route transport still requires a durable Worker admission. Version-1 discovery
-artifacts authenticate trusted main workflow provenance and retain only compatible original-age
-observations for up to 90 days. Provider plugins explicitly declare usage/parser capabilities;
-unknown size errors and combined semantics create no cap proof. This foundation is not wired into
-maintenance or `/apply`; report/retry workflow integration and live activation are still pending.
+budgets. It runs only after a new route passes the existing reachability and structured-output
+checks, under the same drained provider pause. The 64-submission candidate budget includes those
+reachability checks; the two-candidate run budget is shared. A journal charges attempts before child
+submission and fsyncs payload-free checkpoints; unknown results cannot be reused as successful
+boundaries. The transport shares bounded HTTP collection and process cancellation with context
+calibration, while keeping distinct admission checks. The existing configured-route transport still
+requires a durable Worker admission. Version-1 discovery artifacts authenticate trusted main
+workflow provenance and retain only compatible original-age observations for up to 90 days. The
+rolling issue reports provider API claims and source separately from admitted/refused evidence,
+Artificial Analysis quality, conditional limits and spent budget. An authorized `/apply` can queue a
+next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
+and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
+unknown size errors and combined semantics create no cap proof. The workflow wiring remains
+disabled until the separate reviewed activation gate #2223 is approved and merged. This flow does
+not probe configured routes for recurring maintenance or publish cap changes automatically.
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is

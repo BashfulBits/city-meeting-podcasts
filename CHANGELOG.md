@@ -16,8 +16,15 @@ Once 1.0 ships, entries move under semver tags.
   with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
   checkpoints and authenticated partial-run evidence. A separate typed discovery transport
   preserves existing Worker context admission. Provider callbacks fail closed on unsupported
-  refusal/combined semantics. No workflow integration, new live probes or runtime limit changes;
-  report/retry integration remains under #2271.
+  refusal/combined semantics. Shipped in #2273 without workflow integration, live probes or runtime
+  limit changes.
+
+- **New-route discovery reporting and retry integration (review/48 §8.13).** Connects bounded
+  input/output/combined searches to newly reachable candidates, reports API claims and empirical
+  brackets in the rolling issue, and lets an authorized `/apply` queue an authenticated next-day
+  retry that resumes compatible evidence. The retry command makes no provider call. Workflow
+  activation remains disabled pending #2223; configured-route recurring maintenance and automatic
+  cap publication remain out of scope.
 
 - **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
   comma after the requested-token count while still rejecting malformed grouped numbers. A

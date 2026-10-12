@@ -251,6 +251,114 @@ def test_journal_identity_and_observation_round_trip(tmp_path):
         DiscoveryJournal(journal.path, {"session_id": "another"})
 
 
+def test_retry_receipt_is_bound_to_authorized_result_and_next_utc_day():
+    from citypods.provider_catalog.evidence import (
+        discovery_retry_receipt,
+        validate_discovery_retry_receipt,
+    )
+
+    now = datetime(2026, 10, 11, 23, 30, tzinfo=UTC)
+    envelope = discovery_retry_receipt(
+        repository="owner/repo",
+        issue_number=2271,
+        candidate_key="groq/model",
+        result_revision="a" * 64,
+        comment_id=123,
+        comment_created_at="2026-10-11T23:00:00Z",
+        command_run_id="987",
+        command_head_sha="b" * 40,
+        now=now,
+    )
+    assert envelope["payload"]["earliest_date"] == "2026-10-12"
+    with pytest.raises(ValueError, match="date"):
+        validate_discovery_retry_receipt(
+            envelope,
+            repository="owner/repo",
+            now=datetime(2026, 10, 11, 23, 59, tzinfo=UTC),
+        )
+    assert (
+        validate_discovery_retry_receipt(
+            envelope,
+            repository="owner/repo",
+            now=datetime(2026, 10, 12, 8, 0, tzinfo=UTC),
+        )["candidate_key"]
+        == "groq/model"
+    )
+
+    # A slow command run must retain the date selected by the original comment.
+    delayed = discovery_retry_receipt(
+        repository="owner/repo",
+        issue_number=2271,
+        candidate_key="groq/model",
+        result_revision="a" * 64,
+        comment_id=123,
+        comment_created_at="2026-10-11T23:00:00Z",
+        command_run_id="987",
+        command_head_sha="b" * 40,
+        now=datetime(2026, 10, 12, 0, 5, tzinfo=UTC),
+    )
+    assert delayed["payload"]["earliest_date"] == "2026-10-12"
+    tampered = {**envelope, "payload": {**envelope["payload"], "issue_number": 2272}}
+    with pytest.raises(ValueError, match="checksum"):
+        validate_discovery_retry_receipt(tampered, repository="owner/repo", now=now)
+
+
+def test_discovery_reference_scan_includes_manual_and_scheduled_runs():
+    import io
+    import json
+    import zipfile
+    from urllib.parse import parse_qs, urlparse
+
+    from citypods.provider_catalog.evidence import discover_discovery_references
+
+    now = datetime(2026, 10, 11, 12, tzinfo=UTC)
+    envelope = {"payload_digest": "a" * 64}
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("provider-catalog-discovery-evidence.json", json.dumps(envelope))
+    raw = stream.getvalue()
+    events = []
+
+    def api(path):
+        if path.startswith("repos/owner/repo/actions/workflows/") and "/runs?" in path:
+            query = parse_qs(urlparse(path).query)
+            event = query["event"][0]
+            events.append(event)
+            runs = (
+                [
+                    {
+                        "id": 15 if event == "schedule" else 16,
+                        "created_at": "2026-10-11T10:00:00Z",
+                    }
+                ]
+                if query["page"] == ["1"]
+                else []
+            )
+            return {"workflow_runs": runs}
+        if "/actions/runs/15/artifacts?" in path:
+            run_id = "15"
+        elif "/actions/runs/16/artifacts?" in path:
+            run_id = "16"
+        else:
+            return {"default_branch": "main"}
+        return {
+            "artifacts": [
+                {
+                    "id": int(run_id),
+                    "name": f"provider-catalog-discovery-evidence-{run_id}",
+                    "expired": False,
+                    "size_in_bytes": len(raw),
+                }
+            ]
+        }
+
+    refs = discover_discovery_references(
+        repository="owner/repo", now=now, api=api, download=lambda _path: raw
+    )
+    assert [row["run_id"] for row in refs] == ["15", "16"]
+    assert events == ["schedule", "workflow_dispatch"]
+
+
 def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path):
     import io
     import json

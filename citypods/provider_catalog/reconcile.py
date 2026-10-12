@@ -60,6 +60,8 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
+# A separate reviewed activation change must flip this after offline integration is accepted.
+DISCOVERY_ACTIVATION_ENABLED = False
 ANOMALY_VERDICTS = frozenset({"retired", "not_served", "not_entitled", "account_blocked"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say
 # nothing durable about the model, so those candidates are retried next run (after fresh ones).
@@ -135,6 +137,8 @@ class Candidate:
 
     evidence: dict[str, Any] | None = None
     evidence_digest: str | None = None
+    # Request-cap search is advisory and belongs only to newly discovered candidates.
+    discovery: dict[str, Any] | None = None
 
     @property
     def key(self) -> str:
@@ -176,6 +180,7 @@ class Report:
     context_states: list = field(default_factory=list)
     context_changes: list = field(default_factory=list)
     context_attempted_routes: set[str] = field(default_factory=set)
+    discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def actionable(self) -> bool:
@@ -345,8 +350,22 @@ def reconcile(
     rate_now: datetime | None = None,
     early_rate_checks: set[str] | None = None,
     context_run=None,
+    discovery_enabled: bool = False,
+    discovery_history=(),
+    discovery_history_calls: Mapping[str, int] | None = None,
+    discovery_receipt_id: str | None = None,
+    discovery_receipt_ids: Mapping[str, str] | None = None,
+    discovery_run_id: str = "",
+    retry_candidate_keys: set[str] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor)
+    discovery_shared_budget = None
+    if discovery_enabled:
+        from citypods.provider_catalog.discovery import DiscoveryBudget
+
+        discovery_shared_budget = DiscoveryBudget(
+            max_calls=128, max_input=4_194_304, max_output=1_048_576
+        )
     rechecked_routes: set[str] = set()
     structured_checks = dict(previous_state.get("structured_checks") or {})
     canary_memory: dict[str, dict[str, Any]] = dict(previous_state.get("canaries") or {})
@@ -389,10 +408,14 @@ def reconcile(
             continue
         provider_routes = [r for r in routes if r.get("provider") == provider]
         # A daily run calls only providers with deferred routes or bounded early-check triggers.
-        if due_only and not any(
-            str(r.get("route_id")) in deferred
-            or str(r.get("route_id")) in (early_rate_checks or set())
-            for r in provider_routes
+        if (
+            due_only
+            and not any(
+                str(r.get("route_id")) in deferred
+                or str(r.get("route_id")) in (early_rate_checks or set())
+                for r in provider_routes
+            )
+            and not any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
         ):
             continue
         catalog = fetch_catalog(rules, cfg, session)
@@ -513,6 +536,18 @@ def reconcile(
             candidate.evidence_digest = candidate_digest(
                 RouteEvidence.from_dict(candidate.evidence), candidate.lanes
             )
+            if discovery_history:
+                candidate.discovery = _discovery_history_summary(
+                    provider,
+                    model,
+                    record,
+                    rules,
+                    cfg,
+                    discovery_history,
+                    (discovery_history_calls or {}).get(
+                        _candidate_discovery_identity(provider, model, rules, cfg), 0
+                    ),
+                )
             return candidate
 
         # --- configured-route health: one live route per upstream model -------------------------
@@ -549,9 +584,16 @@ def reconcile(
         candidates: list[tuple[str, Mapping[str, Any], float | None, bool]] = []
         configured_models = {str(r.get("upstream_model") or "") for r in provider_routes}
         configured_identities = {_identity(m, rules.free_suffix): m for m in configured_models if m}
-        if not due_only and not rules.observation_only and not catalog.error:
+        if (
+            (not due_only or retry_candidate_keys)
+            and not rules.observation_only
+            and not catalog.error
+        ):
             for model, record in sorted(catalog.models.items()):
-                if candidate_keys is not None and f"{provider}/{model}" not in candidate_keys:
+                key = f"{provider}/{model}"
+                if candidate_keys is not None and key not in candidate_keys:
+                    continue
+                if retry_candidate_keys is not None and key not in retry_candidate_keys:
                     continue
                 if model in configured_models or not rules.chat_filter(model, record):
                     continue
@@ -570,6 +612,7 @@ def reconcile(
                 age = _days_since(memory.get("on") if memory else None, today)
                 remembered = (
                     candidate_keys is None
+                    and retry_candidate_keys is None
                     and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
@@ -857,6 +900,45 @@ def reconcile(
                             pause.contended,
                         )
                     )
+                    candidate = report.candidates[-1]
+                    if (
+                        discovery_enabled
+                        and len(report.discovery_sessions) < 2
+                        and not any(
+                            row.get("session", {}).get("provider") == provider
+                            for row in report.discovery_sessions
+                        )
+                    ):
+                        try:
+                            session_record = _discover_candidate_caps(
+                                candidate,
+                                record,
+                                provider_cfg=cfg,
+                                rules=rules,
+                                pause=pause,
+                                session=session,
+                                today=today,
+                                run_id=discovery_run_id,
+                                receipt_id=(discovery_receipt_ids or {}).get(
+                                    candidate.key, discovery_receipt_id
+                                ),
+                                history=discovery_history,
+                                shared_budget=discovery_shared_budget,
+                                sleep=sleep,
+                            )
+                            candidate.discovery = session_record["summary"]
+                            report.discovery_sessions.append(session_record["artifact"])
+                        except Exception as exc:
+                            # Discovery is advisory; preserve the proven reachability result.
+                            candidate.discovery = {
+                                "retryable": False,
+                                "reason": "discovery_stopped_safely",
+                                "detail": f"Search stopped safely ({type(exc).__name__}).",
+                                "axes": [],
+                                "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                            }
                 else:
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
@@ -1109,6 +1191,270 @@ def _candidate(
         structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
+
+
+def _candidate_discovery_identity(provider, model, rules, provider_cfg):
+    from citypods.provider_catalog.discovery import discovery_identity
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts:
+        return ""
+    return discovery_identity(
+        provider, str(accounts[0].get("id") or ""), model, chat_url(rules, provider_cfg)
+    )
+
+
+def _discovery_history_summary(
+    provider, model, record, rules, provider_cfg, history, history_calls=0
+):
+    from citypods.provider_catalog.discovery import Bracket, discovery_identity
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts:
+        return None
+    identity = discovery_identity(
+        provider, str(accounts[0].get("id") or ""), model, chat_url(rules, provider_cfg)
+    )
+    source = rules.catalog.url or (
+        f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+    )
+    compatible = [
+        item
+        for item in history
+        if item.request.identity == identity
+        and item.request.parser_version == rules.discovery_parser_version
+        and item.request.fixture_version == "discovery-v1"
+    ]
+    if not compatible:
+        return None
+    claims = {
+        "input": positive_bound(
+            record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
+        ),
+        "output": positive_bound(
+            record,
+            (
+                "outputTokenLimit",
+                "max_output_tokens",
+                "max_completion_tokens",
+                "top_provider.max_completion_tokens",
+                "output_context_limit",
+            ),
+        ),
+        "total_input_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+        "total_output_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+    }
+    axes = []
+    for axis in ("input", "output", "total_input_heavy", "total_output_heavy"):
+        bracket = Bracket(axis, 256 if axis == "output" else 2048)
+        for item in compatible:
+            if item.request.axis == axis:
+                bracket.observe(item)
+        summary = bracket.summary()
+        summary["published"] = claims[axis]
+        summary["source"] = source
+        axes.append(summary)
+    return {
+        "retryable": bool(compatible)
+        and any(
+            row["axis"] in rules.discovery_axes and row["status"] != "converged" for row in axes
+        ),
+        "reason": "partial",
+        "detail": "Bounds are rebuilt from authenticated, compatible provider observations.",
+        "reachability": "verified",
+        "calls": history_calls or len(compatible),
+        "input_tokens": sum(item.request.input_tokens for item in compatible),
+        "output_tokens": sum(item.request.output_tokens for item in compatible),
+        "axes": axes,
+    }
+
+
+def _discover_candidate_caps(
+    candidate,
+    record,
+    *,
+    provider_cfg,
+    rules,
+    pause,
+    session,
+    today,
+    run_id,
+    receipt_id,
+    history,
+    shared_budget,
+    sleep,
+):
+    """Run the separate, charged size search only after candidate reachability is proven."""
+    import secrets
+    import tempfile
+    from pathlib import Path
+
+    from citypods.provider_catalog.discovery import (
+        DiscoveryBudget,
+        DiscoveryJournal,
+        discovery_identity,
+        run_discovery,
+    )
+    from citypods.provider_catalog.evidence import digest
+    from citypods.provider_catalog.probe import (
+        account_key,
+        build_discovery_request,
+        chat_url,
+        measure_discovery,
+    )
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts or not isinstance(accounts[0], Mapping):
+        raise ValueError("candidate has no verified provider account")
+    account_id = str(accounts[0].get("id") or "")
+    if not account_id or not account_key(provider_cfg, account_id):
+        raise ValueError("candidate provider account is unavailable")
+    endpoint = chat_url(rules, provider_cfg)
+    identity = discovery_identity(candidate.provider, account_id, candidate.model, endpoint)
+    # Count the completed reachability call and each structural-output call against the
+    # per-candidate submission ceiling; their prompt sizes are not request-cap reservations.
+    evidence = candidate.evidence or {}
+    reachability_calls = 1 + len(evidence.get("methods") or ())
+    session_id = digest(
+        [run_id, receipt_id, candidate.key, identity, today.isoformat(), secrets.token_hex(16)]
+    )
+    metadata = {
+        "session_id": session_id,
+        "identity": identity,
+        "provider": candidate.provider,
+        "account_id": account_id,
+        "upstream_model": candidate.model,
+        "endpoint": endpoint,
+        "catalog_digest": digest(record),
+        "free_evidence_digest": digest([candidate.provider, candidate.model, record]),
+        "parser_version": rules.discovery_parser_version,
+        "fixture_version": "discovery-v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "sources": [
+            rules.catalog.url
+            or f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+        ],
+        "receipt_id": receipt_id,
+        "reachability_calls": reachability_calls,
+    }
+    route = {
+        "provider": candidate.provider,
+        "account_id": account_id,
+        "upstream_model": candidate.model,
+        "route_id": candidate.key,
+    }
+    nonce = secrets.token_hex(32)
+    # Token reservations below describe the size-search requests, which carry the
+    # explicit measured token sizes.
+    budget = DiscoveryBudget(calls=reachability_calls)
+    if shared_budget is not None:
+        shared_budget.calls += reachability_calls
+    last_submission = None
+    try:
+        provider_rpm = float(provider_cfg.get("rpm") or 0)
+    except (TypeError, ValueError):
+        provider_rpm = 0
+    interval = max(
+        rules.canary_interval_seconds,
+        60 / provider_rpm if provider_rpm > 0 else 0,
+    )
+
+    def measure(request, before_call, timeout):
+        def paced_admission():
+            nonlocal last_submission
+            if last_submission is not None and interval:
+                pause.renew()
+                sleep(max(0, interval - (time.monotonic() - last_submission)))
+            receipt = before_call()
+            last_submission = time.monotonic()
+            return receipt
+
+        transient = build_discovery_request(request, route, provider_cfg, rules, nonce=nonce)
+        return measure_discovery(
+            request,
+            transient,
+            rules,
+            session=session,
+            before_call=paced_admission,
+            clock=time.monotonic,
+            timeout=timeout,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="citypods-discovery-") as folder:
+        journal = DiscoveryJournal(Path(folder) / "checkpoint.json", metadata)
+        try:
+            result = run_discovery(
+                session_id=session_id,
+                identity=identity,
+                parser_version=rules.discovery_parser_version,
+                supported_axes=rules.discovery_axes,
+                measure=measure,
+                renew=pause.renew,
+                journal=journal,
+                history=history,
+                budget=budget,
+                shared_budget=shared_budget,
+                sleep=sleep,
+            )
+        except Exception as exc:
+            # Preserve charged attempts even if orchestration fails after admission.
+            reason = f"discovery_stopped_safely:{type(exc).__name__}"
+            journal.data["reason"] = reason
+            journal.save()
+            result = None
+        axes = []
+        claims = {
+            "input": positive_bound(
+                record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
+            ),
+            "output": positive_bound(
+                record, ("outputTokenLimit", "max_output_tokens", "max_completion_tokens")
+            ),
+            "total_input_heavy": positive_bound(
+                record, ("context_length", "context_window", "max_context_length")
+            ),
+            "total_output_heavy": positive_bound(
+                record, ("context_length", "context_window", "max_context_length")
+            ),
+        }
+        for bracket in result.brackets:
+            axes.append(
+                {
+                    **bracket,
+                    "axis": bracket["axis"],
+                    "published": claims.get(bracket["axis"]),
+                    "source": metadata["sources"][0],
+                }
+            )
+        summary = {
+            "retryable": bool(journal.data["attempts"])
+            and any(
+                row["axis"] in rules.discovery_axes and row["status"] != "converged" for row in axes
+            ),
+            "reason": result.reason if result is not None else journal.data["reason"],
+            "detail": "Only verified comparable accepted and refused counts establish a cap.",
+            "reachability": "verified",
+            "calls": reachability_calls + len(journal.data["attempts"]),
+            "input_tokens": sum(row["request"]["input_tokens"] for row in journal.data["attempts"]),
+            "output_tokens": sum(
+                row["request"]["output_tokens"] for row in journal.data["attempts"]
+            ),
+            "axes": axes,
+        }
+        return {
+            "summary": summary,
+            "artifact": {
+                "session": metadata,
+                "attempts": journal.data["attempts"],
+                "reason": result.reason if result is not None else journal.data["reason"],
+            },
+        }
 
 
 def _record_health(

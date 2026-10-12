@@ -225,6 +225,57 @@ def test_a_proven_free_model_becomes_a_candidate_with_score_links_and_lane_sugge
     assert set(control.paused_providers) == {"groq", "openrouter", "zai"}
 
 
+def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounded(
+    monkeypatch,
+):
+    import citypods.provider_catalog.reconcile as module
+
+    calls = []
+
+    def discover(candidate, *_args, **kwargs):
+        calls.append((candidate.key, kwargs["receipt_id"]))
+        return {
+            "summary": {
+                "retryable": False,
+                "reason": "unsupported_endpoint_axis",
+                "reachability": "verified",
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "axes": [],
+            },
+            "artifact": {
+                "session": {"provider": candidate.provider},
+                "attempts": [],
+                "reason": "unsupported_endpoint_axis",
+            },
+        }
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="test-run",
+    )
+    candidate_keys = {candidate.key for candidate in report.candidates}
+    assert calls
+    assert {key for key, _ in calls} <= candidate_keys
+    assert len(calls) <= 2
+    assert len({key.split("/", 1)[0] for key, _ in calls}) == len(calls)
+    configured = {f"{route['provider']}/{route['upstream_model']}" for route in LIMITS["routes"]}
+    assert all(key not in configured for key, _ in calls)
+
+
 def test_observation_only_provider_is_health_checked_but_never_proposes(monkeypatch):
     report, sent, _ = _run(monkeypatch)
     assert "glm-paid" not in sent and "glm-flash" in sent

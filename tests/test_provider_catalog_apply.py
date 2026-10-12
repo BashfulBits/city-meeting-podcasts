@@ -168,6 +168,58 @@ def test_unknown_conflicting_duplicate_decisions_rejected(selection):
         parse_decisions(body, report)
 
 
+def test_discovery_test_again_is_a_single_retry_choice_not_an_addition():
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "retryable": True,
+            "reason": "daily",
+            "calls": 3,
+            "input_tokens": 12000,
+            "output_tokens": 768,
+            "axes": [
+                {
+                    "axis": "input",
+                    "published": 8000,
+                    "source": "https://provider.test/limits",
+                    "admitted": 7900,
+                    "refused": 8000,
+                    "target_width": 40,
+                    "status": "partial",
+                }
+            ],
+        },
+    )
+    report = Report(candidates=[candidate])
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert "## Request-cap discovery" in body
+    assert "| input | 8,000 ([source](https://provider.test/limits))" in body
+    assert "Count basis / control" in body and "unverified" in body
+    selected = body.replace(
+        "- [ ] `host/creator/new`: test again", "- [x] `host/creator/new`: test again"
+    )
+    [decision] = parse_decisions(selected, report)
+    assert decision.action == "test_again"
+    assert decision.key == "host/creator/new"
+
+    conflicting = selected.replace(
+        "- [ ] `host/creator/new`: add route only",
+        "- [x] `host/creator/new`: add route only",
+    )
+    with pytest.raises(ValueError, match="conflicts"):
+        parse_decisions(conflicting, report)
+
+
+def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
+    report = Report(candidates=[replace(CANDIDATE, discovery={"retryable": False})])
+    body = render_body(report, run_date=TODAY.isoformat()).replace(
+        "- [ ] `host/creator/new`: add route only",
+        "- [x] `host/creator/new`: test again",
+    )
+    with pytest.raises(ValueError, match="unknown or duplicate"):
+        parse_decisions(body, report)
+
+
 def test_explicit_removal_is_parsed_but_deferred_until_rescue():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(

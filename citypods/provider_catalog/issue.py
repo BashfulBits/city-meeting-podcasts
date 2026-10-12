@@ -78,6 +78,8 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         choices.append(f"{key}: ignore")
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
+        if candidate.discovery and candidate.discovery.get("retryable") is True:
+            choices.append(f"{key}: test again")
     for anomaly in report.anomalies:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
             choices.append(f"`{anomaly.route_id}`: remove route")
@@ -98,6 +100,10 @@ def _score_cell(score: float | None, below_floor: bool | None) -> str:
     if score is None:
         return "unscored"
     return f"{score:g}" + (" (below floor)" if below_floor else "")
+
+
+def _discovery_count(value) -> str:
+    return f"{value:,}" if type(value) is int else "—"
 
 
 def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
@@ -255,6 +261,50 @@ def render_body(
         ]
     else:
         lines.append("None this week.")
+    discoveries = [c for c in report.candidates if c.discovery]
+    if discoveries:
+        lines += ["", "## Request-cap discovery", ""]
+        for candidate in discoveries:
+            result = candidate.discovery or {}
+            lines += [f"### `{candidate.key}`", ""]
+            lines += [
+                "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
+                "Count basis / control | Status / note |",
+                "|---|---:|---:|---:|---:|---|---|",
+            ]
+            for axis in result.get("axes", []):
+                claim = axis.get("published")
+                admitted, refused, width = (
+                    axis.get("admitted"),
+                    axis.get("refused"),
+                    axis.get("target_width"),
+                )
+                source = axis.get("source")
+                claim_text = _discovery_count(claim)
+                if source:
+                    claim_text += f" ([source]({source}))"
+                basis = axis.get("count_basis") or "unverified"
+                control = axis.get("control") or "—"
+                note = axis.get("reason") or "—"
+                lines.append(
+                    f"| {axis.get('axis', 'unknown')} | {claim_text} | "
+                    f"{_discovery_count(admitted)} | {_discovery_count(refused)} | "
+                    f"{_discovery_count(width)} | {basis}; `{control}` | "
+                    f"{axis.get('status', 'inconclusive')}; {note} |"
+                )
+            lines += [
+                "",
+                "The admitted count is the largest verified passing value to consider as an "
+                "operational cap; the refused count is its measured upper boundary. These "
+                "results are evidence only and are never written to configuration automatically.",
+                f"Reachability: {result.get('reachability', 'verified')}; "
+                f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
+                f"spent: {result.get('calls', 0)} calls, "
+                f"{result.get('input_tokens', 0):,} reserved input, "
+                f"{result.get('output_tokens', 0):,} requested output tokens.",
+                f"Status: {result.get('reason', 'partial')}. "
+                f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
+            ]
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [
@@ -318,7 +368,9 @@ def render_body(
                 "with those changes (review/48). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
                 "a paid route. Additions/ignore and keep-paid choices are available; "
-                "removal requires deployed Slice 3 rescue. Unavailable proofs remain ticked. "
+                "removal requires deployed Slice 3 rescue. Partial request-cap discovery can be "
+                "resumed with `test again`; that only queues a later bounded run. "
+                "Unavailable proofs remain ticked. "
                 "An open PR does not fulfill a "
                 "selection until it is merged.",
                 "",

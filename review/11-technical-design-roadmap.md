@@ -1815,9 +1815,12 @@ Review/48 §8.13 now specifies the offline discovery/report/retry file and test 
 90-day histories and next-day `/apply` retry receipts. Live discovery stays disabled pending reviewed
 activation. Combined-cap/shared-quota additions remain gated on their separate configuration design.
 
-Offline implementation is in progress under #2271: foundation planner/transport/authenticated
-history first, then report/retry/workflow integration. Pure adapter tests cover all axes; current
-live plugins retain explicit unsupported refusal/combined semantics. No new probes are enabled.
+The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273).
+Report/retry/workflow integration is now under implementation review in #2271: new reachable
+candidates receive bounded size discovery, the issue reports source claims and measured brackets,
+and an authorized `/apply` can queue an authenticated next-day retry without provider calls. Pure
+adapter tests cover all axes; unsupported refusal/combined semantics remain explicit. No new probes
+are enabled until the separate reviewed activation in #2223.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 

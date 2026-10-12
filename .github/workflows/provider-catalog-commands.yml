@@ -70,12 +70,22 @@ jobs:
           gh auth setup-git
           set +e
           python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
-            --permission actor-permission.json --out provider-catalog-command.json
+            --permission actor-permission.json --retry-receipt provider-catalog-discovery-retry.json \
+            --out provider-catalog-command.json
           code=$?
           set -e
           jq -r '.comment' provider-catalog-command.json > provider-catalog-command.md
+          jq -e '.retry_receipt' provider-catalog-command.json > provider-catalog-discovery-retry.json || true
           gh issue comment "$ISSUE_NUMBER" --body-file provider-catalog-command.md
           exit "$code"
+      - name: Retain authorized discovery retry receipt
+        if: always() && github.event_name == 'issue_comment'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-discovery-retry-${{ github.run_id }}
+          path: provider-catalog-discovery-retry.json
+          retention-days: 90
+          if-no-files-found: ignore
   limits:
     if: >-
       ${{ github.event_name == 'workflow_run' &&

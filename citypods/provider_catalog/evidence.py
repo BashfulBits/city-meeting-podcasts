@@ -1254,6 +1254,324 @@ def verified_context_history(
 
 
 DISCOVERY_ARTIFACT_FILE = "provider-catalog-discovery-evidence.json"
+DISCOVERY_RETRY_RECEIPT_FILE = "provider-catalog-discovery-retry.json"
+
+
+def discover_discovery_references(*, repository, now, api=_gh_json, download=_gh_download):
+    """Find bounded trusted scheduled/manual discovery artifacts, never issue state."""
+    if not isinstance(repository, str) or not re.fullmatch(
+        r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository
+    ):
+        raise ValueError("invalid repository identity")
+    from urllib.parse import urlencode
+
+    prefix = f"repos/{repository}"
+    repo = api(prefix)
+    branch = repo["default_branch"]
+    references = []
+    for event in ("schedule", "workflow_dispatch"):
+        exhausted = False
+        for page in range(1, 4):
+            query = urlencode(
+                {
+                    "branch": branch,
+                    "event": event,
+                    "status": "completed",
+                    "per_page": 100,
+                    "page": page,
+                }
+            )
+            result = api(f"{prefix}/actions/workflows/provider-catalog-reconcile.yml/runs?{query}")
+            runs = result["workflow_runs"]
+            if len(runs) < 100:
+                exhausted = True
+            for run in runs:
+                created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+                if created.tzinfo is None or created > now:
+                    raise ValueError("invalid discovery workflow run timestamp")
+                if created < now - timedelta(days=90):
+                    exhausted = True
+                    continue
+                run_id = str(run["id"])
+                if not re.fullmatch(r"[0-9]{1,20}", run_id):
+                    raise ValueError("invalid discovery workflow run identity")
+                listing = api(f"{prefix}/actions/runs/{run_id}/artifacts?per_page=100")
+                matches = [
+                    item
+                    for item in listing.get("artifacts") or []
+                    if item.get("name") == f"provider-catalog-discovery-evidence-{run_id}"
+                ]
+                if not matches:
+                    continue
+                if len(matches) != 1:
+                    raise ValueError("ambiguous discovery artifact")
+                item = matches[0]
+                if (
+                    item.get("expired")
+                    or type(item.get("id")) is not int
+                    or type(item.get("size_in_bytes")) is not int
+                    or not 0 < item["size_in_bytes"] <= 2 * 1024 * 1024
+                ):
+                    raise ValueError("invalid discovery artifact bounds")
+                raw = download(f"{prefix}/actions/artifacts/{item['id']}/zip")
+                if len(raw) > 2 * 1024 * 1024:
+                    raise ValueError("oversized discovery ZIP")
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    files = archive.infolist()
+                    if len(files) != 1 or files[0].filename != DISCOVERY_ARTIFACT_FILE:
+                        raise ValueError("unexpected discovery ZIP contents")
+                    envelope = json.loads(archive.read(files[0]))
+                references.append({"run_id": run_id, "payload_digest": envelope["payload_digest"]})
+            if exhausted:
+                break
+        if not exhausted:
+            raise ValueError("discovery history exceeds bounded enumeration")
+    return tuple(references)
+
+
+def discovery_retry_receipt(
+    *,
+    repository,
+    issue_number,
+    candidate_key,
+    result_revision,
+    comment_id,
+    comment_created_at,
+    command_run_id,
+    command_head_sha,
+    now,
+):
+    """Build the payload-free, idempotent receipt created by authorized ``/apply`` only."""
+    if (
+        not isinstance(repository, str)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+        or type(issue_number) is not int
+        or issue_number <= 0
+        or not isinstance(candidate_key, str)
+        or not 1 <= len(candidate_key) <= 512
+        or not re.fullmatch(r"[a-f0-9]{64}", str(result_revision))
+        or type(comment_id) is not int
+        or comment_id <= 0
+        or not re.fullmatch(r"[0-9]{1,20}", str(command_run_id))
+        or not re.fullmatch(r"[0-9a-f]{40}", str(command_head_sha))
+        or not isinstance(now, datetime)
+        or now.tzinfo is None
+    ):
+        raise ValueError("invalid discovery retry receipt identity")
+    if not isinstance(comment_created_at, str) or len(comment_created_at) > 64:
+        raise ValueError("invalid discovery retry authorization time")
+    try:
+        created = datetime.fromisoformat(comment_created_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("invalid discovery retry authorization time") from exc
+    now = now.astimezone(UTC)
+    if created.tzinfo is None or created > now:
+        raise ValueError("invalid discovery retry authorization time")
+    receipt_id = digest([repository, issue_number, candidate_key, result_revision])
+    payload = {
+        "version": 1,
+        "repository": repository,
+        "issue_number": issue_number,
+        "candidate_key": candidate_key,
+        "result_revision": result_revision,
+        "receipt_id": receipt_id,
+        "comment_id": comment_id,
+        "comment_created_at": created.astimezone(UTC).isoformat(),
+        "command_run_id": str(command_run_id),
+        "command_head_sha": command_head_sha,
+        # The original maintainer choice is the authorization point. A delayed command
+        # runner must not move the retry date forward or permit same-day probing.
+        "earliest_date": (created.astimezone(UTC).date() + timedelta(days=1)).isoformat(),
+    }
+    return {"payload": payload, "payload_digest": digest(payload)}
+
+
+def validate_discovery_retry_receipt(envelope, *, repository, now):
+    """Validate the closed receipt shape and its checksum before GitHub provenance checks."""
+    if not isinstance(envelope, dict) or set(envelope) != {"payload", "payload_digest"}:
+        raise ValueError("invalid discovery retry envelope")
+    payload = envelope["payload"]
+    fields = {
+        "version",
+        "repository",
+        "issue_number",
+        "candidate_key",
+        "result_revision",
+        "receipt_id",
+        "comment_id",
+        "comment_created_at",
+        "command_run_id",
+        "command_head_sha",
+        "earliest_date",
+    }
+    if not isinstance(payload, dict) or set(payload) != fields:
+        raise ValueError("invalid discovery retry payload")
+    if (
+        digest(payload) != envelope["payload_digest"]
+        or type(payload["version"]) is not int
+        or payload["version"] != 1
+    ):
+        raise ValueError("discovery retry checksum/version mismatch")
+    created_text = payload["comment_created_at"]
+    earliest_text = payload["earliest_date"]
+    if not isinstance(created_text, str) or len(created_text) > 64:
+        raise ValueError("invalid discovery retry timestamp")
+    if not isinstance(earliest_text, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", earliest_text):
+        raise ValueError("invalid discovery retry date")
+    try:
+        created = datetime.fromisoformat(created_text)
+        earliest = datetime.fromisoformat(earliest_text).date()
+    except ValueError as exc:
+        raise ValueError("invalid discovery retry timestamp or date") from exc
+    now = now.astimezone(UTC)
+    if (
+        payload["repository"] != repository
+        or type(payload["version"]) is not int
+        or type(payload["issue_number"]) is not int
+        or payload["issue_number"] <= 0
+        or not isinstance(payload["candidate_key"], str)
+        or not 1 <= len(payload["candidate_key"]) <= 512
+        or not re.fullmatch(r"[a-f0-9]{64}", str(payload["result_revision"]))
+        or payload["receipt_id"]
+        != digest(
+            [
+                repository,
+                payload["issue_number"],
+                payload["candidate_key"],
+                payload["result_revision"],
+            ]
+        )
+        or type(payload["comment_id"]) is not int
+        or payload["comment_id"] <= 0
+        or not re.fullmatch(r"[0-9]{1,20}", str(payload["command_run_id"]))
+        or not re.fullmatch(r"[0-9a-f]{40}", str(payload["command_head_sha"]))
+        or created.tzinfo is None
+        or earliest != created.astimezone(UTC).date() + timedelta(days=1)
+        or earliest > now.date()
+    ):
+        raise ValueError("invalid discovery retry identity or date")
+    if created > now:
+        raise ValueError("invalid discovery retry timestamp")
+    return payload
+
+
+def discover_discovery_retry_receipts(
+    *, repository, now, api=_gh_json, download=_gh_download, ancestor=_main_ancestor
+):
+    """Authenticate retry receipts to a successful authorized /apply command run and comment."""
+    if not isinstance(repository, str) or not re.fullmatch(
+        r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository
+    ):
+        raise ValueError("invalid repository identity")
+    prefix = f"repos/{repository}"
+    repo = api(prefix)
+    workflow = api(f"{prefix}/actions/workflows/provider-catalog-commands.yml")
+    if (
+        repo.get("full_name") != repository
+        or workflow.get("path") != ".github/workflows/provider-catalog-commands.yml"
+        or type(workflow.get("id")) is not int
+        or workflow["id"] <= 0
+    ):
+        raise ValueError("invalid retry workflow identity")
+    from urllib.parse import urlencode
+
+    receipts, gaps, exhausted = {}, [], False
+    for page in range(1, 6):
+        query = urlencode(
+            {
+                "branch": repo["default_branch"],
+                "event": "issue_comment",
+                "status": "completed",
+                "per_page": 100,
+                "page": page,
+            }
+        )
+        result = api(f"{prefix}/actions/workflows/provider-catalog-commands.yml/runs?{query}")
+        runs = result["workflow_runs"]
+        if len(runs) < 100:
+            exhausted = True
+        for run in runs:
+            created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+            if created.tzinfo is None or created > now:
+                raise ValueError("invalid retry command timestamp")
+            if created < now - timedelta(days=90):
+                exhausted = True
+                continue
+            run_id = str(run.get("id", ""))
+            if not re.fullmatch(r"[0-9]{1,20}", run_id):
+                raise ValueError("invalid retry command run ID")
+            listing = api(f"{prefix}/actions/runs/{run_id}/artifacts?per_page=100")
+            named = [
+                item
+                for item in listing.get("artifacts") or []
+                if item.get("name") == f"provider-catalog-discovery-retry-{run_id}"
+            ]
+            if not named:
+                continue
+            try:
+                if len(named) != 1 or (
+                    str(run.get("id")) != run_id
+                    or run.get("status") != "completed"
+                    or run.get("conclusion") != "success"
+                    or run.get("event") != "issue_comment"
+                    or run.get("workflow_id") != workflow["id"]
+                    or run.get("head_branch") != repo["default_branch"]
+                    or (run.get("head_repository") or {}).get("full_name") != repository
+                    or not re.fullmatch(r"[0-9a-f]{40}", str(run.get("head_sha")))
+                    or not ancestor(run["head_sha"])
+                ):
+                    raise ValueError("untrusted retry command run")
+                artifact = named[0]
+                if (
+                    artifact.get("expired")
+                    or type(artifact.get("id")) is not int
+                    or type(artifact.get("size_in_bytes")) is not int
+                    or not 0 < artifact["size_in_bytes"] <= 16_384
+                ):
+                    raise ValueError("invalid retry receipt artifact bounds")
+                raw = download(f"{prefix}/actions/artifacts/{artifact['id']}/zip")
+                if len(raw) > 16_384:
+                    raise ValueError("oversized retry receipt archive")
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    files = archive.infolist()
+                    if len(files) != 1 or files[0].filename != DISCOVERY_RETRY_RECEIPT_FILE:
+                        raise ValueError("unexpected retry receipt archive")
+                    envelope = json.loads(archive.read(files[0]))
+                payload = validate_discovery_retry_receipt(envelope, repository=repository, now=now)
+                if (
+                    payload["command_run_id"] != run_id
+                    or payload["command_head_sha"] != run["head_sha"]
+                ):
+                    raise ValueError("retry receipt command provenance mismatch")
+                comment = api(f"{prefix}/issues/comments/{payload['comment_id']}")
+                expected_issue_url = (
+                    f"https://api.github.com/{prefix}/issues/{payload['issue_number']}"
+                )
+                if (
+                    comment.get("body") != "/apply"
+                    or comment.get("issue_url") != expected_issue_url
+                    or comment.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}
+                    or datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
+                    != datetime.fromisoformat(payload["comment_created_at"])
+                ):
+                    raise ValueError("retry receipt is not bound to an authorized /apply comment")
+                receipts[payload["receipt_id"]] = payload
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                subprocess.CalledProcessError,
+                zipfile.BadZipFile,
+                zlib.error,
+            ):
+                gaps.append(f"retry command {run_id}: unverified receipt")
+        if exhausted:
+            break
+    if not exhausted:
+        gaps.append("retry receipt enumeration exceeded its bound")
+    return tuple(receipts.values()), tuple(gaps)
 
 
 def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
@@ -1293,6 +1611,7 @@ def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
             "created_at",
             "sources",
             "receipt_id",
+            "reachability_calls",
         }
         if set(metadata) - allowed or not all(
             metadata.get(k)
@@ -1311,6 +1630,11 @@ def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
             )
         ):
             raise ValueError("invalid discovery session metadata")
+        if "reachability_calls" in metadata and (
+            type(metadata["reachability_calls"]) is not int
+            or not 1 <= metadata["reachability_calls"] <= 5
+        ):
+            raise ValueError("invalid discovery reachability call count")
         if any(
             not re.fullmatch(r"[a-f0-9]{64}", str(metadata.get(key, "")))
             for key in ("catalog_digest", "free_evidence_digest")
@@ -1407,6 +1731,11 @@ def verified_discovery_history(
                 raise ValueError("invalid discovery run ID")
             if run_id in seen_runs:
                 continue
+            expected_digest = reference.get("payload_digest")
+            if expected_digest is not None and not re.fullmatch(
+                r"[0-9a-f]{64}", str(expected_digest)
+            ):
+                raise ValueError("invalid discovery artifact reference digest")
             seen_runs.add(run_id)
             run = api(f"{prefix}/actions/runs/{run_id}")
             if (
@@ -1454,6 +1783,7 @@ def verified_discovery_history(
             stamp = datetime.fromisoformat(payload["observed_at"])
             if (
                 digest(payload) != envelope["payload_digest"]
+                or (expected_digest is not None and envelope["payload_digest"] != expected_digest)
                 or payload.get("version") != 1
                 or payload.get("repository") != repository
                 or payload.get("run_id") != run_id
@@ -1470,32 +1800,54 @@ def verified_discovery_history(
                 head_sha=run["head_sha"],
                 now=stamp,
             )
-            found, run_counts, run_attempts = [], {}, set()
+            found, run_counts, run_attempts, run_call_counts = [], {}, set(), {}
             for session in payload["sessions"]:
-                identity = session["session"]["identity"]
+                metadata = session["session"]
+                identity = metadata["identity"]
                 if session_counts.get(identity, 0) + run_counts.get(identity, 0) >= 6:
                     continue
                 session_found = []
+                unique_attempts = 0
                 for row in session["attempts"]:
+                    key = row["request"]["attempt_id"]
+                    if key in seen_attempts or key in run_attempts:
+                        continue
+                    run_attempts.add(key)
+                    unique_attempts += 1
                     if row["observation"] is None:
                         continue
                     item = DiscoveryObservation.from_dict(row["observation"])
                     original = datetime.fromisoformat(item.observed_at)
                     if not timedelta(0) <= now - original <= timedelta(days=90):
                         continue
-                    key = item.request.attempt_id
-                    if key in seen_attempts or key in run_attempts:
-                        continue
-                    run_attempts.add(key)
                     session_found.append(item)
-                if session_found:
+                if unique_attempts:
                     run_counts[identity] = run_counts.get(identity, 0) + 1
+                    run_call_counts[identity] = (
+                        run_call_counts.get(identity, 0)
+                        + unique_attempts
+                        + metadata.get("reachability_calls", 0)
+                    )
+                if session_found:
                     found.extend(session_found)
             for identity, count in run_counts.items():
                 session_counts[identity] = session_counts.get(identity, 0) + count
             seen_attempts.update(run_attempts)
             observations.extend(found)
-            accepted.append({"run_id": run_id, "payload_digest": envelope["payload_digest"]})
+            accepted.append(
+                {
+                    "run_id": run_id,
+                    "payload_digest": envelope["payload_digest"],
+                    "receipt_ids": sorted(
+                        {
+                            session["session"].get("receipt_id")
+                            for session in payload["sessions"]
+                            if session["session"].get("receipt_id") and session["attempts"]
+                        }
+                    ),
+                    "call_counts": run_call_counts,
+                }
+            )
         except (
             OSError,
             ValueError,
