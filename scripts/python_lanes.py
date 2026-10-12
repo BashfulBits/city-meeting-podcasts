@@ -108,7 +108,7 @@ def check_asr_python_pins() -> list[str]:
         "scripts/compute/modal_canary.py": rf'add_python="{re.escape(asr)}"',
         "scripts/compute/beam_app.py": rf'python_version="python{re.escape(asr)}"',
         ".github/audio-runner/Dockerfile": rf"\bpython{re.escape(asr)}\b",
-        ".github/renovate.json5": rf'python: "{re.escape(asr)}"',
+        ".github/renovate.json5": rf'python: "{re.escape(asr)}\.\d+"',
     }
     problems = [
         f"{path}: expected the ASR Python {asr} (pattern {pattern!r})"

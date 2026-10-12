@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
+  `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
+  picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so
+  every lock update since failed (`install-tool python 3.12`, then `spawn pip-compile ENOENT`).
+  #2298/#2299 ended up as empty commits. It is now a full patch version (`3.12.15`), which both uses
+  accept; Renovate keeps the patch current (automerged), and `python_lanes.py` checks its
+  `major.minor` against the ASR version file.
+
 - **Renovate's pyproject.toml exclusion survives GitHub security alerts.** The file-level
   `enabled: false` rule from the previous fix did not hold for GitHub-advisory PRs: Renovate appends
   its alert rules after ours with `force`, which re-enabled the pep621/poetry deps, so #2298/#2299
