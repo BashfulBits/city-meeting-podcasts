@@ -601,7 +601,7 @@ def unsupported_discovery(response, request, transient):
     return DiscoveryObservation(request, datetime.now(UTC).isoformat())
 
 
-def _chat_discovery_size_refusal(response, request, *, reasoning_basis):
+def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis):
     """Recognize explicit token coordinates in documented chat/vLLM size errors.
 
     Exact input counts, fixed output reservation and consistent totals are mandatory.
@@ -609,10 +609,6 @@ def _chat_discovery_size_refusal(response, request, *, reasoning_basis):
     https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/
     """
     if response.status not in {400, 422} or response.timed_out or response.transport_error:
-        return None
-    try:
-        payload = strict_context_json(response.body)
-    except (TypeError, ValueError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -833,7 +829,9 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         return DiscoveryObservation(request, stamp, outcome="quota", **values)
     if response.status is not None and response.status >= 500:
         return DiscoveryObservation(request, stamp, outcome="outage", **values)
-    refusal = _chat_discovery_size_refusal(response, request, reasoning_basis=reasoning_basis)
+    refusal = _chat_discovery_size_refusal(
+        response, request, payload, reasoning_basis=reasoning_basis
+    )
     if refusal is not None:
         return DiscoveryObservation(
             request, stamp, outcome="refused", verified=True, **(values | refusal)
