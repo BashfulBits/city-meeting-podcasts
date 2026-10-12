@@ -21,6 +21,7 @@ MIN_INPUT_PROBE = 2_000
 MAX_SESSION_INPUT = 8_388_608
 MAX_RUN_INPUT = 16_777_216
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
+MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
@@ -122,6 +123,15 @@ class DiscoveryObservation:
     verified: bool = False
     diagnostic: str = "unsupported_endpoint"
     retry_after_seconds: int | None = None
+    response_status: int | None = None
+    response_media_type: str = "unknown"
+    response_bytes: int | None = None
+    message_content_state: str = "unknown"
+    finish_reason_state: str = "unknown"
+    usage_state: str = "unknown"
+    provider_request_id: str | None = None
+    response_id: str | None = None
+    response_preview: str = ""
 
     def __post_init__(self):
         if (
@@ -130,6 +140,74 @@ class DiscoveryObservation:
             or type(self.verified) is not bool
         ):
             raise ValueError("invalid discovery observation")
+        if self.response_status is not None and (
+            type(self.response_status) is not int or not 100 <= self.response_status <= 599
+        ):
+            raise ValueError("invalid discovery response status")
+        if self.response_media_type not in {
+            "unknown",
+            "application/json",
+            "text/event-stream",
+            "other",
+        }:
+            raise ValueError("invalid discovery response media type")
+        if self.response_bytes is not None and (
+            type(self.response_bytes) is not int or not 0 <= self.response_bytes <= 4 * 1024 * 1024
+        ):
+            raise ValueError("invalid discovery response byte count")
+        if self.message_content_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "empty",
+            "text",
+            "other",
+        }:
+            raise ValueError("invalid discovery message content state")
+        if self.finish_reason_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "stop",
+            "length",
+            "other",
+        }:
+            raise ValueError("invalid discovery finish reason state")
+        if self.usage_state not in {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "not_object",
+            "prompt_missing",
+            "prompt_invalid",
+            "completion_missing",
+            "completion_invalid",
+            "total_invalid",
+            "valid",
+        }:
+            raise ValueError("invalid discovery usage state")
+        for value in (self.provider_request_id, self.response_id):
+            if value is not None and (
+                not isinstance(value, str)
+                or not 1 <= len(value) <= 128
+                or any(
+                    char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+                    for char in value
+                )
+            ):
+                raise ValueError("invalid discovery correlation ID")
+        if not isinstance(self.response_preview, str) or len(self.response_preview) > (
+            MAX_RESPONSE_PREVIEW_CHARS
+        ):
+            raise ValueError("invalid bounded discovery response preview")
+        try:
+            preview_bytes = len(self.response_preview.encode("utf-8"))
+        except UnicodeError as exc:
+            raise ValueError("invalid bounded discovery response preview") from exc
+        if preview_bytes > MAX_RESPONSE_PREVIEW_CHARS:
+            raise ValueError("invalid bounded discovery response preview")
         for value in (
             self.coordinate,
             self.reported_input,

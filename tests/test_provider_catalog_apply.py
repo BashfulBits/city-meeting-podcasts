@@ -219,6 +219,28 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
             "input_tokens": "bad",
             "output_tokens": None,
             "axes": [],
+            "attempt_diagnostics": [
+                {
+                    "axis": "input",
+                    "target": 500000,
+                    "reserved_input": 500000,
+                    "requested_output": 256,
+                    "outcome": "inconclusive",
+                    "diagnostic": "completion_content_null",
+                    "response_status": 200,
+                    "response_media_type": "application/json",
+                    "response_bytes": 900,
+                    "message_content_state": "null",
+                    "finish_reason_state": "missing",
+                    "finish_reason": "",
+                    "usage_state": "valid",
+                    "reported_input": 490000,
+                    "reported_output": 0,
+                    "provider_request_id": "request-123",
+                    "response_id": "response-456",
+                    "response_preview": '"Provider suggests reduce the request"',
+                }
+            ],
             "transport_retries": [
                 [
                     {
@@ -250,6 +272,11 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
     assert "— requested output tokens" in body
     assert "No-response attempt telemetry" in body
     assert "`aaaaaaaaaaaa`" in body and "`bbbbbbbbbbbb`" in body
+    assert "Recent request diagnostics" in body
+    assert "completion_content_null" in body
+    assert "490,000 / 0" in body
+    assert "request-123" in body and "response-456" in body
+    assert '"Provider suggests reduce the request"' in body
 
     malformed = replace(
         candidate,

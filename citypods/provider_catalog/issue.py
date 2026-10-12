@@ -161,6 +161,116 @@ def _discovery_transport_groups(value):
     return tuple(groups)
 
 
+def _discovery_attempt_diagnostics(value):
+    """Render only bounded, typed response metadata from the editable issue marker."""
+    if not isinstance(value, list):
+        return ()
+    rows = []
+    choices = {
+        "axis": {"input", "output", "total_input_heavy", "total_output_heavy"},
+        "outcome": {
+            "admitted",
+            "refused",
+            "quota",
+            "daily",
+            "outage",
+            "inconclusive",
+            "lower_only",
+        },
+        "message_content_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "empty",
+            "text",
+            "other",
+        },
+        "finish_reason_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "stop",
+            "length",
+            "other",
+        },
+        "usage_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "not_object",
+            "prompt_missing",
+            "prompt_invalid",
+            "completion_missing",
+            "completion_invalid",
+            "total_invalid",
+            "valid",
+        },
+        "response_media_type": {"unknown", "application/json", "text/event-stream", "other"},
+    }
+    for item in value[-12:]:
+        if not isinstance(item, Mapping):
+            continue
+        row = dict(item)
+        for name, allowed in choices.items():
+            if row.get(name) not in allowed:
+                row[name] = "unknown"
+        diagnostic = row.get("diagnostic")
+        row["diagnostic"] = (
+            diagnostic
+            if isinstance(diagnostic, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", diagnostic)
+            else "unknown"
+        )
+        for name in (
+            "target",
+            "reserved_input",
+            "requested_output",
+            "response_bytes",
+            "reported_input",
+            "reported_output",
+        ):
+            number = row.get(name)
+            row[name] = number if type(number) is int and 0 <= number <= 4 * 1024 * 1024 else None
+        status = row.get("response_status")
+        row["response_status"] = status if type(status) is int and 100 <= status <= 599 else None
+        for name in ("provider_request_id", "response_id"):
+            value = row.get(name)
+            row[name] = (
+                value
+                if isinstance(value, str)
+                and 1 <= len(value) <= 128
+                and re.fullmatch(r"[A-Za-z0-9._:-]+", value)
+                else ""
+            )
+        finish = row.get("finish_reason")
+        row["finish_reason"] = (
+            finish
+            if isinstance(finish, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", finish)
+            else ""
+        )
+        preview = row.get("response_preview")
+        try:
+            decoded = (
+                json.loads(preview) if isinstance(preview, str) and len(preview) <= 1_024 else None
+            )
+        except (TypeError, ValueError):
+            decoded = None
+        if isinstance(decoded, str) and len(decoded) <= 128:
+            safe = json.dumps(decoded, ensure_ascii=True)
+            row["response_preview"] = (
+                safe.replace("`", r"\u0060")
+                .replace("@", r"\u0040")
+                .replace("<", r"\u003c")
+                .replace(">", r"\u003e")
+                .replace("|", r"\u007c")
+            )
+        else:
+            row["response_preview"] = ""
+        rows.append(row)
+    return tuple(rows)
+
+
 def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
     """Fulfillment is read from main's config, never an open PR or issue state assertion."""
     snapshot = Report()
@@ -360,6 +470,41 @@ def render_body(
                 f"Status: {result.get('reason', 'partial')}. "
                 f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
             ]
+            attempts = _discovery_attempt_diagnostics(result.get("attempt_diagnostics"))
+            if attempts:
+                lines += [
+                    "",
+                    "Recent request diagnostics (response text is shown only as a redacted, "
+                    "bounded preview on failed attempts):",
+                    "",
+                    "| Axis / target | Outcome / diagnostic | HTTP / media / bytes | "
+                    "Content / finish / usage | Provider counts | Correlation IDs | Preview |",
+                    "|---|---|---|---|---:|---|---|",
+                ]
+                for attempt in attempts:
+                    status = attempt["response_status"] or "—"
+                    counts = (
+                        f"{_discovery_count(attempt['reported_input'])} / "
+                        f"{_discovery_count(attempt['reported_output'])}"
+                    )
+                    ids = (
+                        ", ".join(
+                            f"`{attempt[name]}`"
+                            for name in ("provider_request_id", "response_id")
+                            if attempt[name]
+                        )
+                        or "—"
+                    )
+                    lines.append(
+                        f"| {attempt['axis']} / {_discovery_count(attempt['target'])} | "
+                        f"{attempt['outcome']} / `{attempt['diagnostic']}` | "
+                        f"{status} / {attempt['response_media_type']} / "
+                        f"{_discovery_count(attempt['response_bytes'])} | "
+                        f"{attempt['message_content_state']} / "
+                        f"{attempt['finish_reason_state']} ({attempt['finish_reason']}) / "
+                        f"{attempt['usage_state']} | {counts} | {ids} | "
+                        f"{attempt['response_preview'] or '—'} |"
+                    )
             for group in _discovery_transport_groups(result.get("transport_retries")):
                 lines.append("No-response attempt telemetry:")
                 for attempt in group:

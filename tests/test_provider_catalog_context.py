@@ -218,12 +218,12 @@ def test_chat_rejects_non_integer_and_unsafe_counts(count):
         ("total", "usage_total_inconsistent"),
         ("native", "unexpected_response_envelope"),
         ("jev", "unexpected_response_envelope"),
-        ("refusal", "refusal_or_tool_call"),
+        ("refusal", "completion_refusal"),
         ("tail", "input_sentinel_mismatch"),
-        ("finish", "completion_content_or_finish_invalid"),
+        ("finish", "finish_reason_null"),
         ("reasoning", "reasoning_count_invalid"),
         ("multiple", "completion_shape_invalid"),
-        ("tool", "refusal_or_tool_call"),
+        ("tool", "completion_tool_call"),
     ],
 )
 def test_malformed_and_inconclusive_envelopes_do_not_prove_capacity(mutation, diagnostic):
@@ -818,6 +818,51 @@ def test_manual_collector_retains_only_bounded_redacted_error_body():
         time.monotonic,
     )
     assert "error_response_body" not in routine.context_diagnostics
+
+
+def test_discovery_response_preview_is_bounded_redacted_and_correlated():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    req = request()
+    credential = "gsk_discovery_probe_secret"
+    body = json.dumps(
+        {
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "message": {
+                        "content": "Provider says reduce the input size.",
+                        "prompt": req.messages[0]["content"],
+                        "key": credential,
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+    )
+    headers = {"Authorization": f"Bearer {credential}"}
+    response = ContextFakeResponse(body)
+    response.headers["x-request-id"] = "request-id-123"
+    captured = _collect_context(
+        ContextFakeSession(response, SimpleNamespace(value=0)),
+        req,
+        headers,
+        120,
+        time.monotonic,
+        retain_response_preview=True,
+    )
+
+    diagnostics = captured.context_diagnostics
+    preview = diagnostics["response_preview"]
+    assert "Provider says reduce" in preview
+    assert diagnostics["provider_request_id"] == "request-id-123"
+    assert len(preview.encode()) <= 1_024
+    assert credential not in preview
+    assert req.messages[0]["content"] not in preview
+    assert preview.startswith('"Provider says reduce')
 
 
 def test_rate_header_parsers_fail_closed_on_malformed_or_extreme_values():

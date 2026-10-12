@@ -772,12 +772,86 @@ def test_chat_usage_and_rate_numbers_have_separate_authority():
     )
     result = RULES.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
     assert result.outcome == "admitted" and result.coordinate == 2047
+    assert result.reported_input == 2047 and result.reported_output == 100
+    assert result.response_preview == ""
     error = Response(429, body='{"error":{"message":"TPM limit 8000, requested 9000"}}')
     result = RULES.discovery_observation(error, req, transient)
     assert result.outcome == "quota" and result.coordinate is None
 
 
-def _discovery_transport_worker(pipe, transient, session, timeout, retain_error_body):
+@pytest.mark.parametrize(
+    ("content_state", "finish_state", "diagnostic"),
+    [
+        ("missing", "null", "completion_content_missing"),
+        ("null", "null", "completion_content_null"),
+        ("empty", "missing", "completion_content_empty"),
+        ("other", "other", "completion_content_not_text"),
+    ],
+)
+def test_discovery_records_usage_and_response_shape_when_completion_is_invalid(
+    content_state, finish_state, diagnostic
+):
+    import json
+
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.groq import RULES
+    from citypods.provider_catalog.rules import Response
+
+    cfg = dict(
+        api_base="https://api.groq.com/openai/v1", accounts=[dict(id="a", api_key_env="KEY")]
+    )
+    route = dict(route_id="candidate", provider="groq", account_id="a", upstream_model="model")
+    req = replace(
+        request(),
+        identity=discovery_identity(
+            "groq", "a", "model", "https://api.groq.com/openai/v1/chat/completions"
+        ),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    message = {} if content_state == "missing" else {"content": None}
+    if content_state == "empty":
+        message = {"content": ""}
+    elif content_state == "other":
+        message = {"content": ["not", "text"]}
+    choice = {"message": message}
+    if finish_state != "missing":
+        choice["finish_reason"] = None if finish_state == "null" else "unsupported"
+    body = {
+        "object": "chat.completion",
+        "id": "response-123",
+        "usage": {"prompt_tokens": 2047, "completion_tokens": 100, "total_tokens": 2147},
+        "choices": [choice],
+    }
+    response = Response(
+        200,
+        body=json.dumps(body),
+        context_diagnostics={
+            "response_media_type": "application/json",
+            "response_bytes": len(json.dumps(body).encode()),
+            "provider_request_id": "request-456",
+            "response_preview": '"redacted short provider detail"',
+        },
+    )
+
+    observed = RULES.discovery_observation(response, req, transient)
+
+    assert observed.outcome == "inconclusive"
+    assert observed.diagnostic == diagnostic
+    assert observed.reported_input == 2047 and observed.reported_output == 100
+    assert observed.usage_state == "valid"
+    assert observed.message_content_state == content_state
+    assert observed.finish_reason_state == finish_state
+    assert observed.response_status == 200
+    assert observed.response_media_type == "application/json"
+    assert observed.response_bytes == len(json.dumps(body).encode())
+    assert observed.provider_request_id == "request-456"
+    assert observed.response_id == "response-123"
+    assert observed.response_preview == '"redacted short provider detail"'
+
+
+def _discovery_transport_worker(
+    pipe, transient, session, timeout, retain_error_body, retain_response_preview=False
+):
     """Spawn-safe IPC fixture; no credentials, URLs or provider network calls."""
     import json
     import re
