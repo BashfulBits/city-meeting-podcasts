@@ -255,7 +255,12 @@ per-minute (TPM).
 New-route request-cap discovery uses a separate typed transport in
 `provider_catalog/discovery.py`: immutable request/admission/observation records, independent
 input/output/two combined-mix brackets, actual-count fixture correction and finite session/run
-budgets. It runs only after a new route passes the existing reachability and structured-output
+budgets. Pure input probes request 16,384 output tokens (64 times the previous cap) so reasoning-
+heavy replies have room to complete the input fixture; typed output-cap refusals halve that fixed
+counterpart and start a new `v2` control identity. The existing aggregate output budgets remain
+binding, so an interrupted search reports partial evidence for authenticated `test again`
+refinement. It runs only after a new route
+passes the existing reachability and structured-output
 checks, under the same drained provider pause. The 64-submission candidate budget includes those
 reachability checks; the two-candidate run budget is shared. A journal charges attempts before child
 submission and fsyncs payload-free checkpoints; unknown results cannot be reused as successful
