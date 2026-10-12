@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Review/48 input probes reserve room for reasoning.** Pure input-size checks can request up to
+  16,384 output tokens, 64 times the earlier 256-token cap, so the model can finish fixture verification after
+  reading a large prompt. A typed output-cap refusal halves that counterpart and starts a separate
+  input-control history; combined and output searches retain their existing counterparts. Aggregate
+  output budgets remain unchanged and bound the number of full-cap attempts per session.
+
 - **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
   and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
   128 KiB cumulative event-data bound accommodates complete reasoning-heavy responses while keeping

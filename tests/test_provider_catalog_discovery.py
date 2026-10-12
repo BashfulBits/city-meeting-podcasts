@@ -7,6 +7,7 @@ import pytest
 
 from citypods.provider_catalog.discovery import (
     AXES,
+    INPUT_OUTPUT_COUNTERPART,
     MAX_INPUT,
     Bracket,
     DiscoveryBudget,
@@ -21,8 +22,17 @@ STAMP = datetime.now(UTC).isoformat()
 
 
 def request(axis="input", target=2048, attempt="a"):
+    output_tokens = INPUT_OUTPUT_COUNTERPART if axis == "input" else 256
     return DiscoveryRequest(
-        "session", attempt, "physical", axis, target, target, 256, f"{axis}:v1", "parser-v1"
+        "session",
+        attempt,
+        "physical",
+        axis,
+        target,
+        target,
+        output_tokens,
+        f"{axis}:v2" if axis == "input" else f"{axis}:v1",
+        "parser-v1",
     )
 
 
@@ -114,13 +124,15 @@ def test_default_input_search_starts_high_and_reports_hard_ceiling(tmp_path):
 
     def measure(req, admit, _timeout):
         admit()
-        calls.append(req.input_tokens)
+        calls.append(req)
         count = min(req.input_tokens, MAX_INPUT - 13)
         return observation(req, count, reported_input=count)
 
     result = execute(tmp_path, measure, supported_axes=("input",))
 
-    assert calls == [500_000, 750_000, 1_000_000]
+    assert [req.input_tokens for req in calls] == [500_000, 750_000, 1_000_000]
+    assert all(req.output_tokens == INPUT_OUTPUT_COUNTERPART for req in calls)
+    assert all(req.control.startswith("input:v2") for req in calls)
     assert result.reason == "partial"
     assert result.brackets[0]["admitted"] == MAX_INPUT - 13
     assert result.brackets[0]["refused"] is None
@@ -1080,7 +1092,7 @@ def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_p
     def measure(req, admit, timeout):
         admit()
         seen.append((req.input_tokens, req.output_tokens, req.control))
-        if req.output_tokens > 128:
+        if req.output_tokens > INPUT_OUTPUT_COUNTERPART // 2:
             return replace(
                 observation(req, req.output_tokens, False), count_basis="requested_output"
             )
@@ -1097,7 +1109,8 @@ def test_fixed_counterpart_failure_reduces_it_without_creating_input_upper(tmp_p
         renew=lambda: None,
         journal=DiscoveryJournal(tmp_path / "counterpart.json", {}),
     )
-    assert seen[0][1] == 256 and seen[1][1] == 128
+    assert seen[0][1] == INPUT_OUTPUT_COUNTERPART
+    assert seen[1][1] == INPUT_OUTPUT_COUNTERPART // 2
     assert seen[0][2] != seen[1][2]
     assert result.brackets[0]["status"] == "converged"
     assert result.brackets[0]["admitted"] <= 4000 < result.brackets[0]["refused"]

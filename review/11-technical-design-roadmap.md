@@ -1822,8 +1822,12 @@ One-candidate activation shipped in [#2281](https://github.com/BashfulBits/city-
 A high-first search follow-up starts new input searches at 500,000, halves typed refusals down to
 a 2,000-token floor, grows successful probes toward the 1,000,000-token input ceiling, and uses
 midpoint refinement once it has both admitted and refused bounds. Its bounded allowance is
-8,388,608 input tokens per candidate and 16,777,216 per maintenance run; output request ceilings are
-unchanged. The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned
+8,388,608 input tokens per candidate and 16,777,216 per maintenance run. Pure input probes now
+request up to 16,384 output tokens (64 times the earlier 256-token cap) so reasoning-heavy replies
+can complete the fixture; typed output-cap refusals reduce that counterpart and use a new control
+identity. Aggregate output budgets remain unchanged, so an interrupted search preserves its bracket
+for authenticated `test again`.
+The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned
 HTTP 200 for all four JSON methods but did not produce verified fixture JSON, so request-size
 discovery did not run. Expanded diagnostics shipped in [#2284](https://github.com/BashfulBits/city-meeting-podcasts/pull/2284).
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
