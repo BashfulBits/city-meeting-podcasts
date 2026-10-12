@@ -98,7 +98,8 @@ def check_asr_python_pins() -> list[str]:
     """Python versions set outside setup-python must agree with the ASR version file.
 
     The constraints are compiled for, and the Modal/Beam/audio-runner images run, the
-    ASR Python. None of these can read a .python-version file, so they are checked here.
+    ASR Python, and Renovate filters lock updates by it. None of these can read a
+    .python-version file, so they are checked here.
     """
     asr = read_version(ASR_VERSION_FILE)
     sources = {
@@ -107,6 +108,7 @@ def check_asr_python_pins() -> list[str]:
         "scripts/compute/modal_canary.py": rf'add_python="{re.escape(asr)}"',
         "scripts/compute/beam_app.py": rf'python_version="python{re.escape(asr)}"',
         ".github/audio-runner/Dockerfile": rf"\bpython{re.escape(asr)}\b",
+        ".github/renovate.json5": rf'python: "{re.escape(asr)}"',
     }
     problems = [
         f"{path}: expected the ASR Python {asr} (pattern {pattern!r})"

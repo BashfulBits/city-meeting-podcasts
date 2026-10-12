@@ -23,14 +23,6 @@
   "pip-compile": {
     managerFilePatterns: ["/^constraints/(prod|dev|asr|chapter-research)\\.txt$/"],
   },
-  constraints: {
-    // Keep in sync with the pin in scripts/compile_constraints.sh (>=7.5.1 writes headers
-    // Renovate can parse).
-    pipTools: "==7.6.2",
-  },
-  // Skip releases whose requires_python excludes the Python the locks are compiled for,
-  // instead of opening a PR that python-compat.yml would only fail.
-  constraintsFiltering: "strict",
   // Security fixes skip the schedule and minimumReleaseAge (Renovate's vulnerabilityAlerts
   // defaults) and reach indirect locked deps too. They are labeled but never automerged
   // here: an ASR or output-affecting fix still goes through the smoke gate.
@@ -46,6 +38,34 @@
     schedule: ["before 9am on the first day of the month"],
   },
   packageRules: [
+    {
+      // pyproject.toml is read through the generated constraints/*.in above. The pep621 and
+      // poetry managers would read it a second time and raise floors there on security fixes
+      // (torch>=2.0 -> >=2.13.0), leaving the .in files stale and failing python-compat.yml.
+      matchFileNames: ["pyproject.toml"],
+      enabled: false,
+    },
+    {
+      // Skip releases whose requires_python excludes the Python the locks are compiled with
+      // (the ASR lane's, checked by scripts/python_lanes.py), instead of opening a PR that
+      // python-compat.yml would only fail. Scoped to pip-compile: as a global setting the
+      // pins below also reach the npm/regex deps, where "==7.6.2" is an invalid range.
+      matchManagers: ["pip-compile"],
+      constraintsFiltering: "strict",
+      constraints: {
+        // A bare version: Renovate's pep440 matcher rejects ==3.12.* against ">=3.9".
+        python: "3.12",
+        // Keep in sync with scripts/compile_constraints.sh (>=7.5.1 writes parseable headers).
+        pipTools: "==7.6.2",
+      },
+    },
+    {
+      // The python constraint above follows .github/python/asr/.python-version (the pyenv
+      // rule below proposes that bump); don't let Renovate bump its own copy separately.
+      matchManagers: ["renovate-config"],
+      matchDepNames: ["python"],
+      enabled: false,
+    },
     // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
       // Python dev/test tooling — matched by name (pep621 optional-dependencies has
