@@ -222,7 +222,7 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
             "transport_retries": [
                 [
                     {
-                        "attempt_id": "attempt-1",
+                        "attempt_id": "a" * 64,
                         "axis": "input",
                         "target": 1000,
                         "reserved_input": 1000,
@@ -231,7 +231,7 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
                         "outcome": "inconclusive",
                     },
                     {
-                        "attempt_id": "attempt-2",
+                        "attempt_id": "b" * 64,
                         "axis": "input",
                         "target": 1000,
                         "reserved_input": 1000,
@@ -249,7 +249,15 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
     assert "— reserved input" in body
     assert "— requested output tokens" in body
     assert "No-response attempt telemetry" in body
-    assert "attempt-1" in body and "attempt-2" in body
+    assert "`aaaaaaaaaaaa`" in body and "`bbbbbbbbbbbb`" in body
+
+    malformed = replace(
+        candidate,
+        discovery={"transport_retries": "malformed"},
+    )
+    assert "No-response attempt telemetry" not in render_body(
+        Report(candidates=[malformed]), run_date=TODAY.isoformat()
+    )
 
 
 def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():

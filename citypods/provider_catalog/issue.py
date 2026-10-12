@@ -106,6 +106,61 @@ def _discovery_count(value) -> str:
     return f"{value:,}" if type(value) is int else "—"
 
 
+def _discovery_transport_groups(value):
+    """Keep editable issue state from injecting unbounded or malformed telemetry into reports."""
+    if not isinstance(value, list):
+        return ()
+    groups = []
+    for group in value[:8]:
+        if not isinstance(group, list) or not 2 <= len(group) <= 5:
+            continue
+        normalized = []
+        for row in group:
+            if not isinstance(row, Mapping):
+                continue
+            axis = row.get("axis")
+            outcome = row.get("outcome")
+            diagnostic = row.get("diagnostic")
+            attempt_id = row.get("attempt_id")
+            if not isinstance(axis, str) or axis not in {
+                "input",
+                "output",
+                "total_input_heavy",
+                "total_output_heavy",
+            }:
+                axis = "unknown"
+            if not isinstance(outcome, str) or outcome not in {
+                "admitted",
+                "refused",
+                "quota",
+                "daily",
+                "outage",
+                "inconclusive",
+                "lower_only",
+            }:
+                outcome = "unknown"
+            if not isinstance(diagnostic, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,64}", diagnostic
+            ):
+                diagnostic = "unknown"
+            if not isinstance(attempt_id, str) or not re.fullmatch(r"[a-f0-9]{64}", attempt_id):
+                attempt_id = "unavailable"
+            normalized.append(
+                {
+                    "axis": axis,
+                    "target": _discovery_count(row.get("target")),
+                    "reserved_input": _discovery_count(row.get("reserved_input")),
+                    "requested_output": _discovery_count(row.get("requested_output")),
+                    "outcome": outcome,
+                    "diagnostic": diagnostic,
+                    "attempt_id": attempt_id[:12],
+                }
+            )
+        if len(normalized) >= 2:
+            groups.append(normalized)
+    return tuple(groups)
+
+
 def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
     """Fulfillment is read from main's config, never an open PR or issue state assertion."""
     snapshot = Report()
@@ -305,18 +360,17 @@ def render_body(
                 f"Status: {result.get('reason', 'partial')}. "
                 f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
             ]
-            for group in result.get("transport_retries") or ():
+            for group in _discovery_transport_groups(result.get("transport_retries")):
                 lines.append("No-response attempt telemetry:")
                 for attempt in group:
                     lines.append(
                         "- "
                         f"{attempt.get('axis', 'unknown')} target "
-                        f"{_discovery_count(attempt.get('target'))}: "
-                        f"{_discovery_count(attempt.get('reserved_input'))} reserved input, "
-                        f"{_discovery_count(attempt.get('requested_output'))} requested output; "
-                        f"{attempt.get('outcome', 'unknown')} / "
-                        f"{attempt.get('diagnostic', 'unknown')} "
-                        f"(attempt `{attempt.get('attempt_id', 'unknown')}`)"
+                        f"{attempt['target']}: "
+                        f"{attempt['reserved_input']} reserved input, "
+                        f"{attempt['requested_output']} requested output; "
+                        f"{attempt['outcome']} / {attempt['diagnostic']} "
+                        f"(attempt `{attempt['attempt_id']}`)"
                     )
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
