@@ -1837,6 +1837,13 @@ high-first search follow-up is intended to make the next authorized run explore 
 broad scheduled discovery remains gated on review of successful first-route evidence. Combined-cap
 configuration remains gated on its separate schema design.
 
+After [workflow run 38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+hit five 120-second response deadlines at the next larger input size, the maintainer approved a
+600-second hard deadline for new-route discovery calls. Timeouts remain inconclusive, and the
+existing 20-minute candidate session can stop the five-call escape sequence early while retaining
+partial evidence. Configured-route calibration keeps its separate 120-second deadline; details are
+recorded in review/48 §8.13.1.
+
 The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273)
 and report/retry/workflow integration shipped in [PR #2275](https://github.com/BashfulBits/city-meeting-podcasts/pull/2275).
 New reachable candidates receive bounded size discovery, the issue reports source claims and
