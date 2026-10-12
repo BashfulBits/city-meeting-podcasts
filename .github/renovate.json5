@@ -1,180 +1,202 @@
 {
-  // Dependency update automation — implements the two-lane flow in review/22.
-  // Renovate opens PRs (or Dashboard-approval rows) so pins never rot past
-  // security/beneficial updates, without sacrificing reproducibility.
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    "config:recommended",
-    ":dependencyDashboard", // single self-updating issue unifying all pending bumps
-    ":semanticCommits",
-    "helpers:pinGitHubActionDigests", // keep Actions on 40-hex SHAs (GH#734)
+    'config:recommended',
+    ':dependencyDashboard',
+    ':semanticCommits',
+    'helpers:pinGitHubActionDigests',
   ],
-  timezone: "America/Chicago",
-  schedule: ["before 9am on monday"],
-  labels: ["type:infrastructure", "deps"],
+  timezone: 'America/Chicago',
+  schedule: [
+    'before 9am on monday',
+  ],
+  labels: [
+    'type:infrastructure',
+    'deps',
+  ],
   packageRules: [
-    // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
-      // Python dev/test tooling — matched by name (pep621 optional-dependencies has
-      // no per-extra depType granularity, so target the actual tool packages).
-      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
-      matchPackageNames: ["ruff", "pytest", "pip-tools", "setuptools"],
-      matchUpdateTypes: ["patch", "minor"],
-      groupName: "python dev/test tooling (hygiene)",
-      automerge: true, // on green CI
-    },
-    {
-      // npm dev tooling (the Cloudflare Workers).
-      matchManagers: ["npm"],
-      matchDepTypes: ["devDependencies", "dependencies"],
-      matchUpdateTypes: ["patch", "minor"],
-      groupName: "npm tooling (hygiene)",
+      matchManagers: [
+        'pep621',
+        'pip_requirements',
+        'pip-compile',
+      ],
+      matchPackageNames: [
+        'ruff',
+        'pytest',
+        'pip-tools',
+        'setuptools',
+      ],
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+      ],
+      groupName: 'python dev/test tooling (hygiene)',
       automerge: true,
     },
     {
-      // Non-output-affecting Python runtime libs: grouped PRs, reviewed, not auto-merged.
-      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
-      matchPackageNames: [
-        "requests",
-        "PyYAML",
-        "Jinja2",
-        "defusedxml",
-        "boto3",
-        "jiwer",
-        "pypdf",
-        "beautifulsoup4",
-        "cairosvg",
-        "pydantic",
-        "litellm",
-        "instructor",
-        "scikit-learn",
+      matchManagers: [
+        'npm',
       ],
-      groupName: "python runtime (hygiene)",
-    },
-    // Actions & workflow files are SHA-pinned but NEVER auto-merged (a compromised
-    // update could move a pinned SHA — see review/22 / the Renovate malicious-SHA caveat).
-    {
-      matchManagers: ["github-actions"],
-      automerge: false,
-      groupName: "github actions (SHA-pinned)",
-    },
-    // gh CLI pin (constraints/gh-cli.txt, see its header for the 2026-07-27 incident).
-    // Same caveat as the SHA-pinned Actions above: never auto-merged, since a compromised
-    // gh release is exactly the class of risk a rubber-stamped automerge would let through.
-    // Renovate bumps only GH_CLI_VERSION here -- it does not touch the adjacent
-    // GH_CLI_SHA256_LINUX_AMD64 pin, so this PR's CI fails on a checksum mismatch until a
-    // human fetches the new release's real hash and adds it, by design (see gh-cli.txt).
-    {
-      matchDepNames: ["cli/cli"],
-      automerge: false,
-      groupName: "gh CLI (pinned, hash verified against a human-reviewed pin)",
-    },
-    {
-      // Workflow tooling under review/22: track exact pins on the weekly hygiene cadence.
-      // Workflow changes still require review; do not auto-merge workflow-tool upgrades.
-      matchManagers: ["custom.regex"],
-      matchPackageNames: ["wrangler", "renovate"],
-      groupName: "workflow tooling (hygiene)",
-      automerge: false,
-    },
-    // ---- OUTPUT-AFFECTING LANE: one checkbox + one bot comment ----
-    // Renovate lists these under "Pending Approval" on the Dashboard and opens no
-    // PR until a human ticks the box. When the PR opens, dep-bump-smoke.yml proves
-    // whether produced bytes changed (per-source), gating the merge decision.
-    {
-      // Named Python inference/imaging libs that affect produced bytes.
-      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
-      matchPackageNames: [
-        "faster-whisper",
-        "ctranslate2",
-        "whisperx",
-        "torch",
-        "torchaudio",
-        "torchcodec",
-        "Pillow",
-        "sherpa-onnx",
-        "numpy",
-        "opencv-python-headless",
+      matchDepTypes: [
+        'devDependencies',
+        'dependencies',
       ],
-      groupName: "output-affecting: python (needs approval + smoke)",
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+      ],
+      groupName: 'npm tooling (hygiene)',
+      automerge: true,
+    },
+    {
+      matchManagers: [
+        'pep621',
+        'pip_requirements',
+        'pip-compile',
+      ],
+      matchPackageNames: [
+        'requests',
+        'PyYAML',
+        'Jinja2',
+        'defusedxml',
+        'boto3',
+        'jiwer',
+        'pypdf',
+        'beautifulsoup4',
+        'cairosvg',
+        'pydantic',
+        'litellm',
+        'instructor',
+        'scikit-learn',
+      ],
+      groupName: 'python runtime (hygiene)',
+    },
+    {
+      matchManagers: [
+        'github-actions',
+      ],
+      automerge: false,
+      groupName: 'github actions (SHA-pinned)',
+    },
+    {
+      matchDepNames: [
+        'cli/cli',
+      ],
+      automerge: false,
+      groupName: 'gh CLI (pinned, hash verified against a human-reviewed pin)',
+    },
+    {
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchPackageNames: [
+        'wrangler',
+        'renovate',
+      ],
+      groupName: 'workflow tooling (hygiene)',
+      automerge: false,
+    },
+    {
+      matchManagers: [
+        'pep621',
+        'pip_requirements',
+        'pip-compile',
+      ],
+      matchPackageNames: [
+        'faster-whisper',
+        'ctranslate2',
+        'whisperx',
+        'torch',
+        'torchaudio',
+        'torchcodec',
+        'Pillow',
+        'sherpa-onnx',
+        'numpy',
+        'opencv-python-headless',
+      ],
+      groupName: 'output-affecting: python (needs approval + smoke)',
       dependencyDashboardApproval: true,
       automerge: false,
-      labels: ["type:infrastructure", "deps", "output-affecting"],
-      schedule: ["at any time"], // approval is the gate, not a cadence
+      labels: [
+        'type:infrastructure',
+        'deps',
+        'output-affecting',
+      ],
+      schedule: [
+        'at any time',
+      ],
     },
     {
-      // The custom-regex + Dockerfile output-affecting pins: base image digest and the
-      // HF model revisions (static ffmpeg is no longer Renovate-tracked — see the
-      // customManagers comment below). Separate rule so these actually reach the
-      // approval lane (matchers of different types are AND-ed together).
-      matchManagers: ["custom.regex", "dockerfile"],
-      // Workflow tools have their own hygiene rule above; they do not rebuild audio/ASR artifacts.
-      matchPackageNames: ["!wrangler", "!renovate"],
-      groupName: "output-affecting: image/ffmpeg/model (needs approval + smoke)",
+      matchManagers: [
+        'custom.regex',
+        'dockerfile',
+      ],
+      matchPackageNames: [
+        '!wrangler',
+        '!renovate',
+      ],
+      groupName: 'output-affecting: image/ffmpeg/model (needs approval + smoke)',
       dependencyDashboardApproval: true,
       automerge: false,
-      labels: ["type:infrastructure", "deps", "output-affecting"],
-      schedule: ["at any time"],
+      labels: [
+        'type:infrastructure',
+        'deps',
+        'output-affecting',
+      ],
+      schedule: [
+        'at any time',
+      ],
     },
   ],
-  // Static ffmpeg (FFMPEG_SHA256 in the 7 workflows that pin it, plus the version embedded in the
-  // deps/ffmpeg/<version>/... B2 key) is no longer Renovate-tracked here. It's self-built from
-  // github.com/FFmpeg/FFmpeg source and vendored into our own B2 bucket
-  // (scripts/build_ffmpeg_static.sh, .github/workflows/build-ffmpeg.yml) rather than fetched from
-  // an upstream/mirror release URL on every run — a regex bump against a URL pattern doesn't apply
-  // anymore, and Renovate can't run the build+vendor step itself. Bumping the version is manual:
-  // dispatch build-ffmpeg.yml with the new version, then update the 7 workflows' FFMPEG_SHA256 and
-  // the "7.1.5" path segment in their FFMPEG_URL to match (still output-affecting, still
-  // smoke-gated — review/22).
   customManagers: [
     {
-      // CI's validator must install under setup-node 24; review upgrades before merging.
-      customType: "regex",
-      fileMatch: ["^\\.github/workflows/ci\\.yml$"],
-      matchStrings: ["--package renovate@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      datasourceTemplate: "npm",
-      depNameTemplate: "renovate",
-      versioningTemplate: "npm",
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^\\.github/workflows/ci\\.yml$/',
+      ],
+      matchStrings: [
+        '--package renovate@(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      datasourceTemplate: 'npm',
+      depNameTemplate: 'renovate',
+      versioningTemplate: 'npm',
     },
     {
-      // Wrangler action inputs are not package.json dependencies; track every workflow pin.
-      // The package-smoke exact-version assertion is a second copy of the same pin, so track it
-      // too: otherwise a Wrangler bump fails the smoke job until someone edits both by hand.
-      customType: "regex",
-      fileMatch: ["^\\.github/workflows/[^/]+\\.ya?ml$"],
-      matchStrings: [
-        "(?:^|\\n)[ \t]*wranglerVersion:[ \t]*[\"'](?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']",
-        "require\\(\"wrangler/package\\.json\"\\)\\.version'\\)\" = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"",
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^\\.github/workflows/[^/]+\\.ya?ml$/',
       ],
-      datasourceTemplate: "npm",
-      depNameTemplate: "wrangler",
-      versioningTemplate: "npm",
+      matchStrings: [
+        '(?:^|\\n)[ \t]*wranglerVersion:[ \t]*["\'](?<currentValue>\\d+\\.\\d+\\.\\d+)["\']',
+        'require\\("wrangler/package\\.json"\\)\\.version\'\\)" = "(?<currentValue>\\d+\\.\\d+\\.\\d+)"',
+      ],
+      datasourceTemplate: 'npm',
+      depNameTemplate: 'wrangler',
+      versioningTemplate: 'npm',
     },
     {
-      // Hugging Face Whisper model revisions (GH#498). Pinned by commit SHA via git-refs;
-      // output-affecting → Dashboard approval.
-      customType: "regex",
-      fileMatch: ["^citypods/asr\\.py$"],
-      matchStrings: [
-        "(?<depName>[\\w-]+/[\\w.-]+)\"\\s*#\\s*renovate\\s*\\n\\s*HF_\\w+_REVISION\\s*=\\s*\"(?<currentDigest>[a-f0-9]+)\"",
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^citypods/asr\\.py$/',
       ],
-      currentValueTemplate: "{{{currentDigest}}}",
-      datasourceTemplate: "git-refs",
-      packageNameTemplate: "https://huggingface.co/{{{depName}}}",
+      matchStrings: [
+        '(?<depName>[\\w-]+/[\\w.-]+)"\\s*#\\s*renovate\\s*\\n\\s*HF_\\w+_REVISION\\s*=\\s*"(?<currentDigest>[a-f0-9]+)"',
+      ],
+      currentValueTemplate: '{{{currentDigest}}}',
+      datasourceTemplate: 'git-refs',
+      packageNameTemplate: 'https://huggingface.co/{{{depName}}}',
     },
     {
-      // Pinned gh CLI version (constraints/gh-cli.txt, installed by
-      // .github/actions/setup-gh-cli). Only the version is tracked here — a human must also
-      // update the adjacent GH_CLI_SHA256_LINUX_AMD64 pin by hand (this regex intentionally
-      // doesn't touch it), or the resulting PR's CI fails on a checksum mismatch.
-      customType: "regex",
-      fileMatch: ["^constraints/gh-cli\\.txt$"],
-      matchStrings: [
-        "renovate:\\s*datasource=github-releases depName=cli/cli\\s*\\n\\s*GH_CLI_VERSION=(?<currentValue>[\\d.]+)",
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^constraints/gh-cli\\.txt$/',
       ],
-      datasourceTemplate: "github-releases",
-      depNameTemplate: "cli/cli",
+      matchStrings: [
+        'renovate:\\s*datasource=github-releases depName=cli/cli\\s*\\n\\s*GH_CLI_VERSION=(?<currentValue>[\\d.]+)',
+      ],
+      datasourceTemplate: 'github-releases',
+      depNameTemplate: 'cli/cli',
     },
   ],
 }
-
