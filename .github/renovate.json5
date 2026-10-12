@@ -37,14 +37,18 @@
     dependencyDashboardApproval: true,
     schedule: ["before 9am on the first day of the month"],
   },
+  // pyproject.toml is read through the generated constraints/*.in above. The pep621 and
+  // poetry managers would read it a second time and raise floors there on security fixes
+  // (torch>=2.0 -> >=2.13.0), leaving the .in files stale and failing python-compat.yml.
+  // Disabled at the manager, not by a packageRule: GitHub-alert rules are appended after
+  // ours with `force`, which re-enables a dep a packageRule had disabled.
+  pep621: {
+    enabled: false,
+  },
+  poetry: {
+    enabled: false,
+  },
   packageRules: [
-    {
-      // pyproject.toml is read through the generated constraints/*.in above. The pep621 and
-      // poetry managers would read it a second time and raise floors there on security fixes
-      // (torch>=2.0 -> >=2.13.0), leaving the .in files stale and failing python-compat.yml.
-      matchFileNames: ["pyproject.toml"],
-      enabled: false,
-    },
     {
       // Skip releases whose requires_python excludes the Python the locks are compiled with
       // (the ASR lane's, checked by scripts/python_lanes.py), instead of opening a PR that
