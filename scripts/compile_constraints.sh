@@ -26,7 +26,11 @@ fi
 # --- inside the pinned target environment ---
 # pip itself is pinned by the base-image digest (above); pin the compiler exactly so
 # the resolved constraints only change when repo inputs change, not the toolchain.
-python -m pip install --quiet "pip-tools==7.4.1"
+# >=7.5.1 is required: older pip-tools with click>=8.3 writes bogus options
+# (--cert=None, --no-index, --pip-args=None, ...) into the header command, which
+# Renovate's pip-compile manager parses and rejects. Keep in sync with
+# `constraints.pipTools` in .github/renovate.json5.
+python -m pip install --quiet "pip-tools==7.6.2"
 
 compile() {
   local out="$1"; shift
