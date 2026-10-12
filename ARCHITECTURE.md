@@ -122,6 +122,12 @@ compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/2
 so a fresh install cannot silently drift; third-party GitHub Actions are commit-SHA-pinned and the
 Hugging Face Whisper model revisions are pinned (canonical in `citypods.asr`, baked into the worker
 images), with Renovate opening update PRs and CI guards keeping the pins current and enforced.
+Each lock compiles from a generated per-lane `constraints/<lane>.in` (`scripts/lane_inputs.py`) so
+Renovate tracks every lane as its own project: the LLM stack automerges lock bumps at latest, security
+advisories open PRs in every lane, and Python bumps need Dashboard approval. Workflow Pythons come only
+from `.python-version` (fleet) or `.github/python/asr/.python-version` (ASR, held back by WhisperX's
+torch pin); `python-compat.yml` dry-run installs each (version file, lock) lane on its own interpreter
+so an incompatible Python or dependency bump fails on the PR.
 Modal's build genuinely stages local repo files at build time (`add_local_dir`/`add_local_file`), so
 its image installs directly against `constraints/asr.txt`. Beam's remote build has **no** such
 access — its `add_local_path()` only syncs files for the deployed function's own runtime import, not
