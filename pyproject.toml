@@ -43,7 +43,7 @@ asr-bench = [
 # scripts/compile_constraints.sh) rather than a separate lock file, so torch/torchaudio never
 # get two conflicting pins across two constraint files.
 asr-align2 = [
-    "torch>=2.0",
+    "torch>=2.13.0",
     "torchaudio>=2.0",
     "torchcodec>=0.1",              # torchaudio.load()'s AudioDecoder backend as of torchaudio 2.9
 ]
