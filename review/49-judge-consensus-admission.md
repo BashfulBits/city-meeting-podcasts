@@ -1,7 +1,9 @@
 # review/49 — Judge-consensus admission (JEV as anchor judge)
 
-**Maturity: L2-partial (approach chosen, risks and capacity worked out; not L3 dev-ready) · authored 2026-09-29, revised 2026-10-05.
-The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
+**Maturity: umbrella design; its phases are L3 in their build specs · authored 2026-09-29, revised 2026-10-11.
+P0 shipped ([review/50](50-p0-llm-verb-backlog-trend.md)). P1 to P5 and P7 are L3 in [review/53](53-judge-stack-tags-and-moments.md); P1 to P4 have
+shipped and shadow judging of tags and moments is running. P6 (route leagues) stays L2. Tracked in `review/11` (judge-consensus admission row);
+per-item status is in "Path to L3" at the bottom.**
 
 **Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
 (one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3, shipped); [review/53](53-judge-stack-tags-and-moments.md) specifies P1 to P5 and P7 (L3) as one PR series ending with tags and moments both admitted by the stack and the R5/R6 flows retired; P6 (leagues) follows. The pilots live in the eval lane
