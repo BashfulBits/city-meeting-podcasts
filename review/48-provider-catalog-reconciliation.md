@@ -668,10 +668,16 @@ change must record canary evidence and wire the existing reconcile/writer workfl
 shared writer lock. This PR does not dispatch a canary or change deployment settings.
 
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
-Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the
-exact route/account; generic 404, timeout, 429, structured-output failure and account-tier failures
-are insufficient. With multiple configured accounts, require matching retirement evidence for all
-accounts serving that route; a single key cannot retire a pooled service for everyone.
+Require fresh absence from a complete catalog, an initial definitive retired/not-served result, and
+then a **second independent provider request immediately before preparing each removal**. The
+confirmation calls the exact route on its configured account while dispatch remains paused. It must
+repeat the same definitive verdict; if the route responds as reachable, or the result is a timeout,
+rate limit, ambiguity, or a mismatched account/route, defer that removal. Include the confirming
+account, route, result and timestamp in the removal evidence. Generic 404s, structured-output
+failures and account-tier failures are insufficient. With multiple configured accounts, require
+both requests and matching retirement evidence for every account serving that route; a single key
+cannot retire a pooled service for everyone. The confirmation is an extra charged provider call, so
+respect the existing dispatch pause and scarce daily-quota checks.
 
 Prepare one removal PR on `automation/provider-catalog-removals`, rebuilt and checked like additions.
 Remove only affected route blocks. Keep logical models with any surviving route. Drop a model from

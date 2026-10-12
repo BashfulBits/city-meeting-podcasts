@@ -40,6 +40,17 @@ def evidence(routes=(ROUTE,)):
                 observed_on=TODAY.isoformat(),
                 config_digest=digest(r),
                 contended=False,
+                retirement_confirmation={
+                    "provider": "host",
+                    "account_id": r["account_id"],
+                    "route_id": r["route_id"],
+                    "model": "creator/old",
+                    "config_digest": digest(r),
+                    "verdict": "retired",
+                    "status": 410,
+                    "checked_at": "2026-10-08T12:00:00+00:00",
+                    "contended": False,
+                },
             )
             for r in routes
         ],
@@ -98,6 +109,45 @@ def test_partial_stale_present_or_malformed_catalog_defers(change):
     ],
 )
 def test_stale_or_mismatched_probe_defers(change):
+    report, config = evidence()
+    report.anomalies[0] = replace(report.anomalies[0], **change)
+    assert not _retirement_proven(ROUTE, report, config)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"retirement_confirmation": None},
+        {"retirement_confirmation": {"checked_at": "not-a-timestamp"}},
+        {
+            "retirement_confirmation": {
+                "provider": "host",
+                "account_id": "first",
+                "route_id": "old",
+                "model": "creator/old",
+                "config_digest": digest(ROUTE),
+                "verdict": "retired",
+                "status": 410,
+                "checked_at": "2026-10-07T23:59:59+00:00",
+                "contended": False,
+            }
+        },
+        {
+            "retirement_confirmation": {
+                "provider": "host",
+                "account_id": "other",
+                "route_id": "old",
+                "model": "creator/old",
+                "config_digest": digest(ROUTE),
+                "verdict": "retired",
+                "status": 410,
+                "checked_at": "2026-10-08T12:00:00+00:00",
+                "contended": False,
+            }
+        },
+    ],
+)
+def test_missing_or_mismatched_fresh_confirmation_defers(change):
     report, config = evidence()
     report.anomalies[0] = replace(report.anomalies[0], **change)
     assert not _retirement_proven(ROUTE, report, config)
@@ -198,6 +248,7 @@ def live_route(model="new", **changes):
 
 def test_primary_promotion_preserves_backup_retry_contract_and_prunes_reasoning():
     from citypods.compute.llm_lanes import parse_lanes
+    from citypods.provider_catalog.apply import proposal_body
     from citypods.provider_catalog.retire import plan_retirements
 
     report, _ = evidence()
@@ -210,6 +261,10 @@ def test_primary_promotion_preserves_backup_retry_contract_and_prunes_reasoning(
     assert lane["backup_models"] == ["new"] and lane["backup_after_attempts"] == 2
     parse_lanes({"lane": lane})
     assert plan.proposal_kind == "removals"
+    assert plan.removal_confirmations == (
+        ("old", "first", "retired", 410, "2026-10-08T12:00:00+00:00"),
+    )
+    assert "Fresh removal confirmations:" in proposal_body(plan)
 
 
 @pytest.mark.parametrize("changes", [dict(free=False), dict(rpd=0)])
@@ -253,6 +308,7 @@ def test_batch_never_removes_last_safe_replacement():
     config = retirement_config([ROUTE, second, live_route(model="unrelated")])
     second["free"] = True
     report.anomalies[1].config_digest = digest(second)
+    report.anomalies[1].retirement_confirmation["config_digest"] = digest(second)
     plan = plan_retirements(report, config)
     assert not plan.removed_routes and not plan.lane_repairs
     assert len(plan.rejected) == 2
@@ -330,6 +386,17 @@ def test_real_beatapi_removal_preserves_logical_pool_and_compiles(tmp_path, monk
                 observed_on=TODAY.isoformat(),
                 config_digest=digest(route),
                 contended=False,
+                retirement_confirmation={
+                    "provider": "beatapi",
+                    "account_id": route["account_id"],
+                    "route_id": route["route_id"],
+                    "model": route["upstream_model"],
+                    "config_digest": digest(route),
+                    "verdict": "retired",
+                    "status": 410,
+                    "checked_at": "2026-10-08T12:00:00+00:00",
+                    "contended": False,
+                },
             )
         ],
         state={

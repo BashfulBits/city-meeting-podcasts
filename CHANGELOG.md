@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
+  independent request to the exact route/account after the initial definitive retired/not-served
+  signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous
+  confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
+  timestamp. Removal publication remains behind its separate recovery-canary activation gate.
+
 - **Single-model output-limit retry ceiling (review/49 dispatch requirement 1).** A Worker job
   pinned to one model with no backups (every `per_model` judge lane) now gets one retry, set by
   `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES`, when its reply stops at the output limit. It previously
