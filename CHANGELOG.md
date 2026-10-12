@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **H15 eval builds provider-align sections like production, and skips ineligible samples.** The
+  weekly ASR Quality Eval had produced no results since the WhisperX swap (2026-08-13): runs hung
+  until the job timeout (shown as "cancelled"), then failed with `alignment section is too long`.
+  For VTT/SRT the eval joined cue text and dropped every timestamp, so the whole transcript became
+  one section. It now keeps per-cue windows (remapped to the served timeline) as the production
+  provider-align path does. A candidate with no usable time markers is reported as skipped
+  (production marks it align-ineligible and re-transcribes) instead of failing the run, and the
+  sampler leaves out episodes production already marked ineligible. Audio downloads get a 15-minute
+  wall-clock deadline, and the evaluate step a 100-minute timeout so a stall reports as a failure.
+  
 - **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
   Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
   reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
