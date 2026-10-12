@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
+  and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
+  64 KiB cumulative event-data bound remains in force; multiline gateway responses no longer appear
+  as malformed JSON just because one event spans several data fields.
+
 - **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
   after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
   hard ceiling. Once both admitted and refused bounds exist, the planner bisects them to the existing
