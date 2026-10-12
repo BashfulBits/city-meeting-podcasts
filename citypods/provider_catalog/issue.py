@@ -263,7 +263,16 @@ def _discovery_attempt_diagnostics(value):
                 .replace("@", r"\u0040")
                 .replace("<", r"\u003c")
                 .replace(">", r"\u003e")
+                .replace("[", r"\u005b")
+                .replace("]", r"\u005d")
+                .replace("(", r"\u0028")
+                .replace(")", r"\u0029")
+                .replace("!", r"\u0021")
+                .replace("#", r"\u0023")
                 .replace("|", r"\u007c")
+                .replace("*", r"\u002a")
+                .replace("_", r"\u005f")
+                .replace("~", r"\u007e")
             )
         else:
             row["response_preview"] = ""

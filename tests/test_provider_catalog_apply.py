@@ -17,7 +17,7 @@ from citypods.provider_catalog.apply import (
     plan_apply,
 )
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest
-from citypods.provider_catalog.issue import MARKER, render_body
+from citypods.provider_catalog.issue import MARKER, _discovery_attempt_diagnostics, render_body
 from citypods.provider_catalog.reconcile import Anomaly, Candidate, Report
 from scripts.provider_catalog_commands import process_event, publish
 
@@ -285,6 +285,16 @@ def test_discovery_telemetry_and_edited_spend_counters_render_safely():
     assert "No-response attempt telemetry" not in render_body(
         Report(candidates=[malformed]), run_date=TODAY.isoformat()
     )
+
+
+def test_edited_discovery_preview_cannot_inject_issue_markup():
+    preview = json.dumps("](https://example.test)|@everyone`*_[x]~")
+
+    rendered = _discovery_attempt_diagnostics([{"response_preview": preview}])[0][
+        "response_preview"
+    ]
+
+    assert all(char not in rendered for char in "[]()|@`*_~")
 
 
 def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
