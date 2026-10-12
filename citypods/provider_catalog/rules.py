@@ -680,7 +680,22 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
             continue
         # Captured NVIDIA responses use a message-only envelope. Permit only this exact
         # input-token wording without an error type/code, not arbitrary untyped failures.
-        if untyped and (index != 0 or set(error) != {"message"}):
+        if untyped:
+            envelope = set(payload) == {"message"} or (
+                set(payload) == {"error"} and set(error) == {"message"}
+            )
+            if index != 0 or not envelope:
+                return None
+        # An appended approximation qualifier invalidates the exact-count claim. Permit
+        # only the empty suffix or standard request-shortening advice, not extra prose.
+        if message[match.end() :] not in {
+            "",
+            " Please reduce the length of the messages.",
+            " Please reduce the length of your messages.",
+            " Please reduce the length of the messages or completion.",
+            " Please reduce the length of the input prompt or the number of requested output "
+            "tokens.",
+        }:
             return None
         if any(len(value) > 16 for value in match.groupdict().values()):
             return None

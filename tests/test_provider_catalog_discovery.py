@@ -1515,7 +1515,11 @@ def test_typed_output_refusals_require_unambiguous_matching_field_authority(bad)
 
 @pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
 @pytest.mark.parametrize("typed", [True, False])
-def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusal(provider, typed):
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("suffix", ["", " Please reduce the length of the messages."])
+def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusal(
+    provider, typed, nested, suffix
+):
     import json
 
     from citypods.provider_catalog.rules import Response
@@ -1528,7 +1532,9 @@ def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusa
     }
     if typed:
         error.update(type="BadRequestError", code=400)
-    observed = rules.discovery_observation(Response(400, body=json.dumps(error)), req, transient)
+    error["message"] += suffix
+    body = {"error": error} if nested else error
+    observed = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
     assert observed.outcome == "refused" and observed.coordinate == 1290360
     assert observed.reported_input == 1290360 and observed.count_basis == "input"
     assert observed.reported_output is None
@@ -1544,6 +1550,8 @@ def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusa
         "quota",
         "extra_fields",
         "untyped_other_wording",
+        "approximate_suffix",
+        "outer_conflict",
     ],
 )
 def test_message_only_size_refusal_is_narrow_and_fail_closed(bad):
@@ -1572,6 +1580,10 @@ def test_message_only_size_refusal_is_narrow_and_fail_closed(bad):
         error["message"] = text.replace("your messages resulted in", "your request has").replace(
             "1290360 tokens", "1290360 input tokens"
         )
+    elif bad == "approximate_suffix":
+        error["message"] += " This count is approximate."
+    elif bad == "outer_conflict":
+        error = {"error": error, "quota_exhausted": True}
     observed = rules.discovery_observation(Response(status, body=json.dumps(error)), req, transient)
     assert observed.coordinate is None and not observed.verified
 

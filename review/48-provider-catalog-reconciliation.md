@@ -2389,7 +2389,9 @@ is 1000000 tokens. However, your messages resulted in 1290360 tokens." The share
 accepts this explicit input-count shape for any registered compatible provider. A message-only
 error envelope is permitted only for this recorded form, with a positive exact input count above
 the declared ceiling. Character counts, lower-bound counts, quota errors, wrong axes, unknown
-fields and untyped variants of other error shapes remain inconclusive. The ceiling remains a
+fields and untyped variants of other error shapes remain inconclusive. Validate the complete outer
+envelope for message-only errors and allow only standard request-shortening advice after the count;
+appended uncertainty/approximation qualifiers cannot become exact boundary evidence. The ceiling remains a
 provider claim; the refused bracket coordinate is the reported request count, not the claim itself.
 This additive wording does not reinterpret persisted inconclusive observations as boundary proof;
 existing verified input counts keep their parser/count/control compatibility.
