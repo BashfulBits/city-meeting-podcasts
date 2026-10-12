@@ -52,11 +52,12 @@ Once 1.0 ships, entries move under semver tags.
   with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
   only, so a Python or dependency bump that cannot install fails on the PR.
 
-- **Review/48 input probes reserve room for reasoning.** Pure input-size checks can request up to
-  16,384 output tokens, 64 times the earlier 256-token cap, so the model can finish fixture verification after
-  reading a large prompt. A typed output-cap refusal halves that counterpart and starts a separate
-  input-control history; combined and output searches retain their existing counterparts. Aggregate
-  output budgets remain unchanged and bound the number of full-cap attempts per session.
+- **Review/48 size probes reserve room for reasoning.** With no compatible history, output probes
+  now start at 16,384 tokens, and combined probes at 18,432 total tokens (2,048 input plus 16,384
+  output). Input probes retain their 16,384-token output counterpart. This lets reasoning models
+  complete output and combined verification instead of repeatedly ending at a 256-token ceiling.
+  Typed counterpart refusals still reduce that fixed size and create a separate control history;
+  aggregate output budgets are unchanged.
 
 - **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
   `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options

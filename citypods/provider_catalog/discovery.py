@@ -18,9 +18,23 @@ AXES = ("input", "output", "total_input_heavy", "total_output_heavy")
 MAX_INPUT, MAX_OUTPUT = 1_000_000, 131_072
 INPUT_OUTPUT_COUNTERPART = 16_384
 DEFAULT_INPUT_SEED = 500_000
+DEFAULT_OUTPUT_SEED = INPUT_OUTPUT_COUNTERPART
+DEFAULT_COMBINED_SEED = INPUT_OUTPUT_COUNTERPART + 2_048
 MIN_INPUT_PROBE = 2_000
 MAX_SESSION_INPUT = 8_388_608
 MAX_RUN_INPUT = 16_777_216
+
+
+def default_discovery_seed(axis: str) -> int:
+    if axis == "input":
+        return DEFAULT_INPUT_SEED
+    if axis == "output":
+        return DEFAULT_OUTPUT_SEED
+    if axis in {"total_input_heavy", "total_output_heavy"}:
+        return DEFAULT_COMBINED_SEED
+    raise ValueError(f"unsupported discovery axis: {axis}")
+
+
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
@@ -476,8 +490,7 @@ def run_discovery(
         if shared_budget:
             shared_budget.settle(item)
     for axis in AXES:
-        default_seed = 256 if axis == "output" else DEFAULT_INPUT_SEED if axis == "input" else 2048
-        bracket = Bracket(axis, int(seeds.get(axis, default_seed)))
+        bracket = Bracket(axis, int(seeds.get(axis, default_discovery_seed(axis))))
         brackets.append(bracket)
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
@@ -493,14 +506,8 @@ def run_discovery(
             and item.verified
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
-        counterpart = (
-            INPUT_OUTPUT_COUNTERPART
-            if axis == "input"
-            else 256
-            if axis == "total_input_heavy"
-            else 2048
-        )
-        control_version = "v2" if axis == "input" else "v1"
+        counterpart = INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else 2_048
+        control_version = "v2" if axis in {"input", "total_input_heavy"} else "v1"
         control = f"{axis}:{control_version}"
         compatible = previous + [item for item in observations if item.request.axis == axis]
         if compatible:

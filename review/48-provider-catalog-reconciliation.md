@@ -2133,10 +2133,15 @@ repo-managed traffic across that provider while probing. The pause cannot contro
 using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
 converted into a numeric claim.
 The requested-output budget remains 524,288 tokens per candidate/session and 1,048,576 per run.
-The 16,384-token input counterpart is 64 times the earlier 256-token cap and permits at most 32
-such reservations per session before accounting for other output reservations. If the finite
-envelope interrupts input refinement, preserve the partial bracket and use the authenticated
-`test again` path; do not silently increase aggregate spend.
+With no compatible history, output searches now start at 16,384 tokens instead of 256, with input
+held near 2,048. Combined searches start at 18,432 total tokens (2,048 input plus 16,384 output);
+the input-heavy combined mix keeps output at 16,384, while the output-heavy mix keeps input near
+2,048. This gives reasoning models room to complete output and combined verification without
+adding blanket margins to later probes. A typed refusal can still reduce the fixed counterpart and
+start a distinct control identity. The 16,384-token input counterpart permits at most 32 such
+reservations per session before accounting for other output reservations. If the finite envelope
+interrupts refinement, preserve the partial bracket and use the authenticated `test again` path; do
+not silently increase aggregate spend.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
 
@@ -2171,14 +2176,17 @@ spend: stop as soon as all supported axes converge or no safe progress remains.
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
 transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
-history, begin input at 500,000 and output at 256. Pure input probes reserve 16,384 output tokens
-so reasoning-heavy models have substantially more room to finish the input verification fixture.
+history, begin input at 500,000, output at 16,384, and combined searches at 18,432 total tokens.
+Pure input probes reserve 16,384 output tokens so reasoning-heavy models have substantially more
+room to finish the input verification fixture.
 If the provider rejects that output allowance, halve it and start a new
-control identity; never treat that rejection as an input boundary. The input control version is
-`v2`, so old observations made with a 256-token counterpart are not pooled with the new probes.
-Output probes hold verified small input at approximately 2,048. Combined searches retain their
-2,048-token seed and 256-token input-heavy output counterpart. Combined uses at least two distinct
-mixes, a small output/input-heavy mix and an output-heavy mix. If either fixed counterpart cannot
+control identity; never treat that rejection as an input boundary. Input and input-heavy combined
+control versions are `v2`, so old observations made with a 256-token counterpart are not pooled
+with the new probes.
+Output probes hold verified small input at approximately 2,048. Combined searches use a 2,048 input
+counterpart for the output-heavy mix and a 16,384 output counterpart for the input-heavy mix.
+Combined uses at least two distinct mixes, an input-heavy mix with the 16,384 output counterpart
+and an output-heavy mix with the 2,048 input counterpart. If either fixed counterpart cannot
 be admitted, reduce it and start a new control identity rather than pooling incomparable
 observations.
 

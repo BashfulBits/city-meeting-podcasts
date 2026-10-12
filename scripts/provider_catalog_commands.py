@@ -593,7 +593,11 @@ def main(argv=None):
 
 def prepare_discovery_retry(decision, *, event, issue_number, now):
     """Authorize one retry from authenticated result artifacts, never issue numeric state."""
-    from citypods.provider_catalog.discovery import Bracket, discovery_identity
+    from citypods.provider_catalog.discovery import (
+        Bracket,
+        default_discovery_seed,
+        discovery_identity,
+    )
     from citypods.provider_catalog.probe import chat_url
     from citypods.provider_catalog.registry import rules_for
 
@@ -626,7 +630,7 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
         raise ValueError("no authenticated request-cap result exists for this candidate")
     unresolved = False
     for axis in rules.discovery_axes:
-        bracket = Bracket(axis, 256 if axis == "output" else 2048)
+        bracket = Bracket(axis, default_discovery_seed(axis))
         for item in compatible:
             if item.request.axis == axis:
                 bracket.observe(item)

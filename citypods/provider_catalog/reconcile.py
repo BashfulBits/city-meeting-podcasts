@@ -1341,7 +1341,11 @@ def _discovery_claims(record):
 def _discovery_history_summary(
     provider, model, record, rules, provider_cfg, history, history_calls=0
 ):
-    from citypods.provider_catalog.discovery import Bracket, discovery_identity
+    from citypods.provider_catalog.discovery import (
+        Bracket,
+        default_discovery_seed,
+        discovery_identity,
+    )
     from citypods.provider_catalog.probe import chat_url
 
     accounts = provider_cfg.get("accounts") or []
@@ -1365,7 +1369,7 @@ def _discovery_history_summary(
     claims = _discovery_claims(record)
     axes = []
     for axis in ("input", "output", "total_input_heavy", "total_output_heavy"):
-        bracket = Bracket(axis, 256 if axis == "output" else 2048)
+        bracket = Bracket(axis, default_discovery_seed(axis))
         for item in compatible:
             if item.request.axis == axis:
                 bracket.observe(item)
