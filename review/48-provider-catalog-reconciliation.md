@@ -2130,6 +2130,11 @@ the route is not yet eligible for repo-managed dispatch, and the existing v2 pro
 repo-managed traffic across that provider while probing. The pause cannot control unrelated clients
 using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
 converted into a numeric claim.
+The requested-output budget remains 524,288 tokens per candidate/session and 1,048,576 per run.
+The 16,384-token input counterpart is 64 times the earlier 256-token cap and permits at most 32
+such reservations per session before accounting for other output reservations. If the finite
+envelope interrupts input refinement, preserve the partial bracket and use the authenticated
+`test again` path; do not silently increase aggregate spend.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
 
@@ -2153,11 +2158,16 @@ spend: stop as soon as all supported axes converge or no safe progress remains.
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
 transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
-history, begin input at 500,000 and output at 256. Combined searches retain their 2,048-token seed.
-Input holds requested output at 256; output holds verified small input at approximately 2,048.
-Combined uses at least two distinct mixes, a small output/input-heavy mix and an output-heavy mix.
-If either fixed counterpart cannot be admitted, reduce it and start a new control identity rather
-than pooling incomparable observations.
+history, begin input at 500,000 and output at 256. Pure input probes reserve 16,384 output tokens
+so reasoning-heavy models have substantially more room to finish the input verification fixture.
+If the provider rejects that output allowance, halve it and start a new
+control identity; never treat that rejection as an input boundary. The input control version is
+`v2`, so old observations made with a 256-token counterpart are not pooled with the new probes.
+Output probes hold verified small input at approximately 2,048. Combined searches retain their
+2,048-token seed and 256-token input-heavy output counterpart. Combined uses at least two distinct
+mixes, a small output/input-heavy mix and an output-heavy mix. If either fixed counterpart cannot
+be admitted, reduce it and start a new control identity rather than pooling incomparable
+observations.
 
 The fixture includes unpredictable start/middle/end markers for input verification and a repeatable
 long-output task for output. A response must satisfy the verification task; HTTP success alone is
