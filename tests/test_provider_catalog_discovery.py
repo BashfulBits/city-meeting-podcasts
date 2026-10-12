@@ -71,7 +71,7 @@ def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
 
     def measure(req, admit, timeout):
         receipt = admit()
-        assert receipt.matches(req) and 0 < timeout <= 120
+        assert receipt.matches(req) and 0 < timeout <= 600
         actual_input = req.input_tokens
         count = (
             actual_input
@@ -93,6 +93,53 @@ def test_all_axes_converge_without_more_than_64_calls(tmp_path, seed):
         assert bracket["refused"] - bracket["admitted"] <= bracket["target_width"]
     if seed == 20_000:
         assert [count for axis, count in calls if axis == "input"][:3] == [20000, 10000, 5000]
+
+
+@pytest.mark.parametrize("remaining, expected", [(1000, 600), (300, 300)])
+def test_discovery_timeout_uses_600_second_cap_and_session_deadline(tmp_path, remaining, expected):
+    timeouts = []
+
+    def measure(req, admit, timeout):
+        admit()
+        timeouts.append(timeout)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        clock=lambda: 0,
+        deadline=remaining,
+    )
+
+    assert timeouts == [expected]
+    assert result.reason == "outage"
+
+
+def test_slow_no_response_attempts_stop_at_session_deadline_with_partial_evidence(tmp_path):
+    now = [0.0]
+    timeouts = []
+
+    def measure(req, admit, timeout):
+        admit()
+        timeouts.append(timeout)
+        now[0] += timeout
+        return DiscoveryObservation(req, STAMP, diagnostic="worker_response_timeout")
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        clock=lambda: now[0],
+        deadline=1200,
+    )
+
+    assert timeouts == pytest.approx([600, 600])
+    assert result.reason == "uncertain_no_response_before_session_deadline"
+    assert result.brackets[0]["admitted"] is None
+    assert result.brackets[0]["refused"] is None
+    assert len(result.transport_retries) == 1
+    assert len(result.transport_retries[0]) == 2
 
 
 def test_actual_counts_correct_input_estimate(tmp_path):
@@ -899,7 +946,7 @@ def _discovery_transport_worker(
         session.close()
 
 
-@pytest.mark.parametrize("receipt_kind", ["new", "wrong_identity", "wrong_type"])
+@pytest.mark.parametrize("receipt_kind", ["new", "wrong_identity", "wrong_type", "too_long"])
 def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind):
     import time
 
@@ -930,12 +977,13 @@ def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind)
         req.identity,
         req.input_tokens,
         req.output_tokens,
-        time.monotonic() + 10,
+        time.monotonic() + 700,
     )
     if receipt_kind == "wrong_identity":
         receipt = replace(receipt, identity="different")
     if receipt_kind == "wrong_type":
         receipt = object()
+    timeout = 601 if receipt_kind == "too_long" else 600 if receipt_kind == "new" else 5
 
     def measure():
         return measure_discovery(
@@ -945,11 +993,14 @@ def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind)
             session=requests.Session(),
             before_call=lambda: receipt,
             clock=time.monotonic,
-            timeout=5,
+            timeout=timeout,
         )
 
     if receipt_kind == "new":
         assert measure().coordinate == 2048
+    elif receipt_kind == "too_long":
+        with pytest.raises(ValueError, match="response timeout exceeds reviewed deadline"):
+            measure()
     else:
         with pytest.raises(ValueError, match="admission"):
             measure()

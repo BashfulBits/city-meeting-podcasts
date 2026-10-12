@@ -2115,12 +2115,14 @@ unchanged; new candidates use the separate discovery envelope below.
 | Elapsed time, including cooldowns | 20 minutes | 40 minutes discovery work |
 | Candidate selection | One session per identity | Two candidates, at most one per provider |
 | Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
-| Transport | 120 seconds; 4 MiB response | Same |
+| Transport | 600 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. The five-call no-response
-limit counts the initial send and all retries, not five retries after the initial send. Token
-budgets are
+transport process; failed/unknown attempts are never refunded or reused. The no-response limit
+allows at most five calls total, counting the initial send. The 20-minute session deadline may stop
+a run earlier; any collected timeout attempts are retained and reported as uncertain, never as a
+refused size boundary. At a 600-second per-call deadline, at most two full-length no-response
+attempts fit in one session. Token budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
 4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
@@ -2137,6 +2139,17 @@ envelope interrupts input refinement, preserve the partial bracket and use the a
 `test again` path; do not silently increase aggregate spend.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
+
+**Maintainer-approved discovery timeout increase — 2026-10-12:** after workflow run
+[38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+timed out five times at 120 seconds while probing a larger input after a verified 645,195-token
+input success, the maintainer approved a 600-second hard deadline for new-route discovery calls.
+The larger bound gives a slow high-input request more time to return usable counts or a typed
+size refusal. A timeout remains inconclusive; it never creates a refused boundary. The existing
+20-minute session, 40-minute run, five-call maximum, four-MiB response limit and 900-second
+provider pause remain unchanged. If the session deadline arrives first, preserve its partial
+timeout evidence and report uncertainty. Configured-route calibration retains its separate
+120-second transport deadline.
 
 Take the existing exclusive provider dispatch pause, drain current work and renew its lease before
 calls and during waits. Contention, inability to drain/renew or unclear free endpoint eligibility

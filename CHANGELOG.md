@@ -22,6 +22,13 @@ Once 1.0 ships, entries move under semver tags.
   advisories) open at once; and Python bumps and the monthly full lock refresh wait for
   Dependency Dashboard approval.
 
+- **Review/48 new-route discovery timeout.** Increase the hard deadline for an individual
+  new-route size-discovery call from 120 to 600 seconds so slow large-input requests can return
+  provider-counted usage or a typed size refusal. Timeouts remain inconclusive. The 20-minute
+  session and other request, response and provider-pause bounds remain in force; incomplete
+  no-response retries are preserved as uncertain evidence. Configured-route calibration remains
+  at 120 seconds.
+
 - **Python versions live in two files, with a compatibility gate.** Every workflow's
   `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
   `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps

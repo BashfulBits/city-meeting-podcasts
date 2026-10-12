@@ -17,6 +17,7 @@ from typing import Any
 import requests
 
 from citypods.compute.structured_shaping import shape_structured_request
+from citypods.provider_catalog.discovery import MAX_RESPONSE_TIMEOUT_SECONDS
 from citypods.provider_catalog.rules import ProviderRules, Response, strict_context_json
 
 # The Worker's own response ceiling (wrangler.jsonc MAX_RESPONSE_SECONDS): a canary is never
@@ -1013,14 +1014,15 @@ def _measure_response(
     admission_type,
     admission_check,
     timeout=120,
+    max_timeout=120,
     retain_error_body=False,
     retain_response_preview=False,
 ):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
 
-    if not 0 < timeout <= 120:
-        raise ValueError("context timeout exceeds reviewed deadline")
+    if not 0 < timeout <= max_timeout:
+        raise ValueError("response timeout exceeds reviewed deadline")
     started = clock()
     ctx = multiprocessing.get_context("spawn")
     parent, child = ctx.Pipe()
@@ -1187,9 +1189,21 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     )
 
 
-def measure_discovery(request, transient, rules, *, session, before_call, clock, timeout=120):
+def measure_discovery(
+    request,
+    transient,
+    rules,
+    *,
+    session,
+    before_call,
+    clock,
+    timeout=MAX_RESPONSE_TIMEOUT_SECONDS,
+):
     """Unconfigured candidate transport needs a distinct charged discovery receipt."""
-    from citypods.provider_catalog.discovery import DiscoveryAdmission, discovery_identity
+    from citypods.provider_catalog.discovery import (
+        DiscoveryAdmission,
+        discovery_identity,
+    )
 
     physical = discovery_identity(
         transient.provider,
@@ -1207,6 +1221,7 @@ def measure_discovery(request, transient, rules, *, session, before_call, clock,
         admission_type=DiscoveryAdmission,
         admission_check=lambda receipt: receipt.matches(request) and clock() < receipt.deadline,
         timeout=timeout,
+        max_timeout=MAX_RESPONSE_TIMEOUT_SECONDS,
         retain_response_preview=True,
     )
     return rules.discovery_observation(response, request, transient)

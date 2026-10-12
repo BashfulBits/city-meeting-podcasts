@@ -24,6 +24,7 @@ MAX_RUN_INPUT = 16_777_216
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
+MAX_RESPONSE_TIMEOUT_SECONDS = 600
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
     "transport_connection_error",
@@ -622,7 +623,11 @@ def run_discovery(
 
             try:
                 renew()
-                observation = measure(request, before_call, min(120, deadline - clock()))
+                observation = measure(
+                    request,
+                    before_call,
+                    min(MAX_RESPONSE_TIMEOUT_SECONDS, deadline - clock()),
+                )
                 if not charged or observation.request != request:
                     raise ValueError("discovery_transport_admission_or_identity_mismatch")
                 journal.complete(observation)
@@ -663,6 +668,7 @@ def run_discovery(
                 if len(pending_transport) < MAX_NO_RESPONSE_CALLS:
                     continue
                 transport_retries.append(tuple(pending_transport))
+                pending_transport = []
                 reason = bracket.reason = "uncertain_no_response_after_five_calls"
                 break
             if pending_transport:
@@ -749,6 +755,11 @@ def run_discovery(
                 elif observation.outcome == "refused":
                     previous = []
                     bracket.reason = "history_baseline_refused"
+        if pending_transport:
+            transport_retries.append(tuple(pending_transport))
+            pending_transport = []
+            if reason == "deadline_or_reported_usage_overrun":
+                reason = bracket.reason = "uncertain_no_response_before_session_deadline"
         if bracket.nonprogress >= 3:
             bracket.reason = bracket.reason or "stalled"
         if reason != "complete":
