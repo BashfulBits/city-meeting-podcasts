@@ -1982,3 +1982,9 @@ stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 
 reconcile/rules modules and discovery tests implement this approved generalization; no runtime
 config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
 currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+### Review/51 P1 six-model completion — L3
+
+Maintainer discontinued Gemini 3.7/3.8 evaluation on 2026-10-13 because daily quotas are too low.
+Keep historical observations; complete only the other six models (678 questions), with existing
+attempt limits and production headroom. Contract: review/51, P1 six-model completion.
