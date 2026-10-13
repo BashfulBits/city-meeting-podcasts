@@ -1,0 +1,240 @@
+{
+  "answered": 3,
+  "gold_hash": "2a8da03b1427885341ccee740d945e22b9766f4812af15b28ecf4853a4a62836",
+  "interpretation": "Independent feed selection on reused historical recordings. Exact feed-set accuracy on 40 assignments is separate from 15 policy controls and five unknown-owner guardrails. Free-text body names are retained for human evidence review. This historical challenge is not a newly disjoint admission holdout.",
+  "manifest_hash": "6cdcb447eafa02d3fedbe6e018b6f5293d921f52156e1d45ba36f26d55a3c9a1",
+  "mode": "blind_body_selection",
+  "models": {
+    "deepseek": {
+      "counts": {
+        "completed": 0,
+        "deferred": 1,
+        "failed": 0,
+        "unattempted": 59
+      },
+      "details": [],
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "metrics": {},
+      "provider_attempts": 1,
+      "serving_family_held_completed": 0
+    },
+    "flashlite": {
+      "counts": {
+        "completed": 1,
+        "deferred": 0,
+        "failed": 0,
+        "unattempted": 59
+      },
+      "details": [
+        {
+          "answer": {
+            "bodies": [
+              {
+                "evidence_ref_ids": [
+                  "retained-agenda",
+                  "provider-player",
+                  "native-source-chapters"
+                ],
+                "name": "Bond Advisory Committee"
+              }
+            ],
+            "case_id": "recording-6dd6551430ef94bc37d87dea",
+            "evidence_ref_ids": [
+              "retained-agenda",
+              "provider-player",
+              "native-source-chapters"
+            ],
+            "feed_slugs": [
+              "addison-tx-bond-committees"
+            ],
+            "missing_evidence": [],
+            "publication_action": "assign_existing",
+            "rationale": "The recording is proven by the agenda and provider player to be a regular meeting of the Bond Advisory Committee for the Town of Addison. The appropriate configured feed slug for verified Addison bond-program committee meetings is addison-tx-bond-committees."
+          },
+          "case_id": "recording-6dd6551430ef94bc37d87dea",
+          "verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          }
+        }
+      ],
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": 71.11630508303642,
+        "provider_median": 68.10281695891172
+      },
+      "metrics": {
+        "existing_body_assignment": {
+          "correct": 1,
+          "evaluated": 1,
+          "incorrect": 0
+        }
+      },
+      "provider_attempts": 1,
+      "serving_family_held_completed": 0
+    },
+    "glm_flash": {
+      "counts": {
+        "completed": 1,
+        "deferred": 0,
+        "failed": 0,
+        "unattempted": 59
+      },
+      "details": [
+        {
+          "answer": {
+            "bodies": [
+              {
+                "evidence_ref_ids": [
+                  "retained-agenda",
+                  "provider-player",
+                  "native-source-chapters"
+                ],
+                "name": "Bond Advisory Committee (Town of Addison, TX)"
+              }
+            ],
+            "case_id": "recording-6dd6551430ef94bc37d87dea",
+            "evidence_ref_ids": [
+              "retained-agenda",
+              "provider-player",
+              "native-source-chapters"
+            ],
+            "feed_slugs": [
+              "addison-tx-bond-committees"
+            ],
+            "missing_evidence": [],
+            "publication_action": "assign_existing",
+            "rationale": "The official agenda (retained-agenda) is titled 'Regular Meeting of the Bond Advisory Committee' for Thursday, Oct 30, 2025, 6:00 PM, posted by Sarah Kuechler, Chief of Staff, with the Town of Addison accessibility notice, establishing a Town of Addison-convened body. The Swagit player/transcript (provider-player) for recording 359742 confirms the call to order stating 'this is the regular meeting of the Bond Advisory Committee,' with Addison committee members, Town staff, and consultants introduced; the chapter list (native-source-chapters) mirrors the agenda items. Agenda topics \u2014 May 2026 Bond Election Timeline, Municipal Debt and Financial Review, and Challenges of Current Police and Courts Facility \u2014 match the configured feed 'addison-tx-bond-committees,' whose description covers 'Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.' Identity is taken from the convened body named on the official agenda and transcript, not from the venue (Addison Police and Courts Building courtroom), topic words, or shared staff. No joint meeting is evidenced; this is a single-body regular meeting, so only the bond-committee feed applies and no other participant body is proven or claimed. Ownership is established by the official agenda posting and recording transcript, so no gaps remain: missing_evidence is empty and the action is assign_existing to the existing bond-committees feed."
+          },
+          "case_id": "recording-6dd6551430ef94bc37d87dea",
+          "verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          }
+        }
+      ],
+      "identity_held_completed": 1,
+      "latency_seconds": {
+        "end_to_end_median": 84.59585683280602,
+        "provider_median": 81.8714376250282
+      },
+      "metrics": {
+        "existing_body_assignment": {
+          "correct": 1,
+          "evaluated": 1,
+          "incorrect": 0
+        }
+      },
+      "provider_attempts": 1,
+      "serving_family_held_completed": 0
+    },
+    "glm_full": {
+      "counts": {
+        "completed": 0,
+        "deferred": 0,
+        "failed": 0,
+        "unattempted": 60
+      },
+      "details": [],
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "metrics": {},
+      "provider_attempts": 0,
+      "serving_family_held_completed": 0
+    },
+    "kimi": {
+      "counts": {
+        "completed": 0,
+        "deferred": 0,
+        "failed": 0,
+        "unattempted": 60
+      },
+      "details": [],
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "metrics": {},
+      "provider_attempts": 0,
+      "serving_family_held_completed": 0
+    },
+    "sol": {
+      "counts": {
+        "completed": 1,
+        "deferred": 0,
+        "failed": 0,
+        "unattempted": 59
+      },
+      "details": [
+        {
+          "answer": {
+            "bodies": [
+              {
+                "evidence_ref_ids": [
+                  "retained-agenda",
+                  "provider-player"
+                ],
+                "name": "Bond Advisory Committee"
+              }
+            ],
+            "case_id": "recording-6dd6551430ef94bc37d87dea",
+            "evidence_ref_ids": [
+              "retained-agenda",
+              "provider-player"
+            ],
+            "feed_slugs": [
+              "addison-tx-bond-committees"
+            ],
+            "missing_evidence": [],
+            "publication_action": "assign_existing",
+            "rationale": "The official agenda identifies the October 30, 2025 recording as a regular meeting of the Bond Advisory Committee, and the recording's opening call to order confirms that convening body. The agenda connects its work to the May 2026 bond election and the Police and Courts facility. Under the family-feed rule, this proven committee belongs in the configured Addison: Bond Committees subscription grouping, whose description expressly includes this committee. No joint convening body is identified. The facility tour is part of the committee's regular agenda, not a ceremony or dedication subject to exclusion."
+          },
+          "case_id": "recording-6dd6551430ef94bc37d87dea",
+          "verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          }
+        }
+      ],
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": 10.792852041777223,
+        "provider_median": 9.618663833942264
+      },
+      "metrics": {
+        "existing_body_assignment": {
+          "correct": 1,
+          "evaluated": 1,
+          "incorrect": 0
+        }
+      },
+      "provider_attempts": 1,
+      "serving_family_held_completed": 1
+    }
+  },
+  "provenance": [
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/821e97229600420ba4624fbca3a0cda9.json",
+      "sha256": "948608ef7ae27e7e7587a249b6bef89c5fecb08d983d20e28ca4a21eb602fc96"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d376d3ee92ac4813b719c2ad549c5b0f.json",
+      "sha256": "53d32c0e547c2e0e6fd88c06906977879ecfcca5bc429eea3aa179e0388517fc"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e2de0a3aed584a9ebc217042b0763c53.json",
+      "sha256": "d4b2887ee0a3f70af79fc0ad28cc62fc628c3a2c03c2378c507ae23c94248bfe"
+    }
+  ],
+  "qualified": false,
+  "scored_at": "2026-10-13T14:54:50.337075+00:00",
+  "target": 360
+}

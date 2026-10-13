@@ -1791,3 +1791,11 @@ qualification uses the same shared CAS accounting and frozen evaluation provenan
 The varied P1 evaluation comparison was narrowed by maintainer decision on 2026-10-13 to
 six models (678 questions), excluding Gemini 3.7/3.8 and Astra from future calls and aggregate
 scores while retaining their immutable history. Per-case daily retry limits remain unchanged.
+
+The independent body-selection evaluator under
+`evals/remedy/results/body-selection-2026-10-13/` uses a separately frozen 60-recording
+packet, opaque IDs, input-only evidence/taxonomy, and evaluation-local multi-feed answers.
+Its controller shares the older evaluation call lock, preserves round/attempt limits and
+quota headroom, and never reads gold. Explicit offline scoring keeps existing-body feed
+choice, publication controls, and insufficient-proof guardrails separate. No production
+model or feed activation follows from these historical challenge results.

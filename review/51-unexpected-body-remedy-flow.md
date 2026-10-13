@@ -3873,3 +3873,11 @@ identity/publication rules. Retain verbatim official recording metadata and sour
 Gold keeps reviewed body descriptions for later review; do not score free-text institutional
 names by fabricated string aliases. Report exact feed-choice correctness, policy controls
 and insufficient-owner-proof guardrails separately.
+
+Body-selection verification: 115 targeted checks and 6,103 offline tests passed
+(16 deselected), whole Ruff/format544 files. A preparation-only metadata correction
+now hashes the complete gold document rather than its inner cases; original hash
+metadata is retained, model inputs/answers unchanged, and116 targeted checks pass.
+The corrected controller started2026-10-13 14:47UTC. First valid Flash-Lite, GLM Flash
+and Sol answers independently named the Addison Bond Advisory Committee and cited
+official evidence. Live results remain incremental; this is not completion or admission.
