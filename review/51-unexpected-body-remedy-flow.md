@@ -3820,3 +3820,48 @@ The immediate allowance passed 95 targeted tests, 6,083 offline tests (16 desele
 whole Ruff/format (539 files), and changelog fragment validation. The scoped controller
 submitted its first full GLM attempt at 2026-10-13 13:33 UTC; no completed answer was
 available at that handoff. The existing hourly monitor follows actual saved results.
+
+### P1 full independent body-selection comparison — L3, approved 2026-10-13
+
+Maintainer directed the full 60-recording correct prompt for all six remaining models:
+which body or bodies does this recording belong to, with no suggested assignment.
+Use Flash-Lite, Kimi, full GLM, GLM Flash, Sol and DeepSeek; exclude Astra and Gemini 3.7/3.8.
+Reuse frozen official evidence, taxonomy and approved policies from approved-v2. Collapse
+113 membership questions into 60 unique source/UID pairs. Mask semantic case IDs, claims,
+review answers and proposal metadata. No model sees another model's answer or the gold.
+
+Create evaluation-only body_selection.py, freeze.py, run.py, score.py and README under
+evals/remedy/results/body-selection-2026-10-13/, frozen inputs and separately stored gold
+under evals/remedy/holdout/body-selection-2026-10-13/, tests/test_remedy_body_selection.py
+and lifecycle docs. No production schemas, routes, quotas, feeds or workflows change.
+Local answer schema contains opaque case_id, cited body/program names, selected feed slugs,
+publication action, evidence-reference IDs, missing evidence and rationale. Validate IDs
+and taxonomy locally. Score exact feed sets for 40 assignments, separate policy compliance
+for 15 approved archival/event/untracked outcomes, and unsupported-owner guardrails for
+five insufficient-proof programs. Do not count those five as known non-government content
+or invent exclusive owners for joints. Body-name free text remains available for human
+review; feed-choice and policy/insufficient-proof metrics are separately identified.
+
+Reuse existing varied provider routes, shared CAS quota/headroom, operator pause/drain/reserve
+helpers, timeout/output settings and immutable pre-call intents. Share the older evaluation's
+provider-call lock via an explicit CLI path; lock contention defers rather than duplicating
+calls. Independent controller lock/status prevents duplicate body-selection runners.
+Patient requests remain600s/650s/16384 output; Flash-Lite120s/150s/4096. Free routes only.
+Every completed answer stops retries regardless of its correctness; runtime never reads gold.
+
+Interpret approval as one initial attempt plus up to three retries per round, at most three
+rounds: maximum12 submitted attempts per model/recording,4320 across360 pairs. Retain
+failed attempts, round/attempt metadata and hashes. No SDK retries. Apply30-minute provider
+failure cooldowns and actual quota/reset waits; retain production headroom. Existing
+three-attempt daily evaluation cap is replaced only inside this specifically approved
+experiment by the12-attempt total cap, never applied to production or older experiments.
+A bounded seven-day horizon uses the existing controller hard ceiling; interrupted runs
+resume the same original deadline and allowance, never reset attempt counts. Missing final
+observations hold that pair as unknown instead of automatically repeating a lost response.
+
+Tests prove answer-free inputs,60 unique pairs, joint/feed-set scoring, unknown-proof holds,
+round boundaries/caps across resets, no gold in live execution, immutable deduplication,
+identity/provenance binding and shared-lock exclusion. Targeted/whole Ruff before calls;
+full offline tests before push. Retain input/result hashes and separate immutable reports.
+These reused historical records remain a regression challenge, not newly independent
+holdout admission evidence; production model approval remains separate.

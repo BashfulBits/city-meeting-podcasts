@@ -1993,3 +1993,10 @@ The maintainer subsequently authorized five immediate additional retries on each
 five remaining GLM/Sol pairs (25 attempts total). The one-off manifest/pair-bound allowance
 supersedes the daily evaluator cap only for those pairs and does not refill at midnight.
 Contract: review/51, P1 immediate five-pair retry allowance. Production quotas remain intact.
+
+### Review/51 full body-selection comparison — L3
+
+Maintainer approved the corrected 60-recording ownership prompt for six models on2026-10-13,
+with three retry rounds. Use the L3 body-selection contract in review/51, reuse official
+evidence and approved dispositions, and keep gold/proposals out of model input. No production
+activation;360 first answers, bounded retries, shared quota accounting and retained history.
