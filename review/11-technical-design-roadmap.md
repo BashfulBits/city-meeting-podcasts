@@ -1849,6 +1849,9 @@ Run 38301430270 verified 24,576 output tokens but input retrieval failed at acce
 The maintainer approved measuring new-route API input admission from consistent provider usage
 and reporting sentinel accuracy separately. Manual all/input/output selection gives output its
 own bounded session; configured-route calibration and recurring-discovery gates are unchanged.
+Approved output early-stop follow-up (2026-10-13): route-scoped minimum generation for the
+verified NVIDIA-hosted Lightning deployment, separate probe control identities and explicit
+stopping diagnostics; actual output counts, verified fixture text and budgets stay binding.
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This

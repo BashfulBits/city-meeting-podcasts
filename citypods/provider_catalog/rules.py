@@ -239,6 +239,9 @@ class ProviderRules:
     context_observation: Callable = lambda response, request: unsupported_context(response, request)
     context_rate_diagnostics: Callable = lambda _headers: {}
     discovery_axes: tuple[str, ...] = ()
+    # Opt in only for a documented and verified endpoint/model combination. This is a
+    # discovery transport capability, not a model limit or a production dispatch control.
+    discovery_output_min_tokens: Callable[[str, str], bool] = lambda _endpoint, _model: False
     discovery_parser_version: str = "unsupported-v1"
     discovery_observation: Callable = lambda response, request, transient: unsupported_discovery(
         response, request, transient
@@ -961,6 +964,32 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             )
         if observation.outcome == "verified" or usage_state in {"total_missing", "total_invalid"}:
             values["diagnostic"] = "api_input_usage_incomplete"
+        return DiscoveryObservation(request, stamp, **values)
+    if request.axis == "output" and _chat_input_capacity(payload, response) and finish == "stop":
+        values["diagnostic"] = "output_stopped_early"
+    if (
+        request.axis == "output"
+        and request.control.split(":opposite=", 1)[0] in {"output:v3", "output:v3:min_tokens"}
+        and reasoning_basis == "included"
+        and _chat_input_capacity(payload, response)
+        and finish == "length"
+        and values["reasoning_tokens"] != values["reported_output"]
+    ):
+        content = choices[0]["message"]["content"]
+        lines = content.splitlines()
+        if len(lines) >= 3 and all(line == "1" for line in lines):
+            return DiscoveryObservation(
+                request,
+                stamp,
+                outcome="admitted",
+                coordinate=usage["completion_tokens"],
+                count_basis="completion_including_reasoning",
+                verified=True,
+                **(values | {"diagnostic": "verified_repeated_output_fixture"}),
+            )
+        values["diagnostic"] = "output_fixture_not_reached"
+        return DiscoveryObservation(request, stamp, **values)
+    if request.axis == "output" and request.control.startswith("output:v3"):
         return DiscoveryObservation(request, stamp, **values)
     if observation.outcome == "verified":
         count = (

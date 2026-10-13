@@ -280,6 +280,11 @@ is based on completed responses and consistent provider usage.
 Sentinel accuracy is separately reported as a retrieval/truncation warning. Configured-route
 calibration retains its sentinel proof gate. Manual discovery can select all, input or output;
 output-only selection resumes compatible history in its own existing bounded session.
+Discovery output can opt into a documented minimum-generation parameter for a verified
+endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is the initial opt-in;
+other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum
+control identity, and actual counts plus length-terminated verified repeated lines establish proof.
+Natural stops are explicitly inconclusive, with bounded response-ending failure diagnostics.
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors and combined semantics create no cap proof. A request that receives no usable

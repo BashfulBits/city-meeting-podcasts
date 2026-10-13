@@ -35,7 +35,11 @@ def request(axis="input", target=2048, attempt="a"):
         target,
         target,
         output_tokens,
-        f"{axis}:v2" if axis in {"input", "total_input_heavy"} else f"{axis}:v1",
+        f"{axis}:v2"
+        if axis in {"input", "total_input_heavy"}
+        else "output:v3"
+        if axis == "output"
+        else f"{axis}:v1",
         "parser-v1",
     )
 
@@ -1121,7 +1125,7 @@ def test_output_fixture_ceiling_and_reasoning_are_endpoint_specific():
             completion_tokens_details=dict(reasoning_tokens=2),
             prompt_tokens_details=dict(cached_tokens=0),
         ),
-        choices=[dict(message=dict(content="1\n2\n3\n4"), finish_reason="length")],
+        choices=[dict(message=dict(content="1\n1\n1\n1"), finish_reason="length")],
     )
     response = Response(200, body=json.dumps(body))
     result = RULES.discovery_observation(response, req, transient)
@@ -1310,6 +1314,7 @@ def _chat_discovery_fixture(provider, axis="input"):
     )
     req = replace(
         request(axis),
+        control="output:v3" if axis == "output" else request(axis).control,
         identity=discovery_identity(
             provider, "a", "org/model", cfg["api_base"] + "/chat/completions"
         ),
@@ -1359,7 +1364,7 @@ def test_shared_chat_success_uses_usage_counts_and_correct_reasoning_basis(provi
     sentinels = dict(
         re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
     )
-    content = json.dumps(sentinels) if axis == "input" else "1\n2\n3"
+    content = json.dumps(sentinels) if axis == "input" else "1\n1\n1"
     body = {
         "object": "chat.completion",
         "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
@@ -1610,16 +1615,19 @@ def test_count_mapping_is_retained_at_ceiling_and_refines_actual_input_boundary(
 @pytest.mark.parametrize("provider", ["nvidia", "openrouter"])
 def test_discovery_output_fixture_has_concrete_long_goal_and_preserves_request_bound(provider):
     _, req, transient = _chat_discovery_fixture(provider, "output")
-    text = transient.messages[0]["content"]
-    assert "from 1 through 1000000 inclusive, one per line" in text
-    assert "until all integers are written" in text
-    assert "until the output limit" not in text
+    assert transient.messages[0]["role"] == "system"
+    assert "partial prefix is the intended result" in transient.messages[0]["content"]
+    text = transient.messages[1]["content"]
+    assert "131072 times" in text
+    assert "server truncates output" in text
+    assert text.index("</padding>") < text.index("Repeat the line")
+    assert "1000000" not in text
     assert transient.shaped_body["body"]["max_tokens"] == req.output_tokens
     assert transient.local_input_estimate <= req.input_tokens
 
 
 def test_changed_output_control_excludes_old_prompt_history(tmp_path):
-    old = replace(request("output"), control="output:v1")
+    old = replace(request("output"), control="output:v2")
     previous = observation(old, 16384)
     seen = []
 
@@ -1629,7 +1637,7 @@ def test_changed_output_control_excludes_old_prompt_history(tmp_path):
         return DiscoveryObservation(req, STAMP)
 
     result = execute(tmp_path, measure, supported_axes=("output",), history=(previous,))
-    assert all(req.control == "output:v2" for req in seen)
+    assert all(req.control == "output:v3" for req in seen)
     assert result.brackets[1]["admitted"] is None
 
 
@@ -1717,7 +1725,7 @@ def test_api_input_capacity_stays_inconclusive_without_complete_consistent_evide
 
 def test_output_only_session_resumes_output_history_without_input_probes(tmp_path):
     previous_req = replace(
-        request("output"), output_tokens=24576, target=24576, control="output:v2"
+        request("output"), output_tokens=24576, target=24576, control="output:v3"
     )
     previous = observation(previous_req, 24576)
     requests = []
@@ -1773,3 +1781,263 @@ def test_issue_reports_sentinel_failure_separately_from_admitted_api_capacity():
     assert row["sentinel_verification"] == "failed"
     row["sentinel_verification"] = {"passed": True}
     assert _discovery_attempt_diagnostics([row])[0]["sentinel_verification"] == "unknown"
+
+
+@pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
+def test_discovery_natural_output_stop_is_explicitly_inconclusive(provider):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture(provider, "output")
+    payload = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 2390,
+            "completion_tokens": 4241,
+            "total_tokens": 6631,
+            "completion_tokens_details": {"reasoning_tokens": 3548},
+        },
+        "choices": [{"finish_reason": "stop", "message": {"content": "1\n2\n3\n4"}}],
+    }
+    result = rules.discovery_observation(Response(200, body=json.dumps(payload)), req, transient)
+    assert result.diagnostic == "output_stopped_early"
+    assert result.outcome == "inconclusive"
+    assert result.coordinate is None and not result.verified
+    assert result.reported_output == 4241
+
+
+def test_discovery_failed_output_preview_includes_redacted_ending():
+    import json
+
+    from citypods.provider_catalog.probe import _discovery_response_excerpt
+
+    _, _, transient = _chat_discovery_fixture("nvidia", "output")
+    secret = "provider-secret-value"
+    text = "1\n2\n3\n" + "123\n" * 1000 + "Stopping at a reasonable point. " + secret
+    raw = json.dumps({"choices": [{"message": {"content": text}}]}).encode()
+    preview = _discovery_response_excerpt(raw, transient, {"Authorization": "Bearer " + secret})
+    decoded = json.loads(preview)
+    assert decoded.startswith("1\n2\n3")
+    assert "[tail]" in decoded and "reasonable point" in decoded
+    assert secret not in preview
+    assert len(decoded) <= 128
+
+
+@pytest.mark.parametrize(
+    "endpoint,model,expected",
+    [
+        (
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            True,
+        ),
+        (
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            "nvidia/nemotron-3-super-120b-a12b",
+            False,
+        ),
+        ("https://other.test/v1/chat/completions", "nvidia/nemotron-3.5-lightning-30b-a3b", False),
+    ],
+)
+def test_minimum_generation_is_an_exact_served_route_capability(endpoint, model, expected):
+    from citypods.provider_catalog.registry import rules_for
+
+    assert rules_for("nvidia").discovery_output_min_tokens(endpoint, model) is expected
+    assert not rules_for("openrouter").discovery_output_min_tokens(endpoint, model)
+
+
+def minimum_generation_fixture(axis="output", minimum=True):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.registry import rules_for
+
+    rules = rules_for("nvidia")
+    cfg = dict(
+        api_base="https://integrate.api.nvidia.com/v1",
+        accounts=[dict(id="a", api_key_env="KEY")],
+    )
+    route = dict(
+        route_id="candidate",
+        provider="nvidia",
+        account_id="a",
+        upstream_model="nvidia/nemotron-3.5-lightning-30b-a3b",
+    )
+    req = replace(
+        request(axis),
+        identity=discovery_identity(
+            "nvidia", "a", route["upstream_model"], cfg["api_base"] + "/chat/completions"
+        ),
+        control="output:v3:min_tokens" if minimum else "output:v3",
+    )
+    transient = build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
+    return req, transient
+
+
+def test_minimum_generation_is_bounded_and_never_added_to_input_probes():
+    req, transient = minimum_generation_fixture()
+    body = transient.shaped_body["body"]
+    assert body["min_tokens"] == body["max_tokens"] == req.output_tokens
+    assert transient.local_input_estimate <= req.input_tokens
+    _, transient = minimum_generation_fixture("input")
+    assert "min_tokens" not in transient.shaped_body["body"]
+    with pytest.raises(ValueError, match="generation control mismatch"):
+        minimum_generation_fixture(minimum=False)
+
+
+def test_unsupported_route_rejects_a_forged_minimum_control():
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.registry import rules_for
+
+    rules, req, _ = _chat_discovery_fixture("openrouter", "output")
+    req = replace(req, control="output:v3:min_tokens")
+    cfg = dict(api_base="https://provider.test/v1", accounts=[dict(id="a", api_key_env="KEY")])
+    route = dict(provider="openrouter", account_id="a", upstream_model="org/model", route_id="c")
+    with pytest.raises(ValueError, match="generation control mismatch"):
+        build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
+    assert not rules_for("groq").discovery_output_min_tokens("any", "any")
+
+
+def test_minimum_generation_history_is_fenced_from_prompt_only_results(tmp_path):
+    previous = observation(request("output"), 16384)
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(req, STAMP)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("output",),
+        output_min_tokens=True,
+        history=(previous,),
+    )
+    assert all(req.control == "output:v3:min_tokens" for req in seen)
+    assert result.brackets[1]["admitted"] is None
+    with pytest.raises(ValueError, match="minimum output capability"):
+        execute(tmp_path, measure, output_min_tokens="yes")
+
+
+def test_reduced_output_input_control_preserves_minimum_generation_flag(tmp_path):
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        if len(seen) == 1:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                outcome="refused",
+                coordinate=req.input_tokens,
+                count_basis="input",
+                verified=True,
+            )
+        return DiscoveryObservation(req, STAMP)
+
+    execute(tmp_path, measure, supported_axes=("output",), output_min_tokens=True)
+    assert seen[0].control == "output:v3:min_tokens"
+    assert all(req.control == "output:v3:min_tokens:opposite=1024" for req in seen[1:])
+
+
+def test_minimum_parameter_rejection_is_not_an_output_boundary():
+    import json
+
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import Response
+
+    req, transient = minimum_generation_fixture()
+    response = Response(
+        400,
+        body=json.dumps({"error": {"message": "Unsupported parameter: min_tokens", "code": 400}}),
+    )
+    result = rules_for("nvidia").discovery_observation(response, req, transient)
+    assert result.outcome == "inconclusive"
+    assert result.coordinate is None and not result.verified
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        None,
+        "ascending",
+        "abbreviated",
+        "prose",
+        "empty",
+        "reasoning_only",
+        "early_stop",
+        "tool_call",
+        "total_missing",
+        "total_invalid",
+        "negative_output",
+    ],
+)
+def test_repeated_output_capacity_requires_real_usage_length_and_exact_text(bad):
+    import json
+
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import Response
+
+    req, transient = minimum_generation_fixture()
+    usage = dict(prompt_tokens=2390, completion_tokens=24576, total_tokens=26966)
+    usage["completion_tokens_details"] = dict(reasoning_tokens=5273)
+    message = dict(content="1\n" * 100)
+    choice = dict(message=message, finish_reason="length")
+    if bad == "ascending":
+        message["content"] = "1\n2\n3"
+    elif bad == "abbreviated":
+        message["content"] = "1\n1\n..."
+    elif bad == "prose":
+        message["content"] += "Done"
+    elif bad == "empty":
+        message["content"] = ""
+    elif bad == "reasoning_only":
+        usage["completion_tokens_details"]["reasoning_tokens"] = usage["completion_tokens"]
+    elif bad == "early_stop":
+        choice["finish_reason"] = "stop"
+    elif bad == "tool_call":
+        message["tool_calls"] = [dict(id="call")]
+    elif bad == "total_missing":
+        del usage["total_tokens"]
+    elif bad == "total_invalid":
+        usage["total_tokens"] += 1
+    elif bad == "negative_output":
+        usage["completion_tokens"] = -1
+    body = dict(object="chat.completion", usage=usage, choices=[choice])
+    observed = rules_for("nvidia").discovery_observation(
+        Response(200, body=json.dumps(body)), req, transient
+    )
+    if bad is None:
+        assert observed.outcome == "admitted" and observed.verified
+        assert observed.coordinate == 24576
+        assert observed.diagnostic == "verified_repeated_output_fixture"
+    else:
+        assert observed.outcome == "inconclusive" and observed.coordinate is None
+
+
+def test_checkpoint_charges_remain_but_old_output_fixture_is_not_boundary_proof(tmp_path):
+    journal = DiscoveryJournal(tmp_path / "old-output.json", {"identity": "physical"})
+    old = replace(request("output"), control="output:v2")
+    journal.charge(old)
+    journal.complete(observation(old, 1000))
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(req, STAMP)
+
+    result = run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("output",),
+        output_min_tokens=True,
+        measure=measure,
+        renew=lambda: None,
+        journal=journal,
+    )
+    assert all(req.target == DEFAULT_OUTPUT_SEED for req in seen)
+    assert result.brackets[1]["admitted"] is None
+    assert result.budget["calls"] == 1 + len(seen)

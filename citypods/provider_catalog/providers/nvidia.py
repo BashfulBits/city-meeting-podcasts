@@ -96,8 +96,22 @@ def discovery_observation(response, request, transient):
     return chat_discovery_observation(response, request, transient, reasoning_basis="included")
 
 
+def discovery_output_min_tokens(endpoint: str, model: str) -> bool:
+    """Verified hosted NIM route capability, not a provider-wide or intrinsic model limit.
+
+    Other model deployments may ignore or reject NIM generation extensions. New opt-ins need
+    their own endpoint evidence; NVIDIA hosting or Nemotron branding alone is insufficient.
+    https://docs.nvidia.com/nim/large-language-models/1.14.0/release-notes.html
+    """
+    return (
+        endpoint == "https://integrate.api.nvidia.com/v1/chat/completions"
+        and model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    )
+
+
 RULES = ProviderRules(
     discovery_axes=("input", "output"),
+    discovery_output_min_tokens=discovery_output_min_tokens,
     discovery_parser_version="nvidia-discovery-chat-v1",
     discovery_observation=discovery_observation,
     model_identity=namespaced_identity(""),
