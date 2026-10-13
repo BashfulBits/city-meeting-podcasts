@@ -304,7 +304,7 @@ python-dateutil==2.9.0.post0
     #   botocore
     #   matplotlib
     #   pandas
-pytorch-lightning==2.6.5
+pytorch-lightning==2.6.6
     # via lightning
 pytorch-metric-learning==2.9.0
     # via pyannote-audio
