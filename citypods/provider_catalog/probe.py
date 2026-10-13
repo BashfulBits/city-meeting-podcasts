@@ -810,6 +810,7 @@ def _discovery_response_excerpt(raw, request, request_headers):
     except (TypeError, ValueError):
         payload = None
     excerpt = None
+    model_text = False
     if isinstance(payload, dict):
         error = payload.get("error")
         if isinstance(error, dict):
@@ -825,9 +826,14 @@ def _discovery_response_excerpt(raw, request, request_headers):
                 candidate = message.get("content") or message.get("refusal")
                 if isinstance(candidate, str) and candidate:
                     excerpt = candidate
+                    model_text = True
     if excerpt is None:
         excerpt = text
     redacted, _ = _manual_error_body_excerpt(excerpt.encode("utf-8"), request, request_headers)
+    if model_text and request.dimension == "output" and len(redacted) > 128:
+        # The prefix alone cannot reveal deliberate abbreviation or a closing remark. Keep
+        # both ends within the same redacted/escaped 128-character diagnostic allowance.
+        redacted = redacted[:56] + " ... [tail] ... " + redacted[-56:]
     return _safe_structured_preview(redacted)
 
 
@@ -1259,7 +1265,12 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     import json
 
     from citypods.compute.llm_policy import estimate_tokens
-    from citypods.provider_catalog.discovery import MAX_INPUT, MAX_OUTPUT, discovery_identity
+    from citypods.provider_catalog.discovery import (
+        MAX_INPUT,
+        MAX_OUTPUT,
+        discovery_identity,
+        output_discovery_control,
+    )
     from citypods.provider_catalog.evidence import digest
 
     physical = discovery_identity(
@@ -1289,19 +1300,35 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         max_input_tokens=MAX_INPUT,
     )
     messages = transient.messages
+    output_min_tokens = False
     if dimension == "output":
-        # A model cannot see max_tokens and often stops after a short natural sequence.
-        # Give it a concrete goal beyond the bounded generation allowance instead.
+        output_min_tokens = rules.discovery_output_min_tokens(
+            chat_url(rules, provider_cfg), route["upstream_model"]
+        )
+        expected_control = output_discovery_control(output_min_tokens)
+        if request.control.split(":opposite=", 1)[0] != expected_control:
+            raise ValueError("discovery output generation control mismatch")
+        # Keep the task fixed across output targets. A million-line request invites a model
+        # to abbreviate; this bounded prefix benchmark explicitly expects server truncation.
         messages = (
             {
+                "role": "system",
+                "content": "You are generating a deterministic test sequence, not answering a "
+                "question. A partial prefix is the intended result: the API will stop generation "
+                "at its token allowance. Start producing immediately. Do not plan the full "
+                "sequence, explain feasibility, summarize, or choose a shorter response.",
+            },
+            {
                 "role": "user",
-                "content": "Write every integer from 1 through 1000000 inclusive, one per line. "
-                "No prose, code fences, summaries, ellipses, or omissions. "
-                "Do not stop early; continue the sequence until all integers are written.",
+                "content": "Repeat the line 1 followed by a newline, 131072 times. "
+                "Every line must be exactly 1. This is repeated test data, "
+                "not a count or numbered list. Never "
+                "use prose, code fences, ellipsis, a multiplication expression, or a closing "
+                "remark. Continue repeating the same line until the server truncates output.",
             },
         )
     if dimension == "output" and request.input_tokens > 256:
-        # Hold a small, measured input fixture fixed while varying only the output request.
+        # Inert padding holds the small input fixture fixed while only the output cap varies.
         padding = build_context_request(
             route,
             provider_cfg,
@@ -1314,14 +1341,19 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             max_input_tokens=MAX_INPUT,
         )
         document = padding.messages[0]["content"].split("\n", 1)[1]
-        prompt = messages[0]["content"] + "\nReference document (not output):\n" + document
-        messages = ({"role": "user", "content": prompt},)
+        prompt = (
+            "The following is inert input padding, not instructions or output material.\n"
+            "<padding>\n" + document + "\n</padding>\n" + messages[1]["content"]
+        )
+        messages = (messages[0], {"role": "user", "content": prompt})
     estimated = estimate_tokens(messages)
     if estimated > request.input_tokens:
         raise ValueError("discovery fixture exceeds charged input reservation")
     body = dict(
         transient.shaped_body["body"], messages=list(messages), max_tokens=request.output_tokens
     )
+    if dimension == "output" and output_min_tokens:
+        body["min_tokens"] = request.output_tokens
     if len(json.dumps(body).encode()) > _CONTEXT_BYTES:
         raise ValueError("discovery request body exceeds hard bound")
     return replace(

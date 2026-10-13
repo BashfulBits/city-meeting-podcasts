@@ -1563,6 +1563,7 @@ def _discover_candidate_caps(
                 parser_version=rules.discovery_parser_version,
                 supported_axes=rules.discovery_axes,
                 selected_axes=selected_axes,
+                output_min_tokens=rules.discovery_output_min_tokens(endpoint, candidate.model),
                 measure=measure,
                 renew=pause.renew,
                 journal=journal,

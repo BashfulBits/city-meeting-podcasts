@@ -25,6 +25,13 @@ MAX_SESSION_INPUT = 8_388_608
 MAX_RUN_INPUT = 16_777_216
 
 
+def output_discovery_control(min_tokens: bool = False) -> str:
+    """The prompt and minimum-generation setting form one comparable output experiment."""
+    if type(min_tokens) is not bool:
+        raise ValueError("invalid minimum output capability")
+    return "output:v3:min_tokens" if min_tokens else "output:v3"
+
+
 def default_discovery_seed(axis: str) -> int:
     if axis == "input":
         return DEFAULT_INPUT_SEED
@@ -447,6 +454,7 @@ def run_discovery(
     parser_version,
     supported_axes,
     selected_axes=None,
+    output_min_tokens=False,
     measure,
     renew,
     journal,
@@ -459,6 +467,7 @@ def run_discovery(
     deadline=None,
 ):
     """Inject transport, pause renewal and time; no provider calls without a charged receipt."""
+    output_control = output_discovery_control(output_min_tokens)
     budget = budget or DiscoveryBudget()
     if selected_axes is not None and (
         not selected_axes or any(axis not in AXES for axis in selected_axes)
@@ -524,14 +533,25 @@ def run_discovery(
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
         counterpart = INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else 2_048
-        control_version = "v2" if axis in {"input", "total_input_heavy", "output"} else "v1"
-        control = f"{axis}:{control_version}"
-        compatible = previous + [item for item in observations if item.request.axis == axis]
+        control_version = (
+            "v3" if axis == "output" else "v2" if axis in {"input", "total_input_heavy"} else "v1"
+        )
+        base_control = output_control if axis == "output" else f"{axis}:{control_version}"
+        control = base_control
+        compatible = [
+            item
+            for item in previous + observations
+            if item.request.axis == axis
+            and (
+                item.request.control == base_control
+                or item.request.control.startswith(base_control + ":opposite=")
+            )
+        ]
         if compatible:
             latest = sorted(compatible, key=lambda item: datetime.fromisoformat(item.observed_at))[
                 -1
             ]
-            prefix = f"{axis}:{control_version}:opposite="
+            prefix = base_control + ":opposite="
             if latest.request.control.startswith(prefix):
                 value = latest.request.control.removeprefix(prefix)
                 if value.isascii() and value.isdigit() and 0 < int(value) <= counterpart:
@@ -745,7 +765,7 @@ def run_discovery(
                 # A typed failure of the fixed counterpart supplies no boundary for this axis.
                 # Reduce that counterpart and establish a new, independent control identity.
                 counterpart = max(1, counterpart // 2)
-                control = f"{axis}:{control_version}:opposite={counterpart}"
+                control = f"{base_control}:opposite={counterpart}"
                 bracket = Bracket(axis, bracket.seed, reason="fixed_counterpart_reduced")
                 brackets[-1] = bracket
                 previous = []

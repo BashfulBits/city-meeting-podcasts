@@ -2448,6 +2448,65 @@ compatible because original count coordinates and request fixtures are unchanged
 The allowed implementation extends `discovery.py`, `rules.py`, `reconcile.py`, `issue.py`, the
 existing reconciliation script/workflow and their offline tests; no Worker/YAML/runtime changes.
 
+**Output early-stop diagnosis and route-scoped minimum generation (2026-10-13).** Run
+38317673384 requested 24,576 output tokens three times but received ordinary HTTP 200 completions
+with `stop` and only 2,731, 7,566 and 10,414 generated tokens including reasoning. This was an
+intentional end of generation, not a timeout or a context-size refusal. A local stronger-prompt
+probe also stopped after 200 numeric lines / 4,241 completion tokens; its returned reasoning
+explicitly chose a shorter answer. Earlier successful local calls do not establish a deterministic
+output-length guarantee, and runner/streaming bugs must remain distinct from this behavior.
+
+The maintainer approved an optional documented minimum-generation capability, with explicit
+attribution to the applicable model/route rather than every NVIDIA provider route. Add pure
+`ProviderRules.discovery_output_min_tokens(endpoint, model)` (default false). Opt in only the
+served combination `https://integrate.api.nvidia.com/v1/chat/completions` plus
+`nvidia/nemotron-3.5-lightning-30b-a3b`, after bounded local verification. This is a transport
+capability of that hosted deployment, not a numerical model limit, provider quota or intrinsic
+Nemotron behavior. Other NVIDIA models, alternate hosts and providers require independent
+support evidence. The bounded local minimum-generation test reported 24,576 completion tokens
+and `length` (including 5,273 reasoning tokens); its ascending answer restarted, so the text
+verifier correctly withheld boundary proof. The final repeated-line probe reported 2,481 input /
+24,576 completion / 27,057 total tokens, including 1,372 reasoning tokens, `length` and 11,602
+valid fixed lines. The parser accepted a 24,576-token lower bound under `output:v3:min_tokens`;
+no refused upper boundary was measured. A matched original-prompt local comparison also reached
+24,576 / `length`, so ordinary output behavior can vary and no runner-only cause is claimed for
+these early stops. All diagnostic calls used provider pause/drain, charged one-call sessions and
+the existing timeout/token bounds. GitHub verification of the final fixture remains after merge.
+NVIDIA documents the top-level parameter in its
+[NIM release notes](https://docs.nvidia.com/nim/large-language-models/1.14.0/release-notes.html).
+When onboarding another endpoint/model, verify parameter support and actual generation before
+opting in this callback; never infer support from OpenAI compatibility or model branding.
+
+For opted-in discovery output requests only, set top-level `min_tokens = max_tokens` within the
+existing charged output allowance. Input discovery, reachability/JSON checks, configured-route
+calibration, Worker/direct dispatch and production YAML are unchanged. Do not set `ignore_eos`,
+change reasoning settings, increase budgets or silently fall back from an ignored/rejected
+minimum control. An unknown parameter error remains inconclusive; it cannot prove an output cap.
+A requested minimum is never proof: the existing parser still requires positive provider counts,
+verified repeated-line text, non-reasoning-only generation and documented `length` termination.
+
+The discovery-only prompt uses an explicit prefix-generation system instruction and requests
+131,072 copies of the fixed line `1`, with inert padding before the final user instruction. It stays
+constant as output targets vary; actual generation remains bounded by the API allowance. Record
+`output:v3` for prompt-only probes and `output:v3:min_tokens` for the opted-in experiment, retaining
+this flag when a fixed input counterpart is reduced. Fence old output prompts and different
+minimum controls from comparable boundary history. Verify at least three lines, each exactly `1`,
+without prose, compression or ellipses; missing/inconsistent usage and reasoning-only replies
+remain inconclusive. The minimum setting suppresses natural EOS but does not enforce ascending
+count accuracy, so repeated fixed text avoids an answer restarting its count. Configured-route
+output calibration retains its ascending fixture and parser. Preserve legacy artifacts as diagnostics;
+never upgrade them. Input history/parser identities remain unchanged. The builder must reject
+any mismatch between the charged request's recorded control and the endpoint/model capability.
+
+Report valid natural stops explicitly as `output_stopped_early`, still inconclusive. Failed
+output response previews retain both beginning and ending inside the existing redacted, escaped
+128-character allowance, so a deliberate closing remark or abbreviation is visible without
+retaining full responses or reasoning. Acceptance covers exact served-route opt-in, other models
+and hosts excluded, bounded output-only parameters, forged/mismatched controls, old-history
+fencing, early-stop classification and redaction. The approved file plan additionally includes
+`providers/nvidia.py`; use the existing `rules.py`, `probe.py`, `discovery.py`, `reconcile.py` and
+their tests, with no new API endpoint, dependency, Worker or production catalog edit.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first
