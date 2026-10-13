@@ -1929,3 +1929,9 @@ Maintainer approved the corrected 60-recording ownership prompt for six models o
 with three retry rounds. Use the L3 body-selection contract in review/51, reuse official
 evidence and approved dispositions, and keep gold/proposals out of model input. No production
 activation;360 first answers, bounded retries, shared quota accounting and retained history.
+
+
+Review/51 evaluation call priority — L3 approved2026-10-13: reserve two of three
+contested call slots for the older comparison until it finishes, borrowing unused slots
+while it waits on provider cooldown/capacity. Persist allocation across resumes and
+retain all approved retry/deadline limits; see the scoped contract in review/51.
