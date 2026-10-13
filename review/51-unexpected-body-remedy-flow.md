@@ -3815,3 +3815,8 @@ Modify only the existing varied recovery.py/backfill.py/run.py/README, tests/tes
 and lifecycle docs. Verify scope isolation, five-attempt exhaustion across daily resets,
 restart hash fencing and unknown-intent holds; targeted/whole Ruff before starting, full
 offline tests before push. Preserve all raw history. No production policy changes.
+
+The immediate allowance passed 95 targeted tests, 6,083 offline tests (16 deselected),
+whole Ruff/format (539 files), and changelog fragment validation. The scoped controller
+submitted its first full GLM attempt at 2026-10-13 13:33 UTC; no completed answer was
+available at that handoff. The existing hourly monitor follows actual saved results.

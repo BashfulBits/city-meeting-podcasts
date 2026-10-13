@@ -1988,3 +1988,8 @@ currently catalog-listed, with an 8K model context claim to verify, not a proven
 Maintainer discontinued Gemini 3.7/3.8 evaluation on 2026-10-13 because daily quotas are too low.
 Keep historical observations; complete only the other six models (678 questions), with existing
 attempt limits and production headroom. Contract: review/51, P1 six-model completion.
+
+The maintainer subsequently authorized five immediate additional retries on each of the
+five remaining GLM/Sol pairs (25 attempts total). The one-off manifest/pair-bound allowance
+supersedes the daily evaluator cap only for those pairs and does not refill at midnight.
+Contract: review/51, P1 immediate five-pair retry allowance. Production quotas remain intact.
