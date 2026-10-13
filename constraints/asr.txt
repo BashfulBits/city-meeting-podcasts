@@ -122,7 +122,7 @@ lightning-utilities==0.15.3
     #   lightning
     #   pytorch-lightning
     #   torchmetrics
-mako==1.4.1
+mako==1.4.2
     # via alembic
 markdown-it-py==4.2.0
     # via rich
