@@ -104,3 +104,20 @@ only local evaluation waiting time; all retry counts, daily quotas, output caps 
 original controller deadlines remain intact. Earlier600-second observations stay
 immutable and retain their original settings. A provider gateway may still time out
 sooner; extending our local wait cannot bypass an upstream timeout.
+
+
+## Temporary coordination outage mode approved October13
+
+Explicit --coordination-bypass resumes this existing bounded evaluation using local
+CAS quota accounting. It skips unavailable Worker capacity/pause/drain/reservation
+requests; it does not skip local quotas, retry limits, cooldowns or the shared call
+lock. Results and intents record bypass and do not claim production was drained.
+Production jobs' usage cannot be seen in this mode, so provider failures still stop
+and cool down that route. Normal coordination checks remain the default.
+
+The older controller requires its existing retry allowance and refuses --new-run
+with bypass. Both controllers preserve their original horizons and prior answers.
+Qwen remains held during bypass until daily token capacity can be verified. GPT-OSS
+keeps its local180000/day cap and20% reserve; Worker token usage is recorded unknown.
+Use the same shared lock and saved result directories when switching modes. Stop
+only between submitted requests, then resume from tested code without changing caps.

@@ -355,7 +355,10 @@ def test_quota_wait_uses_later_worker_reset(modules, monkeypatch):
         runner.headroom(client, object(), route)
 
 
-def test_runner_keeps_original_429_before_attempt_budget_error(modules, monkeypatch, tmp_path):
+@pytest.mark.parametrize("bypass", [False, True])
+def test_runner_keeps_original_429_before_attempt_budget_error(
+    modules, monkeypatch, tmp_path, bypass
+):
     _, runner, _ = modules
     (tmp_path / "pilot-reviewed.json").write_text("{}")
     route = SimpleNamespace(
@@ -398,19 +401,30 @@ def test_runner_keeps_original_429_before_attempt_budget_error(modules, monkeypa
 
     @contextmanager
     def window(*_args, **kwargs):
+        assert not bypass
         assert kwargs["seconds"] == 1000
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner, "OUT", tmp_path)
     monkeypatch.setattr(runner, "route_for", lambda _: route)
-    monkeypatch.setattr(runner, "headroom", lambda *_: (True, {"kind": "available"}))
+    monkeypatch.setattr(runner, "headroom", lambda *_a, **_k: (True, {"kind": "available"}))
     monkeypatch.setattr(runner, "make_storage", lambda *_: SimpleNamespace(cas_capable=True))
     monkeypatch.setattr(
         runner, "DispatchPauseClient", lambda: SimpleNamespace(reserve=lambda *_: None)
     )
     monkeypatch.setattr(runner, "LiteLLMBackend", Backend)
     monkeypatch.setattr(runner, "paused", window)
-    monkeypatch.setattr(sys, "argv", ["run.py", "--stage", "full", "--candidate", "sol"])
+    argv = ["run.py", "--stage", "full", "--candidate", "sol"]
+    if bypass:
+        allowance_path = tmp_path / "allowance.json"
+        monkeypatch.setattr(runner, "load_retry_allowance", lambda *_: None)
+        argv += ["--coordination-bypass", "--retry-allowance", str(allowance_path)]
+        monkeypatch.setattr(
+            runner,
+            "DispatchPauseClient",
+            lambda: SimpleNamespace(reserve=lambda *_: pytest.fail("bypass reserved on Worker")),
+        )
+    monkeypatch.setattr(sys, "argv", argv)
     runner.main()
     rows = [json.loads(p.read_text()) for p in (tmp_path / "batches").glob("*/*.json")]
     assert len(rows) == 1
@@ -418,6 +432,8 @@ def test_runner_keeps_original_429_before_attempt_budget_error(modules, monkeypa
     assert rows[0]["provider_error"]["http_status"] == 429
     assert rows[0]["reason"] == "upstream gateway throttle"
     assert rows[0]["failure_category"] == "rate_limit"
+    assert rows[0]["coordination_bypass"] == bypass
+    assert rows[0]["production_drained"] == (not bypass)
 
 
 def test_controller_refuses_existing_lock(modules, monkeypatch, tmp_path):
@@ -432,3 +448,93 @@ def test_controller_refuses_existing_lock(modules, monkeypatch, tmp_path):
         )
         with pytest.raises(SystemExit, match="already running"):
             controller.main()
+
+
+@pytest.mark.parametrize("used,expected", [(0, True), (8, False)])
+def test_bypass_keeps_local_request_reserve_without_worker(modules, monkeypatch, used, expected):
+    _, runner, _ = modules
+    route = SimpleNamespace(
+        route_id="example",
+        model="model",
+        provider="beatapi",
+        quota=SimpleNamespace(rpd=10, reset_timezone="UTC"),
+    )
+    monkeypatch.setattr(runner, "load_llm_budget_cas", lambda _: (object(), None))
+    monkeypatch.setattr(runner, "used_today", lambda *_: ("example", used))
+    client = SimpleNamespace(status=lambda *_: pytest.fail("bypass contacted Worker"))
+    enough, capacity = runner.headroom(client, object(), route, coordination_bypass=True)
+    assert enough == expected
+    if expected:
+        assert capacity["usage_visibility"] == "local_only"
+        assert capacity["provider_in_flight"] is None
+    else:
+        assert capacity["production_reserve"] == 2
+        assert capacity["kind"] == "daily_quota"
+
+
+@pytest.mark.parametrize("extra", [["--new-run"], []])
+def test_controller_bypass_cannot_mint_new_allowance(modules, monkeypatch, extra):
+    _, _, controller = modules
+    monkeypatch.setattr(sys, "argv", ["backfill.py", "--coordination-bypass", *extra])
+    with pytest.raises(SystemExit):
+        controller.main()
+
+
+def test_old_runner_bypass_requires_scoped_allowance(modules, monkeypatch):
+    _, runner, _ = modules
+    monkeypatch.setattr(sys, "argv", ["run.py", "--stage", "full", "--coordination-bypass"])
+    with pytest.raises(SystemExit):
+        runner.main()
+
+
+def test_controller_forwards_bypass_while_preserving_run(modules, monkeypatch, tmp_path):
+    recovery, runner, controller = modules
+    manifest = controller.Manifest.model_validate_json(
+        (runner.FROZEN / "manifest.json").read_text()
+    )
+    mh = controller.canonical_hash(manifest.model_dump())
+    state = controller.run_state(None, mh, datetime.now(UTC), max_calls=25)
+    (tmp_path / "controller-status.json").write_text(json.dumps(state))
+    (tmp_path / "pilot-reviewed.json").write_text("{}")
+    monkeypatch.setattr(controller, "load_retry_allowance", lambda *_: None)
+    monkeypatch.setattr(controller, "load_site_config", lambda _: {})
+    monkeypatch.setattr(controller, "make_storage", lambda *_: SimpleNamespace(cas_capable=True))
+    monkeypatch.setattr(
+        runner, "DispatchPauseClient", lambda: pytest.fail("bypass constructed client")
+    )
+
+    def local_headroom(_client, _storage, _route, coordination_bypass=False):
+        assert coordination_bypass
+        return True, {"kind": "available", "usage_visibility": "local_only"}
+
+    monkeypatch.setattr(runner, "headroom", local_headroom)
+
+    def child(command, **_kwargs):
+        assert "--coordination-bypass" in command
+        assert "--new-run" not in command
+        assert command[command.index("--max-calls") + 1] == "16"
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(controller.subprocess, "run", child)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill.py",
+            "--execute",
+            "--coordination-bypass",
+            "--max-calls",
+            "25",
+            "--retry-allowance",
+            str(tmp_path / "allowance.json"),
+            "--results-dir",
+            str(tmp_path),
+        ],
+    )
+    with pytest.raises(KeyboardInterrupt):
+        controller.main()
+    saved = json.loads((tmp_path / "controller-status.json").read_text())
+    for key in ("run_id", "started_at", "deadline_at", "max_calls"):
+        assert saved[key] == state[key]
+    assert saved["coordination_bypass"]
+    assert saved["provider_attempts_this_run"] == 0
