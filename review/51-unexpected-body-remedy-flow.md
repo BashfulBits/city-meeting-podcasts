@@ -4115,3 +4115,11 @@ verify high/parsed Qwen calls in bypass, real token admission and clearing only 
 obsolete hold on resume without resetting the horizon or allowance. Read-only local
 preflight permits Qwen; no local Qwen token debt was recorded. Worker production
 usage remains unknown, so that preflight is not a claim of unused provider capacity.
+
+
+Qwen release scheduling clarification before code: the maintainer's request targets
+the beginning of the upcoming capacity window. On the first release migration only,
+set the existing round-robin next_candidate_index to Qwen, so it gets the first
+eligible slot after the active request finishes. Then continue the normal cycle.
+Do not repeat this priority on later resumptions, alter shared allocation, bypass
+actual token waits or change any attempt allowance. Test initial and repeat resumes.
