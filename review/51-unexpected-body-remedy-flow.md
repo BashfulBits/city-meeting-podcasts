@@ -4082,3 +4082,28 @@ A read-only local CAS preflight showed all seven permitted models eligible; GPT-
 had about113287 local token debt against180000, with36000 tokens reserved. Worker
 usage remains unknown. Qwen was held before any provider request or Worker read.
 No live completion or quota visibility is inferred from these preparation checks.
+
+
+### P1 Qwen bypass hold removal — L3, approved2026-10-13
+
+Maintainer explicitly directed removing Qwen's unconditional bypass hold so evaluation
+can use the next available token window without another manual unblock. This supersedes
+only the Qwen exception in the temporary coordination bypass contract. Qwen now follows
+GPT-OSS's evaluation-local request/token checks with180000 daily-token cap and20% reserve.
+Worker usage remains unknown during bypass; do not claim a fresh provider reset from
+midnight alone. Preserve high/parsed controls, native xhigh mapping, all frozen packets,
+existing provider cooldowns,12 attempts per pair and original seven-day horizon.
+
+Scope: existing body-selection run.py/README, tests/test_remedy_body_selection.py and
+lifecycle docs. Remove both unconditional Qwen guards. On controller resumption, clear
+only the obsolete wait whose reason begins Qwen held: bypass; do not clear actual quota
+waits, cooldowns or unknown outcomes. Record qwen_bypass_enabled and its approval reference
+in status. All calls still pass local CAS reservation/settlement and exact physical route
+allowlists. No production routes/quotas, output/input caps, Worker or other experiment edits.
+
+Test Qwen bypass follows local token admission without any Worker request and fails before
+submission when tokens are unavailable. Verify actual high/parsed controls and immutable
+intents in the common provider-mock test. Run targeted/full offline, whole Ruff/format and
+fragment validation before push/resuming. Stop only the active body-selection controller
+under the shared call lock, preserving all responses, counters, deadline and allocation.
+The older comparison remains stopped; do not restart it.

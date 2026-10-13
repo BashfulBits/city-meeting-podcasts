@@ -1955,3 +1955,9 @@ bounded evaluations to use local CAS accounting while the Worker capacity/pause 
 is unavailable. Retain retry caps, original horizons and one shared call lock. Qwen
 remains held without verified token capacity. Explicit default-off evaluation flag only;
 production usage visibility is unavailable and must be disclosed. See review/51.
+
+
+Review/51 Qwen bypass hold removal — L3 approved2026-10-13: remove the explicit
+Qwen outage hold from the active comparison. Apply the same local token cap/reserve
+and request controls as GPT-OSS, with production Worker usage unknown during bypass.
+Preserve original retries/horizon; no manual unblock at the next capacity window.
