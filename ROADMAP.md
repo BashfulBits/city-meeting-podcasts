@@ -685,6 +685,13 @@ with separately bounded durable manual budgets; contract review precedes impleme
 Review/48 manual trigger implementation is prepared under #2221 with the approved separate
 finite allowance. Explicit canary execution and acceptance precede output/broader activation.
 
+Review/48 new-route discovery/report/retry shipped in #2275, and its single-candidate manual live
+activation shipped in #2281. The first selected OpenRouter candidate returned HTTP 200 for all
+four JSON methods but did not produce verified fixture JSON, so request-size discovery did not
+run. Its detailed diagnostics are being improved before the next attempt. Broad weekly discovery
+stays disabled until successful first-route evidence is reviewed; unknown quota scope remains
+explicitly unknown and no limits are published automatically.
+
 The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
 reservation. It yielded no provider counts or completion reason, so it does not verify that request
 size. A manual-only, 4 KiB sanitized HTTP error-body excerpt is being added before rerunning the
@@ -700,7 +707,8 @@ from route maintenance. Periodic empirical limit verification, burst/refill and 
 are Deferred to [review/54](review/54-provider-limit-characterization.md), tracked by #2264; they
 do not block discovery reporting. Review/48 §8.13 defines the offline file/test plan, finite escape
 budgets and authenticated next-day retries; live discovery activation remains separately reviewed.
-Offline foundation implementation is in progress under #2271, followed by report/retry integration.
+The offline foundation shipped in #2273. Report/retry/workflow integration is under implementation
+review in #2271; live discovery remains separately gated by #2223.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing

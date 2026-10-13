@@ -26,32 +26,30 @@ fi
 # --- inside the pinned target environment ---
 # pip itself is pinned by the base-image digest (above); pin the compiler exactly so
 # the resolved constraints only change when repo inputs change, not the toolchain.
-python -m pip install --quiet "pip-tools==7.4.1"
+# >=7.5.1 is required: older pip-tools with click>=8.3 writes bogus options
+# (--cert=None, --no-index, --pip-args=None, ...) into the header command, which
+# Renovate's pip-compile manager parses and rejects. Keep in sync with
+# `constraints.pipTools` in .github/renovate.json5.
+python -m pip install --quiet "pip-tools==7.6.2"
 
 compile() {
-  local out="$1"; shift
-  echo "→ compiling constraints/${out}"
+  local out="$1"
+  echo "→ compiling constraints/${out}.txt"
   # Version-pinned (no --generate-hashes): the constraints are consumed via `pip -c`
   # alongside editable `pip install -e .`, and hash-checking mode is incompatible with
   # an unhashable editable install. Hash-verified `--require-hashes -r` for the immutable
   # images is a documented follow-up (see review/22 / constraints/README.md).
   pip-compile --quiet --strip-extras --allow-unsafe \
-    --output-file "constraints/${out}" "$@" pyproject.toml
+    --output-file "constraints/${out}.txt" "constraints/${out}.in"
 }
 
-# Profiles mirror the extras in pyproject.toml; keep in sync with constraints/README.md.
-# `wer` (H15 L3 calibration report) folds into prod.txt rather than asr.txt: it's just jiwer,
-# deliberately kept out of the faster-whisper/WhisperX/torch stack asr.txt resolves.
-compile prod.txt --extra storage --extra wer --extra llm
-# `asr-align2` (H15 L2, torchcodec) folds into the same asr.txt resolution rather than a separate
-# lock file: torch/torchaudio are already a transitive pin via WhisperX's own torch
-# dependency, and compiling them separately risks two constraint files disagreeing on the exact
-# pinned version of the same package.
-compile asr.txt  --extra storage --extra asr --extra asr-align2
-compile chapter-research.txt --extra chapter-research
-# `wer` also needs to be in dev.txt: ci.yml's `test` job installs against this file, and the H15
-# L3 test suite exercises real jiwer computation (not mocked, unlike L2's heavier torch path —
-# jiwer has no exotic deps, so testing the genuine WER/CER output is cheap and worth doing).
-compile dev.txt  --extra storage --extra dev --extra wer --extra llm
+# One generated input per lane (constraints/<lane>.in, base deps + that lane's extras), so
+# Renovate's pip-compile manager tracks each lock as its own project. The lane -> extras map
+# lives in scripts/lane_inputs.py; keep constraints/README.md in sync with it.
+python scripts/lane_inputs.py
+compile prod
+compile asr
+compile chapter-research
+compile dev
 
 echo "Constraints recompiled. Review the diff before committing."

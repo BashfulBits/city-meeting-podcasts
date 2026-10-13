@@ -47,8 +47,12 @@ from citypods.compute.llm_dispatch_pause import (  # noqa: E402
 from citypods.compute.llm_lanes import load_lanes  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
 from citypods.provider_catalog.evidence import (  # noqa: E402
+    discover_discovery_references,
+    discover_discovery_retry_receipts,
     discover_rate_references,
+    discovery_artifact,
     rate_artifact,
+    verified_discovery_history,
     verified_rate_history,
 )
 from citypods.provider_catalog.issue import (  # noqa: E402
@@ -423,6 +427,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--due-only", action="store_true")
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
+    parser.add_argument("--discovery-enabled", action="store_true")
+    parser.add_argument("--discovery-axis", choices=("all", "input", "output"), default="all")
+    parser.add_argument(
+        "--discovery-candidate",
+        help="exact provider/model identity for a one-route manual discovery canary",
+    )
+    parser.add_argument("--discovery-evidence", type=Path)
     parser.add_argument("--context-evidence", type=Path)
     parser.add_argument("--manual-context", action="store_true")
     parser.add_argument("--context-routes", default="")
@@ -454,6 +465,41 @@ def main(argv: list[str] | None = None) -> int:
         return manual_context_canary(args, limits, control)
     if args.evidence_report:
         return evidence_report(limits, set(args.provider), control)
+
+    from citypods.provider_catalog.reconcile import (
+        DISCOVERY_ACTIVATION_ENABLED,
+        DISCOVERY_SCHEDULED_ENABLED,
+    )
+
+    if args.discovery_enabled and not DISCOVERY_ACTIVATION_ENABLED:
+        parser.error("manual request-cap discovery is disabled by the activation gate")
+    if args.discovery_candidate and not args.discovery_enabled:
+        parser.error("a discovery candidate requires manual request-cap discovery")
+    if args.discovery_axis != "all" and not (args.discovery_enabled and args.discovery_candidate):
+        parser.error("axis selection requires an exact manual discovery candidate")
+    if args.discovery_candidate:
+        provider, separator, model = args.discovery_candidate.partition("/")
+        if (
+            not separator
+            or not provider
+            or not model
+            or provider not in limits.get("providers", {})
+        ):
+            parser.error("discovery candidate must be an exact provider/model catalog identity")
+        if os.environ.get("GITHUB_EVENT_NAME") not in {None, "workflow_dispatch"}:
+            parser.error("an exact discovery candidate is only valid for manual dispatch")
+    if args.discovery_enabled and (
+        args.due_only
+        or args.provider
+        or args.no_pause
+        or args.manual_context
+        or args.context_evidence
+        or not isinstance(control, WorkerDispatchControl)
+        or os.environ.get("GITHUB_REF") not in {None, "refs/heads/main"}
+        or os.environ.get("GITHUB_EVENT_NAME") not in {None, "schedule", "workflow_dispatch"}
+        or args.discovery_evidence is None
+    ):
+        parser.error("request-cap discovery requires a full run, Worker pause and evidence path")
     if args.backtest:
         session = requests.Session()
         rows = backtest_discovery(
@@ -496,12 +542,77 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except DispatchPauseError:
                 print("early rate checks deferred: Worker telemetry unavailable")
-    if args.due_only and not previous_state.get("deferred") and not early:
-        # The daily run: nothing is waiting on a quota reset, so no network calls at all.
-        print("due-only: no deferred checks; nothing to do")
-        return 0
     context_run = None
     context_status = None
+    discovery_history = ()
+    discovery_history_gaps = ()
+    discovery_history_calls = {}
+    retry_receipts = {}
+    if args.discovery_evidence:
+        now = datetime.now(UTC)
+        repository = os.environ.get("GITHUB_REPOSITORY")
+        if not repository:
+            parser.error("request-cap discovery requires repository provenance")
+        try:
+            references = discover_discovery_references(repository=repository, now=now)
+            discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
+                references, repository=repository, now=now
+            )
+            for accepted_run in accepted:
+                for identity, calls in accepted_run.get("call_counts", {}).items():
+                    discovery_history_calls[identity] = (
+                        discovery_history_calls.get(identity, 0) + calls
+                    )
+            if args.due_only:
+                receipt_rows, receipt_gaps = discover_discovery_retry_receipts(
+                    repository=repository, now=now
+                )
+                discovery_history_gaps += receipt_gaps
+                consumed = {
+                    receipt_id for run in accepted for receipt_id in run.get("receipt_ids", [])
+                }
+                configured = {
+                    f"{route.get('provider')}/{route.get('upstream_model')}"
+                    for route in limits.get("routes") or []
+                }
+                used_providers = set()
+                # A partially enumerated receipt set can hide a second authorization for
+                # the same route. Do not spend provider calls unless the bounded scan closed.
+                if receipt_gaps:
+                    receipt_rows = ()
+                for receipt in sorted(
+                    receipt_rows, key=lambda row: (row["earliest_date"], row["comment_id"])
+                ):
+                    key = receipt["candidate_key"]
+                    provider, separator, model = key.partition("/")
+                    if (
+                        receipt["earliest_date"] > today.isoformat()
+                        or receipt["receipt_id"] in consumed
+                        or key in configured
+                        or provider in used_providers
+                        or not separator
+                        or not model
+                        or provider not in limits.get("providers", {})
+                        or len(retry_receipts) >= 2
+                    ):
+                        continue
+                    retry_receipts[key] = receipt["receipt_id"]
+                    used_providers.add(provider)
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            subprocess.CalledProcessError,
+            zipfile.BadZipFile,
+            zlib.error,
+        ) as exc:
+            discovery_history_gaps = (
+                f"request-cap history or retry receipts unavailable ({type(exc).__name__})",
+            )
+    if args.due_only and not previous_state.get("deferred") and not early and not retry_receipts:
+        print("due-only: no deferred checks or request-cap retries; nothing to do")
+        return 0
     if args.context_evidence:
         if (
             os.environ.get("GITHUB_EVENT_NAME") != "schedule"
@@ -570,6 +681,33 @@ def main(argv: list[str] | None = None) -> int:
                 print("context calibration deferred: authority/history unavailable")
     session = requests.Session()
     quality = fetch_quality_index(session)
+    activated_schedule = (
+        DISCOVERY_ACTIVATION_ENABLED
+        and DISCOVERY_SCHEDULED_ENABLED
+        and (
+            os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+            and os.environ.get("GITHUB_EVENT_SCHEDULE") == "17 10 * * 1"
+        )
+    )
+    # A queued receipt is not itself live-call authority. A reviewed activation change must
+    # authorize scheduled sessions and retries alike.
+    discovery_enabled = DISCOVERY_ACTIVATION_ENABLED and (
+        args.discovery_enabled or activated_schedule or bool(retry_receipts)
+    )
+    if args.discovery_enabled and not args.discovery_candidate and not retry_receipts:
+        parser.error("manual request-cap discovery requires one exact new-route candidate")
+    if args.discovery_candidate and retry_receipts:
+        parser.error("select either a new candidate or an authenticated retry, not both")
+    if discovery_enabled and (
+        args.provider
+        or args.no_pause
+        or not isinstance(control, WorkerDispatchControl)
+        or args.discovery_evidence is None
+    ):
+        parser.error("request-cap discovery requires Worker pause and an evidence path")
+    if retry_receipts and not discovery_enabled:
+        print("request-cap retries deferred until the reviewed discovery activation is enabled")
+        retry_receipts = {}
     report = reconcile(
         limits,
         load_lanes(),
@@ -584,7 +722,16 @@ def main(argv: list[str] | None = None) -> int:
         rate_run_id=rate_run_id,
         early_rate_checks=early,
         context_run=context_run,
+        discovery_enabled=discovery_enabled,
+        discovery_axis=args.discovery_axis,
+        discovery_history=discovery_history,
+        discovery_history_calls=discovery_history_calls,
+        discovery_run_id=os.environ.get("GITHUB_RUN_ID", ""),
+        discovery_receipt_ids=retry_receipts,
+        retry_candidate_keys=set(retry_receipts) if retry_receipts else None,
+        candidate_keys={args.discovery_candidate} if args.discovery_candidate else None,
     )
+    report.observations.extend(discovery_history_gaps)
     _carry_rate_state(report, previous_state)
     if args.rate_evidence:
         now = datetime.now(UTC)
@@ -665,6 +812,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
+    if args.discovery_evidence and report.discovery_sessions:
+        envelope = discovery_artifact(
+            report.discovery_sessions,
+            repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
+            run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+            head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
+            now=datetime.now(UTC),
+        )
+        args.discovery_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.

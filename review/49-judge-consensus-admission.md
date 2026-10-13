@@ -1,7 +1,9 @@
 # review/49 — Judge-consensus admission (JEV as anchor judge)
 
-**Maturity: L2-partial (approach chosen, risks and capacity worked out; not L3 dev-ready) · authored 2026-09-29, revised 2026-10-05.
-The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
+**Maturity: umbrella design; its phases are L3 in their build specs · authored 2026-09-29, revised 2026-10-11.
+P0 shipped ([review/50](50-p0-llm-verb-backlog-trend.md)). P1 to P5 and P7 are L3 in [review/53](53-judge-stack-tags-and-moments.md); P1 to P4 have
+shipped and shadow judging of tags and moments is running. P6 (route leagues) stays L2. Tracked in `review/11` (judge-consensus admission row);
+per-item status is in "Path to L3" at the bottom.**
 
 **Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
 (one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3, shipped); [review/53](53-judge-stack-tags-and-moments.md) specifies P1 to P5 and P7 (L3) as one PR series ending with tags and moments both admitted by the stack and the R5/R6 flows retired; P6 (leagues) follows. The pilots live in the eval lane
@@ -578,6 +580,12 @@ production logs surfaced two things the judge refactor should settle, rather tha
        re-sizes.
 
    The same applies to `structured_output_empty` when it is persistent for a model, not transient.
+
+   **Status (2026-10-11):** the retry ceiling shipped. A job whose `allowed_models` is one model
+   and that has no backups gets `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES` (default 1) output-limit
+   retries, then fails. The judge runner treats the missing record as `replanned`. The
+   `structured_output_empty` half stays open: it shares the route-health budget and cooldown, and a
+   persistent-per-model signal needs P4 shadow data to tell apart from transient emptiness.
 2. **Retiring a lane cancels its queued backlog.**
    - **The problem:** P7 retires lanes (`topic-tags:prelabeler`, `-shadow`, `tournament:*`,
      `r5-benchmark:*`, the legacy `r6-judge` panel). Their queued jobs would otherwise sit in the
@@ -673,7 +681,7 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
 | BeatAPI provider registration | [#1967](https://github.com/BashfulBits/city-meeting-podcasts/issues/1967): secret, discovery plugin, contract tests; prerequisite for P1 |
 | P1 to P5, P7 | **L3: [review/53](53-judge-stack-tags-and-moments.md)**: twelve PRs from the `systemone` transport through shadow judging of tags and moments, adjudication, audit, calibration, per-task graduation, retirement of the R5/R6 flows and league-governed lane repair (a review/48 §8.6 extension); reservations sized for 800 meetings/day |
-| Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
+| Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted` (**ceiling shipped 2026-10-11**; persistent `structured_output_empty` open); P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
 | P6 | route leagues stay L2 until the judge lanes have run with authority; review/53 already carries `active`/`eligible` pools for them |
 | Judge and adjudicator routes | recommendation in section 4c; qualified the section 4 way (audit-grown probes, stability, audit agreement, quote check), no separate benchmark |
 | Open decisions | shadow and switch-over shape, graduation wording (above) |

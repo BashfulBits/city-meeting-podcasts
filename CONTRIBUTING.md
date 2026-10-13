@@ -233,8 +233,23 @@ design docs never go stale:
 | **Committed** | promoted to near-term | `ROADMAP.md` + `review/11` catalog (L1) + write the L1 sketch inline in `review/11` |
 | **Designed** | approach chosen / next-up | **break out** to a new `review/NN`; `review/11` entry → L2 + link |
 | **Dev-ready** | full design done | mature `review/NN` to L3; **cut GitHub Issue(s)** from it; `review/11` → L3 |
-| **Implemented** | PR merged | `review/11` entry → **Shipped** (+PR/issue link); **add a `CHANGELOG.md` entry**; update `ARCHITECTURE.md` if architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
+| **Implemented** | PR merged | `review/11` entry → **Shipped** (+PR/issue link); **add a changelog fragment in `changelog.d/<slug>.md`** (do not edit `CHANGELOG.md` directly); update `ARCHITECTURE.md` if architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 | **Superseded** | abandoned/replaced | mark the `review/11` entry; note in `CHANGELOG.md` if ever partially shipped |
+
+### Changelog fragments convention (`changelog.d/`)
+
+To eliminate merge conflicts and GitHub automated rebase failures when multiple PRs land in
+sequence, **do not edit `CHANGELOG.md` directly in a PR**.
+
+Instead, add an isolated fragment file in `changelog.d/<id-or-slug>.md` (e.g.
+`changelog.d/2284-structured-probe-diagnostics.md` or `changelog.d/feat-my-feature.md`).
+
+- **Entry format:** One or more Markdown list items starting with `- **Title.** Description...`
+  following [Keep a Changelog](https://keepachangelog.com/).
+- **Line length:** Keep all lines under 100 characters (enforced by `scripts/compile_changelog.py --check`).
+- **Automated compilation:** When the PR merges into `main`, the `compile-changelog.yml` workflow
+  automatically compiles all pending fragments into `CHANGELOG.md` under `## Unreleased` and removes
+  the fragment files.
 
 ## How to add an enrichment stage
 
@@ -283,8 +298,9 @@ Pins are the default (reproducible builds); an automated bot moves them forward.
 
 1. Edit **`pyproject.toml`** only — add the abstract `>=` floor. Never pin exact versions there.
 2. **Recompile constraints** with `scripts/compile_constraints.sh` (runs `pip-compile` in the pinned
-   linux/3.12 image; needs Docker) and commit the updated `constraints/*.txt`. In CI the `lock.yml`
-   workflow does this; the `deps` job in `ci.yml` fails if they are stale.
+   linux/3.12 image; needs Docker; it also regenerates the per-lane `constraints/*.in`) and commit the
+   updated `constraints/*.in` and `constraints/*.txt`. In CI the `lock.yml` workflow does this; the
+   `deps` job in `ci.yml` and `python-compat.yml` fail if they are stale.
 3. **Classify it** — hygiene, or *output-affecting* (touches produced audio/transcript bytes:
    `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`, ffmpeg, the base image, model revisions)?
    Output-affecting bumps follow the `AGENTS.md` pipeline-version-bump contract.
@@ -302,7 +318,8 @@ Pins are the default (reproducible builds); an automated bot moves them forward.
 
 - [ ] Tests added/updated; `ruff check . && ruff format --check .` and `pytest` pass.
 - [ ] Feed snapshots regenerated intentionally (if output changed).
-- [ ] Docs updated per the lifecycle contract (review/11 + CHANGELOG + ARCHITECTURE as applicable).
+- [ ] Docs updated per the lifecycle contract (review/11 + changelog fragment in `changelog.d/` +
+      ARCHITECTURE as applicable).
 - [ ] No artifact-identity change without a migration note.
 - [ ] Dependency changes follow [`review/22`](review/22-dependency-and-reproducibility-policy.md):
       `constraints/*.txt` recompiled; output-affecting bumps version-coupled; deps not re-declared in

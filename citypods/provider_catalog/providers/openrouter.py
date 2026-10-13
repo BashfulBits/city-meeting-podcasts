@@ -40,7 +40,7 @@ def discovery_observation(response, request, transient):
 
 RULES = ProviderRules(
     discovery_axes=("input", "output"),
-    discovery_parser_version="openrouter-discovery-chat-v1",
+    discovery_parser_version="openrouter-discovery-chat-v2",
     discovery_observation=discovery_observation,
     context_observation=context_observation,
     model_identity=namespaced_identity(":free"),

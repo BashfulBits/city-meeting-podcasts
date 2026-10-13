@@ -9,12 +9,13 @@ It points you to:
   canonical design index; pick the next development-ready item here
 - [ROADMAP.md](ROADMAP.md) / [VISION.md](VISION.md) — near-term plan / long-horizon direction
 - [CONTRIBUTING.md](CONTRIBUTING.md) — process and the **doc-update contract** (update review/11 +
-  CHANGELOG + ARCHITECTURE as work lands)
-- [CHANGELOG.md](CHANGELOG.md) — what shipped
+  changelog fragment in `changelog.d/` + ARCHITECTURE as work lands)
+- [CHANGELOG.md](CHANGELOG.md) — what shipped (compiled from `changelog.d/` fragments upon merge)
 - `.claude/memory/` — Claude Code's **local** decision-history cache (not in the repo, not visible to
   other agents; shared facts live in the committed docs above)
 
-Key conventions (full list in AGENTS.md): append-only records, split hashes + content-addressed audio,
+Key conventions (full list in AGENTS.md): changelog fragments in `changelog.d/` (do not edit
+`CHANGELOG.md` directly in PRs), append-only records, split hashes + content-addressed audio,
 audio-affecting stages run before `AudioStage`, the wall-clock `stop()` budget (deferred ≠ failed),
 untrusted LLM output, and the SSRF gate. Lint the whole repo; prefer `python -m citypods.cli`.
 

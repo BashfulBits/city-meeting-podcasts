@@ -95,7 +95,7 @@ def discovery_observation(response, request, transient):
 
 RULES = ProviderRules(
     discovery_axes=("input",),
-    discovery_parser_version="groq-discovery-chat-v1",
+    discovery_parser_version="groq-discovery-chat-v2",
     discovery_observation=discovery_observation,
     # https://console.groq.com/docs/api-reference (chat usage; reasoning remains unknown).
     context_observation=context_observation,

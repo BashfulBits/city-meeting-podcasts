@@ -78,6 +78,8 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         choices.append(f"{key}: ignore")
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
+        if candidate.discovery and candidate.discovery.get("retryable") is True:
+            choices.append(f"{key}: test again")
     for anomaly in report.anomalies:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
             choices.append(f"`{anomaly.route_id}`: remove route")
@@ -98,6 +100,186 @@ def _score_cell(score: float | None, below_floor: bool | None) -> str:
     if score is None:
         return "unscored"
     return f"{score:g}" + (" (below floor)" if below_floor else "")
+
+
+def _discovery_count(value) -> str:
+    return f"{value:,}" if type(value) is int else "—"
+
+
+def _discovery_transport_groups(value):
+    """Keep editable issue state from injecting unbounded or malformed telemetry into reports."""
+    if not isinstance(value, list):
+        return ()
+    groups = []
+    for group in value[:8]:
+        if not isinstance(group, list) or not 2 <= len(group) <= 5:
+            continue
+        normalized = []
+        for row in group:
+            if not isinstance(row, Mapping):
+                continue
+            axis = row.get("axis")
+            outcome = row.get("outcome")
+            diagnostic = row.get("diagnostic")
+            attempt_id = row.get("attempt_id")
+            if not isinstance(axis, str) or axis not in {
+                "input",
+                "output",
+                "total_input_heavy",
+                "total_output_heavy",
+            }:
+                axis = "unknown"
+            if not isinstance(outcome, str) or outcome not in {
+                "admitted",
+                "refused",
+                "quota",
+                "daily",
+                "outage",
+                "inconclusive",
+                "lower_only",
+            }:
+                outcome = "unknown"
+            if not isinstance(diagnostic, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,64}", diagnostic
+            ):
+                diagnostic = "unknown"
+            if not isinstance(attempt_id, str) or not re.fullmatch(r"[a-f0-9]{64}", attempt_id):
+                attempt_id = "unavailable"
+            normalized.append(
+                {
+                    "axis": axis,
+                    "target": _discovery_count(row.get("target")),
+                    "reserved_input": _discovery_count(row.get("reserved_input")),
+                    "requested_output": _discovery_count(row.get("requested_output")),
+                    "outcome": outcome,
+                    "diagnostic": diagnostic,
+                    "attempt_id": attempt_id[:12],
+                }
+            )
+        if len(normalized) >= 2:
+            groups.append(normalized)
+    return tuple(groups)
+
+
+def _discovery_attempt_diagnostics(value):
+    """Render only bounded, typed response metadata from the editable issue marker."""
+    if not isinstance(value, list):
+        return ()
+    rows = []
+    choices = {
+        "axis": {"input", "output", "total_input_heavy", "total_output_heavy"},
+        "outcome": {
+            "admitted",
+            "refused",
+            "quota",
+            "daily",
+            "outage",
+            "inconclusive",
+            "lower_only",
+        },
+        "message_content_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "empty",
+            "text",
+            "other",
+        },
+        "finish_reason_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "null",
+            "stop",
+            "length",
+            "other",
+        },
+        "usage_state": {
+            "unknown",
+            "not_applicable",
+            "missing",
+            "not_object",
+            "prompt_missing",
+            "prompt_invalid",
+            "completion_missing",
+            "completion_invalid",
+            "total_invalid",
+            "total_missing",
+            "valid",
+        },
+        "response_media_type": {"unknown", "application/json", "text/event-stream", "other"},
+        "sentinel_verification": {"unknown", "passed", "failed", "not_checked"},
+    }
+    for item in value[-12:]:
+        if not isinstance(item, Mapping):
+            continue
+        row = dict(item)
+        for name, allowed in choices.items():
+            if not isinstance(row.get(name), str) or row.get(name) not in allowed:
+                row[name] = "unknown"
+        diagnostic = row.get("diagnostic")
+        row["diagnostic"] = (
+            diagnostic
+            if isinstance(diagnostic, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", diagnostic)
+            else "unknown"
+        )
+        for name in (
+            "target",
+            "reserved_input",
+            "requested_output",
+            "response_bytes",
+            "reported_input",
+            "reported_output",
+        ):
+            number = row.get(name)
+            row[name] = number if type(number) is int and 0 <= number <= 4 * 1024 * 1024 else None
+        status = row.get("response_status")
+        row["response_status"] = status if type(status) is int and 100 <= status <= 599 else None
+        for name in ("provider_request_id", "response_id"):
+            value = row.get(name)
+            row[name] = (
+                value
+                if isinstance(value, str)
+                and 1 <= len(value) <= 128
+                and re.fullmatch(r"[A-Za-z0-9._:-]+", value)
+                else ""
+            )
+        finish = row.get("finish_reason")
+        row["finish_reason"] = (
+            finish
+            if isinstance(finish, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", finish)
+            else ""
+        )
+        preview = row.get("response_preview")
+        try:
+            decoded = (
+                json.loads(preview) if isinstance(preview, str) and len(preview) <= 1_024 else None
+            )
+        except (TypeError, ValueError):
+            decoded = None
+        if isinstance(decoded, str) and len(decoded) <= 128:
+            safe = json.dumps(decoded, ensure_ascii=True)
+            row["response_preview"] = (
+                safe.replace("`", r"\u0060")
+                .replace("@", r"\u0040")
+                .replace("<", r"\u003c")
+                .replace(">", r"\u003e")
+                .replace("[", r"\u005b")
+                .replace("]", r"\u005d")
+                .replace("(", r"\u0028")
+                .replace(")", r"\u0029")
+                .replace("!", r"\u0021")
+                .replace("#", r"\u0023")
+                .replace("|", r"\u007c")
+                .replace("*", r"\u002a")
+                .replace("_", r"\u005f")
+                .replace("~", r"\u007e")
+            )
+        else:
+            row["response_preview"] = ""
+        rows.append(row)
+    return tuple(rows)
 
 
 def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
@@ -255,6 +437,103 @@ def render_body(
         ]
     else:
         lines.append("None this week.")
+    discoveries = [c for c in report.candidates if c.discovery]
+    if discoveries:
+        lines += ["", "## Request-cap discovery", ""]
+        for candidate in discoveries:
+            result = candidate.discovery or {}
+            lines += [f"### `{candidate.key}`", ""]
+            lines += [
+                "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
+                "Count basis / control | Status / note |",
+                "|---|---:|---:|---:|---:|---|---|",
+            ]
+            for axis in result.get("axes", []):
+                claim = axis.get("published")
+                admitted, refused, width = (
+                    axis.get("admitted"),
+                    axis.get("refused"),
+                    axis.get("target_width"),
+                )
+                source = axis.get("source")
+                claim_text = _discovery_count(claim)
+                if source:
+                    claim_text += f" ([source]({source}))"
+                basis = axis.get("count_basis") or "unverified"
+                control = axis.get("control") or "—"
+                note = axis.get("reason") or "—"
+                lines.append(
+                    f"| {axis.get('axis', 'unknown')} | {claim_text} | "
+                    f"{_discovery_count(admitted)} | {_discovery_count(refused)} | "
+                    f"{_discovery_count(width)} | {basis}; `{control}` | "
+                    f"{axis.get('status', 'inconclusive')}; {note} |"
+                )
+            lines += [
+                "",
+                "The admitted count is the largest verified passing value to consider as an "
+                "operational cap; the refused count is its measured upper boundary. These "
+                "results are evidence only and are never written to configuration automatically.",
+                f"Reachability: {result.get('reachability', 'verified')}; "
+                f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
+                f"spent: {result.get('calls', 0)} calls, "
+                f"{_discovery_count(result.get('input_tokens', 0))} reserved input, "
+                f"{_discovery_count(result.get('output_tokens', 0))} requested output tokens.",
+                f"Status: {result.get('reason', 'partial')}. "
+                f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
+            ]
+            attempts = _discovery_attempt_diagnostics(result.get("attempt_diagnostics"))
+            if attempts:
+                lines += [
+                    "",
+                    "Recent request diagnostics (response text is shown only as a redacted, "
+                    "bounded preview on failed attempts):",
+                    "",
+                    "| Axis / target | Outcome / diagnostic | HTTP / media / bytes | "
+                    "Content / finish / usage | Provider counts | Sentinel accuracy | "
+                    "Correlation IDs | Preview |",
+                    "|---|---|---|---|---:|---|---|---|",
+                ]
+                for attempt in attempts:
+                    status = attempt["response_status"] or "—"
+                    counts = (
+                        f"{_discovery_count(attempt['reported_input'])} / "
+                        f"{_discovery_count(attempt['reported_output'])}"
+                    )
+                    ids = (
+                        ", ".join(
+                            f"`{attempt[name]}`"
+                            for name in ("provider_request_id", "response_id")
+                            if attempt[name]
+                        )
+                        or "—"
+                    )
+                    lines.append(
+                        f"| {attempt['axis']} / {_discovery_count(attempt['target'])} | "
+                        f"{attempt['outcome']} / `{attempt['diagnostic']}` | "
+                        f"{status} / {attempt['response_media_type']} / "
+                        f"{_discovery_count(attempt['response_bytes'])} | "
+                        f"{attempt['message_content_state']} / "
+                        f"{attempt['finish_reason_state']} ({attempt['finish_reason']}) / "
+                        f"{attempt['usage_state']} | {counts} | "
+                        f"{attempt['sentinel_verification']} | {ids} | "
+                        f"{attempt['response_preview'] or '—'} |"
+                    )
+                lines.append(
+                    "Input admission measures API capacity using provider usage. Sentinel accuracy "
+                    "is a separate retrieval/truncation warning, not a token-size refusal."
+                )
+            for group in _discovery_transport_groups(result.get("transport_retries")):
+                lines.append("No-response attempt telemetry:")
+                for attempt in group:
+                    lines.append(
+                        "- "
+                        f"{attempt.get('axis', 'unknown')} target "
+                        f"{attempt['target']}: "
+                        f"{attempt['reserved_input']} reserved input, "
+                        f"{attempt['requested_output']} requested output; "
+                        f"{attempt['outcome']} / {attempt['diagnostic']} "
+                        f"(attempt `{attempt['attempt_id']}`)"
+                    )
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [
@@ -318,7 +597,9 @@ def render_body(
                 "with those changes (review/48). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
                 "a paid route. Additions/ignore and keep-paid choices are available; "
-                "removal requires deployed Slice 3 rescue. Unavailable proofs remain ticked. "
+                "removal requires deployed Slice 3 rescue. Partial request-cap discovery can be "
+                "resumed with `test again`; that only queues a later bounded run. "
+                "Unavailable proofs remain ticked. "
                 "An open PR does not fulfill a "
                 "selection until it is merged.",
                 "",

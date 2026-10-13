@@ -66,6 +66,8 @@ class EditPlan:
     # Scope, provider, target, metric, old/new scalar and authenticated target digest.
     rate_changes: tuple = ()
     context_changes: tuple = ()
+    # route ID, exact account, repeated verdict, HTTP status, and independent check timestamp.
+    removal_confirmations: tuple[tuple[str, str, str, int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,13 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
         prefix = f"`{candidate.key}`: "
         selected = [x.removeprefix(prefix) for x in checked if x.startswith(prefix)]
         if not selected:
+            continue
+        if "test again" in selected:
+            if len(selected) != 1 or not (
+                candidate.discovery and candidate.discovery.get("retryable") is True
+            ):
+                raise ValueError(f"{candidate.key}: test again is unavailable or conflicts")
+            result.append(Decision(candidate.provider, candidate.model, "test_again"))
             continue
         ignore = "ignore" in selected
         if ignore and len(selected) != 1:
@@ -442,6 +451,13 @@ def proposal_body(plan: EditPlan) -> str:
             else "Source: proven automatic tightening",
             "",
         ]
+    if plan.removal_confirmations:
+        lines += ["Fresh removal confirmations:"]
+        lines.extend(
+            f"- `{route_id}` on account `{account_id}`: {verdict} (HTTP {status}) at `{checked_at}`"
+            for route_id, account_id, verdict, status, checked_at in plan.removal_confirmations
+        )
+        lines.append("")
     for label, values in (
         ("Selected", plan.applied),
         ("Deferred (still ticked)", plan.deferred),

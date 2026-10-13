@@ -1,4 +1,6 @@
-"""Fail-closed retirement evidence; no provider calls or live publication here."""
+"""Fail-closed retirement evidence and proposal planning."""
+
+from datetime import UTC, datetime
 
 from citypods.provider_catalog.apply import SOURCE_PATHS, EditPlan
 from citypods.provider_catalog.evidence import digest
@@ -11,10 +13,10 @@ RETIREMENTS_ENABLED = False
 
 
 def _retirement_proven(route, report, config):
-    """Only fresh complete absence plus exact configured-account probes qualify.
+    """Only fresh absence plus two agreeing exact-account probes qualify.
 
-    Report must come from fresh reconciliation, never directly from an edited issue marker.
-    Route digests bind each probe to its account and the entire current route configuration.
+    Report must come from fresh reconciliation plus its independent confirmation, never from an
+    edited issue marker. Route digests bind both probes to the account and current route config.
     Every configured physical account serving this upstream must agree before removing one.
     """
     provider, model = route.get("provider"), route.get("upstream_model")
@@ -49,6 +51,13 @@ def _retirement_proven(route, report, config):
         if len(matches) != 1:
             return False
         proof = matches[0]
+        confirmation = proof.retirement_confirmation
+        if not isinstance(confirmation, dict):
+            return False
+        try:
+            checked_at = datetime.fromisoformat(confirmation["checked_at"])
+        except (KeyError, TypeError, ValueError):
+            return False
         if (
             proof.provider != provider
             or proof.model != model
@@ -57,6 +66,17 @@ def _retirement_proven(route, report, config):
             or proof.observed_on != config.today.isoformat()
             or proof.config_digest != digest(physical)
             or proof.contended
+            or not isinstance(confirmation, dict)
+            or confirmation.get("provider") != provider
+            or confirmation.get("account_id") != physical.get("account_id")
+            or confirmation.get("route_id") != physical.get("route_id")
+            or confirmation.get("model") != model
+            or confirmation.get("config_digest") != digest(physical)
+            or confirmation.get("verdict") != proof.verdict
+            or confirmation.get("status") is None
+            or confirmation.get("contended") is not False
+            or checked_at.tzinfo is None
+            or checked_at.astimezone(UTC).date() != config.today
         ):
             return False
     return True
@@ -121,7 +141,10 @@ def plan_retirements(report, config):
         ):
             continue
         if rid not in retired:
-            deferred.append(f"{rid}: fresh complete absent catalog and all-account proof required")
+            deferred.append(
+                f"{rid}: fresh absent catalog, repeated exact-account verdict, and all-account "
+                "proof required"
+            )
             continue
         proposed = (*removed, rid)
         _, _, blocked = _repair_lanes(config, proposed, retired)
@@ -134,6 +157,19 @@ def plan_retirements(report, config):
         removed.append(rid)
         applied.append(f"{rid}: remove definitively retired route")
     repairs, primaries, _ = _repair_lanes(config, removed, retired)
+    confirmations = []
+    for rid in removed:
+        proof = next(a for a in report.anomalies if a.route_id == rid)
+        confirmation = proof.retirement_confirmation
+        confirmations.append(
+            (
+                rid,
+                str(confirmation["account_id"]),
+                str(confirmation["verdict"]),
+                int(confirmation["status"]),
+                str(confirmation["checked_at"]),
+            )
+        )
     return EditPlan(
         config.base_commit,
         tuple((p, digest(config.texts[p])) for p in SOURCE_PATHS),
@@ -144,4 +180,5 @@ def plan_retirements(report, config):
         lane_repairs=repairs,
         primary_changes=primaries,
         proposal_kind="removals",
+        removal_confirmations=tuple(confirmations),
     )

@@ -12,17 +12,185 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Review/51 P1 comparison evidence.** Retain the approved varied 60-recording challenge and
-  candidate-specific pilot reports under `evals/remedy/`. The first pilot batches expose one
-  repeated Dallas multi-feed miss and an unresolved GLM Flash response-name hold. These are
-  regression results only: no blind-owner admission truth, feed changes or model activation.
+<!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
+     changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
+     upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **New-route probes separate API capacity from retrieval quality.** Successful ordinary chat
+  completions with positive, consistent provider-reported input/output/total usage can establish
+  admitted input sizes even when sentinel retrieval fails. Sentinel accuracy remains separately
+  visible in artifacts and issues; malformed usage, refusals and errors do not establish capacity.
+  Manual discovery adds an all/input/output selector so output can resume in its own bounded
+  session. Existing histories remain readable, and configured-route calibration, production
+  dispatch, budgets, provider pauses and activation gates are unchanged.
+
+- **Changelog fragments and automated compiler workflow.** PRs now add isolated fragment
+  files in `changelog.d/<slug>.md` instead of editing `CHANGELOG.md` directly, eliminating
+  merge and rebase conflicts on GitHub when multiple PRs land in sequence. A GitHub Action
+  compiles fragments into `CHANGELOG.md` under `## Unreleased` and removes them upon merge
+  to `main`.
+
+     
+- **New-route size searches retain token calibration at the hard ceiling.** The input planner
+  now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
+  1,000,000-token local reservation, which overshot NVIDIA's actual count by about 29%. The shared
+  parser accepts the recorded exact "messages resulted in" token-size refusal, including its
+  narrow message-only envelope. Discovery output probes request an explicit long numeric sequence
+  under the unchanged output cap; output control v2 excludes old-prompt boundary history. Existing
+  input evidence stays compatible, and configured-route calibration/production dispatch are unchanged.
+
+- **H15 eval builds provider-align sections like production, and skips ineligible samples.** The
+  weekly ASR Quality Eval had produced no results since the WhisperX swap (2026-08-13): runs hung
+  until the job timeout (shown as "cancelled"), then failed with `alignment section is too long`.
+  For VTT/SRT the eval joined cue text and dropped every timestamp, so the whole transcript became
+  one section. It now keeps per-cue windows (remapped to the served timeline) as the production
+  provider-align path does. A candidate with no usable time markers is reported as skipped
+  (production marks it align-ineligible and re-transcribes) instead of failing the run, and the
+  sampler leaves out episodes production already marked ineligible. Audio downloads get a 15-minute
+  wall-clock deadline, and the evaluate step a 100-minute timeout so a stall reports as a failure.
+  
+- **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
+  Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
+  reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
+  with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+  
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
+
+- **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
+  let Requests' inferred response charset and Unicode line splitting split a valid JSON event
+  inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
+  had its blank-line terminator, legacy Unicode splitting hazards, and a bounded, secret-redacted
+  base64 byte excerpt for malformed JSON or invalid UTF-8. Request budgets and deadlines are unchanged.
+
+- **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
+  content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
+  failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would
+  parse the event, without changing the existing parser verdict. Full bodies and credentials remain
+  excluded.
+
+- **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
+  `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
+  picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so
+  every lock update since failed (`install-tool python 3.12`, then `spawn pip-compile ENOENT`).
+  #2298/#2299 ended up as empty commits. It is now a full patch version (`3.12.15`), which both uses
+  accept; Renovate keeps the patch current (automerged), and `python_lanes.py` checks its
+  `major.minor` against the ASR version file.
+
+- **Renovate's pyproject.toml exclusion survives GitHub security alerts.** The file-level
+  `enabled: false` rule from the previous fix did not hold for GitHub-advisory PRs: Renovate appends
+  its alert rules after ours with `force`, which re-enabled the pep621/poetry deps, so #2298/#2299
+  kept raising `pyproject.toml` floors. The pep621 and poetry managers are now disabled outright,
+  so `pyproject.toml` is never extracted; the generated `constraints/*.in` remain the only path.
+
+- **Renovate leaves pyproject.toml to the lane inputs.** The first hosted run after per-lane
+  locks showed the pep621 and poetry managers also reading `pyproject.toml` and raising its floors
+  on security fixes (`torch>=2.0` -> `>=2.13.0`), which would leave `constraints/*.in` stale and
+  fail every such PR. Renovate now ignores `pyproject.toml` (the `.in` files carry it). The
+  pip-tools and Python constraints moved into a pip-compile-only rule, because as globals they
+  reached the npm deps (an "invalid constraint" warning). Python is now given as a bare `3.12`,
+  the only form Renovate's requires_python filter matches. `python_lanes.py` checks that pin
+  against the ASR version file.
+
+- **Renovate tracks every Python lock, one lane at a time.** Each `constraints/<lane>.txt` now
+  compiles from a generated `constraints/<lane>.in` (`scripts/lane_inputs.py`, from
+  `pyproject.toml`), because Renovate's pip-compile manager reads current versions from only the
+  first lock that shares a source file, which was `asr.txt`, so litellm never got a PR. Renovate
+  now manages the four locks: the LLM stack (litellm, instructor, pydantic, openai, tiktoken) is
+  lock-bumped as soon as a release is 3 days old and automerged on green CI; releases whose
+  `requires_python` excludes the lock's Python are skipped; security fixes (GitHub and OSV
+  advisories) open at once; and Python bumps and the monthly full lock refresh wait for
+  Dependency Dashboard approval.
+
+- **Review/48 new-route discovery timeout.** Increase the hard deadline for an individual
+  new-route size-discovery call from 120 to 600 seconds so slow large-input requests can return
+  provider-counted usage or a typed size refusal. Timeouts remain inconclusive. The 20-minute
+  session and other request, response and provider-pause bounds remain in force; incomplete
+  no-response retries are preserved as uncertain evidence. Configured-route calibration remains
+  at 120 seconds.
+
+- **Python versions live in two files, with a compatibility gate.** Every workflow's
+  `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
+  `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
+  each version file to the constraints its jobs install and fails on literal pins, on `asr.txt`
+  installed off the ASR Python, and on Modal/Beam/audio-runner/lock-compile Pythons that disagree
+  with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+  only, so a Python or dependency bump that cannot install fails on the PR.
+
+- **Review/48 size probes reserve room for reasoning.** With no compatible history, output probes
+  now start at 16,384 tokens, and combined probes at 18,432 total tokens (2,048 input plus 16,384
+  output). Input probes retain their 16,384-token output counterpart. This lets reasoning models
+  complete output and combined verification instead of repeatedly ending at a 256-token ceiling.
+  Typed counterpart refusals still reduce that fixed size and create a separate control history;
+  aggregate output budgets are unchanged.
+
+- **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
+  `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options
+  (`--cert=None`, `--no-index`, `--pip-args=None`, ...) into each `constraints/*.txt` header, and
+  Renovate's pip-compile manager rejects unknown header options, so the locks could not be tracked.
+  The recompile changes only the four header lines; every pinned version is unchanged.
+
+- **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
+  and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
+  128 KiB cumulative event-data bound accommodates complete reasoning-heavy responses while keeping
+  streamed evidence bounded; multiline gateway responses no longer appear malformed because one
+  event spans several data fields.
+
+- **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
+  after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
+  hard ceiling. Once both admitted and refused bounds exist, the planner bisects them to the existing
+  0.5% goal. The per-candidate input allowance is 8,388,608 tokens and the maintenance-run cap is
+  16,777,216; a ceiling pass remains a lower bound. Output authority is unchanged.
+
+- **Review/48 first live new-route discovery gate (#2223).** A maintainer can manually select one
+  exact new `provider/model` candidate for bounded request-cap discovery after free eligibility and
+  reachability checks. The workflow requires the existing v2 provider-wide pause; authenticated
+  `/apply` retries remain supported. Broad weekly discovery stays disabled pending review of the
+  first route's evidence. Unknown quota scope remains labeled unknown; the bounded canary makes no
+  quota inference or automatic configuration change.
+
+- **Review/48 structured-probe diagnostics.** New-route JSON-mode checks retain bounded HTTP error
+  and failed-completion previews, provider request IDs, stream and content sizes, usage counts,
+  finish reasons, and diagnostic codes. Discovery attempts also report response-shape states and
+  preserve valid provider-reported token counts when malformed content prevents admission. Failed
+  attempts include a 128-character escaped provider error or model-text excerpt when available,
+  after prompt and credential redaction. Probe requests go directly from GitHub Actions to provider
+  APIs, so they are not expected in Cloudflare AI Gateway logs. Successful model text and complete
+  response bodies are not retained.
+
+- **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
+  independent request to the exact route/account after the initial definitive retired/not-served
+  signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous
+  confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
+  timestamp. Removal publication remains behind its separate recovery-canary activation gate.
+
+- **Single-model output-limit retry ceiling (review/49 dispatch requirement 1).** A Worker job
+  pinned to one model with no backups (every `per_model` judge lane) now gets one retry, set by
+  `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES`, when its reply stops at the output limit. It previously
+  drew on the 8-retry upstream budget, and the same cut-off recurred on the same model. The job then
+  fails to its producer, which re-plans it. Jobs that can move to another model keep the upstream
+  budget.
 
 - **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
   with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
   checkpoints and authenticated partial-run evidence. A separate typed discovery transport
   preserves existing Worker context admission. Provider callbacks fail closed on unsupported
-  refusal/combined semantics. No workflow integration, new live probes or runtime limit changes;
-  report/retry integration remains under #2271.
+  refusal/combined semantics. Shipped in #2273 without workflow integration, live probes or runtime
+  limit changes.
+
+- **New-route discovery reporting and retry integration (review/48 §8.13).** Connects bounded
+  input/output/combined searches to newly reachable candidates, reports API claims and empirical
+  brackets in the rolling issue, and lets an authorized `/apply` queue an authenticated next-day
+  retry that resumes compatible evidence. The retry command makes no provider call. If one size
+  probe gets no usable transport response, it can make up to five total same-size sends, each with
+  a fresh charged attempt. Five unanswered sends report uncertainty without claiming a cap; reports
+  include per-attempt diagnostics when multiple sends were needed. Workflow activation remains
+  disabled pending #2223; configured-route recurring maintenance and automatic cap publication
+  remain out of scope.
 
 - **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
   comma after the requested-token count while still rejecting malformed grouped numbers. A
@@ -7962,10 +8130,3 @@ and validated hand-built recording inclusions. Final head passed all CI; no temp
 Retain model configurations, original results, scored comparisons and bounded provider
 diagnostics under evals/remedy/results/p1-comparison-2026-10-10/. No production model
 activation, quota, feed, audio, storage-routing or pipeline-version changes.
-
-### Review/51 patient alternative-model evaluation scaffolding (2026-10-10)
-
-- Add bounded, quota-accounted evaluation-only comparisons for full NVIDIA GLM 5.3
-  and free BeatAPI GPT 6 Astra, GPT 6.1 Sol and DeepSeek V4.1 Flash, using the
-  existing approved Denton cases. Preserve answers, errors and timing separately
-  from model identity/reasoning admission gates; no production defaults change.
