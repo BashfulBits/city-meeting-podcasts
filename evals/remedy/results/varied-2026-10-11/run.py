@@ -16,6 +16,7 @@ from recovery import (
     MODELS,
     candidate_plan,
     cooldown_until,
+    load_retry_allowance,
     logical_candidate,
     next_reset,
     provider_error,
@@ -184,6 +185,7 @@ def main():
     parser.add_argument("--results-dir", type=Path, default=OUT)
     parser.add_argument("--run-started-at", type=timestamp)
     parser.add_argument("--stop-at", type=timestamp)
+    parser.add_argument("--retry-allowance", type=Path)
     args = parser.parse_args()
     OUT = args.results_dir.resolve()
     OUT.mkdir(parents=True, exist_ok=True)
@@ -214,6 +216,9 @@ def main():
     manifest_hash = canonical_hash(manifest.model_dump())
     pilot = json.loads((FROZEN / "pilot.json").read_text())["case_ids"]
     selected = [c for c in manifest.cases if args.stage == "full" or c.id in pilot]
+    allowance = load_retry_allowance(
+        args.retry_allowance, manifest_hash, {c.id for c in manifest.cases}
+    )
     if args.stage == "pilot":
         selected.sort(key=lambda c: pilot.index(c.id))
     site = load_site_config(ROOT / "config/site_config.yml")
@@ -226,7 +231,7 @@ def main():
     history = read_history(OUT / "batches", manifest_hash, {c.id for c in manifest.cases})
     started_at = args.run_started_at or datetime.now(UTC)
     plan = candidate_plan(
-        history, candidates[0], [c.id for c in selected], datetime.now(UTC), started_at
+        history, candidates[0], [c.id for c in selected], datetime.now(UTC), started_at, allowance
     )
     eligible = set(plan["eligible_case_ids"])
     selected.sort(key=lambda c: plan["eligible_case_ids"].index(c.id) if c.id in eligible else 9999)
@@ -271,6 +276,7 @@ def main():
                 "output_token_cap": tokens,
                 "provider_attempts": 0,
                 "observed_at": datetime.now(UTC).isoformat(),
+                "retry_allowance_hash": canonical_hash(allowance) if allowance else None,
             }
             row.update(
                 catalog_hash=canonical_hash(

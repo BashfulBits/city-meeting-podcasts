@@ -165,7 +165,42 @@ def read_history(directory, manifest_hash, case_ids):
     return rows
 
 
-def candidate_plan(rows, candidate, case_ids, now, started_at):
+def load_retry_allowance(path, manifest_hash, case_ids):
+    """Load an explicit one-off authorization; never infer it from discussion/history."""
+    if path is None:
+        return None
+    value = json.loads(Path(path).read_text())
+    if (
+        value.get("version") != 1
+        or value.get("manifest_hash") != manifest_hash
+        or type(value.get("max_attempts_per_pair")) is not int
+        or value["max_attempts_per_pair"] != 5
+        or not isinstance(value.get("authorization_ref"), str)
+        or not value["authorization_ref"].strip()
+    ):
+        raise ValueError("invalid scoped retry allowance")
+    timestamp(value["authorized_at"])
+    pairs = value.get("pairs")
+    if not isinstance(pairs, list) or len(pairs) != 5:
+        raise ValueError("retry allowance must name exactly five pairs")
+    identities = set()
+    for pair in pairs:
+        if (
+            not isinstance(pair, dict)
+            or pair.get("candidate") not in {"glm_full", "sol"}
+            or pair.get("case_id") not in case_ids
+        ):
+            raise ValueError("retry allowance pair is outside the approved scope")
+        identities.add((pair["candidate"], pair["case_id"]))
+    if len(identities) != 5 or Counter(name for name, _ in identities) != {
+        "glm_full": 2,
+        "sol": 3,
+    }:
+        raise ValueError("retry allowance must name two GLM and three Sol pairs")
+    return value
+
+
+def candidate_plan(rows, candidate, case_ids, now, started_at, allowance=None):
     family = logical_candidate(candidate)
     related = [r for r in rows if logical_candidate(r["candidate"]) == family]
     physical = [r for r in related if r["candidate"] == candidate]
@@ -197,18 +232,31 @@ def candidate_plan(rows, candidate, case_ids, now, started_at):
             return plan | {"state": "cooldown", "next_eligible_at": until.isoformat()}
     today = Counter()
     new_attempts = Counter()
+    scoped_attempts = Counter()
+    scoped_cases = {
+        pair["case_id"]
+        for pair in (allowance or {}).get("pairs", [])
+        if pair["candidate"] == candidate
+    }
     ever_called = {r["case_id"] for r in physical if r.get("provider_attempts", 0)}
     for row in physical:
         if timestamp(row["observed_at"]).date() == now.astimezone(UTC).date():
             today[row["case_id"]] += row.get("provider_attempts", 0)
         if timestamp(row["observed_at"]) >= started_at:
             new_attempts[row["case_id"]] += row.get("provider_attempts", 0)
+        if allowance and timestamp(row["observed_at"]) >= timestamp(allowance["authorized_at"]):
+            scoped_attempts[row["case_id"]] += row.get("provider_attempts", 0)
     for case_id in case_ids:
         if case_id in done:
             continue
         if case_id in unknown:
             continue
-        if case_id in ever_called and new_attempts[case_id] >= RETRIES_PER_RUN:
+        if case_id in scoped_cases:
+            if scoped_attempts[case_id] >= allowance["max_attempts_per_pair"]:
+                plan["retry_exhausted"] += 1
+            else:
+                plan["eligible_case_ids"].append(case_id)
+        elif case_id in ever_called and new_attempts[case_id] >= RETRIES_PER_RUN:
             plan["retry_exhausted"] += 1
         elif today[case_id] >= ATTEMPTS_PER_DAY:
             plan["next_eligible_at"] = next_reset(now, "UTC").isoformat()
