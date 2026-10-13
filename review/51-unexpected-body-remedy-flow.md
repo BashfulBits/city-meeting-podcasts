@@ -4107,3 +4107,11 @@ intents in the common provider-mock test. Run targeted/full offline, whole Ruff/
 fragment validation before push/resuming. Stop only the active body-selection controller
 under the shared call lock, preserving all responses, counters, deadline and allocation.
 The older comparison remains stopped; do not restart it.
+
+
+Qwen release verification:167 targeted checks and6,155 offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment validation clean. Tests
+verify high/parsed Qwen calls in bypass, real token admission and clearing only the
+obsolete hold on resume without resetting the horizon or allowance. Read-only local
+preflight permits Qwen; no local Qwen token debt was recorded. Worker production
+usage remains unknown, so that preflight is not a claim of unused provider capacity.

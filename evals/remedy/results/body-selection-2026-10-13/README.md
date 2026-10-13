@@ -98,3 +98,11 @@ Qwen remains held during bypass until daily token capacity can be verified. GPT-
 keeps its local180000/day cap and20% reserve; Worker token usage is recorded unknown.
 Use the same shared lock and saved result directories when switching modes. Stop
 only between submitted requests, then resume from tested code without changing caps.
+
+
+Qwen hold superseded2026-10-13: the maintainer removed the unconditional outage hold.
+Qwen can now submit under --coordination-bypass using the same local daily-token cap,
+20% reserve and CAS accounting as GPT-OSS. No manual unblock is needed at a later
+capacity window. Midnight alone is not proof of a provider token reset. Worker usage
+remains unknown; preserve all caps, retries, controls and original experiment horizon.
+Only the obsolete explicit-hold wait is cleared on resume; real quota/cooldown waits stay.

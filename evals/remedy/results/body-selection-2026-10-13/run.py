@@ -64,12 +64,6 @@ def shaped_messages(case, route):
 
 
 def headroom(client, storage, route, case, coordination_bypass=False):
-    if coordination_bypass and route.route_id == GROQ_CANDIDATES["qwen38"][0]:
-        return False, {
-            "kind": "capacity_unknown",
-            "reason": "Qwen held: bypass does not authorize unverified daily token capacity",
-            "next_eligible_at": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
-        }
     enough, capacity = (
         transport.headroom(client, storage, route, coordination_bypass=True)
         if coordination_bypass
@@ -103,8 +97,6 @@ def attempt(
     directory, candidate, case, previous, manifest_hash, storage, client, coordination_bypass=False
 ):
     route = route_for(candidate)
-    if coordination_bypass and candidate == "qwen38":
-        raise ValueError("Qwen is held until daily token capacity can be verified")
     timeout = 120 if route.provider == "gemini" else 900
     tokens = 4096 if route.provider == "gemini" else 16384
     effort = CANDIDATES[candidate][1]
@@ -355,6 +347,14 @@ def main():
                 }
             )
         state["coordination_bypass"] = args.coordination_bypass
+        if args.coordination_bypass:
+            qwen = state.get("models", {}).get("qwen38", {})
+            if str(qwen.get("capacity", {}).get("reason", "")).startswith("Qwen held: bypass"):
+                qwen["next_eligible_at"] = None
+            state["qwen_bypass_enabled"] = True
+            state["qwen_bypass_approval_ref"] = (
+                "review/51 Qwen hold removal; maintainer chat2026-10-13"
+            )
         recovery.atomic_status(status_file, state)
         site = transport.load_site_config(ROOT / "config/site_config.yml")
         storage = transport.make_storage(site, site.get("base_url", ""), ROOT / "docs")
