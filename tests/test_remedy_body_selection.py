@@ -60,7 +60,7 @@ def observation(selection, case, attempts=1, status="failed", **extra):
 def test_sixty_answer_free_recordings(selection):
     _, cases = selection.load_manifest()
     assert len(cases) == len({(c.source_key, c.recordings[0].uid) for c in cases}) == 60
-    assert len(selection.MODELS) == 6
+    assert len(selection.MODELS) == 8
     for case in cases:
         payload = json.loads(selection.messages(case)[1]["content"])
         assert "claim" not in payload
@@ -201,10 +201,11 @@ def test_dry_run_never_reads_gold_or_credentials(runner, monkeypatch, tmp_path, 
     runner.main()
     report = json.loads(capsys.readouterr().out)
     assert report["answered"] == 0
-    assert report["target"] == 360
+    assert report["target"] == 480
 
 
-def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tmp_path):
+@pytest.mark.parametrize("candidate", ["sol", "gptoss", "qwen38"])
+def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tmp_path, candidate):
     _, cases = runner.load_manifest()
     case = cases[0]
     expected = answer(case)
@@ -224,6 +225,9 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
         reasoning_controls_json="",
         request_params_json="",
     )
+    if candidate in runner.GROQ_CANDIDATES:
+        route.provider = "groq"
+        monkeypatch.setattr(runner, "token_headroom", lambda *_: (True, {"kind": "available"}))
     seen = []
 
     class Backend:
@@ -241,22 +245,31 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
 
         def run_immediate(self, job):
             seen.append(job.inputs)
-            return SimpleNamespace(output=self._completion(), upstream_model="model")
+            return SimpleNamespace(
+                output=self._completion(
+                    extra_body={"reasoning_effort": "high", "reasoning_format": "parsed"}
+                ),
+                upstream_model="model",
+            )
 
     @contextmanager
     def drained(*_args, **_kwargs):
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner.transport, "route_for", lambda _: route)
+    monkeypatch.setattr(runner, "route_for", lambda _: route)
     monkeypatch.setattr(runner.transport, "LiteLLMBackend", Backend)
     monkeypatch.setattr(runner.transport, "paused", drained)
     client = SimpleNamespace(reserve=lambda *_: None)
-    row = runner.attempt(tmp_path, "sol", case, 0, "manifest", object(), client)
+    row = runner.attempt(tmp_path, candidate, case, 0, "manifest", object(), client)
     assert row["status"] == "completed"
     assert row["answer"]["feed_slugs"] == expected["feed_slugs"]
     assert row["provider_attempts"] == 1
     assert seen[0]["max_provider_attempts"] == 1
     assert seen[0]["num_retries"] == 0
+    if candidate in runner.GROQ_CANDIDATES:
+        assert row["submitted_reasoning_controls"]["reasoning_effort"] == "high"
+        assert seen[0]["reasoning_level"] == "high"
     assert "claim" not in json.loads(seen[0]["messages"][1]["content"])
 
 
@@ -454,3 +467,144 @@ def test_priority_reserves_before_call_but_releases_preflight_deferral(
         runner.main()
     saved = json.loads((results / "controller-status.json").read_text())
     assert len(saved["call_priority"]["new_contested_slots"]) == submitted
+
+
+def test_approved_model_expansion_preserves_original_deadline(selection):
+    state = {
+        "models": {name: {} for name in selection.BASE_MODELS},
+        "max_provider_attempts": 4320,
+        "started_at": NOW.isoformat(),
+        "deadline_at": (NOW + timedelta(days=7)).isoformat(),
+    }
+    selection.expand_model_set(state, 60, NOW + timedelta(hours=1))
+    assert state["max_provider_attempts"] == 5760
+    assert state["started_at"] == NOW.isoformat()
+    assert state["deadline_at"] == (NOW + timedelta(days=7)).isoformat()
+    assert len(state["model_set_history"]) == 1
+    selection.expand_model_set(state, 60, NOW + timedelta(hours=2))
+    assert len(state["model_set_history"]) == 1
+    with pytest.raises(ValueError, match="unapproved"):
+        selection.expand_model_set({"max_provider_attempts": 9000}, 60, NOW)
+
+
+@pytest.mark.parametrize("candidate", ["gptoss", "qwen38"])
+def test_groq_pilot_keeps_full_inputs_and_prioritizes_largest_packets(selection, candidate):
+    _, cases = selection.load_manifest()
+    saved = canonical_hash([c.model_dump() for c in cases])
+    eligible = selection.plan([], candidate, cases, NOW)["eligible_case_ids"]
+    by_id = {c.case_id: c for c in cases}
+    assert [by_id[c].recordings[0].uid for c in eligible[:4]] == list(selection.GROQ_PILOT_UIDS)
+    assert len(eligible) == 60
+    assert canonical_hash([c.model_dump() for c in cases]) == saved
+
+
+@pytest.fixture
+def groq(selection, monkeypatch):
+    spec = importlib.util.spec_from_file_location("groq_routes", DIRECTORY / "groq_routes.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for rid, _effort in module.CANDIDATES.values():
+        route = module.ROUTE_REGISTRY[rid]
+        monkeypatch.setitem(module.ROUTE_REGISTRY, rid, route)
+        monkeypatch.setitem(
+            module.ROUTE_CANDIDATES, route.model, module.ROUTE_CANDIDATES[route.model]
+        )
+        monkeypatch.setitem(module.LOGICAL_ROUTES, route.model, module.LOGICAL_ROUTES[route.model])
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, _tz=None):
+            return NOW
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+    return module
+
+
+@pytest.mark.parametrize("candidate", ["gptoss", "qwen38"])
+def test_groq_high_controls_and_unchanged_limits(groq, runner, candidate):
+    from citypods.compute.base import InferenceJob
+    from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+    from citypods.compute.structured import register_response_model
+
+    original = groq.ROUTE_REGISTRY[groq.CANDIDATES[candidate][0]]
+    route = groq.route_for(candidate)
+    assert route.quota.rpm == original.quota.rpm
+    assert route.quota.rpd == original.quota.rpd
+    assert route.quota.tpm == original.quota.tpm
+    assert route.hard_input_ceiling == original.hard_input_ceiling
+    assert route.quota.tpd == 180000
+    assert route.output_context_limit == 16384
+    assert route.free
+    register_response_model("groq-payload-test", runner.BodySelectionAnswer)
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="test",
+        inputs={
+            "messages": [{"role": "user", "content": "Frozen evidence"}],
+            "structured_output": "groq-payload-test",
+            "reasoning_level": "high",
+            "max_tokens": 16384,
+        },
+    )
+    backend = LiteLLMBackend(LLMBackendConfig(model=route.model))
+    payload = backend._payload(
+        job,
+        model=runner.BodySelectionAnswer,
+        resolved_model=route.direct_model,
+        route=route,
+        direct=True,
+    )
+    assert payload["extra_body"]["reasoning_effort"] == "high"
+    assert payload["extra_body"]["reasoning_format"] == "parsed"
+    assert payload["response_format"]["type"] == "json_object"
+    assert payload["model"] == route.direct_model
+    assert "BodySelectionAnswer" in str(payload["messages"])
+
+
+def quota_fixture(groq, worker_used=0, local_used=0):
+    route = groq.route_for("qwen38")
+    stats = {
+        "now": int(NOW.timestamp() * 1000),
+        "routes": {"total": 1, "all": [{"route_id": route.route_id, "tpd_used": worker_used}]},
+    }
+    client = SimpleNamespace(_request=lambda *_: stats)
+    budget = SimpleNamespace(
+        routes={
+            route.route_id: SimpleNamespace(
+                tokens_day=local_used,
+                tokens_day_updated_at=NOW.isoformat(),
+            )
+        }
+    )
+    transport = SimpleNamespace(load_llm_budget_cas=lambda _: (budget, None))
+    return route, stats, client, transport
+
+
+def test_groq_daily_tokens_include_both_stores_and_production_reserve(groq):
+    route, _stats, client, transport = quota_fixture(groq, 100000, 50000)
+    enough, capacity = groq.token_headroom(transport, client, object(), route, 23060)
+    assert not enough
+    assert capacity["conservative_tokens_used"] == 150000
+    assert capacity["production_token_reserve"] == 36000
+    assert capacity["kind"] == "daily_quota"
+    route, _stats, client, transport = quota_fixture(groq, 60000, 50000)
+    assert groq.token_headroom(transport, client, object(), route, 23060)[0]
+
+
+@pytest.mark.parametrize("problem", ["missing", "partial", "stale", "negative", "nan", "boolean"])
+def test_groq_invalid_daily_usage_holds_requests(groq, problem):
+    route, stats, client, transport = quota_fixture(groq)
+    if problem == "missing":
+        stats["routes"]["all"][0]["route_id"] = "different"
+    elif problem == "partial":
+        stats["routes"]["total"] = 2
+    elif problem == "stale":
+        stats["now"] -= 61000
+    else:
+        stats["routes"]["all"][0]["tpd_used"] = {
+            "negative": -1,
+            "nan": float("nan"),
+            "boolean": True,
+        }[problem]
+    with pytest.raises(ValueError):
+        groq.token_headroom(transport, client, object(), route, 23060)

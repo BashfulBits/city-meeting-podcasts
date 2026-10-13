@@ -1805,3 +1805,10 @@ comparison with persistent two-to-one contested call allocation. Failed submissi
 count as slots; idle/cooldown reservations are borrowable, while changed or stale older
 controller state holds new calls. The shared provider lock still prevents overlap, and
 all existing quota, retry and original-deadline checks remain in force.
+
+The body-selection challenge now has eight approved logical models after adding
+existing Groq GPT-OSS120B and Qwen3.8 routes at explicit high reasoning. Capability
+copies are evaluation-only; production catalogs remain unchanged. Persisted model
+set migration adds120 pairs while retaining old results and the original deadline.
+Groq execution checks local and Worker daily-token debt with production headroom,
+and saves actual submitted controls and returned usage alongside immutable answers.

@@ -3992,3 +3992,14 @@ create a Worker endpoint. Require complete route inventory and fresh numeric usa
 Combine the observed Worker token debt and local CAS token debt conservatively;
 missing/partial evidence defers Groq calls. Local copies preserve all original limits
 and may only add the documented missing GPT-OSS daily-token cap for this evaluation.
+
+
+Groq expansion verification:147 targeted tests and6,135 full offline tests passed
+(16 deselected), whole Ruff/format546 files and changelog fragments clean. An offline
+expanded plan preserved69 prior answers and added two zero-call candidates for480
+pairs. Request tests verify high/parsed controls, schema shaping and one submitted
+attempt; capacity tests hold missing/stale/partial token evidence. Worker snapshot
+before resumption reported Qwen about179000/180000 daily tokens, so it must wait for
+production headroom. No first Groq answer is claimed by these offline checks.
+The previous controller stopped between requests; resume the original results and
+persisted priority from the tested Groq checkout, without extending the deadline.
