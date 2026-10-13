@@ -4003,3 +4003,27 @@ before resumption reported Qwen about179000/180000 daily tokens, so it must wait
 production headroom. No first Groq answer is claimed by these offline checks.
 The previous controller stopped between requests; resume the original results and
 persisted priority from the tested Groq checkout, without extending the deadline.
+
+
+### P1 patient evaluation timeout extension — L3, approved 2026-10-13
+
+Maintainer directed increasing the existing600-second evaluation request bound to900 seconds
+so slow valid answers can finish. This supersedes only the patient bounds in both active
+experiments above: proposed-assignment comparison and independent body selection. Retain
+Flash-Lite120-second requests/150-second cases. Patient case deadlines become950 seconds;
+provider pause leases become1000 seconds and controller end-of-horizon guards1050 seconds.
+The longer wait can recover slow responses but cannot bypass an upstream gateway timeout.
+
+Scope: existing evaluation-only varied run.py/backfill.py and body-selection run.py, their
+READMEs, tests/test_remedy_backfill.py, tests/test_remedy_body_selection.py and lifecycle docs.
+Do not change production limits, retry allowances, quotas, output caps, route selection,
+input/gold, original deadlines or saved observations. Record the new actual timeout in
+immutable future intents/results and existing request provenance. Preserve all prior600s rows.
+
+Verify actual provider timeout, surrounding case deadline and pause duration with mocked
+requests; retain one provider attempt/no SDK retry. Run targeted and full offline tests,
+whole Ruff/format and fragment validation before push. Prepare in an isolated checkout.
+Take the shared provider-call lock only after current calls finish, stop both idle controllers
+and resume their saved state from tested code without --new-run. Preserve older run identity,
+priority allocation, original horizons and all per-question retry counters. Update the hourly
+monitor's execution paths after resumption; never interrupt a submitted request.

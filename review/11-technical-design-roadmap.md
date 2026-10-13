@@ -2012,3 +2012,10 @@ Review/51 Groq evaluation expansion — L3 approved2026-10-13: add GPT-OSS120B h
 and Qwen3.8-27B high to the frozen60-recording independent body-selection comparison,
 480 total answers. Preserve the older run's priority and existing deadlines/limits;
 local capability overrides and daily-token headroom only, no production activation.
+
+
+Review/51 patient evaluation timeout extension — L3 approved2026-10-13: raise only
+the existing600-second patient evaluation requests to900 seconds,950-second case
+deadlines and covering provider leases/horizon guards in both active experiments.
+Preserve original run deadlines, inputs, answers, quotas and retry allowances.
+Resume between provider calls from tested code; see review/51's timeout extension.
