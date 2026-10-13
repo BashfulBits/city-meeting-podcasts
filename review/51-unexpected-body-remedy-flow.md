@@ -4027,3 +4027,13 @@ Take the shared provider-call lock only after current calls finish, stop both id
 and resume their saved state from tested code without --new-run. Preserve older run identity,
 priority allocation, original horizons and all per-question retry counters. Update the hourly
 monitor's execution paths after resumption; never interrupt a submitted request.
+
+
+Timeout extension verification:149 targeted checks and6,137 full offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment validation clean. Mocked
+requests verify900-second patient timeouts,950-second case deadlines,1000-second
+covering provider leases and retained Flash-Lite bounds. Offline resumption plans
+preserve the existing184/480 body-selection and676/678 claim-checking answers.
+The shared coordination service subsequently reported its Durable Objects free-tier
+rows-read budget exhausted; both controllers correctly hold unverifiable capacity.
+This timeout change does not bypass that operational limit.

@@ -38,7 +38,7 @@ Default is an offline plan; execute only through the approved credential wrapper
 ```
 
 Do not start a duplicate. Status and immutable intents/attempts show actual progress and
-round positions. Execution uses patient600s/650s/16384-output settings; Flash-Lite uses
+round positions. Execution uses patient900s/950s/16384-output settings; Flash-Lite uses
 120s/150s/4096. No admission, activation, paid fallback or production quota change.
 
 Score separately after calls, preserving all input hashes and every attempt:
@@ -74,8 +74,8 @@ the approved six-to-eight model set; maximum attempts become5760 for480 pairs,
 still12 per pair. Older claim-checking totals remain678, with two-thirds priority.
 
 Evaluation-local copies of existing physical Groq routes pin documented high
-controls and parsed reasoning for JSON output,16384 output cap and existing600s
-request/650s case bounds. No production catalog/selection changes. Largest packets
+controls and parsed reasoning for JSON output,16384 output cap and approved900s
+request/950s case bounds. No production catalog/selection changes. Largest packets
 are attempted first, followed by a joint meeting and an insufficient-proof case.
 Keep complete evidence even if a provider rejects the borderline Qwen packet.
 Both local and Worker daily-token usage count conservatively, with20% production

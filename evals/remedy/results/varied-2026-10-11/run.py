@@ -258,7 +258,7 @@ def main():
                 continue
             route = route_for(candidate)
             effort = CANDIDATES[candidate][1]
-            timeout = 120 if route.provider == "gemini" else 600
+            timeout = 120 if route.provider == "gemini" else 900
             tokens = 4096 if route.provider == "gemini" else 16384
             if args.stop_at and datetime.now(UTC) + timedelta(seconds=timeout + 150) > args.stop_at:
                 print("Batch stopped before controller deadline; no further calls", flush=True)
@@ -293,6 +293,8 @@ def main():
                         "direct": route.direct_model,
                         "controls": route.reasoning_controls_json,
                         "request_params": route.request_params_json,
+                        "request_timeout": timeout,
+                        "output_token_cap": tokens,
                         "rpm": route.quota.rpm,
                         "rpd": route.quota.rpd,
                         "input_context": route.input_context_limit,
@@ -329,7 +331,7 @@ def main():
                         purpose="audit-remedy",
                         require_direct=True,
                         deadline_at=datetime.now(UTC)
-                        + timedelta(seconds=150 if route.provider == "gemini" else 650),
+                        + timedelta(seconds=150 if route.provider == "gemini" else 950),
                     )
                     job = InferenceJob(
                         task="tag",

@@ -204,7 +204,7 @@ def test_dry_run_never_reads_gold_or_credentials(runner, monkeypatch, tmp_path, 
     assert report["target"] == 480
 
 
-@pytest.mark.parametrize("candidate", ["sol", "gptoss", "qwen38"])
+@pytest.mark.parametrize("candidate", ["flashlite", "glm_full", "sol", "gptoss", "qwen38"])
 def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tmp_path, candidate):
     _, cases = runner.load_manifest()
     case = cases[0]
@@ -225,6 +225,8 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
         reasoning_controls_json="",
         request_params_json="",
     )
+    if candidate == "flashlite":
+        route.provider = "gemini"
     if candidate in runner.GROQ_CANDIDATES:
         route.provider = "groq"
         monkeypatch.setattr(runner, "token_headroom", lambda *_: (True, {"kind": "available"}))
@@ -252,8 +254,11 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
                 upstream_model="model",
             )
 
+    pause_options = []
+
     @contextmanager
-    def drained(*_args, **_kwargs):
+    def drained(*_args, **kwargs):
+        pause_options.append(kwargs)
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner.transport, "route_for", lambda _: route)
@@ -267,6 +272,13 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
     assert row["provider_attempts"] == 1
     assert seen[0]["max_provider_attempts"] == 1
     assert seen[0]["num_retries"] == 0
+    timeout = 120 if candidate == "flashlite" else 900
+    deadline = 150 if candidate == "flashlite" else 950
+    assert row["request_timeout"] == seen[0]["timeout"] == timeout
+    start = datetime.fromisoformat(row["observed_at"])
+    budget = (seen[0]["llm_policy"].deadline_at - start).total_seconds()
+    assert deadline <= budget < deadline + 5
+    assert pause_options[0]["seconds"] == timeout + 100
     if candidate in runner.GROQ_CANDIDATES:
         assert row["submitted_reasoning_controls"]["reasoning_effort"] == "high"
         assert seen[0]["reasoning_level"] == "high"
