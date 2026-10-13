@@ -209,12 +209,6 @@ def test_dry_run_never_reads_gold_or_credentials(runner, monkeypatch, tmp_path, 
 def test_provider_call_intent_and_actual_answer_contract(
     runner, monkeypatch, tmp_path, candidate, bypass
 ):
-    if bypass and candidate == "qwen38":
-        _, cases = runner.load_manifest()
-        with pytest.raises(ValueError, match="Qwen is held"):
-            runner.attempt(tmp_path, candidate, cases[0], 0, "manifest", object(), None, True)
-        assert not list(tmp_path.rglob("*.json"))
-        return
     _, cases = runner.load_manifest()
     case = cases[0]
     expected = answer(case)
@@ -651,19 +645,31 @@ def test_groq_invalid_daily_usage_holds_requests(groq, problem):
         groq.token_headroom(transport, client, object(), route, 23060)
 
 
-def test_bypass_holds_qwen_before_capacity_or_provider_calls(runner, monkeypatch, tmp_path):
+@pytest.mark.parametrize("enough", [False, True])
+def test_bypass_qwen_uses_local_capacity_without_worker(runner, monkeypatch, enough):
     _, cases = runner.load_manifest()
     route = runner.route_for("qwen38")
     monkeypatch.setattr(
-        runner.transport, "headroom", lambda *_a, **_k: pytest.fail("Qwen checked capacity")
+        runner.transport,
+        "headroom",
+        lambda *_a, **kw: (kw["coordination_bypass"], {"kind": "available"}),
     )
-    enough, capacity = runner.headroom(None, object(), route, cases[0], coordination_bypass=True)
-    assert not enough
-    assert capacity["kind"] == "capacity_unknown"
-    assert "Qwen held" in capacity["reason"]
-    with pytest.raises(ValueError, match="Qwen is held"):
-        runner.attempt(tmp_path, "qwen38", cases[0], 0, "manifest", object(), None, True)
-    assert not list(tmp_path.rglob("*.json"))
+
+    def tokens(_transport, client, _storage, chosen, _tokens, coordination_bypass=False):
+        assert client is None
+        assert chosen.route_id == route.route_id
+        assert coordination_bypass
+        return enough, {
+            "kind": "available" if enough else "daily_quota",
+            "worker_tokens_used": None,
+            "usage_visibility": "local_only",
+        }
+
+    monkeypatch.setattr(runner, "token_headroom", tokens)
+    permitted, capacity = runner.headroom(None, object(), route, cases[0], True)
+    assert permitted == enough
+    assert capacity["worker_tokens_used"] is None
+    assert capacity["usage_visibility"] == "local_only"
 
 
 @pytest.mark.parametrize("used,expected", [(0, True), (150000, False)])
@@ -678,3 +684,56 @@ def test_groq_bypass_keeps_local_token_reserve_without_worker(groq, used, expect
     assert capacity["usage_visibility"] == "local_only"
     assert capacity["local_tokens_used"] == used
     assert capacity["production_token_reserve"] == 36000
+
+
+@pytest.mark.parametrize("obsolete", [False, True])
+def test_qwen_resume_clears_only_obsolete_hold(runner, monkeypatch, tmp_path, obsolete):
+    frozen, _cases = runner.load_manifest()
+    shared = tmp_path / "shared.lock"
+    next_time = (datetime.now(UTC) + timedelta(minutes=15)).isoformat()
+    status = {
+        "manifest_hash": canonical_hash(frozen),
+        "prompt_hash": canonical_hash(runner.PROMPT),
+        "schema_hash": canonical_hash(runner.BodySelectionAnswer.model_json_schema()),
+        "shared_lock": str(shared.resolve()),
+        "started_at": NOW.isoformat(),
+        "deadline_at": (NOW + timedelta(days=7)).isoformat(),
+        "max_provider_attempts": 5760,
+        "coordination_bypass": True,
+        "models": {
+            "qwen38": {
+                "state": "capacity_unknown" if obsolete else "daily_quota",
+                "next_eligible_at": next_time,
+                "capacity": {
+                    "reason": "Qwen held: bypass" if obsolete else "local tokens exhausted"
+                },
+            }
+        },
+    }
+    path = tmp_path / "controller-status.json"
+    path.write_text(json.dumps(status))
+
+    def stop_before_storage(_path):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.transport, "load_site_config", stop_before_storage)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run.py",
+            "--execute",
+            "--coordination-bypass",
+            "--results-dir",
+            str(tmp_path),
+            "--shared-lock",
+            str(shared),
+        ],
+    )
+    with pytest.raises(KeyboardInterrupt):
+        runner.main()
+    saved = json.loads(path.read_text())
+    assert saved["models"]["qwen38"]["next_eligible_at"] == (None if obsolete else next_time)
+    assert saved["qwen_bypass_enabled"]
+    for key in ("started_at", "deadline_at", "max_provider_attempts"):
+        assert saved[key] == status[key]
