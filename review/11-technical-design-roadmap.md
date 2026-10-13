@@ -1948,3 +1948,10 @@ the existing600-second patient evaluation requests to900 seconds,950-second case
 deadlines and covering provider leases/horizon guards in both active experiments.
 Preserve original run deadlines, inputs, answers, quotas and retry allowances.
 Resume between provider calls from tested code; see review/51's timeout extension.
+
+
+Review/51 temporary coordination bypass — L3 approved2026-10-13: allow the existing
+bounded evaluations to use local CAS accounting while the Worker capacity/pause service
+is unavailable. Retain retry caps, original horizons and one shared call lock. Qwen
+remains held without verified token capacity. Explicit default-off evaluation flag only;
+production usage visibility is unavailable and must be disclosed. See review/51.

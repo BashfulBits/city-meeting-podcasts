@@ -4037,3 +4037,38 @@ preserve the existing184/480 body-selection and676/678 claim-checking answers.
 The shared coordination service subsequently reported its Durable Objects free-tier
 rows-read budget exhausted; both controllers correctly hold unverifiable capacity.
 This timeout change does not bypass that operational limit.
+
+
+### P1 temporary coordination bypass — L3, approved 2026-10-13
+
+The maintainer explicitly approved the proposed temporary evaluation mode after the
+shared Worker exhausted its Durable Objects rows-read allowance. The proposal disclosed
+loss of visibility into production jobs' usage. Bypass only unavailable Worker status,
+pause/drain/resume and external reservation calls for the existing approved evaluations.
+Keep local CAS quota reservation/settlement and20% local headroom, exact free route
+allowlists, one shared provider-call lock, original retry caps, cooldowns, output caps,
+900s/950s patient bounds,120s/150s Flash-Lite bounds and original controller horizons.
+
+Add explicit default-off --coordination-bypass to the existing varied run.py/backfill.py
+and body-selection run.py. Scope also includes their READMEs, groq_routes.py, existing
+tests/test_remedy_backfill.py, tests/test_remedy_body_selection.py and lifecycle docs.
+No production implementation, catalog, workflow, feed or quota changes. Require the
+existing scoped allowance for older bypass calls; reject --new-run with bypass so it
+cannot mint fresh attempts. Record bypass/approval and local-only usage visibility in
+status, immutable intents/results and settings hashes; never claim production drained.
+Old Worker-error waits can be reevaluated on the explicit mode change, but actual provider
+cooldowns, successful answers and unknown-intent holds remain untouched.
+
+For GPT-OSS, retain local daily-token quota checks and20% reserve without querying the
+Worker. Mark Worker usage unknown, never zero. Qwen stays held in bypass because its
+last observed token allowance was almost exhausted; bypass does not authorize Qwen calls
+until capacity can be verified. Provider429s terminate the attempt and trigger existing
+cooldowns; do not interpret infrastructure capacity errors as submitted model failures.
+
+Test default normal gates, explicit bypass making zero Worker requests, local quota and
+token holds, Qwen exclusion, forwarding to older subprocesses, immutable mode provenance
+and one-call/no-retry controls. Run targeted and full offline suites, whole Ruff/format
+and fragment checks before push/resumption. Switch only while holding the shared call
+lock after all intents have final observations; retain run identities, deadlines, saved
+answers, allocation and retry counters. End the opt-in with these bounded evaluations;
+future runs retain normal coordination checks by default.
