@@ -3865,3 +3865,11 @@ identity/provenance binding and shared-lock exclusion. Targeted/whole Ruff befor
 full offline tests before push. Retain input/result hashes and separate immutable reports.
 These reused historical records remain a regression challenge, not newly independent
 holdout admission evidence; production model approval remains separate.
+
+Body-selection input clarification before code: taxonomy includes feed names/descriptions,
+not existing body/GUID selector predicates that disclose historical assignments. Strip
+maintained-policy evidence and maintained_local_disposition; supply only general approved
+identity/publication rules. Retain verbatim official recording metadata and source identifiers.
+Gold keeps reviewed body descriptions for later review; do not score free-text institutional
+names by fabricated string aliases. Report exact feed-choice correctness, policy controls
+and insufficient-owner-proof guardrails separately.
