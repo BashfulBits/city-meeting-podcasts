@@ -3795,3 +3795,23 @@ Six-model follow-on validation: 87 targeted tests passed; full offline suite pas
 `six-model-scored-2026-10-13-v1.json` report records 673/678 answers. Full GLM has two
 unanswered and Sol three; the bounded replacement is waiting for 2026-10-14 00:00 UTC
 (October 13, 7 PM Chicago). This is incomplete comparison evidence, not P1 admission.
+
+### P1 immediate five-pair retry allowance — L3, approved 2026-10-13
+
+The maintainer explicitly approved up to five additional retries per remaining question/model
+to start immediately. This overrides the daily three-attempt evaluator cap only for the two
+remaining full GLM and three Sol pairs. Total additional provider attempts cannot exceed 25.
+
+Implement an explicit immutable local retry-allowance JSON in the existing varied result
+directory, binding the frozen manifest hash, exact five pairs, authorization timestamp and
+reference, and five attempts per pair. The existing recovery.py validates this scoped allowance;
+candidate_plan counts final observations and unmatched intents since its timestamp, holds
+unknown outcomes, stops at five per pair, and bypasses the daily cap only for listed pairs.
+Existing controller/run.py accept the explicit allowance path and persist/verify its hash
+across restarts. Completed pairs remain skipped; normal policies apply to unlisted pairs.
+Keep provider cooldowns, capacity checks, production headroom, per-call limits and timeouts.
+A new bounded controller run has max_calls=25; no daily reset refills this one-off allowance.
+Modify only the existing varied recovery.py/backfill.py/run.py/README, tests/test_remedy_backfill.py
+and lifecycle docs. Verify scope isolation, five-attempt exhaustion across daily resets,
+restart hash fencing and unknown-intent holds; targeted/whole Ruff before starting, full
+offline tests before push. Preserve all raw history. No production policy changes.
