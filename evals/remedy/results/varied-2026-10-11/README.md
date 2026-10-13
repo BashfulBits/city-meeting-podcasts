@@ -93,3 +93,14 @@ provider cooldowns and unknown-outcome holds continue to apply. Resume with the 
 
 The initial authorized handoff used `--new-run`; ordinary restarts omit it. The stored
 allowance hash must match on restart. Keep the original allowance file unchanged.
+
+
+## Patient request timeout extension approved October 13
+
+Future non-Gemini requests use900-second provider timeouts,950-second case deadlines
+and1000-second covering provider pause leases. Flash-Lite retains120s/150s/4096.
+Controllers reserve1050 seconds before their original horizon expires. This changes
+only local evaluation waiting time; all retry counts, daily quotas, output caps and
+original controller deadlines remain intact. Earlier600-second observations stay
+immutable and retain their original settings. A provider gateway may still time out
+sooner; extending our local wait cannot bypass an upstream timeout.

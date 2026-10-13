@@ -386,13 +386,19 @@ def test_runner_keeps_original_429_before_attempt_budget_error(modules, monkeypa
             return rejected
 
         def run_immediate(self, _job):
+            assert _job.inputs["timeout"] == 900
+            assert _job.inputs["num_retries"] == 0
+            assert _job.inputs["max_provider_attempts"] == 1
+            budget = (_job.inputs["llm_policy"].deadline_at - datetime.now(UTC)).total_seconds()
+            assert 945 < budget <= 950
             try:
                 self._completion()
             except RuntimeError:
                 raise RuntimeError("immediate provider-attempt limit reached") from None
 
     @contextmanager
-    def window(*_args, **_kwargs):
+    def window(*_args, **kwargs):
+        assert kwargs["seconds"] == 1000
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner, "OUT", tmp_path)

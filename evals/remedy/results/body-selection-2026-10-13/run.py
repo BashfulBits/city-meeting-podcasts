@@ -84,7 +84,7 @@ def snapshot(rows, cases, now):
 
 def attempt(directory, candidate, case, previous, manifest_hash, storage, client):
     route = route_for(candidate)
-    timeout = 120 if route.provider == "gemini" else 600
+    timeout = 120 if route.provider == "gemini" else 900
     tokens = 4096 if route.provider == "gemini" else 16384
     effort = CANDIDATES[candidate][1]
     payload = messages(case)
@@ -142,7 +142,7 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
             allowed_route_ids=(route.route_id,),
             purpose="audit-remedy",
             require_direct=True,
-            deadline_at=datetime.now(UTC) + timedelta(seconds=150 if timeout == 120 else 650),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=150 if timeout == 120 else 950),
         )
         job = InferenceJob(
             task="tag",
@@ -318,7 +318,7 @@ def main():
                     reason = None
                     if state["answered"] == state["target"]:
                         reason = "complete"
-                    elif now + timedelta(seconds=750) >= instant(state["deadline_at"]):
+                    elif now + timedelta(seconds=1050) >= instant(state["deadline_at"]):
                         reason = "horizon_expired"
                     elif state["provider_attempts"] >= state["max_provider_attempts"]:
                         reason = "attempt_budget_exhausted"

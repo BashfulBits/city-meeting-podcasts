@@ -81,7 +81,7 @@ def snapshot(rows, state, case_ids, now, allowance=None):
     reason = None
     if answered == target:
         reason = "complete"
-    elif now >= timestamp(state["deadline_at"]) - timedelta(seconds=750):
+    elif now >= timestamp(state["deadline_at"]) - timedelta(seconds=1050):
         reason = "run_horizon"
     elif calls >= state["max_calls"]:
         reason = "call_budget"
