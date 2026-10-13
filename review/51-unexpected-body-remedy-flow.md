@@ -3927,3 +3927,15 @@ lock was acquired, with its response retained; the older GLM run submitted again
 at2026-10-13 15:58:29UTC. Resume body selection from the tested priority checkout
 using its existing results directory and original seven-day deadline. Draft#2413
 retains this fix and the input-size/timeout diagnosis; no model admission follows.
+
+
+Groq feasibility audit2026-10-13: all60 unchanged body-selection packets were measured
+with full schema and upstream tokenizer/chat templates, without provider calls.
+GPT-OSS high inputs span1,631–6,645 local tokens against configured7,125 input ceiling.
+Qwen3.8 native xhigh (Groq high mapping) spans1,694–6,995 against7,000; June13 Dallas
+Streets has only5 tokens of local margin, May25 only222. Hosted formatting may differ;
+no acceptance claim or new model scope follows. Audit and all60 per-record measurements
+are retained as groq-input-size-audit-2026-10-13-v1.json/.md in the body-selection
+results directory. Keep recorded hard ceilings and shared capacity unchanged.
+Current Groq documentation lists Qwen output maximum16,384, versus65,536 in our catalog;
+this is a follow-up catalog discrepancy, not a reason to alter production in this audit.
