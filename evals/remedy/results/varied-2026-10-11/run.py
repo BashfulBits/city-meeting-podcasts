@@ -7,6 +7,7 @@ import math
 import os
 import time
 from collections import Counter
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -109,7 +110,7 @@ def used_today(budget, route):
     return key, used
 
 
-def headroom(client, storage, route):
+def headroom(client, storage, route, coordination_bypass=False):
     now = datetime.now(UTC)
     budget, _ = load_llm_budget_cas(storage)
     # Gemini's primary and secondary credentials belong to separate configured projects.
@@ -120,8 +121,8 @@ def headroom(client, storage, route):
     known = {}
     for peer in peers:
         key, local = used_today(budget, peer)
-        if peer.route_id == "nvidia_glm_5_3_eval":
-            # This candidate is deliberately ephemeral and is not in the Worker catalog.
+        if coordination_bypass or peer.route_id == "nvidia_glm_5_3_eval":
+            # Bypass sees local usage only; the ephemeral GLM route has no Worker catalog row.
             known[key] = max(known.get(key, 0), local)
         else:
             status = client.status(Selection("route", peer.route_id))
@@ -136,16 +137,24 @@ def headroom(client, storage, route):
         reserve = max(2, math.ceil(route.quota.rpd * 0.2))
         if remaining <= reserve:
             resets = [next_reset(now, route.quota.reset_timezone)]
-            worker_reset = cell.get("rpd_resets_at")
-            if type(worker_reset) is not int or worker_reset <= now.timestamp() * 1000:
-                raise RuntimeError("Worker daily reset evidence invalid")
-            resets.append(datetime.fromtimestamp(worker_reset / 1000, UTC))
+            if not coordination_bypass:
+                worker_reset = cell.get("rpd_resets_at")
+                if type(worker_reset) is not int or worker_reset <= now.timestamp() * 1000:
+                    raise RuntimeError("Worker daily reset evidence invalid")
+                resets.append(datetime.fromtimestamp(worker_reset / 1000, UTC))
             return False, {
                 "kind": "daily_quota",
                 "remaining": remaining,
                 "production_reserve": reserve,
                 "next_eligible_at": max(resets).isoformat(),
             }
+    if coordination_bypass:
+        return True, {
+            "kind": "available",
+            "observed_usage": known,
+            "usage_visibility": "local_only",
+            "provider_in_flight": None,
+        }
     provider = client.status(Selection("provider", route.provider))
     if type(provider.get("in_flight")) is not int or provider["in_flight"] < 0:
         raise RuntimeError("Worker provider capacity evidence invalid")
@@ -186,7 +195,10 @@ def main():
     parser.add_argument("--run-started-at", type=timestamp)
     parser.add_argument("--stop-at", type=timestamp)
     parser.add_argument("--retry-allowance", type=Path)
+    parser.add_argument("--coordination-bypass", action="store_true")
     args = parser.parse_args()
+    if args.coordination_bypass and (args.stage != "full" or args.retry_allowance is None):
+        parser.error("coordination bypass requires the existing scoped full-stage allowance")
     OUT = args.results_dir.resolve()
     OUT.mkdir(parents=True, exist_ok=True)
     if not 1 <= args.max_calls <= 16:
@@ -225,7 +237,7 @@ def main():
     storage = make_storage(site, site.get("base_url", ""), ROOT / site.get("output_dir", "docs"))
     if storage is None or not storage.cas_capable:
         raise SystemExit("Shared CAS quota storage unavailable")
-    client = DispatchPauseClient()
+    client = None if args.coordination_bypass else DispatchPauseClient()
     register_response_model("remedy-eval-v2", RemedyEvalAnswer)
     done, failed = observations(manifest_hash, args.retry_failed)
     history = read_history(OUT / "batches", manifest_hash, {c.id for c in manifest.cases})
@@ -270,6 +282,13 @@ def main():
                 "mode": "claim_support",
                 "manifest_hash": manifest_hash,
                 "qualified": False,
+                "coordination_bypass": args.coordination_bypass,
+                "production_drained": False,
+                "coordination_approval_ref": (
+                    "review/51 temporary coordination bypass; maintainer chat2026-10-13"
+                    if args.coordination_bypass
+                    else None
+                ),
                 "route_id": route.route_id,
                 "reasoning": effort or "provider-default",
                 "request_timeout": timeout,
@@ -293,6 +312,7 @@ def main():
                         "direct": route.direct_model,
                         "controls": route.reasoning_controls_json,
                         "request_params": route.request_params_json,
+                        "coordination_bypass": args.coordination_bypass,
                         "request_timeout": timeout,
                         "output_token_cap": tokens,
                         "rpm": route.quota.rpm,
@@ -305,7 +325,11 @@ def main():
             diagnostics = []
             started = time.monotonic()
             try:
-                enough, capacity = headroom(client, storage, route)
+                enough, capacity = (
+                    headroom(client, storage, route, coordination_bypass=True)
+                    if args.coordination_bypass
+                    else headroom(client, storage, route)
+                )
                 row["capacity"] = capacity
                 if not enough:
                     row.update(
@@ -380,16 +404,22 @@ def main():
 
                     backend._completion = observed
                     # Provider scope prevents competition with the same shared account.
-                    with paused(
-                        Selection("provider", route.provider),
-                        seconds=timeout + 100,
-                        drain_timeout=30,
-                        reason="Approved varied challenge pilot",
-                        client=client,
-                    ) as window:
-                        if not window.drained:
+                    window_context = (
+                        nullcontext(None)
+                        if args.coordination_bypass
+                        else paused(
+                            Selection("provider", route.provider),
+                            seconds=timeout + 100,
+                            drain_timeout=30,
+                            reason="Approved varied challenge pilot",
+                            client=client,
+                        )
+                    )
+                    with window_context as window:
+                        if not args.coordination_bypass and not window.drained:
                             raise RuntimeError("Production did not drain; no call submitted")
-                        if candidate != "glm_full":
+                        row["production_drained"] = not args.coordination_bypass
+                        if candidate != "glm_full" and not args.coordination_bypass:
                             client.reserve(route.route_id, 1)
                         calls += 1
                         calls_by_candidate[candidate] += 1

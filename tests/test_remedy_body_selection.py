@@ -204,8 +204,17 @@ def test_dry_run_never_reads_gold_or_credentials(runner, monkeypatch, tmp_path, 
     assert report["target"] == 480
 
 
+@pytest.mark.parametrize("bypass", [False, True])
 @pytest.mark.parametrize("candidate", ["flashlite", "glm_full", "sol", "gptoss", "qwen38"])
-def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tmp_path, candidate):
+def test_provider_call_intent_and_actual_answer_contract(
+    runner, monkeypatch, tmp_path, candidate, bypass
+):
+    if bypass and candidate == "qwen38":
+        _, cases = runner.load_manifest()
+        with pytest.raises(ValueError, match="Qwen is held"):
+            runner.attempt(tmp_path, candidate, cases[0], 0, "manifest", object(), None, True)
+        assert not list(tmp_path.rglob("*.json"))
+        return
     _, cases = runner.load_manifest()
     case = cases[0]
     expected = answer(case)
@@ -229,7 +238,9 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
         route.provider = "gemini"
     if candidate in runner.GROQ_CANDIDATES:
         route.provider = "groq"
-        monkeypatch.setattr(runner, "token_headroom", lambda *_: (True, {"kind": "available"}))
+        monkeypatch.setattr(
+            runner, "token_headroom", lambda *_a, **_k: (True, {"kind": "available"})
+        )
     seen = []
 
     class Backend:
@@ -258,15 +269,25 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
 
     @contextmanager
     def drained(*_args, **kwargs):
+        assert not bypass
         pause_options.append(kwargs)
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner.transport, "route_for", lambda _: route)
     monkeypatch.setattr(runner, "route_for", lambda _: route)
     monkeypatch.setattr(runner.transport, "LiteLLMBackend", Backend)
+    monkeypatch.setattr(
+        runner.transport, "headroom", lambda *_a, **_k: (True, {"kind": "available"})
+    )
     monkeypatch.setattr(runner.transport, "paused", drained)
-    client = SimpleNamespace(reserve=lambda *_: None)
-    row = runner.attempt(tmp_path, candidate, case, 0, "manifest", object(), client)
+
+    def reserve(*_args):
+        assert not bypass
+
+    client = SimpleNamespace(reserve=reserve)
+    row = runner.attempt(
+        tmp_path, candidate, case, 0, "manifest", object(), client, coordination_bypass=bypass
+    )
     assert row["status"] == "completed"
     assert row["answer"]["feed_slugs"] == expected["feed_slugs"]
     assert row["provider_attempts"] == 1
@@ -278,7 +299,15 @@ def test_provider_call_intent_and_actual_answer_contract(runner, monkeypatch, tm
     start = datetime.fromisoformat(row["observed_at"])
     budget = (seen[0]["llm_policy"].deadline_at - start).total_seconds()
     assert deadline <= budget < deadline + 5
-    assert pause_options[0]["seconds"] == timeout + 100
+    assert row["coordination_bypass"] == bypass
+    assert row["production_drained"] == (not bypass)
+    intent = json.loads(next((tmp_path / "intents").glob("*.json")).read_text())
+    assert intent["coordination_bypass"] == bypass
+    if bypass:
+        assert not pause_options
+        assert "maintainer chat2026-10-13" in row["coordination_approval_ref"]
+    else:
+        assert pause_options[0]["seconds"] == timeout + 100
     if candidate in runner.GROQ_CANDIDATES:
         assert row["submitted_reasoning_controls"]["reasoning_effort"] == "high"
         assert seen[0]["reasoning_level"] == "high"
@@ -620,3 +649,32 @@ def test_groq_invalid_daily_usage_holds_requests(groq, problem):
         }[problem]
     with pytest.raises(ValueError):
         groq.token_headroom(transport, client, object(), route, 23060)
+
+
+def test_bypass_holds_qwen_before_capacity_or_provider_calls(runner, monkeypatch, tmp_path):
+    _, cases = runner.load_manifest()
+    route = runner.route_for("qwen38")
+    monkeypatch.setattr(
+        runner.transport, "headroom", lambda *_a, **_k: pytest.fail("Qwen checked capacity")
+    )
+    enough, capacity = runner.headroom(None, object(), route, cases[0], coordination_bypass=True)
+    assert not enough
+    assert capacity["kind"] == "capacity_unknown"
+    assert "Qwen held" in capacity["reason"]
+    with pytest.raises(ValueError, match="Qwen is held"):
+        runner.attempt(tmp_path, "qwen38", cases[0], 0, "manifest", object(), None, True)
+    assert not list(tmp_path.rglob("*.json"))
+
+
+@pytest.mark.parametrize("used,expected", [(0, True), (150000, False)])
+def test_groq_bypass_keeps_local_token_reserve_without_worker(groq, used, expected):
+    route, _stats, client, transport = quota_fixture(groq, local_used=used)
+    client._request = lambda *_a, **_k: pytest.fail("bypass contacted Worker")
+    enough, capacity = groq.token_headroom(
+        transport, client, object(), route, 23060, coordination_bypass=True
+    )
+    assert enough == expected
+    assert capacity["worker_tokens_used"] is None
+    assert capacity["usage_visibility"] == "local_only"
+    assert capacity["local_tokens_used"] == used
+    assert capacity["production_token_reserve"] == 36000

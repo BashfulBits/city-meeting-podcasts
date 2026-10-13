@@ -4072,3 +4072,13 @@ and fragment checks before push/resumption. Switch only while holding the shared
 lock after all intents have final observations; retain run identities, deadlines, saved
 answers, allocation and retry counters. End the opt-in with these bounded evaluations;
 future runs retain normal coordination checks by default.
+
+
+Coordination bypass verification:164 targeted checks and6,152 offline tests passed
+(16 deselected), whole Ruff/format546 files and changelog fragment validation clean.
+Tests cover zero Worker calls in bypass, local request/token reserves, Qwen holds,
+mode-bound immutable intents, rate-limit preservation and older subprocess forwarding.
+A read-only local CAS preflight showed all seven permitted models eligible; GPT-OSS
+had about113287 local token debt against180000, with36000 tokens reserved. Worker
+usage remains unknown. Qwen was held before any provider request or Worker read.
+No live completion or quota visibility is inferred from these preparation checks.

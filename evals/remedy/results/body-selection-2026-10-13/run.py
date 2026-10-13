@@ -6,6 +6,7 @@ import importlib.util
 import json
 import sys
 import time
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -62,11 +63,27 @@ def shaped_messages(case, route):
     return payload
 
 
-def headroom(client, storage, route, case):
-    enough, capacity = transport.headroom(client, storage, route)
+def headroom(client, storage, route, case, coordination_bypass=False):
+    if coordination_bypass and route.route_id == GROQ_CANDIDATES["qwen38"][0]:
+        return False, {
+            "kind": "capacity_unknown",
+            "reason": "Qwen held: bypass does not authorize unverified daily token capacity",
+            "next_eligible_at": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
+        }
+    enough, capacity = (
+        transport.headroom(client, storage, route, coordination_bypass=True)
+        if coordination_bypass
+        else transport.headroom(client, storage, route)
+    )
     if enough and route.provider == "groq":
         request_tokens = estimate_tokens(shaped_messages(case, route)) + 16384
-        enough, token_capacity = token_headroom(transport, client, storage, route, request_tokens)
+        enough, token_capacity = (
+            token_headroom(
+                transport, client, storage, route, request_tokens, coordination_bypass=True
+            )
+            if coordination_bypass
+            else token_headroom(transport, client, storage, route, request_tokens)
+        )
         capacity.update(token_capacity)
     return enough, capacity
 
@@ -82,8 +99,12 @@ def snapshot(rows, cases, now):
     }
 
 
-def attempt(directory, candidate, case, previous, manifest_hash, storage, client):
+def attempt(
+    directory, candidate, case, previous, manifest_hash, storage, client, coordination_bypass=False
+):
     route = route_for(candidate)
+    if coordination_bypass and candidate == "qwen38":
+        raise ValueError("Qwen is held until daily token capacity can be verified")
     timeout = 120 if route.provider == "gemini" else 900
     tokens = 4096 if route.provider == "gemini" else 16384
     effort = CANDIDATES[candidate][1]
@@ -114,6 +135,13 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
         "provider_attempts": 0,
         "observed_at": datetime.now(UTC).isoformat(),
         "qualified": False,
+        "coordination_bypass": coordination_bypass,
+        "production_drained": False,
+        "coordination_approval_ref": (
+            "review/51 temporary coordination bypass; maintainer chat2026-10-13"
+            if coordination_bypass
+            else None
+        ),
         **attempt_position(previous),
     }
     if candidate in GROQ_CANDIDATES:
@@ -130,6 +158,7 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
             "effort": effort,
             "controls": route.reasoning_controls_json,
             "params": route.request_params_json,
+            "coordination_bypass": coordination_bypass,
             "timeout": timeout,
             "tokens": tokens,
         }
@@ -188,24 +217,41 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
                 diagnostics.append({"duration_seconds": time.monotonic() - stamp})
 
         backend._completion = observed
-        with transport.paused(
-            transport.Selection("provider", route.provider),
-            seconds=timeout + 100,
-            drain_timeout=30,
-            reason="Approved independent body-selection evaluation",
-            client=client,
-        ) as window:
-            if not window.drained:
+        window_context = (
+            nullcontext(None)
+            if coordination_bypass
+            else transport.paused(
+                transport.Selection("provider", route.provider),
+                seconds=timeout + 100,
+                drain_timeout=30,
+                reason="Approved independent body-selection evaluation",
+                client=client,
+            )
+        )
+        with window_context as window:
+            if not coordination_bypass and not window.drained:
                 raise RuntimeError("Production did not drain; no call submitted")
+            row["production_drained"] = not coordination_bypass
+            if coordination_bypass:
+                enough, row["capacity"] = transport.headroom(
+                    client, storage, route, coordination_bypass=True
+                )
+                if not enough:
+                    raise RuntimeError("Local quota headroom unavailable; no call submitted")
             if candidate in GROQ_CANDIDATES:
                 enough, row["capacity"] = token_headroom(
-                    transport, client, storage, route, estimate + tokens
+                    transport,
+                    client,
+                    storage,
+                    route,
+                    estimate + tokens,
+                    **({"coordination_bypass": True} if coordination_bypass else {}),
                 )
                 if not enough:
                     raise RuntimeError(
                         "Groq daily tokens reserved for production; no call submitted"
                     )
-            if candidate != "glm_full":
+            if candidate != "glm_full" and not coordination_bypass:
                 client.reserve(route.route_id, 1)
             result = backend.run_immediate(job)
         row.update(raw_response=result.output, upstream_model=result.upstream_model)
@@ -242,6 +288,7 @@ def main():
     parser.add_argument("--results-dir", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--shared-lock", type=Path)
     parser.add_argument("--priority-results-dir", type=Path)
+    parser.add_argument("--coordination-bypass", action="store_true")
     args = parser.parse_args()
     frozen, cases = load_manifest()
     mh = canonical_hash(frozen)
@@ -259,6 +306,8 @@ def main():
         except BlockingIOError:
             raise SystemExit("Body-selection controller already running") from None
         status_file = directory / "controller-status.json"
+        if args.coordination_bypass and not status_file.exists():
+            parser.error("coordination bypass must resume the existing body-selection run")
         if status_file.exists():
             state = json.loads(status_file.read_text())
             if (
@@ -292,12 +341,26 @@ def main():
                 raise ValueError("cannot resume changed priority results directory")
         elif "call_priority" in state:
             parser.error("resume requires the saved priority results directory")
+        if state.get("coordination_bypass", False) != args.coordination_bypass:
+            for current in state.get("models", {}).values():
+                if current.get("state") in {"capacity_unknown", "provider_busy"}:
+                    current["next_eligible_at"] = None
+            state.setdefault("coordination_mode_history", []).append(
+                {
+                    "bypass": args.coordination_bypass,
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "approval_ref": (
+                        "review/51 temporary coordination bypass; maintainer chat2026-10-13"
+                    ),
+                }
+            )
+        state["coordination_bypass"] = args.coordination_bypass
         recovery.atomic_status(status_file, state)
         site = transport.load_site_config(ROOT / "config/site_config.yml")
         storage = transport.make_storage(site, site.get("base_url", ""), ROOT / "docs")
         if storage is None or not storage.cas_capable:
             raise SystemExit("Shared CAS quota storage unavailable")
-        client = transport.DispatchPauseClient()
+        client = None if args.coordination_bypass else transport.DispatchPauseClient()
         register_response_model("body-selection-eval-v1", BodySelectionAnswer)
         with args.shared_lock.open("a") as shared:
             try:
@@ -312,6 +375,7 @@ def main():
                             current["state"] == "ready"
                             and older.get("state")
                             in {"daily_quota", "provider_busy", "capacity_unknown"}
+                            and older.get("next_eligible_at")
                             and instant(older["next_eligible_at"]) > now
                         ):
                             state["models"][name] = older
@@ -350,7 +414,12 @@ def main():
                         try:
                             case_id = current["eligible_case_ids"][0]
                             case = next(c for c in cases if c.case_id == case_id)
-                            enough, capacity = headroom(client, storage, route_for(name), case)
+                            route = route_for(name)
+                            enough, capacity = (
+                                headroom(client, storage, route, case, coordination_bypass=True)
+                                if args.coordination_bypass
+                                else headroom(client, storage, route, case)
+                            )
                         except Exception as exc:
                             enough = False
                             capacity = {
@@ -407,7 +476,16 @@ def main():
                         state["waiting_for_shared_lock"] = False
                         state["models"][selected]["state"] = "running"
                         recovery.atomic_status(status_file, state)
-                        row = attempt(directory, selected, case, used, mh, storage, client)
+                        row = attempt(
+                            directory,
+                            selected,
+                            case,
+                            used,
+                            mh,
+                            storage,
+                            client,
+                            **({"coordination_bypass": True} if args.coordination_bypass else {}),
+                        )
                         if priority_slot and not row["provider_attempts"]:
                             state["call_priority"]["new_contested_slots"].remove(priority_slot)
                         recovery.atomic_status(status_file, state)

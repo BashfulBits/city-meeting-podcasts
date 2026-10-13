@@ -129,9 +129,12 @@ def main():
     parser.add_argument("--horizon-hours", type=float, default=24)
     parser.add_argument("--max-calls", type=int, default=256)
     parser.add_argument("--retry-allowance", type=Path)
+    parser.add_argument("--coordination-bypass", action="store_true")
     args = parser.parse_args()
     if not 0 < args.horizon_hours <= 168 or not 1 <= args.max_calls <= 256:
         parser.error("horizon must be 0–168 hours and call cap 1–256")
+    if args.coordination_bypass and (args.new_run or args.retry_allowance is None):
+        parser.error("coordination bypass must resume the existing scoped retry allowance")
     directory = args.results_dir.resolve()
     manifest = Manifest.model_validate_json((runner.FROZEN / "manifest.json").read_text())
     manifest_hash = canonical_hash(manifest.model_dump())
@@ -142,6 +145,8 @@ def main():
         parser.error("scoped retry allowance permits at most 25 calls")
     status_path = directory / "controller-status.json"
     previous = json.loads(status_path.read_text()) if status_path.exists() else None
+    if args.coordination_bypass and previous is None:
+        parser.error("coordination bypass must resume the existing recovery run")
     state = run_state(
         previous,
         manifest_hash,
@@ -174,13 +179,27 @@ def main():
             args.max_calls,
             allowance_hash,
         )
+        if state.get("coordination_bypass", False) != args.coordination_bypass:
+            for plan in state.get("routes", {}).values():
+                if plan.get("state") in {"capacity_unknown", "provider_busy"}:
+                    plan["next_eligible_at"] = None
+            state.setdefault("coordination_mode_history", []).append(
+                {
+                    "bypass": args.coordination_bypass,
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "approval_ref": (
+                        "review/51 temporary coordination bypass; maintainer chat2026-10-13"
+                    ),
+                }
+            )
+        state["coordination_bypass"] = args.coordination_bypass
         site = load_site_config(runner.ROOT / "config/site_config.yml")
         storage = make_storage(
             site, site.get("base_url", ""), runner.ROOT / site.get("output_dir", "docs")
         )
         if storage is None or not storage.cas_capable:
             raise SystemExit("Shared CAS quota storage unavailable")
-        client = runner.DispatchPauseClient()
+        client = None if args.coordination_bypass else runner.DispatchPauseClient()
         try:
             while True:
                 now = datetime.now(UTC)
@@ -201,7 +220,12 @@ def main():
                     if plan["state"] != "ready":
                         continue
                     try:
-                        enough, capacity = runner.headroom(client, storage, runner.route_for(name))
+                        route = runner.route_for(name)
+                        enough, capacity = (
+                            runner.headroom(client, storage, route, coordination_bypass=True)
+                            if args.coordination_bypass
+                            else runner.headroom(client, storage, route)
+                        )
                     except Exception as exc:
                         enough = False
                         capacity = {
@@ -250,6 +274,8 @@ def main():
                     "--max-calls",
                     str(min(16, state["max_calls"] - state["provider_attempts_this_run"])),
                 ]
+                if args.coordination_bypass:
+                    command.append("--coordination-bypass")
                 if args.retry_allowance:
                     command.extend(["--retry-allowance", str(args.retry_allowance.resolve())])
                 result = subprocess.run(
