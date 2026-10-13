@@ -2570,6 +2570,19 @@ bytes / 4,002 events became a 5,181-byte compact envelope. First data arrived at
 call took about 103 seconds. This validates streamed final usage, not a 36,864-token boundary.
 Transport timing diagnostics use the authorized deadline rather than clipping discovery durations
 to the configured-route 120-second ceiling. No timeout ceiling change is included here.
+On 2026-10-13 the maintainer approved one paused local diagnostic at the same 36,864-token
+size with a 1,200-second deadline. The diagnostic varies time alone, retains the existing token
+and one-call budgets, and changes no committed workflow or production timeout. Its result must
+be recorded as completed usage evidence or an inconclusive failure, never a numerical refusal.
+The approved test received HTTP 200 with first data at 359ms, 7,537,360 streamed bytes and
+22,977 events, then failed SSE envelope validation after 600.216 seconds. The local call allowance
+was 1,200 seconds; this was not its hard cancellation. No final usage or finish was retained,
+and the offending event shape was not retained, so an upstream timeout is a hypothesis rather
+than a verified cause. No higher cap or numerical refusal was established. The provider pause
+was released and read-only status confirmed zero in-flight calls and no active pauses. Keep the
+600-second production ceiling and the verified 24,576 lower bound; do not raise timeouts based
+on this result. A future diagnostic must distinguish invalid event shapes before attributing
+the failure to a provider or endpoint.
 
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
