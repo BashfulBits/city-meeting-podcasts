@@ -357,7 +357,7 @@ six==1.17.0
     # via python-dateutil
 sortedcontainers==2.4.0
     # via pyannote-core
-soupsieve==2.9.2
+soupsieve==2.10
     # via beautifulsoup4
 sqlalchemy==2.0.52
     # via
