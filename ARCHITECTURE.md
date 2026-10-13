@@ -1828,3 +1828,9 @@ Its controller shares the older evaluation call lock, preserves round/attempt li
 quota headroom, and never reads gold. Explicit offline scoring keeps existing-body feed
 choice, publication controls, and insufficient-proof guardrails separate. No production
 model or feed activation follows from these historical challenge results.
+
+The body-selection evaluator can explicitly prioritize a concurrently running older
+comparison with persistent two-to-one contested call allocation. Failed submissions
+count as slots; idle/cooldown reservations are borrowable, while changed or stale older
+controller state holds new calls. The shared provider lock still prevents overlap, and
+all existing quota, retry and original-deadline checks remain in force.

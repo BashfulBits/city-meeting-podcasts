@@ -25,6 +25,7 @@ from body_selection import (
     validate_answer,
     write_exclusive,
 )
+from call_priority import bind_priority, inspect_priority, read_status
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LLMBackendConfig
@@ -184,6 +185,7 @@ def main():
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--results-dir", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--shared-lock", type=Path)
+    parser.add_argument("--priority-results-dir", type=Path)
     args = parser.parse_args()
     frozen, cases = load_manifest()
     mh = canonical_hash(frozen)
@@ -221,6 +223,19 @@ def main():
                 "shared_lock": str(args.shared_lock.resolve()),
                 "next_candidate_index": 0,
             }
+        if args.priority_results_dir:
+            priority_directory = args.priority_results_dir.resolve()
+            if args.shared_lock.resolve() != priority_directory / "run.lock":
+                parser.error("priority results must use the same shared provider-call lock")
+            if "call_priority" not in state:
+                state["call_priority"] = bind_priority(
+                    priority_directory, read_status(priority_directory), datetime.now(UTC)
+                )
+            elif state["call_priority"]["older_results_dir"] != str(priority_directory):
+                raise ValueError("cannot resume changed priority results directory")
+        elif "call_priority" in state:
+            parser.error("resume requires the saved priority results directory")
+        recovery.atomic_status(status_file, state)
         site = transport.load_site_config(ROOT / "config/site_config.yml")
         storage = transport.make_storage(site, site.get("base_url", ""), ROOT / "docs")
         if storage is None or not storage.cas_capable:
@@ -252,6 +267,13 @@ def main():
                     if reason:
                         print(reason, state["answered"], state["target"], flush=True)
                         return
+                    if "call_priority" in state:
+                        state["call_allocation"] = inspect_priority(state["call_priority"], now)
+                        if not state["call_allocation"]["allow_new"]:
+                            state["next_action_at"] = (now + timedelta(seconds=10)).isoformat()
+                            recovery.atomic_status(status_file, state)
+                            time.sleep(10)
+                            continue
                     selected = None
                     for offset in range(len(MODELS)):
                         index = (state["next_candidate_index"] + offset) % len(MODELS)
@@ -307,6 +329,16 @@ def main():
                         time.sleep(60)
                         continue
                     try:
+                        priority_slot = None
+                        if "call_priority" in state:
+                            state["call_allocation"] = inspect_priority(state["call_priority"])
+                            if not state["call_allocation"]["allow_new"]:
+                                recovery.atomic_status(status_file, state)
+                                continue
+                            if state["call_allocation"]["contested"]:
+                                # Persist first; an interrupted outcome consumes a slot.
+                                priority_slot = uuid4().hex
+                                state["call_priority"]["new_contested_slots"].append(priority_slot)
                         case_id = state["models"][selected]["eligible_case_ids"][0]
                         case = next(c for c in cases if c.case_id == case_id)
                         used = sum(
@@ -318,6 +350,9 @@ def main():
                         state["models"][selected]["state"] = "running"
                         recovery.atomic_status(status_file, state)
                         row = attempt(directory, selected, case, used, mh, storage, client)
+                        if priority_slot and not row["provider_attempts"]:
+                            state["call_priority"]["new_contested_slots"].remove(priority_slot)
+                        recovery.atomic_status(status_file, state)
                         if row["status"] == "deferred":
                             state["models"][selected].update(
                                 state="provider_busy",

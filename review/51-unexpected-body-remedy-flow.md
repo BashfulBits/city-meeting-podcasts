@@ -3917,3 +3917,13 @@ model routes, prompts, gold answers, credentials, quota limits or admission rule
 Tests cover two-to-one contention, retries counting as slots, borrowing during cooldown,
 completion/stopping, stale or changed state, resume and zero-call preflight deferrals.
 Run targeted tests, full offline suite, whole Ruff/format and fragment validation before push.
+
+
+Priority verification: 6,118 full offline tests passed (16 deselected); the final
+38 body-selection targeted tests also pass, including controller-level allocation,
+resume and preflight-deferral checks. Whole Ruff/format545 files and changelog
+fragment validation pass. The former new controller stopped only after its call
+lock was acquired, with its response retained; the older GLM run submitted again
+at2026-10-13 15:58:29UTC. Resume body selection from the tested priority checkout
+using its existing results directory and original seven-day deadline. Draft#2413
+retains this fix and the input-size/timeout diagnosis; no model admission follows.
