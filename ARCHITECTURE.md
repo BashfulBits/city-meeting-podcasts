@@ -970,6 +970,14 @@ substring — worth checking, because per-body feeds share one source.
 
 #### Remedy evaluation
 
+The varied challenge's evaluator-only controller under `evals/remedy/results/varied-2026-10-11/`
+selects untouched and failed questions per candidate, persists quota/reset and cooldown waits,
+and stops explicitly at bounded retry, call or time allowances. Gemini primary/secondary keys
+share successful logical case identities. Immutable pre-call intents hold unknown interrupted
+outcomes until reconciliation. Original sanitized provider errors remain visible even when a
+backend attempt-budget exception replaces the outward error. Existing shared quota and production
+headroom controls remain authoritative; this controller does not change production routing.
+
 Explicit reasoning effort requires immediate execution; deferred and dispatch paths reject it
 before side effects. Evaluation candidates interleave by case under a total logical-case cap, and
 timeouts hold only their configuration. Each evaluation case shares a two-invocation budget across

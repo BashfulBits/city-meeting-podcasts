@@ -1898,3 +1898,13 @@ request caps separately. Audit current routes' sources/scopes with maintainer co
 unknown, preserve existing values and runtime adaptation during migration, and make v2/Python
 enforce the same canonical configuration. No empirical refill redesign or production tuning is
 a prerequisite. Mature file/schema/compiler/migration/parity contracts to L3 before implementation.
+
+### Review/51 P1 backfill recovery (#2409) — L3
+
+Maintainer approved evaluator-only bounded retries, quota-reset resumption, route cooldowns and
+original provider-error visibility on 2026-10-12. Exact implementation and test scope is in
+[review/51](51-unexpected-body-remedy-flow.md#p1-backfill-recovery--l3-approved-2026-10-12-2409).
+Preserve existing results, shared quota accounting, production headroom and all model settings.
+Implement as a dependent PR on #2277; human merge and later operational handoff are separate.
+Implementation prepared in [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410).
+The parent changelog conflict is resolved; both entries use current main's fragment convention.

@@ -3715,3 +3715,56 @@ membership. Raw results and offline scoring are under
 `evals/remedy/results/varied-2026-10-11/`. These eight cases are from the regression challenge,
 not blind-owner admission truth; no model has a qualifying P1 report from them. Remaining pilot and
 full-comparison candidates are pending shared provider capacity. Production admissions remain empty.
+
+### P1 backfill recovery — L3, approved 2026-10-12 (#2409)
+
+The maintainer approved all four repairs in the retained backfill diagnosis: retry scheduling,
+reset-aware resumption, controlled route cooldowns, and original provider-error reporting.
+This supplements the varied-packet contract above without changing its frozen questions or limits.
+
+Permitted implementation files: the existing varied `run.py` and `score.py`, new `recovery.py`
+and `backfill.py` under `evals/remedy/results/varied-2026-10-11/`, its retained diagnosis/README,
+`tests/test_remedy_backfill.py`, and lifecycle docs. The new controller reads immutable history,
+protects successful logical model/case pairs across Gemini keys, and offers failed cases without
+waiting for global success. At most three attempts per physical candidate/case per UTC day and
+three new retries per physical pair per controller run; all provider batch caps remain at 16.
+Existing historical attempts remain charged evidence. Retry exhaustion is reported explicitly.
+Write an immutable attempt intent before each new provider call. An interrupted call without a
+final observation remains an unknown outcome and is held across both keys, rather than blindly
+repeated. Final observations reference their intent; unmatched intents count toward call budgets.
+
+Preserve original sanitized provider status/message, Retry-After and failure category before
+the backend can replace them with its attempt-budget error. Server errors, timeouts and rate
+limits schedule evaluation-only cooldowns of at least 30 minutes, respecting longer Retry-After.
+Invalid answers remain a distinct bounded retry category. Daily quota exhaustion waits until
+the later applicable local/Worker reset; retain the current 20% production reserve and fail
+closed on malformed quota/status evidence. Provider-busy or failed status reads wait five
+minutes, without changing production priority or pause scopes.
+
+The controller persists atomic status with per-candidate answered, failed, uncalled, exhausted,
+next eligible time and stop reason. It resumes from observation history and status after resets,
+holds the existing provider-call lock inside each runner invocation, and uses its own controller
+lock. It runs for an explicit bounded horizon (default 24 hours), with at most 256 new provider
+attempts per run; incomplete stopping is never called completion. Poll no longer than 60 seconds
+at a time for cancellation, while sleeping until actual eligibility. Astra is excluded; preserved
+historical observations remain available. The comparison target is eight logical models ×113=904.
+
+Offline tests must prove failed-case recovery before global success, cooldown/reset boundaries,
+bounded retry exhaustion, immutable success deduplication across keys, diagnostic redaction,
+original 429 preservation, status persistence, lock exclusion, and accurate incomplete stopping.
+Run targeted and full offline tests and whole Ruff/format before pushing a dependent PR on #2277.
+Do not edit production runtime/config, provider quotas, catalogs, credentials, feeds or audio;
+do not restart or interrupt the active legacy runner as part of this implementation PR.
+Update CHANGELOG, ARCHITECTURE and review/11 in the implementation change.
+
+#2409 prepared validation after carrying current main: 79 targeted tests and 6,043 offline tests
+passed (16 deselected). Whole Ruff/format passed across 539 files. A credentials-free plan over
+the actual saved history
+reports 614/904 answered and makes all 83 unanswered non-Gemini failures eligible for bounded
+recovery. Live quotas are checked only on execution. No provider calls were launched during
+implementation; the legacy controller and original observations remain untouched.
+
+Implementation PR: [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410),
+dependent on #2277. The parent's single changelog conflict was resolved in an isolated checkout
+and carried forward. Current main's fragment convention applies: the lifecycle entry is in
+`changelog.d/2410-backfill-recovery.md`, compiled into CHANGELOG after human merge.

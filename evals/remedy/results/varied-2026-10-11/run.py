@@ -5,13 +5,22 @@ import fcntl
 import json
 import math
 import os
-import re
 import time
 from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
+
+from recovery import (
+    candidate_plan,
+    cooldown_until,
+    logical_candidate,
+    next_reset,
+    provider_error,
+    read_history,
+    timestamp,
+)
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
@@ -42,7 +51,9 @@ FROZEN = ROOT / "evals/remedy/holdout/backlog-varied-2026-10-11/approved-v2"
 CANDIDATES = {
     "flashlite": ("gemini_3_5_flash_lite_primary", None),
     "gemini37": ("gemini_3_7_flash_primary", "high"),
+    "gemini37_secondary": ("gemini_3_7_flash_secondary", "high"),
     "gemini38": ("gemini_3_8_flash_primary", "high"),
+    "gemini38_secondary": ("gemini_3_8_flash_secondary", "high"),
     "kimi": ("nvidia_kimi_k3_free", "max"),
     "glm_full": ("nvidia_glm_5_3_eval", None),
     "glm_flash": ("orcarouter_zai_glm_5_3_flash_free", None),
@@ -50,14 +61,6 @@ CANDIDATES = {
     "sol": ("beatapi_gpt_6_1_sol_free", None),
     "deepseek": ("beatapi_deepseek_v4_1_flash_free", None),
 }
-
-
-def sanitize(value):
-    text = str(value)
-    for key, value in os.environ.items():
-        if any(p in key for p in ("KEY", "TOKEN", "SECRET", "PASSWORD")) and len(value) > 7:
-            text = text.replace(value, "[REDACTED]")
-    return re.sub(r"(?i)(key=|bearer\s+)[^\s&]+", r"\1[REDACTED]", text)[:2000]
 
 
 def route_for(candidate):
@@ -105,12 +108,13 @@ def used_today(budget, route):
 
 
 def headroom(client, storage, route):
+    now = datetime.now(UTC)
     budget, _ = load_llm_budget_cas(storage)
-    if route.provider == "gemini":
-        prefix = route.route_id.rsplit("_", 1)[0]
-        peers = [r for key, r in ROUTE_REGISTRY.items() if key.startswith(prefix + "_")]
-    else:
-        peers = [route]
+    # Gemini's primary and secondary credentials belong to separate configured projects.
+    # Reserve and account against the selected account's route quota so the evaluator can use
+    # both accounts without scoring them as separate models. Provider-wide in-flight protection
+    # below still keeps this research work out of the way of active production calls.
+    peers = [route]
     known = {}
     for peer in peers:
         key, local = used_today(budget, peer)
@@ -122,16 +126,34 @@ def headroom(client, storage, route):
             cell = status.get("routes", {}).get(peer.route_id)
             if cell is None:
                 raise RuntimeError("Worker capacity evidence missing")
-            known[key] = max(known.get(key, 0), local, cell.get("rpd_used", 0))
+            if type(cell.get("rpd_used")) is not int or cell["rpd_used"] < 0:
+                raise RuntimeError("Worker daily quota evidence invalid")
+            known[key] = max(known.get(key, 0), local, cell["rpd_used"])
     if route.quota.rpd is not None:
         remaining = route.quota.rpd - sum(known.values())
         reserve = max(2, math.ceil(route.quota.rpd * 0.2))
         if remaining <= reserve:
-            return False, {"remaining": remaining, "production_reserve": reserve}
+            resets = [next_reset(now, route.quota.reset_timezone)]
+            worker_reset = cell.get("rpd_resets_at")
+            if type(worker_reset) is not int or worker_reset <= now.timestamp() * 1000:
+                raise RuntimeError("Worker daily reset evidence invalid")
+            resets.append(datetime.fromtimestamp(worker_reset / 1000, UTC))
+            return False, {
+                "kind": "daily_quota",
+                "remaining": remaining,
+                "production_reserve": reserve,
+                "next_eligible_at": max(resets).isoformat(),
+            }
     provider = client.status(Selection("provider", route.provider))
-    if provider.get("in_flight") != 0:
-        return False, {"reason": "production provider in flight"}
-    return True, {"observed_usage": known, "provider_in_flight": 0}
+    if type(provider.get("in_flight")) is not int or provider["in_flight"] < 0:
+        raise RuntimeError("Worker provider capacity evidence invalid")
+    if provider["in_flight"] != 0:
+        return False, {
+            "kind": "provider_busy",
+            "reason": "production provider in flight",
+            "next_eligible_at": (now + timedelta(minutes=5)).isoformat(),
+        }
+    return True, {"kind": "available", "observed_usage": known, "provider_in_flight": 0}
 
 
 def observations(manifest_hash, retry_failed):
@@ -141,29 +163,36 @@ def observations(manifest_hash, retry_failed):
         item = json.loads(path.read_text())
         if item.get("manifest_hash") != manifest_hash:
             raise ValueError("Prior observation manifest mismatch")
-        key = (item["candidate"], item["case_id"])
+        logical_key = (logical_candidate(item["candidate"]), item["case_id"])
         if item.get("status") == "completed":
-            if key in finished:
-                raise ValueError("Duplicate completed candidate/case observation")
-            finished.add(key)
+            finished.add(logical_key)
         elif item.get("status") == "failed":
-            failed.add(key)
+            # A secondary credential may retry a failure from the primary.
+            failed.add((item["candidate"], item["case_id"]))
     return finished, failed if not retry_failed else set()
 
 
 def main():
+    global OUT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("pilot", "full"), default="pilot")
     parser.add_argument("--max-calls", type=int, default=8)
     parser.add_argument("--candidate", choices=tuple(CANDIDATES), action="append")
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--max-calls-per-candidate", type=int)
+    parser.add_argument("--results-dir", type=Path, default=OUT)
+    parser.add_argument("--run-started-at", type=timestamp)
+    parser.add_argument("--stop-at", type=timestamp)
     args = parser.parse_args()
+    OUT = args.results_dir.resolve()
+    OUT.mkdir(parents=True, exist_ok=True)
     if not 1 <= args.max_calls <= 16:
         raise SystemExit("Batch cap must be 1–16 provider calls")
     if args.stage == "full" and not (OUT / "pilot-reviewed.json").exists():
         raise SystemExit("Full stage requires explicit reviewed pilot marker")
-    candidates = args.candidate or list(CANDIDATES)
+    candidates = args.candidate or [c for c in CANDIDATES if c != "astra"]
+    if "astra" in candidates:
+        raise SystemExit("Astra is excluded from the approved comparison")
     if len(candidates) != len(set(candidates)):
         raise SystemExit("Candidate may be listed only once")
     if args.stage == "pilot" and len(candidates) != 1:
@@ -193,6 +222,13 @@ def main():
     client = DispatchPauseClient()
     register_response_model("remedy-eval-v2", RemedyEvalAnswer)
     done, failed = observations(manifest_hash, args.retry_failed)
+    history = read_history(OUT / "batches", manifest_hash, {c.id for c in manifest.cases})
+    started_at = args.run_started_at or datetime.now(UTC)
+    plan = candidate_plan(
+        history, candidates[0], [c.id for c in selected], datetime.now(UTC), started_at
+    )
+    eligible = set(plan["eligible_case_ids"])
+    selected.sort(key=lambda c: plan["eligible_case_ids"].index(c.id) if c.id in eligible else 9999)
     batch = OUT / "batches" / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8])
     batch.mkdir(parents=True)
     calls = 0
@@ -201,10 +237,14 @@ def main():
     # Interleave candidates by case; do not spend a whole daily pool on an easy case prefix.
     for case in selected:
         for candidate in candidates:
-            pair = (candidate, case.id)
+            # Credential-specific Gemini routes are one logical model.  The
+            # primary key's completed cases must also suppress secondary calls.
+            pair = (logical_candidate(candidate), case.id)
+            route_pair = (candidate, case.id)
             if (
                 pair in done
-                or pair in failed
+                or case.id not in eligible
+                or route_pair in failed
                 or candidate in held
                 or calls >= args.max_calls
                 or calls_by_candidate[candidate] >= per_candidate_cap
@@ -214,6 +254,9 @@ def main():
             effort = CANDIDATES[candidate][1]
             timeout = 120 if route.provider == "gemini" else 600
             tokens = 4096 if route.provider == "gemini" else 16384
+            if args.stop_at and datetime.now(UTC) + timedelta(seconds=timeout + 150) > args.stop_at:
+                print("Batch stopped before controller deadline; no further calls", flush=True)
+                return
             messages = case_messages(case, "claim_support")
             row = {
                 "candidate": candidate,
@@ -256,7 +299,11 @@ def main():
                 enough, capacity = headroom(client, storage, route)
                 row["capacity"] = capacity
                 if not enough:
-                    row.update(status="deferred", reason="Production capacity/headroom unavailable")
+                    row.update(
+                        status="deferred",
+                        reason=capacity["kind"],
+                        next_eligible_at=capacity["next_eligible_at"],
+                    )
                     held.add(candidate)
                 else:
                     estimate = estimate_tokens(messages)
@@ -306,9 +353,19 @@ def main():
                         _row=row, _completion=completion, _diagnostics=diagnostics, **kwargs
                     ):
                         stamp = time.monotonic()
+                        _row["attempt_id"] = uuid4().hex
+                        intents = OUT / "intents"
+                        intents.mkdir(exist_ok=True)
+                        with (intents / (_row["attempt_id"] + ".json")).open("x") as intent:
+                            json.dump(_row | {"provider_attempts": 1}, intent, indent=2)
+                            intent.flush()
+                            os.fsync(intent.fileno())
                         _row["provider_attempts"] += 1
                         try:
                             return _completion(**kwargs)
+                        except Exception as exc:
+                            _row["provider_error"] = provider_error(exc, datetime.now(UTC))
+                            raise
                         finally:
                             _diagnostics.append({"duration_seconds": time.monotonic() - stamp})
 
@@ -341,15 +398,25 @@ def main():
                     row.update(
                         status="completed", answer=validate_answer(answer, case).model_dump()
                     )
-                    done.add((candidate, case.id))
+                    done.add((logical_candidate(candidate), case.id))
             except Exception as exc:
+                original = row.get("provider_error") or provider_error(exc, datetime.now(UTC))
                 row.update(
                     status="failed" if row["provider_attempts"] else "deferred",
                     error_class=type(exc).__name__,
-                    reason=sanitize(exc),
+                    reason=original["message"],
+                    failure_category=original["category"],
+                    provider_error=original,
                 )
                 held.add(candidate)
-            row.update(end_to_end_seconds=time.monotonic() - started, diagnostics=diagnostics)
+            row.update(
+                end_to_end_seconds=time.monotonic() - started,
+                diagnostics=diagnostics,
+                finished_at=datetime.now(UTC).isoformat(),
+            )
+            if row["status"] == "failed":
+                until = cooldown_until(row)
+                row["next_eligible_at"] = until.isoformat() if until else None
             with (batch / (candidate + "-" + canonical_hash(case.id)[:16] + ".json")).open(
                 "x"
             ) as f:
