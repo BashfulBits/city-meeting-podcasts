@@ -3789,3 +3789,9 @@ When those daily attempts are exhausted, wait until midnight UTC before any new 
 Save separate scored reports using explicit approved truth; never replace raw observations.
 No production routes, feeds, quotas, workflow changes or model activations are authorized here.
 Run targeted tests and whole Ruff/format before resuming, and the full offline suite before push.
+
+Six-model follow-on validation: 87 targeted tests passed; full offline suite passed
+6,074 tests (16 deselected); whole Ruff/format passed across 539 files. The separate
+`six-model-scored-2026-10-13-v1.json` report records 673/678 answers. Full GLM has two
+unanswered and Sol three; the bounded replacement is waiting for 2026-10-14 00:00 UTC
+(October 13, 7 PM Chicago). This is incomplete comparison evidence, not P1 admission.
