@@ -3729,6 +3729,9 @@ protects successful logical model/case pairs across Gemini keys, and offers fail
 waiting for global success. At most three attempts per physical candidate/case per UTC day and
 three new retries per physical pair per controller run; all provider batch caps remain at 16.
 Existing historical attempts remain charged evidence. Retry exhaustion is reported explicitly.
+Write an immutable attempt intent before each new provider call. An interrupted call without a
+final observation remains an unknown outcome and is held across both keys, rather than blindly
+repeated. Final observations reference their intent; unmatched intents count toward call budgets.
 
 Preserve original sanitized provider status/message, Retry-After and failure category before
 the backend can replace them with its attempt-budget error. Server errors, timeouts and rate
