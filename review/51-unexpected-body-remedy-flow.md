@@ -3768,3 +3768,24 @@ Implementation PR: [#2410](https://github.com/BashfulBits/city-meeting-podcasts/
 dependent on #2277. The parent's single changelog conflict was resolved in an isolated checkout
 and carried forward. Current main's fragment convention applies: the lifecycle entry is in
 `changelog.d/2410-backfill-recovery.md`, compiled into CHANGELOG after human merge.
+
+### P1 six-model completion — L3, approved 2026-10-13
+
+The maintainer discontinued Gemini 3.7/3.8 testing because of their low daily quotas.
+Keep all historical Gemini and Astra observations, but exclude them from active calls and scores.
+The active comparison is Flash-Lite, Kimi, full GLM, GLM Flash, Sol and DeepSeek: six models
+with 113 questions each (678 answers). This supersedes the eight-model target above.
+
+Before changing code, stop the idle controller without interrupting a provider request.
+Change only the existing varied recovery.py/backfill.py/run.py/score.py and README,
+tests/test_remedy_backfill.py, and lifecycle docs. Separate active candidates from the
+historical candidate allowlist; block discontinued candidates before loading credentials.
+Prove historical observations remain readable, excluded calls/counts, and six-model stopping.
+The scorer must retain hashed provenance when results live outside the executing checkout.
+
+Resume a new bounded controller run to finish only unanswered active cases. Preserve the
+three-attempt per-case UTC-day cap, production headroom, model settings and existing timeouts.
+When those daily attempts are exhausted, wait until midnight UTC before any new request.
+Save separate scored reports using explicit approved truth; never replace raw observations.
+No production routes, feeds, quotas, workflow changes or model activations are authorized here.
+Run targeted tests and whole Ruff/format before resuming, and the full offline suite before push.

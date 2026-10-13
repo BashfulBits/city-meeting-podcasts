@@ -1911,3 +1911,9 @@ Preserve existing results, shared quota accounting, production headroom and all 
 Implement as a dependent PR on #2277; human merge and later operational handoff are separate.
 Implementation prepared in [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410).
 The parent changelog conflict is resolved; both entries use current main's fragment convention.
+
+### Review/51 P1 six-model completion — L3
+
+Maintainer discontinued Gemini 3.7/3.8 evaluation on 2026-10-13 because daily quotas are too low.
+Keep historical observations; complete only the other six models (678 questions), with existing
+attempt limits and production headroom. Contract: review/51, P1 six-model completion.
