@@ -185,6 +185,17 @@ def test_external_score_provenance(modules, monkeypatch, tmp_path):
     )
 
 
+def test_six_model_completion_ignores_historical_failures(modules):
+    recovery, _, controller = modules
+    rows = [observation(name, status="completed", when=NOW) for name in recovery.MODELS]
+    rows.append(observation("gemini37", when=NOW))
+    state = controller.run_state(None, "manifest", NOW)
+    status = controller.snapshot(rows, state, ["one"], NOW)
+    assert status["stop_reason"] == "complete"
+    assert status["answered"] == status["target"] == 6
+    assert status["provider_attempts_this_run"] == 6
+
+
 def test_original_status_and_secrets_are_preserved_safely(modules, monkeypatch):
     recovery, _, _ = modules
     monkeypatch.setenv("TEST_API_KEY", "secret-value-1234")
