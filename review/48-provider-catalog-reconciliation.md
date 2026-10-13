@@ -2463,7 +2463,16 @@ served combination `https://integrate.api.nvidia.com/v1/chat/completions` plus
 `nvidia/nemotron-3.5-lightning-30b-a3b`, after bounded local verification. This is a transport
 capability of that hosted deployment, not a numerical model limit, provider quota or intrinsic
 Nemotron behavior. Other NVIDIA models, alternate hosts and providers require independent
-support evidence. NVIDIA documents the top-level parameter in its
+support evidence. The bounded local minimum-generation test reported 24,576 completion tokens
+and `length` (including 5,273 reasoning tokens); its ascending answer restarted, so the text
+verifier correctly withheld boundary proof. The final repeated-line probe reported 2,481 input /
+24,576 completion / 27,057 total tokens, including 1,372 reasoning tokens, `length` and 11,602
+valid fixed lines. The parser accepted a 24,576-token lower bound under `output:v3:min_tokens`;
+no refused upper boundary was measured. A matched original-prompt local comparison also reached
+24,576 / `length`, so ordinary output behavior can vary and no runner-only cause is claimed for
+these early stops. All diagnostic calls used provider pause/drain, charged one-call sessions and
+the existing timeout/token bounds. GitHub verification of the final fixture remains after merge.
+NVIDIA documents the top-level parameter in its
 [NIM release notes](https://docs.nvidia.com/nim/large-language-models/1.14.0/release-notes.html).
 When onboarding another endpoint/model, verify parameter support and actual generation before
 opting in this callback; never infer support from OpenAI compatibility or model branding.
