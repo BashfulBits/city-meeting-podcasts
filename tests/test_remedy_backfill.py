@@ -196,6 +196,87 @@ def test_six_model_completion_ignores_historical_failures(modules):
     assert status["provider_attempts_this_run"] == 6
 
 
+def retry_allowance():
+    return {
+        "version": 1,
+        "manifest_hash": "manifest",
+        "authorized_at": (NOW - timedelta(hours=1)).isoformat(),
+        "authorization_ref": "Maintainer chat: five additional retries, start now",
+        "max_attempts_per_pair": 5,
+        "pairs": [
+            {"candidate": name, "case_id": case}
+            for name, cases in (("glm_full", ("one", "two")), ("sol", ("one", "two", "three")))
+            for case in cases
+        ],
+    }
+
+
+def test_scoped_retry_bypasses_daily_limit_only_for_listed_pair(modules):
+    recovery, _, _ = modules
+    rows = [
+        observation("sol", case, when=NOW - timedelta(hours=1, minutes=40 + i))
+        for case in ("one", "unlisted")
+        for i in range(3)
+    ]
+    plan = recovery.candidate_plan(rows, "sol", ["one", "unlisted"], NOW, NOW, retry_allowance())
+    assert plan["eligible_case_ids"] == ["one"]
+    assert plan["next_eligible_at"] == recovery.next_reset(NOW, "UTC").isoformat()
+
+
+def test_scoped_five_attempts_never_refill_after_reset_or_new_run(modules):
+    recovery, _, _ = modules
+    rows = [observation("sol", when=NOW - timedelta(minutes=40 + i)) for i in range(5)]
+    for now in (NOW, NOW + timedelta(days=1)):
+        plan = recovery.candidate_plan(rows, "sol", ["one"], now, now, retry_allowance())
+        assert plan["state"] == "retry_exhausted"
+        assert not plan["eligible_case_ids"]
+        assert plan["retry_exhausted"] == 1
+    completed = rows + [observation("sol", status="completed")]
+    assert (
+        recovery.candidate_plan(completed, "sol", ["one"], NOW, NOW, retry_allowance())["state"]
+        == "complete"
+    )
+
+
+def test_scoped_allowance_retains_unknown_outcome_hold(modules):
+    recovery, _, _ = modules
+    row = observation("sol", status="deferred", unknown_outcome=True)
+    plan = recovery.candidate_plan([row], "sol", ["one"], NOW, NOW, retry_allowance())
+    assert plan["state"] == "unknown_outcome"
+    assert not plan["eligible_case_ids"]
+
+
+@pytest.mark.parametrize("invalid", ["manifest", "pairs", "scope", "cap"])
+def test_scoped_allowance_rejects_widening(modules, tmp_path, invalid):
+    recovery, _, _ = modules
+    value = retry_allowance()
+    if invalid == "manifest":
+        value["manifest_hash"] = "other"
+    elif invalid == "pairs":
+        value["pairs"].append(value["pairs"][0])
+    elif invalid == "scope":
+        value["pairs"][0]["candidate"] = "gemini37"
+    else:
+        value["max_attempts_per_pair"] = 6
+    path = tmp_path / "allowance.json"
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="allowance"):
+        recovery.load_retry_allowance(path, "manifest", {"one", "two", "three"})
+
+
+def test_allowance_is_validated_and_fenced_on_restart(modules, tmp_path):
+    recovery, _, controller = modules
+    path = tmp_path / "allowance.json"
+    path.write_text(json.dumps(retry_allowance()))
+    assert recovery.load_retry_allowance(path, "manifest", {"one", "two", "three"}) == (
+        retry_allowance()
+    )
+    state = controller.run_state(None, "manifest", NOW, max_calls=25, allowance_hash="one")
+    assert controller.run_state(state, "manifest", NOW, allowance_hash="one") == state
+    with pytest.raises(ValueError, match="allowance mismatch"):
+        controller.run_state(state, "manifest", NOW, allowance_hash="two")
+
+
 def test_original_status_and_secrets_are_preserved_safely(modules, monkeypatch):
     recovery, _, _ = modules
     monkeypatch.setenv("TEST_API_KEY", "secret-value-1234")

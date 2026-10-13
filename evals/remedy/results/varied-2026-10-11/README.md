@@ -72,3 +72,24 @@ PYTHONPATH=. python evals/remedy/results/varied-2026-10-11/score.py \
 Use a new output filename for each score; it is created exclusively. Gold never enters the
 controller or model messages. The diagnosis and raw batches explain historical failures;
 quality, completion, latency and unresolved identity/maximum-effort holds remain separate.
+
+## One-off immediate retries approved October 13
+
+The maintainer approved five more attempts on each of the two remaining full GLM and three
+Sol questions, beginning immediately. The immutable `retry-allowance-2026-10-13-v1.json`
+binds those exact pairs to this manifest and authorization time. Only these pairs bypass
+the daily evaluator cap. At most five calls since that timestamp are allowed per pair,
+including unmatched intents; daily resets and new controller runs do not replenish them.
+A valid answer immediately suppresses further calls. Normal quotas, headroom, timeouts,
+provider cooldowns and unknown-outcome holds continue to apply. Resume with the same file:
+
+```sh
+/usr/local/bin/citypods-env env R2_BUCKET=citypods-spike PYTHONPATH=. \
+  python evals/remedy/results/varied-2026-10-11/backfill.py --execute --max-calls 25 \
+  --retry-allowance \
+  /private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/retry-allowance-2026-10-13-v1.json \
+  --results-dir /private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11
+```
+
+The initial authorized handoff used `--new-run`; ordinary restarts omit it. The stored
+allowance hash must match on restart. Keep the original allowance file unchanged.

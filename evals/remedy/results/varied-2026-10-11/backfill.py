@@ -20,6 +20,7 @@ from recovery import (
     MODELS,
     atomic_status,
     candidate_plan,
+    load_retry_allowance,
     read_history,
     sanitize,
     timestamp,
@@ -30,10 +31,20 @@ from citypods.remedy_evaluation import Manifest, canonical_hash
 from citypods.storage import make_storage
 
 
-def run_state(previous, manifest_hash, now, new_run=False, horizon_hours=24, max_calls=256):
+def run_state(
+    previous,
+    manifest_hash,
+    now,
+    new_run=False,
+    horizon_hours=24,
+    max_calls=256,
+    allowance_hash=None,
+):
     if previous and not new_run:
         if previous.get("manifest_hash") != manifest_hash:
             raise ValueError("controller manifest mismatch")
+        if previous.get("retry_allowance_hash") != allowance_hash:
+            raise ValueError("controller retry allowance mismatch")
         timestamp(previous["started_at"])
         timestamp(previous["deadline_at"])
         if not 1 <= previous["max_calls"] <= 256:
@@ -46,12 +57,13 @@ def run_state(previous, manifest_hash, now, new_run=False, horizon_hours=24, max
         "deadline_at": (now + timedelta(hours=horizon_hours)).isoformat(),
         "max_calls": max_calls,
         "next_candidate_index": 0,
+        "retry_allowance_hash": allowance_hash,
     }
 
 
-def snapshot(rows, state, case_ids, now):
+def snapshot(rows, state, case_ids, now, allowance=None):
     plans = {
-        name: candidate_plan(rows, name, case_ids, now, timestamp(state["started_at"]))
+        name: candidate_plan(rows, name, case_ids, now, timestamp(state["started_at"]), allowance)
         for name in MODELS
     }
     calls = sum(
@@ -116,6 +128,7 @@ def main():
     parser.add_argument("--results-dir", type=Path, default=runner.OUT)
     parser.add_argument("--horizon-hours", type=float, default=24)
     parser.add_argument("--max-calls", type=int, default=256)
+    parser.add_argument("--retry-allowance", type=Path)
     args = parser.parse_args()
     if not 0 < args.horizon_hours <= 168 or not 1 <= args.max_calls <= 256:
         parser.error("horizon must be 0–168 hours and call cap 1–256")
@@ -123,14 +136,24 @@ def main():
     manifest = Manifest.model_validate_json((runner.FROZEN / "manifest.json").read_text())
     manifest_hash = canonical_hash(manifest.model_dump())
     case_ids = [case.id for case in manifest.cases]
+    allowance = load_retry_allowance(args.retry_allowance, manifest_hash, set(case_ids))
+    allowance_hash = canonical_hash(allowance) if allowance else None
+    if allowance and args.max_calls > 25:
+        parser.error("scoped retry allowance permits at most 25 calls")
     status_path = directory / "controller-status.json"
     previous = json.loads(status_path.read_text()) if status_path.exists() else None
     state = run_state(
-        previous, manifest_hash, datetime.now(UTC), args.new_run, args.horizon_hours, args.max_calls
+        previous,
+        manifest_hash,
+        datetime.now(UTC),
+        args.new_run,
+        args.horizon_hours,
+        args.max_calls,
+        allowance_hash,
     )
     if not args.execute:
         rows = read_history(directory / "batches", manifest_hash, set(case_ids))
-        print(json.dumps(snapshot(rows, state, case_ids, datetime.now(UTC)), indent=2))
+        print(json.dumps(snapshot(rows, state, case_ids, datetime.now(UTC), allowance), indent=2))
         return
     if not (directory / "pilot-reviewed.json").exists():
         raise SystemExit("Full stage requires explicit reviewed pilot marker")
@@ -149,6 +172,7 @@ def main():
             args.new_run,
             args.horizon_hours,
             args.max_calls,
+            allowance_hash,
         )
         site = load_site_config(runner.ROOT / "config/site_config.yml")
         storage = make_storage(
@@ -162,7 +186,7 @@ def main():
                 now = datetime.now(UTC)
                 rows = read_history(directory / "batches", manifest_hash, set(case_ids))
                 previous_routes = state.get("routes", {})
-                state = snapshot(rows, state, case_ids, now)
+                state = snapshot(rows, state, case_ids, now, allowance)
                 for name, plan in state["routes"].items():
                     state["routes"][name] = retain_wait(plan, previous_routes.get(name), now)
                 atomic_status(status_path, state)
@@ -226,6 +250,8 @@ def main():
                     "--max-calls",
                     str(min(16, state["max_calls"] - state["provider_attempts_this_run"])),
                 ]
+                if args.retry_allowance:
+                    command.extend(["--retry-allowance", str(args.retry_allowance.resolve())])
                 result = subprocess.run(
                     command,
                     capture_output=True,
