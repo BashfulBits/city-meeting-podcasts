@@ -8,13 +8,19 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from recovery import MODELS, logical_candidate
+from recovery import EXCLUDED_MODELS, MODELS, logical_candidate
 
 from citypods.remedy_evaluation import Gold, Manifest, canonical_hash, compare_results
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_PACKET = ROOT / "evals/remedy/holdout/backlog-varied-2026-10-11/approved-v2"
 DEFAULT_RESULTS = Path(__file__).resolve().parent
+
+
+def provenance_path(path):
+    """Keep portable repository paths, or absolute paths for external immutable results."""
+    path = path.resolve()
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
 
 
 def main():
@@ -53,7 +59,7 @@ def main():
             )
             provenance.append(
                 {
-                    "path": str(path.relative_to(ROOT)),
+                    "path": provenance_path(path),
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                     "counted_as_duplicate": True,
                 }
@@ -71,7 +77,7 @@ def main():
             latest[key] = {**item, "candidate": family}
         provenance.append(
             {
-                "path": str(path.relative_to(ROOT)),
+                "path": provenance_path(path),
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             }
         )
@@ -89,7 +95,7 @@ def main():
         "cases_in_manifest": len(manifest.cases),
         "comparison_models": list(MODELS),
         "comparison_target": len(manifest.cases) * len(MODELS),
-        "excluded_historical_candidates": ["astra"],
+        "excluded_historical_candidates": list(EXCLUDED_MODELS),
         "owner_truth_cases": sum(value.expected_owner is not None for value in gold.cases.values()),
         "admission_eligible_cases": 0,
         "candidates": {},
@@ -102,7 +108,7 @@ def main():
         ),
     }
     for candidate, observations in sorted(grouped.items()):
-        if candidate == "astra":
+        if candidate in EXCLUDED_MODELS:
             continue
         if candidate not in MODELS:
             raise SystemExit(f"Unknown comparison candidate: {candidate}")

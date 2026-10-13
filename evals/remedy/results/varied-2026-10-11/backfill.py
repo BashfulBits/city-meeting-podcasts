@@ -1,4 +1,4 @@
-"""Bounded, reset-aware controller for the approved eight-model comparison.
+"""Bounded, reset-aware controller for the approved six-model comparison.
 
 Run through citypods-env. Default is a local plan only; --execute explicitly enables calls.
 An interrupted run resumes its original horizon and call allowance. --new-run starts another
@@ -18,7 +18,6 @@ from uuid import uuid4
 import run as runner
 from recovery import (
     MODELS,
-    PHYSICAL,
     atomic_status,
     candidate_plan,
     read_history,
@@ -53,12 +52,12 @@ def run_state(previous, manifest_hash, now, new_run=False, horizon_hours=24, max
 def snapshot(rows, state, case_ids, now):
     plans = {
         name: candidate_plan(rows, name, case_ids, now, timestamp(state["started_at"]))
-        for name in PHYSICAL
+        for name in MODELS
     }
     calls = sum(
         row.get("provider_attempts", 0)
         for row in rows
-        if row["candidate"] != "astra"
+        if row["candidate"] in MODELS
         and timestamp(row["observed_at"]) >= timestamp(state["started_at"])
     )
     models = {
@@ -171,9 +170,9 @@ def main():
                     print(json.dumps({k: state[k] for k in ("answered", "target", "stop_reason")}))
                     return
                 selected = None
-                for offset in range(len(PHYSICAL)):
-                    index = (state["next_candidate_index"] + offset) % len(PHYSICAL)
-                    name = PHYSICAL[index]
+                for offset in range(len(MODELS)):
+                    index = (state["next_candidate_index"] + offset) % len(MODELS)
+                    name = MODELS[index]
                     plan = state["routes"][name]
                     if plan["state"] != "ready":
                         continue
@@ -193,7 +192,7 @@ def main():
                         )
                         continue
                     selected = name
-                    state["next_candidate_index"] = (index + 1) % len(PHYSICAL)
+                    state["next_candidate_index"] = (index + 1) % len(MODELS)
                     break
                 if selected is None:
                     waits = [

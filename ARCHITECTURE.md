@@ -1816,3 +1816,7 @@ actual reservations remain owned by the existing CAS scheduler. No model activat
 The review/51 evaluation lane can explicitly request NVIDIA Kimi K3 maximum reasoning through
 its compiled capability metadata. This adds no production default or model admission; local
 qualification uses the same shared CAS accounting and frozen evaluation provenance.
+
+The varied P1 evaluation comparison was narrowed by maintainer decision on 2026-10-13 to
+six models (678 questions), excluding Gemini 3.7/3.8 and Astra from future calls and aggregate
+scores while retaining their immutable history. Per-case daily retry limits remain unchanged.

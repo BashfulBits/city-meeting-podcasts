@@ -1,8 +1,9 @@
 # Approved varied comparison and recovery
 
 The frozen challenge is 113 questions across 60 recordings. Primary/secondary Gemini keys
-contribute to the same logical model. Eight models give a comparison target of 904 answers.
-Astra's historical observations are preserved but excluded from comparison and new requests.
+were pooled under the same logical model. On October 13 the maintainer discontinued both
+Gemini 3.7/3.8 models because of their low daily quotas. The active six-model target is 678.
+Historical Gemini and Astra observations remain preserved but excluded from scoring and calls.
 This is a regression challenge, not independent production-admission evidence.
 
 `run.py` makes bounded single-candidate batches with existing shared quota accounting,
@@ -36,7 +37,9 @@ The default horizon is 24 hours with at most 256 new provider attempts. Restarts
 the original deadline and allowance. An explicit `--new-run` begins another bounded run;
 `--horizon-hours` accepts up to seven days and `--max-calls` never exceeds 256. A completed
 run is recognized from successful logical model/case pairs, not elapsed time or a green exit.
-The active legacy runner is not stopped or restarted by this implementation.
+The legacy runner is retired. The eight-model recovery controller was stopped while idle
+after the maintainer discontinued Gemini 3.7/3.8. A new six-model run preserves the daily
+attempt cap and waits for midnight UTC before retrying the five remaining GLM/Sol cases.
 
 Recovery safeguards:
 

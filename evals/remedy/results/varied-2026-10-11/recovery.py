@@ -10,8 +10,10 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-MODELS = ("flashlite", "kimi", "glm_full", "glm_flash", "sol", "deepseek", "gemini37", "gemini38")
-PHYSICAL = (*MODELS, "gemini37_secondary", "gemini38_secondary")
+MODELS = ("flashlite", "kimi", "glm_full", "glm_flash", "sol", "deepseek")
+EXCLUDED_MODELS = ("astra", "gemini37", "gemini38")
+# History validation preserves discontinued models and both Gemini credentials.
+PHYSICAL = (*MODELS, "gemini37", "gemini38", "gemini37_secondary", "gemini38_secondary")
 COOLDOWN_SECONDS = 1800
 ATTEMPTS_PER_DAY = 3
 RETRIES_PER_RUN = 3
