@@ -1,0 +1,14 @@
+{
+  "unique_recordings": 60,
+  "official_documents_retrieved": 20,
+  "draft_feed_sets_from_agendas": 20,
+  "evidence_pending": 40,
+  "prior_recording_overlap": 3,
+  "unresolved_feed_slugs": {},
+  "model_packet_characters": {
+    "minimum": 2597,
+    "maximum": 18446,
+    "median": 5621
+  },
+  "measurement_caveat": "Characters, not tokenizer counts. Includes first 4000 agenda characters, candidate display names/descriptions; full documents retained separately. No per-UID selector pins in model input."
+}

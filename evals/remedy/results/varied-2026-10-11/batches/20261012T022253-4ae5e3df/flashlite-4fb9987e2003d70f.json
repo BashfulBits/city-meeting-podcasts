@@ -1,0 +1,95 @@
+{
+  "candidate": "flashlite",
+  "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "gemini_3_5_flash_lite_primary",
+  "reasoning": "provider-default",
+  "request_timeout": 120,
+  "output_token_cap": 4096,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:24:06.109359+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "1d67679b13eb1454184dc4da67725d0cf168ff253de7bc801995005be2f4b70a",
+  "route_settings_hash": "c51dfb7c938be7f1ce106d11a1e4a235ce970e02492add3144b0b792a23aa7f8",
+  "capacity": {
+    "observed_usage": {
+      "gemini_3_5_flash_lite_primary": 23,
+      "gemini_3_5_flash_lite_secondary": 0
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "yETMarvvKoO21MkPypG3CQ",
+    "created": 1791771848,
+    "model": "gemini-3.5-flash-lite",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-tirz-2-board\",\n  \"proposed_action\": \"publish\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording and agenda clearly document a meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, which matches the feed slug denton-tx-tirz-2-board under the established publication policy.\"\n}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "images": [],
+          "thinking_blocks": [],
+          "provider_specific_fields": {
+            "thought_signatures": [
+              "EmAKXgFpFH0TluGPxrSw4pbUMpgYJuUshbyL8OTEapeUk/9Pxr4QCt4XT03WMObN/NEAJVvMqPmj6gCS30OPy4bnJokcDeFv5A2dBcGkaICNot9yKiDRfep4mord0qyiGO8="
+            ]
+          }
+        }
+      }
+    ],
+    "usage": {
+      "completion_tokens": 184,
+      "prompt_tokens": 3939,
+      "total_tokens": 4123,
+      "completion_tokens_details": {
+        "text_tokens": 184
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": null,
+        "text_tokens": 3939,
+        "image_tokens": null,
+        "video_tokens": null
+      },
+      "cache_read_input_tokens": null
+    },
+    "vertex_ai_grounding_metadata": [],
+    "vertex_ai_url_context_metadata": [],
+    "vertex_ai_safety_results": [],
+    "vertex_ai_citation_metadata": [],
+    "service_tier": "default"
+  },
+  "upstream_model": "gemini-3.5-flash-lite",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+    "supported": true,
+    "proposed_owner": "denton-tx-tirz-2-board",
+    "proposed_action": "publish",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "missing_evidence": [],
+    "rationale": "The recording and agenda clearly document a meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, which matches the feed slug denton-tx-tirz-2-board under the established publication policy."
+  },
+  "end_to_end_seconds": 4.282873958349228,
+  "diagnostics": [
+    {
+      "duration_seconds": 1.3465064587071538
+    }
+  ]
+}

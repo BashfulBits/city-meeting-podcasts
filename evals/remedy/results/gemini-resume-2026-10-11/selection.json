@@ -1,0 +1,8 @@
+{
+  "parent_result_hashes": {
+    "p1-denton-current-day-final.json": "7746e130e43ae0c35d7c88cbeb046ee2633614afcc1eaf882b7cc91c22d2ce98",
+    "p1-denton-blind-current-day-final.json": "b359339a9070cad806310c55fa49db272b7716b24faac1ce1be6763fa8087e3c"
+  },
+  "max_cases_per_route_mode": 2,
+  "reason": "Conservative initial round; keys may share project-level daily capacity"
+}

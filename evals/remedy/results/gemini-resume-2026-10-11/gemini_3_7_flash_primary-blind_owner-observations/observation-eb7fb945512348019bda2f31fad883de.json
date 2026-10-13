@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "65db90a0d505927caf72f663033574a949ab8c6174f4ed364f53307cdaf3baff",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "2dbcebc4b79660717aa0e677a76a49b69a43cd2e",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-11T08:37:53.760994+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-health-council",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "rationale": "Official agenda evidence (official-agenda) confirms the meeting of the Health and Building Standards Commission of the City of Denton, Texas on June 3, 2021, at 3:00 PM, corresponding to recording ID 122398. The feed denton-tx-health-building-standards-commission explicitly includes this recording in its source configuration.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-health-council",
+      "configuration_id": "54049916705e38f97027f7e99365e2a196f744023ecb28140b18efbc50ef1b85",
+      "latency_seconds": 15.809638541191816,
+      "prompt_case_id": "case-5a9bffdb8b1a44e186edac01",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5a9bffdb8b1a44e186edac01\",\"supported\":null,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":null,\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"Official agenda evidence (official-agenda) confirms the meeting of the Health and Building Standards Commission of the City of Denton, Texas on June 3, 2021, at 3:00 PM, corresponding to recording ID 122398. The feed denton-tx-health-building-standards-commission explicitly includes this recording in its source configuration.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791707887,
+        "id": "70rLaqLCEf_0z7IPuPXSAQ",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 1936,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1784,
+            "text_tokens": 152
+          },
+          "prompt_tokens": 2560,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2560,
+            "video_tokens": null
+          },
+          "total_tokens": 4496
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": true
+}

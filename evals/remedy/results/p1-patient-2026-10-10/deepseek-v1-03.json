@@ -1,0 +1,151 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "81564364795ac1cf",
+        "created": 1791650332,
+        "model": "deepseek-v4.1-flash-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"assign recording 122398 to denton-tx-health-building-standards-commission\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda evidence identifies the body as the Health & Building Standards Commission of the City of Denton, Texas, convened for a regular meeting on Thursday, June 3, 2021 at 3:00 p.m. The recording metadata likewise labels the body as Health & Building Standards Commission on 2021-06-03 3:00 PM with provider_guid 122398. Under the approved identity policy, owner assignment follows the officially convened body rather than the meeting room or shared city token. The exact body/date/time and provider GUID align with the existing denton-tx-health-building-standards-commission feed configuration, so the claim is supported.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "reasoning_content": "We need answer JSON only. Need assess claim: \"This recording belongs in denton-tx-health-building-standards-commission.\" Evidence: body_label Health & Building Standards Commission on 2021-06-03 3:00 PM, official agenda confirms Health & Building Standards Commission City of Denton meeting June 3 2021. Existing feed denton-tx-health-building-standards-commission source includes body_includes with exactly \"Health & Building Standards Commission on 2021-06-03 3:00 PM\", provider_guid 122398. Recording provider_guid 122398. So supported true. Proposed owner: denton-tx-health-building-standards-commission. Proposed action maybe assign to feed? Need output fields. Evidence_ref_ids: only supplied evidence ref ID is \"official-agenda\"? There is evidence_refs with id \"official-agenda\". Also existing_feeds perhaps not evidence_refs? The instruction: cite only supplied evidence-reference IDs. The existing feeds are supplied but not as evidence_refs? They have slugs not IDs. JSON schema evidence_ref_ids array of strings. We can cite \"official-agenda\". Could also mention existing feed? But evidence_ref_ids likely should list official-agenda. Missing evidence: none? Completeness unknown. Missing evidence maybe \"none\" or empty. Need abstain when missing. Here sufficient. missing_evidence [].\n\nRationale limited 2000. Need include official metadata immutable, shared city tokens not identity but exact body match etc. Supported true. Owner independent. Proposed action: \"assign recording 122398 to denton-tx-health-building-standards-commission\" or \"add to feed\". Since decision_type owner_assignment, proposed_action maybe \"assign_to_feed\". Need match schema anyOf string/null. We'll provide string \"assign recording 122398 to denton-tx-health-building-standards-commission\". Proposed owner \"denton-tx-health-building-standards-commission\".\n\nNeed only JSON object. Ensure no markdown. case_id from id: \"denton-health-own\". evidence_ref_ids [\"official-agenda\"]. missing_evidence [].\n\nCheck if any issue with existing_feeds source body_includes includes exact body, provider_guid. That's not an evidence_ref but can mention? We cite only official-agenda. Rationale can mention existing feed config? It is supplied data, but \"cite only supplied evidence-reference IDs\" maybe if referring to existing feeds, no IDs. But rationale can state matching existing feed? Might be okay but safest cite official-agenda. Existing feed is supplied evidence but not an evidence_ref ID. The instructions: \"Select an owner independently and cite only supplied evidence-reference IDs.\" So evidence_ref_ids only official-agenda. Rationale can discuss existing feed as operational mapping? Hmm.\n\nNeed final.",
+              "provider_specific_fields": {
+                "refusal": null,
+                "reasoning_content": "We need answer JSON only. Need assess claim: \"This recording belongs in denton-tx-health-building-standards-commission.\" Evidence: body_label Health & Building Standards Commission on 2021-06-03 3:00 PM, official agenda confirms Health & Building Standards Commission City of Denton meeting June 3 2021. Existing feed denton-tx-health-building-standards-commission source includes body_includes with exactly \"Health & Building Standards Commission on 2021-06-03 3:00 PM\", provider_guid 122398. Recording provider_guid 122398. So supported true. Proposed owner: denton-tx-health-building-standards-commission. Proposed action maybe assign to feed? Need output fields. Evidence_ref_ids: only supplied evidence ref ID is \"official-agenda\"? There is evidence_refs with id \"official-agenda\". Also existing_feeds perhaps not evidence_refs? The instruction: cite only supplied evidence-reference IDs. The existing feeds are supplied but not as evidence_refs? They have slugs not IDs. JSON schema evidence_ref_ids array of strings. We can cite \"official-agenda\". Could also mention existing feed? But evidence_ref_ids likely should list official-agenda. Missing evidence: none? Completeness unknown. Missing evidence maybe \"none\" or empty. Need abstain when missing. Here sufficient. missing_evidence [].\n\nRationale limited 2000. Need include official metadata immutable, shared city tokens not identity but exact body match etc. Supported true. Owner independent. Proposed action: \"assign recording 122398 to denton-tx-health-building-standards-commission\" or \"add to feed\". Since decision_type owner_assignment, proposed_action maybe \"assign_to_feed\". Need match schema anyOf string/null. We'll provide string \"assign recording 122398 to denton-tx-health-building-standards-commission\". Proposed owner \"denton-tx-health-building-standards-commission\".\n\nNeed only JSON object. Ensure no markdown. case_id from id: \"denton-health-own\". evidence_ref_ids [\"official-agenda\"]. missing_evidence [].\n\nCheck if any issue with existing_feeds source body_includes includes exact body, provider_guid. That's not an evidence_ref but can mention? We cite only official-agenda. Rationale can mention existing feed config? It is supplied data, but \"cite only supplied evidence-reference IDs\" maybe if referring to existing feeds, no IDs. But rationale can state matching existing feed? Might be okay but safest cite official-agenda. Existing feed is supplied evidence but not an evidence_ref ID. The instructions: \"Select an owner independently and cite only supplied evidence-reference IDs.\" So evidence_ref_ids only official-agenda. Rationale can discuss existing feed as operational mapping? Hmm.\n\nNeed final."
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 792,
+          "prompt_tokens": 2648,
+          "total_tokens": 3440,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 581,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "upstream_model": "deepseek-v4.1-flash-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "assign recording 122398 to denton-tx-health-building-standards-commission",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda evidence identifies the body as the Health & Building Standards Commission of the City of Denton, Texas, convened for a regular meeting on Thursday, June 3, 2021 at 3:00 p.m. The recording metadata likewise labels the body as Health & Building Standards Commission on 2021-06-03 3:00 PM with provider_guid 122398. Under the approved identity policy, owner assignment follows the officially convened body rather than the meeting room or shared city token. The exact body/date/time and provider GUID align with the existing denton-tx-health-building-standards-commission feed configuration, so the claim is supported."
+      },
+      "duration_seconds": 177.59452779125422
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "a65c62fcb74bfbea",
+        "created": 1791650570,
+        "model": "deepseek-v4.1-flash-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"assign_to_denton-tx-health-building-standards-commission\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording metadata and official agenda evidence identify the convened body as the Health & Building Standards Commission of the City of Denton, not the Denton City Council. The official agenda source span names that commission and its June 3, 2021 meeting; the existing feed denton-tx-health-building-standards-commission explicitly includes provider_guid 122398 for this same body. Under the identity policy, the officially convened body controls ownership, and the City Council feed is a distinct body. The claim that this recording belongs in denton-tx-city-council is therefore unsupported.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "reasoning_content": "We need answer JSON only. We need assess claim: \"This recording belongs in denton-tx-city-council.\" Official metadata immutable. Evidence: body_label Health & Building Standards Commission on 2021-06-03 3:00 PM. City denton-tx. Evidence official agenda confirms Health & Building Standards Commission meeting. Existing feeds include denton-tx-health-building-standards-commission with source body_includes exact body/provider_guid 122398. City Council feed slug denton-tx-city-council. Policy: Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct. Claim says belongs in city council. It does not; belongs in Health & Building Standards Commission feed. Need select owner independently and cite only supplied evidence ref IDs. Proposed owner likely \"denton-tx-health-building-standards-commission\" (slug). Proposed action maybe assign to health commission feed / reject city council. Supported? The claim \"This recording belongs in denton-tx-city-council\" is false/unsupported. supported field: maybe boolean whether claim supported? We need interpret. In schema \"supported\": boolean/null. Since claim is that it belongs in city council, supported false. Proposed_owner maybe owner of recording, not claimant? \"Select an owner independently\" so proposed_owner should be correct owner: denton-tx-health-building-standards-commission. Proposed_action maybe \"assign_to_existing_feed\" or \"route_to_health_building_standards_commission\". Evidence_ref_ids include official-agenda? The source span supports body. Also existing_feeds are not evidence_refs? They are provided but not with IDs? The schema requires evidence_ref_ids. Only evidence_refs have id \"official-agenda\". We can cite \"official-agenda\". Maybe also existing feed refs? They have no id, but maybe can cite as not evidence ref? The instruction says cite only supplied evidence-reference IDs. Existing_feeds are not evidence_refs? They have no id. So cite official-agenda. Missing evidence maybe none? Could mention no evidence linking to City Council. But if listing missing evidence, maybe \"No City Council agenda/body evidence for recording 122398.\" But missing_evidence array can say what's missing. Claim relies on city token? We need abstain when evidence missing. Here evidence is sufficient to refute.\n\nNeed ensure JSON matching schema, no markdown. Fields required: case_id, supported, proposed_owner, proposed_action, evidence_ref_ids, missing_evidence, rationale. case_id likely \"denton-health-council\" (id). supported false. proposed_owner \"denton-tx-health-building-standards-commission\". proposed_action maybe \"assign to Health & Building Standards Commission feed; do not assign to denton-tx-city-council\". Rationale max 2000. Need cite evidence ID official-agenda. Mention official agenda source span explicitly names Health & Building Standards Commission of City of Denton. Existing feed denton-tx-health-building-standards-commission includes provider_guid 122398 matching recording. Policy says use officially convened body; meeting room is not owner. City Council feed lacks this recording and body is distinct.\n\nNeed include missing_evidence maybe [] or [\"No supplied evidence that recording 122398 was convened by Denton City Council.\"] The missing evidence field likely list strings. We'll include that? The instruction says abstain when evidence missing. Here not missing. Could set missing_evidence: [] and rationale explains no missing critical evidence. But may include no evidence of City Council. Which is better? The schema just requires. I'd include [] because no missing evidence needed to decide. But if we include missing evidence as no City Council evidence, not exactly missing. However \"missing evidence\" could be list of evidence needed if claim unsupported. We have enough. Use [].\n\nNeed not include \"existing_feeds\" IDs. Evidence_ref_ids [\"official-agenda\"].\n\nDouble-check owner: existing feed slug is \"denton-tx-health-building-standards-commission\"; podcast title Denton: Health & Building Standards Commission. Proposal owner likely slug. Could also be \"Health & Building Standards Commission\" but \"owner\" in feed assignment tasks often slug. The city is denton-tx. We'll use slug.\n\nProposed action: maybe \"assign_to_denton-tx-health-building-standards-commission\". The schema anyOf string/null. Use string.\n\nNeed final exactly JSON. Ensure valid JSON no markdown.",
+              "provider_specific_fields": {
+                "refusal": null,
+                "reasoning_content": "We need answer JSON only. We need assess claim: \"This recording belongs in denton-tx-city-council.\" Official metadata immutable. Evidence: body_label Health & Building Standards Commission on 2021-06-03 3:00 PM. City denton-tx. Evidence official agenda confirms Health & Building Standards Commission meeting. Existing feeds include denton-tx-health-building-standards-commission with source body_includes exact body/provider_guid 122398. City Council feed slug denton-tx-city-council. Policy: Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct. Claim says belongs in city council. It does not; belongs in Health & Building Standards Commission feed. Need select owner independently and cite only supplied evidence ref IDs. Proposed owner likely \"denton-tx-health-building-standards-commission\" (slug). Proposed action maybe assign to health commission feed / reject city council. Supported? The claim \"This recording belongs in denton-tx-city-council\" is false/unsupported. supported field: maybe boolean whether claim supported? We need interpret. In schema \"supported\": boolean/null. Since claim is that it belongs in city council, supported false. Proposed_owner maybe owner of recording, not claimant? \"Select an owner independently\" so proposed_owner should be correct owner: denton-tx-health-building-standards-commission. Proposed_action maybe \"assign_to_existing_feed\" or \"route_to_health_building_standards_commission\". Evidence_ref_ids include official-agenda? The source span supports body. Also existing_feeds are not evidence_refs? They are provided but not with IDs? The schema requires evidence_ref_ids. Only evidence_refs have id \"official-agenda\". We can cite \"official-agenda\". Maybe also existing feed refs? They have no id, but maybe can cite as not evidence ref? The instruction says cite only supplied evidence-reference IDs. Existing_feeds are not evidence_refs? They have no id. So cite official-agenda. Missing evidence maybe none? Could mention no evidence linking to City Council. But if listing missing evidence, maybe \"No City Council agenda/body evidence for recording 122398.\" But missing_evidence array can say what's missing. Claim relies on city token? We need abstain when evidence missing. Here evidence is sufficient to refute.\n\nNeed ensure JSON matching schema, no markdown. Fields required: case_id, supported, proposed_owner, proposed_action, evidence_ref_ids, missing_evidence, rationale. case_id likely \"denton-health-council\" (id). supported false. proposed_owner \"denton-tx-health-building-standards-commission\". proposed_action maybe \"assign to Health & Building Standards Commission feed; do not assign to denton-tx-city-council\". Rationale max 2000. Need cite evidence ID official-agenda. Mention official agenda source span explicitly names Health & Building Standards Commission of City of Denton. Existing feed denton-tx-health-building-standards-commission includes provider_guid 122398 matching recording. Policy says use officially convened body; meeting room is not owner. City Council feed lacks this recording and body is distinct.\n\nNeed include missing_evidence maybe [] or [\"No supplied evidence that recording 122398 was convened by Denton City Council.\"] The missing evidence field likely list strings. We'll include that? The instruction says abstain when evidence missing. Here not missing. Could set missing_evidence: [] and rationale explains no missing critical evidence. But may include no evidence of City Council. Which is better? The schema just requires. I'd include [] because no missing evidence needed to decide. But if we include missing evidence as no City Council evidence, not exactly missing. However \"missing evidence\" could be list of evidence needed if claim unsupported. We have enough. Use [].\n\nNeed not include \"existing_feeds\" IDs. Evidence_ref_ids [\"official-agenda\"].\n\nDouble-check owner: existing feed slug is \"denton-tx-health-building-standards-commission\"; podcast title Denton: Health & Building Standards Commission. Proposal owner likely slug. Could also be \"Health & Building Standards Commission\" but \"owner\" in feed assignment tasks often slug. The city is denton-tx. We'll use slug.\n\nProposed action: maybe \"assign_to_denton-tx-health-building-standards-commission\". The schema anyOf string/null. Use string.\n\nNeed final exactly JSON. Ensure valid JSON no markdown."
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 1118,
+          "prompt_tokens": 2644,
+          "total_tokens": 3762,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 928,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "upstream_model": "deepseek-v4.1-flash-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "assign_to_denton-tx-health-building-standards-commission",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The recording metadata and official agenda evidence identify the convened body as the Health & Building Standards Commission of the City of Denton, not the Denton City Council. The official agenda source span names that commission and its June 3, 2021 meeting; the existing feed denton-tx-health-building-standards-commission explicitly includes provider_guid 122398 for this same body. Under the identity policy, the officially convened body controls ownership, and the City Council feed is a distinct body. The claim that this recording belongs in denton-tx-city-council is therefore unsupported."
+      },
+      "duration_seconds": 173.79463537503034
+    },
+    {
+      "case_id": "denton-library-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "status": "failed",
+      "error_class": "RuntimeError",
+      "error": "Production provider did not drain; case deferred",
+      "duration_seconds": 121.18584283301607
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T16:36:46.468938+00:00",
+      "model": "openai/deepseek-v4.1-flash-free",
+      "status": "completed",
+      "duration_seconds": 125.74681645818055
+    },
+    {
+      "started_at": "2026-10-10T16:40:59.025201+00:00",
+      "model": "openai/deepseek-v4.1-flash-free",
+      "status": "completed",
+      "duration_seconds": 111.69134966703132
+    }
+  ]
+}

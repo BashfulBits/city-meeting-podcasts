@@ -3578,3 +3578,193 @@ held. Kimi completed 20/20 Denton and 18 correct/8 abstained/1 unknown historica
 Artifacts, catalogs, original failed attempts and reproducible scores are retained under
 evals/remedy/results/p1-comparison-2026-10-10/. No model is activated or admitted here.
 Verification: 61 targeted and 5,766 offline tests passed, 16 deselected; whole Ruff/format clean.
+
+### Patient alternative comparison — L3, maintainer approved 2026-10-10
+
+Evaluate NVIDIA full GLM 5.3 (`z-ai/glm-5.3`) and the existing free BeatAPI
+GPT 6 Astra, GPT 6.1 Sol and DeepSeek V4.1 Flash physical routes. Permit an
+evaluation-only script under evals/remedy/results/p1-patient-2026-10-10/ and
+immutable results there. Register GLM only in this evaluator process, using the
+existing NVIDIA adapter with a distinct physical quota identity; no persisted catalog
+or production lane changes. Its conservative evaluation bounds are 1 RPM, one
+in-flight request, 32,768 input and 16,384 output tokens, not published provider limits.
+
+Use the ten approved Denton cases in claim-support and blind-owner modes per model,
+600-second provider timeout, 650-second case deadline, 16,384 output-token budget,
+one provider attempt per case and immediate result checkpoints. Do not send gold.
+Default reasoning is a baseline until exact maximum controls are verified. Preserve
+returned model identity and separate content-only scores from admission gates.
+
+Use shared CAS quota accounting and the Worker operator pause/drain/reservation API
+around each provider evaluation call so production usage includes the attempted call
+on existing routes. Full GLM has no production route to reserve: retain its distinct
+CAS ledger usage and provider-exclusive pause, without inventing a Worker route.
+BeatAPI calls are serialized, wait at least 65 seconds between attempts and defer
+while its production work is in flight. NVIDIA calls likewise wait for provider drain.
+Pauses expire after at most one hour and are resumed on exit. No activation, paid
+fallback, quota increase, feed edits or gold changes. Save sanitized errors, request
+timing, provenance and every failed attempt. Any drain timeout defers the case.
+
+The four Gemini routes are temporarily paused through the explicitly approved
+2026-10-11T07:15Z recheck time; renewal and a separate bounded quality recheck are
+scheduled in this chat. This does not permanently disable production Gemini routes.
+
+Patient comparison transport clarification, before BeatAPI provider requests:
+use LiteLLM's OpenAI-compatible adapter locally for BeatAPI's documented chat
+endpoint while preserving exact free upstream model and physical quota identity.
+The generated `beatapi/` direct-model prefix is rejected by local LiteLLM before
+HTTP; retain that failed setup observation and do not change production catalogs.
+
+Patient comparison retry extension — approved by maintainer 2026-10-10:
+add an explicit --retry-from results argument to the evaluation-only script.
+Validate model/route and frozen manifest identity before requests; select only
+previously deferred mode/case pairs, never repeat completed cases. Retain originals
+and save retry observations separately. Existing request/output, pause/drain and
+quota bounds stay unchanged. Combine latest retry rows with originals only in an
+explicit derived scoring file; never rewrite original observations.
+
+Gemini evaluation resumption — maintainer approved 2026-10-11:
+resume missing Denton claim-support and blind-owner pairs on all four approved
+Gemini routes after the successful reset diagnostic. Preserve original observations.
+Use the existing eval_remedy runner, 120-second request/150-second case limits and
+shared quota headroom checks. Generate evaluation-only subset manifests and candidate
+configs under evals/remedy/results/gemini-resume-2026-10-11/, explicitly recording
+current catalog/subset hashes. Map original configuration IDs through retained
+admission files; skip completed pairs without rewriting their provenance. No admission,
+production defaults or quotas change. Daily exhaustion remains pending, not incorrect.
+
+### Varied backlog evaluation preparation — 2026-10-11
+
+Maintainer authorized a larger challenge set from the actual unexpected-body backlog.
+`evals/remedy/holdout/backlog-varied-2026-10-11/` retains 60 unique source/recording pairs
+across Addison, Arlington, Dallas, Denton and Fort Worth. It separates review-only past
+assignments/dispositions from model-input drafts, records input hashes and includes joints,
+bond programs, numbered districts, planning/Council boundaries, archive media and sparse bodies.
+This is preparation, not approved gold or admission evidence. Exact official excerpts and current
+feed inventory must be bound before freezing. Split overlap must be removed for admission;
+already-tested recordings belong only in a named regression/challenge slice. No live calls or
+production route changes are authorized by generating this preparation artifact.
+
+Varied-set preparation checkpoint: 20 retained official agendas retrieved with document/text
+hashes; 60 review packets and separate answer-free input drafts saved. Twenty agenda-backed
+feed sets are drafted, not new approved gold; forty cases require additional evidence/adjudication.
+Three prior Denton recording overlaps are explicitly separated; source/family isolation remains
+pending. Multi-feed correctness needs membership checks rather than a fabricated exclusive owner.
+A lighter-proposer experiment is proposed in the set's `smaller-model-options.md`; it does not
+lower the existing Gemini 3.7 High admission floor or authorize new live model calls.
+
+### Flash-Lite Denton baseline — scoped approval, 2026-10-11
+
+Maintainer approved including existing Gemini 3.5 Flash-Lite in the same ten grounded Denton
+cases, claim-support and blind-owner modes (20 logical jobs). This is an evaluation-only exception
+to the smaller-model admission floor, not production qualification. Use the existing direct-route
+backend, one allowed physical primary route, default reasoning explicitly labelled, 120-second
+requests, 150-second case deadlines, 4,096 output tokens and one provider attempt per job.
+Read Worker route usage and shared local CAS quota accounting before each call; defer on missing
+capacity evidence or fewer than 100 remaining daily calls, never increase limits. Use existing
+route pause/drain/reserve helpers around each call and resume on exit; do not pause the entire
+Google provider or other models. Save immutable observations, capacity and score artifacts under
+`evals/remedy/results/flash-lite-denton-2026-10-11/`. No defaults, catalogs or feeds change.
+
+Flash-Lite baseline completed: 20/20 Denton answers correct, zero wrong/abstained/failed;
+provider median1.106s versus end-to-end median5.601s. This tests four underlying meetings with
+provider-default reasoning, not maximum-effort or broad admission. Immutable raw/checkpoint,
+explicit-gold content reports, route capacity snapshots and request hashes are retained under
+`evals/remedy/results/flash-lite-denton-2026-10-11/`. Current main pins Gemini3.1 Flash-Lite as
+primary tagger; 3.5 is available for other lanes. No production defaults/floor changed.
+
+Entire varied backlog packet v2 prepared under `evals/remedy/holdout/backlog-varied-2026-10-11/`:
+all60 source/UID/GUID pairs found with source media;38 retained agendas plus official supplemental
+minutes/native headings/provider pages collected.121 linked document responses and65 supplements
+retained; two current Addison pages returned403 and remain documented gaps. Raw evidence is sealed
+with per-entry hashes. Proposed answers cover40 assignments,15 existing archive/event/untracked
+policies and5 insufficient-owner-proof programs. The maintainer approved the113 membership/proof
+answers for this evaluation; they are frozen separately under `approved-v2/`. Body identity and
+publication aggregation stay distinct; known-policy controls do not inflate independent identity
+accuracy. No new production dispositions, evaluator schemas or route limits changed in preparation.
+
+### Varied-packet evaluation — maintainer approved 2026-10-11
+
+Maintainer approved the60-recording packet's113 membership/proof answers and staged testing of
+nine previously compared candidates. Freeze input-only evidence separately from approved gold;
+retain historical challenge/regression status, overlap/event groups and separate identity,
+publication-compliance and insufficient-proof metrics. Existing exclusion/aggregation approvals
+must be supplied as policy, never silently treated as independently inferred identity.
+Allowed changes: evaluation-only scaffolding and frozen/results files under `evals/remedy/`,
+and lifecycle docs. Reuse direct backend, structured answer schema, local CAS quota accounting
+and Worker pause/drain/reserve helpers. No evaluator core schema, production code/config, feeds,
+route catalogs, budgets, provider limits or model activation change.
+Run a balanced pilot of eight questions, then resume the same frozen113-case comparison without
+repeating completed route/case pairs. Each route/case permits one provider attempt per invocation;
+failed observations are retained and never silently replaced. Use the prior approved evaluation
+controls: Gemini120s request/150s case/4096 output; patient alternatives600s/650s/16384 output.
+Gemini3.7/3.8 High and Kimi Max retain verified controls; other candidates are labelled default
+reasoning, not maximum-effort qualification. Scoped Flash-Lite evaluation remains below-floor
+and diagnostic-only. Separate quota project/account uncertainty and production headroom remain
+visible. BeatAPI's shared JEV capacity and NVIDIA's production lanes retain priority. Insufficient
+capacity defers work across resets; no paid capacity, duplicate requests or unbounded retry loop.
+
+The first eight-slot pilot invocation was unbalanced: six Flash-Lite observations completed, one
+Gemini 3.7 attempt failed at its route attempt limit, one Gemini 3.8 attempt received provider 503,
+and the remaining candidates deferred before a provider request because their shared accounts were
+busy. This exposed that a global pilot cap could favor the first candidate in the list. The
+evaluation-only runner now requires a single candidate per pilot invocation, so each model gets the
+same eight examples without changing any original result. A later Kimi K3 pilot completed all eight:
+7 correct, 1 incorrect, with the miss being the approved Dallas Transportation and Infrastructure
+membership. Raw results and offline scoring are under
+`evals/remedy/results/varied-2026-10-11/`. These eight cases are from the regression challenge,
+not blind-owner admission truth; no model has a qualifying P1 report from them. Remaining pilot and
+full-comparison candidates are pending shared provider capacity. Production admissions remain empty.
+
+### P1 backfill recovery — L3, approved 2026-10-12 (#2409)
+
+The maintainer approved all four repairs in the retained backfill diagnosis: retry scheduling,
+reset-aware resumption, controlled route cooldowns, and original provider-error reporting.
+This supplements the varied-packet contract above without changing its frozen questions or limits.
+
+Permitted implementation files: the existing varied `run.py` and `score.py`, new `recovery.py`
+and `backfill.py` under `evals/remedy/results/varied-2026-10-11/`, its retained diagnosis/README,
+`tests/test_remedy_backfill.py`, and lifecycle docs. The new controller reads immutable history,
+protects successful logical model/case pairs across Gemini keys, and offers failed cases without
+waiting for global success. At most three attempts per physical candidate/case per UTC day and
+three new retries per physical pair per controller run; all provider batch caps remain at 16.
+Existing historical attempts remain charged evidence. Retry exhaustion is reported explicitly.
+Write an immutable attempt intent before each new provider call. An interrupted call without a
+final observation remains an unknown outcome and is held across both keys, rather than blindly
+repeated. Final observations reference their intent; unmatched intents count toward call budgets.
+
+Preserve original sanitized provider status/message, Retry-After and failure category before
+the backend can replace them with its attempt-budget error. Server errors, timeouts and rate
+limits schedule evaluation-only cooldowns of at least 30 minutes, respecting longer Retry-After.
+Invalid answers remain a distinct bounded retry category. Daily quota exhaustion waits until
+the later applicable local/Worker reset; retain the current 20% production reserve and fail
+closed on malformed quota/status evidence. Provider-busy or failed status reads wait five
+minutes, without changing production priority or pause scopes.
+
+The controller persists atomic status with per-candidate answered, failed, uncalled, exhausted,
+next eligible time and stop reason. It resumes from observation history and status after resets,
+holds the existing provider-call lock inside each runner invocation, and uses its own controller
+lock. It runs for an explicit bounded horizon (default 24 hours), with at most 256 new provider
+attempts per run; incomplete stopping is never called completion. Poll no longer than 60 seconds
+at a time for cancellation, while sleeping until actual eligibility. Astra is excluded; preserved
+historical observations remain available. The comparison target is eight logical models ×113=904.
+
+Offline tests must prove failed-case recovery before global success, cooldown/reset boundaries,
+bounded retry exhaustion, immutable success deduplication across keys, diagnostic redaction,
+original 429 preservation, status persistence, lock exclusion, and accurate incomplete stopping.
+Run targeted and full offline tests and whole Ruff/format before pushing a dependent PR on #2277.
+Do not edit production runtime/config, provider quotas, catalogs, credentials, feeds or audio;
+do not restart or interrupt the active legacy runner as part of this implementation PR.
+Update CHANGELOG, ARCHITECTURE and review/11 in the implementation change.
+
+#2409 prepared validation after carrying current main: 79 targeted tests and 6,043 offline tests
+passed (16 deselected). Whole Ruff/format passed across 539 files. A credentials-free plan over
+the actual saved history
+reports 614/904 answered and makes all 83 unanswered non-Gemini failures eligible for bounded
+recovery. Live quotas are checked only on execution. No provider calls were launched during
+implementation; the legacy controller and original observations remain untouched.
+
+Implementation PR: [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410),
+dependent on #2277. The parent's single changelog conflict was resolved in an isolated checkout
+and carried forward. Current main's fragment convention applies: the lifecycle entry is in
+`changelog.d/2410-backfill-recovery.md`, compiled into CHANGELOG after human merge.

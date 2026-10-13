@@ -1,0 +1,680 @@
+{
+  "addison-359742-31b194e3b25f0bf8-member-addison-tx-bond-committees": {
+    "recording_case": "addison-359742-31b194e3b25f0bf8",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:31b194e3b25f0bf8"
+  },
+  "addison-359742-31b194e3b25f0bf8-wrong-target": {
+    "recording_case": "addison-359742-31b194e3b25f0bf8",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:31b194e3b25f0bf8"
+  },
+  "addison-361917-1ef623b5f2bc909a-member-addison-tx-bond-committees": {
+    "recording_case": "addison-361917-1ef623b5f2bc909a",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:1ef623b5f2bc909a"
+  },
+  "addison-361917-1ef623b5f2bc909a-wrong-target": {
+    "recording_case": "addison-361917-1ef623b5f2bc909a",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:1ef623b5f2bc909a"
+  },
+  "addison-362796-cb34bf9c6001c32a-member-addison-tx-bond-committees": {
+    "recording_case": "addison-362796-cb34bf9c6001c32a",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:cb34bf9c6001c32a"
+  },
+  "addison-362796-cb34bf9c6001c32a-wrong-target": {
+    "recording_case": "addison-362796-cb34bf9c6001c32a",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:cb34bf9c6001c32a"
+  },
+  "addison-371625-902400566a6637b5-member-addison-tx-bond-committees": {
+    "recording_case": "addison-371625-902400566a6637b5",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:902400566a6637b5"
+  },
+  "addison-371625-902400566a6637b5-wrong-target": {
+    "recording_case": "addison-371625-902400566a6637b5",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:902400566a6637b5"
+  },
+  "addison-55864-35a78fa89c7c5c5c-wrong-target": {
+    "recording_case": "addison-55864-35a78fa89c7c5c5c",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:35a78fa89c7c5c5c"
+  },
+  "addison-56029-63b22f80ce9500ff-member-addison-tx-town-meetings": {
+    "recording_case": "addison-56029-63b22f80ce9500ff",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:63b22f80ce9500ff"
+  },
+  "addison-56029-63b22f80ce9500ff-wrong-target": {
+    "recording_case": "addison-56029-63b22f80ce9500ff",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:63b22f80ce9500ff"
+  },
+  "addison-276855-4ef85ec6540cf95b-member-addison-tx-city-council": {
+    "recording_case": "addison-276855-4ef85ec6540cf95b",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:4ef85ec6540cf95b"
+  },
+  "addison-276855-4ef85ec6540cf95b-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-276855-4ef85ec6540cf95b",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:4ef85ec6540cf95b"
+  },
+  "addison-276855-4ef85ec6540cf95b-wrong-target": {
+    "recording_case": "addison-276855-4ef85ec6540cf95b",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:4ef85ec6540cf95b"
+  },
+  "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council": {
+    "recording_case": "addison-295839-fcc9bde16c7f47fe",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:fcc9bde16c7f47fe"
+  },
+  "addison-295839-fcc9bde16c7f47fe-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-295839-fcc9bde16c7f47fe",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:fcc9bde16c7f47fe"
+  },
+  "addison-295839-fcc9bde16c7f47fe-member-addison-tx-comprehensive-plan-advisory-committee": {
+    "recording_case": "addison-295839-fcc9bde16c7f47fe",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:fcc9bde16c7f47fe"
+  },
+  "addison-295839-fcc9bde16c7f47fe-wrong-target": {
+    "recording_case": "addison-295839-fcc9bde16c7f47fe",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:fcc9bde16c7f47fe"
+  },
+  "addison-310072-c95af66385f6cf31-member-addison-tx-city-council": {
+    "recording_case": "addison-310072-c95af66385f6cf31",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:c95af66385f6cf31"
+  },
+  "addison-310072-c95af66385f6cf31-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-310072-c95af66385f6cf31",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:c95af66385f6cf31"
+  },
+  "addison-310072-c95af66385f6cf31-member-addison-tx-comprehensive-plan-advisory-committee": {
+    "recording_case": "addison-310072-c95af66385f6cf31",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:c95af66385f6cf31"
+  },
+  "addison-310072-c95af66385f6cf31-wrong-target": {
+    "recording_case": "addison-310072-c95af66385f6cf31",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:c95af66385f6cf31"
+  },
+  "addison-55599-e59549e833479e1d-member-addison-tx-city-council": {
+    "recording_case": "addison-55599-e59549e833479e1d",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:e59549e833479e1d"
+  },
+  "addison-55599-e59549e833479e1d-wrong-target": {
+    "recording_case": "addison-55599-e59549e833479e1d",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:e59549e833479e1d"
+  },
+  "addison-56020-235c1c030568dac0-wrong-target": {
+    "recording_case": "addison-56020-235c1c030568dac0",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:235c1c030568dac0"
+  },
+  "addison-56021-24d5e7dc230eb900-wrong-target": {
+    "recording_case": "addison-56021-24d5e7dc230eb900",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:24d5e7dc230eb900"
+  },
+  "addison-56022-ee80c45122c4f9f0-wrong-target": {
+    "recording_case": "addison-56022-ee80c45122c4f9f0",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:ee80c45122c4f9f0"
+  },
+  "addison-56023-1f50e2274a6dd26c-wrong-target": {
+    "recording_case": "addison-56023-1f50e2274a6dd26c",
+    "city": "addison-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "abbf5e25e078:1f50e2274a6dd26c"
+  },
+  "addison-394474-757ab2a4aaf9bbca-member-addison-tx-tif": {
+    "recording_case": "addison-394474-757ab2a4aaf9bbca",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:757ab2a4aaf9bbca"
+  },
+  "addison-394474-757ab2a4aaf9bbca-wrong-target": {
+    "recording_case": "addison-394474-757ab2a4aaf9bbca",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:757ab2a4aaf9bbca"
+  },
+  "addison-148373-4b69d73512792a44-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-148373-4b69d73512792a44",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:4b69d73512792a44"
+  },
+  "addison-148373-4b69d73512792a44-wrong-target": {
+    "recording_case": "addison-148373-4b69d73512792a44",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:4b69d73512792a44"
+  },
+  "addison-150744-e2e2e4d8c9b5330c-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-150744-e2e2e4d8c9b5330c",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:e2e2e4d8c9b5330c"
+  },
+  "addison-150744-e2e2e4d8c9b5330c-wrong-target": {
+    "recording_case": "addison-150744-e2e2e4d8c9b5330c",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:e2e2e4d8c9b5330c"
+  },
+  "addison-153032-52ec3e810707f814-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-153032-52ec3e810707f814",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:52ec3e810707f814"
+  },
+  "addison-153032-52ec3e810707f814-wrong-target": {
+    "recording_case": "addison-153032-52ec3e810707f814",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:52ec3e810707f814"
+  },
+  "addison-154641-ff8eac28f4881cd2-member-addison-tx-planning-and-zoning-commission": {
+    "recording_case": "addison-154641-ff8eac28f4881cd2",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:ff8eac28f4881cd2"
+  },
+  "addison-154641-ff8eac28f4881cd2-wrong-target": {
+    "recording_case": "addison-154641-ff8eac28f4881cd2",
+    "city": "addison-tx",
+    "category": "body-identification",
+    "event_group": "abbf5e25e078:ff8eac28f4881cd2"
+  },
+  "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force": {
+    "recording_case": "arlington-tx-1792515fdd51c6c2-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:1792515fdd51c6c2"
+  },
+  "arlington-tx-1792515fdd51c6c2-ownership-wrong-target": {
+    "recording_case": "arlington-tx-1792515fdd51c6c2-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:1792515fdd51c6c2"
+  },
+  "arlington-tx-25e9b8510b0a7a66-ownership-member-arlington-tx-environmental-task-force": {
+    "recording_case": "arlington-tx-25e9b8510b0a7a66-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:25e9b8510b0a7a66"
+  },
+  "arlington-tx-25e9b8510b0a7a66-ownership-wrong-target": {
+    "recording_case": "arlington-tx-25e9b8510b0a7a66-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:25e9b8510b0a7a66"
+  },
+  "arlington-tx-2d5dc451df2da130-ownership-member-arlington-tx-environmental-task-force": {
+    "recording_case": "arlington-tx-2d5dc451df2da130-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:2d5dc451df2da130"
+  },
+  "arlington-tx-2d5dc451df2da130-ownership-wrong-target": {
+    "recording_case": "arlington-tx-2d5dc451df2da130-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:2d5dc451df2da130"
+  },
+  "arlington-tx-35b22fcc8d07967b-ownership-member-arlington-tx-environmental-task-force": {
+    "recording_case": "arlington-tx-35b22fcc8d07967b-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:35b22fcc8d07967b"
+  },
+  "arlington-tx-35b22fcc8d07967b-ownership-wrong-target": {
+    "recording_case": "arlington-tx-35b22fcc8d07967b-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:35b22fcc8d07967b"
+  },
+  "arlington-tx-237c28f30496e3e0-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+    "recording_case": "arlington-tx-237c28f30496e3e0-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:237c28f30496e3e0"
+  },
+  "arlington-tx-237c28f30496e3e0-ownership-wrong-target": {
+    "recording_case": "arlington-tx-237c28f30496e3e0-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:237c28f30496e3e0"
+  },
+  "arlington-tx-30b28efc23346a6d-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+    "recording_case": "arlington-tx-30b28efc23346a6d-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:30b28efc23346a6d"
+  },
+  "arlington-tx-30b28efc23346a6d-ownership-wrong-target": {
+    "recording_case": "arlington-tx-30b28efc23346a6d-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:30b28efc23346a6d"
+  },
+  "arlington-tx-4357f0c39d1ae58f-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+    "recording_case": "arlington-tx-4357f0c39d1ae58f-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:4357f0c39d1ae58f"
+  },
+  "arlington-tx-4357f0c39d1ae58f-ownership-wrong-target": {
+    "recording_case": "arlington-tx-4357f0c39d1ae58f-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:4357f0c39d1ae58f"
+  },
+  "arlington-tx-d8f3b672b482369b-ownership-member-arlington-tx-community-and-neighborhood-development-committee": {
+    "recording_case": "arlington-tx-d8f3b672b482369b-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:d8f3b672b482369b"
+  },
+  "arlington-tx-d8f3b672b482369b-ownership-wrong-target": {
+    "recording_case": "arlington-tx-d8f3b672b482369b-ownership",
+    "city": "arlington-tx",
+    "category": "body-identification",
+    "event_group": "ecc3710ac47f:d8f3b672b482369b"
+  },
+  "dallas-tx-130a7ebded8e0e1d-ownership-member-dallas-tx-2024-community-bond-task-force": {
+    "recording_case": "dallas-tx-130a7ebded8e0e1d-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:130a7ebded8e0e1d"
+  },
+  "dallas-tx-130a7ebded8e0e1d-ownership-wrong-target": {
+    "recording_case": "dallas-tx-130a7ebded8e0e1d-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:130a7ebded8e0e1d"
+  },
+  "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+    "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:16300c982b358fe9"
+  },
+  "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-bond-program-meetings": {
+    "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+    "city": "dallas-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "76869ed1994f:16300c982b358fe9"
+  },
+  "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure": {
+    "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+    "city": "dallas-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "76869ed1994f:16300c982b358fe9"
+  },
+  "dallas-tx-16300c982b358fe9-ownership-wrong-target": {
+    "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:16300c982b358fe9"
+  },
+  "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+    "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:2b172a76868ad86c"
+  },
+  "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-bond-program-meetings": {
+    "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+    "city": "dallas-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "76869ed1994f:2b172a76868ad86c"
+  },
+  "dallas-tx-2b172a76868ad86c-ownership-wrong-target": {
+    "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:2b172a76868ad86c"
+  },
+  "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+    "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:2bc4c440c974dba8"
+  },
+  "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-bond-program-meetings": {
+    "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+    "city": "dallas-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "76869ed1994f:2bc4c440c974dba8"
+  },
+  "dallas-tx-2bc4c440c974dba8-ownership-wrong-target": {
+    "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:2bc4c440c974dba8"
+  },
+  "dallas-tx-bd172b762dd20b63-ownership-member-dallas-tx-redistricting-commission": {
+    "recording_case": "dallas-tx-bd172b762dd20b63-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:bd172b762dd20b63"
+  },
+  "dallas-tx-bd172b762dd20b63-ownership-wrong-target": {
+    "recording_case": "dallas-tx-bd172b762dd20b63-ownership",
+    "city": "dallas-tx",
+    "category": "body-identification",
+    "event_group": "76869ed1994f:bd172b762dd20b63"
+  },
+  "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee": {
+    "recording_case": "denton-tx-04689e3929ac104e-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:04689e3929ac104e"
+  },
+  "denton-tx-04689e3929ac104e-ownership-wrong-target": {
+    "recording_case": "denton-tx-04689e3929ac104e-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:04689e3929ac104e"
+  },
+  "denton-tx-280db52d91547dd6-ownership-member-denton-tx-health-building-standards-commission": {
+    "recording_case": "denton-tx-280db52d91547dd6-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:280db52d91547dd6"
+  },
+  "denton-tx-280db52d91547dd6-ownership-wrong-target": {
+    "recording_case": "denton-tx-280db52d91547dd6-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:280db52d91547dd6"
+  },
+  "denton-tx-7abd583b2ed8189a-ownership-member-denton-tx-health-building-standards-commission": {
+    "recording_case": "denton-tx-7abd583b2ed8189a-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:7abd583b2ed8189a"
+  },
+  "denton-tx-7abd583b2ed8189a-ownership-wrong-target": {
+    "recording_case": "denton-tx-7abd583b2ed8189a-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:7abd583b2ed8189a"
+  },
+  "denton-tx-b50c6a018b2c08e7-ownership-member-denton-tx-library-board": {
+    "recording_case": "denton-tx-b50c6a018b2c08e7-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:b50c6a018b2c08e7"
+  },
+  "denton-tx-b50c6a018b2c08e7-ownership-wrong-target": {
+    "recording_case": "denton-tx-b50c6a018b2c08e7-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:b50c6a018b2c08e7"
+  },
+  "denton-tx-c10f3f6cd97ac38f-ownership-member-denton-tx-library-board": {
+    "recording_case": "denton-tx-c10f3f6cd97ac38f-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:c10f3f6cd97ac38f"
+  },
+  "denton-tx-c10f3f6cd97ac38f-ownership-wrong-target": {
+    "recording_case": "denton-tx-c10f3f6cd97ac38f-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:c10f3f6cd97ac38f"
+  },
+  "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-city-council": {
+    "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:a1aa4af8f26e120c"
+  },
+  "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-library-board": {
+    "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:a1aa4af8f26e120c"
+  },
+  "denton-tx-a1aa4af8f26e120c-ownership-wrong-target": {
+    "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:a1aa4af8f26e120c"
+  },
+  "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board": {
+    "recording_case": "denton-tx-1c91182b70afefb3-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:1c91182b70afefb3"
+  },
+  "denton-tx-1c91182b70afefb3-ownership-wrong-target": {
+    "recording_case": "denton-tx-1c91182b70afefb3-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:1c91182b70afefb3"
+  },
+  "denton-tx-2493e59c0844a4b4-ownership-member-denton-tx-tirz-1-board": {
+    "recording_case": "denton-tx-2493e59c0844a4b4-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:2493e59c0844a4b4"
+  },
+  "denton-tx-2493e59c0844a4b4-ownership-wrong-target": {
+    "recording_case": "denton-tx-2493e59c0844a4b4-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:2493e59c0844a4b4"
+  },
+  "denton-tx-2b458f3c556df459-ownership-member-denton-tx-tirz-1-board": {
+    "recording_case": "denton-tx-2b458f3c556df459-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:2b458f3c556df459"
+  },
+  "denton-tx-2b458f3c556df459-ownership-wrong-target": {
+    "recording_case": "denton-tx-2b458f3c556df459-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:2b458f3c556df459"
+  },
+  "denton-tx-5a2ce8afb18c6a82-ownership-member-denton-tx-tirz-1-board": {
+    "recording_case": "denton-tx-5a2ce8afb18c6a82-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:5a2ce8afb18c6a82"
+  },
+  "denton-tx-5a2ce8afb18c6a82-ownership-wrong-target": {
+    "recording_case": "denton-tx-5a2ce8afb18c6a82-ownership",
+    "city": "denton-tx",
+    "category": "body-identification",
+    "event_group": "3b7588310856:5a2ce8afb18c6a82"
+  },
+  "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-city-council": {
+    "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-gas-drilling-task-force": {
+    "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-0d5832dbd08e6dd8-ownership-wrong-target": {
+    "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council": {
+    "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-gas-drilling-task-force": {
+    "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-27254aa1a700569f-ownership-wrong-target": {
+    "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "fort-worth-gas-2008-10-14"
+  },
+  "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council": {
+    "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "6540eef2dc2e:497b3aa05255bfb9"
+  },
+  "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-emsisd-board-joint-meetings": {
+    "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "6540eef2dc2e:497b3aa05255bfb9"
+  },
+  "fort-worth-tx-497b3aa05255bfb9-ownership-wrong-target": {
+    "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+    "city": "fort-worth-tx",
+    "category": "body-identification",
+    "event_group": "6540eef2dc2e:497b3aa05255bfb9"
+  },
+  "untracked-3b7588310856-1ba31685c3061fad-wrong-target": {
+    "recording_case": "untracked-3b7588310856-1ba31685c3061fad",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:1ba31685c3061fad"
+  },
+  "untracked-3b7588310856-345a3a95d050eddf-wrong-target": {
+    "recording_case": "untracked-3b7588310856-345a3a95d050eddf",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:345a3a95d050eddf"
+  },
+  "untracked-3b7588310856-3afe3a4c3aaa04d9-wrong-target": {
+    "recording_case": "untracked-3b7588310856-3afe3a4c3aaa04d9",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:3afe3a4c3aaa04d9"
+  },
+  "untracked-3b7588310856-43599790450713d2-wrong-target": {
+    "recording_case": "untracked-3b7588310856-43599790450713d2",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:43599790450713d2"
+  },
+  "untracked-3b7588310856-93bbf0722bbc0edd-wrong-target": {
+    "recording_case": "untracked-3b7588310856-93bbf0722bbc0edd",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:93bbf0722bbc0edd"
+  },
+  "untracked-3b7588310856-c33b73995d47d8f3-wrong-target": {
+    "recording_case": "untracked-3b7588310856-c33b73995d47d8f3",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:c33b73995d47d8f3"
+  },
+  "untracked-3b7588310856-d38106e9b2725a87-wrong-target": {
+    "recording_case": "untracked-3b7588310856-d38106e9b2725a87",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:d38106e9b2725a87"
+  },
+  "untracked-3b7588310856-f1e199354d821412-wrong-target": {
+    "recording_case": "untracked-3b7588310856-f1e199354d821412",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:f1e199354d821412"
+  },
+  "untracked-3b7588310856-f3eac6548e0da80c-wrong-target": {
+    "recording_case": "untracked-3b7588310856-f3eac6548e0da80c",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:f3eac6548e0da80c"
+  },
+  "untracked-3b7588310856-f9c0123089539a11-wrong-target": {
+    "recording_case": "untracked-3b7588310856-f9c0123089539a11",
+    "city": "denton-tx",
+    "category": "publication-policy-compliance",
+    "event_group": "3b7588310856:f9c0123089539a11"
+  },
+  "untracked-6540eef2dc2e-00c9f506545d220a-wrong-target": {
+    "recording_case": "untracked-6540eef2dc2e-00c9f506545d220a",
+    "city": "fort-worth-tx",
+    "category": "unsupported-claim-rejection",
+    "event_group": "6540eef2dc2e:00c9f506545d220a"
+  },
+  "untracked-6540eef2dc2e-00e5a51984f89df0-wrong-target": {
+    "recording_case": "untracked-6540eef2dc2e-00e5a51984f89df0",
+    "city": "fort-worth-tx",
+    "category": "unsupported-claim-rejection",
+    "event_group": "6540eef2dc2e:00e5a51984f89df0"
+  },
+  "untracked-6540eef2dc2e-01127a49d16869ef-wrong-target": {
+    "recording_case": "untracked-6540eef2dc2e-01127a49d16869ef",
+    "city": "fort-worth-tx",
+    "category": "unsupported-claim-rejection",
+    "event_group": "6540eef2dc2e:01127a49d16869ef"
+  },
+  "untracked-6540eef2dc2e-014649318804b782-wrong-target": {
+    "recording_case": "untracked-6540eef2dc2e-014649318804b782",
+    "city": "fort-worth-tx",
+    "category": "unsupported-claim-rejection",
+    "event_group": "6540eef2dc2e:014649318804b782"
+  },
+  "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target": {
+    "recording_case": "untracked-6540eef2dc2e-018c23a1b2493ae3",
+    "city": "fort-worth-tx",
+    "category": "unsupported-claim-rejection",
+    "event_group": "6540eef2dc2e:018c23a1b2493ae3"
+  }
+}

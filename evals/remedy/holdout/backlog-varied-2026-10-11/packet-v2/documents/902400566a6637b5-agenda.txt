@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SwagitAdmin</title>
+  <link rel="stylesheet" media="all" href="/assets/application-aa4ff702d50a0a36e731206cfd144303a3c3318d59628c1700eab86d9efa8a2b.css" data-turbolinks-track="false" />
+  <script src="/assets/application-84b1c92415b2ab208d522e647cfca26328d1b8e25e43fd8db4c69271e3a18c2d.js" data-turbolinks-track="false"></script>
+  <meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="9L9jR2WB5IxhegtkiSIH9qyd4+jgtBfMOl1iFleVR9RVU1qVIfIX8O+3W1ABjVbzEGJ5y/zeJCD8CUAxbmfhrQ==" />
+  
+</head>
+<body>
+
+  <style>
+    body {
+      padding-top: 0px;
+    }
+  </style>
+
+<!--
+  <div class="container master-container">
+      <div class="row">
+        <div class="col-xs-12">
+-->
+    <iframe id='pgFrame' src="https://addisontexas.primegov.com/viewer?meetingTemplateId=507&amp;compileOutputType=1&amp;fromiframe=1" width="100%" height="700" frameborder="0" scrolling="no"></iframe>
+    <script type="text/javascript">
+        function resizeIframe() {
+          $('#pgFrame').height($(document).height())
+        }
+
+        $(window).on('resize', resizeIframe())
+        $('#pgFrame').on('load', resizeIframe())
+    </script>
+<!--
+        </div>
+    </div>
+  </div>
+-->
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "candidate": "kimi",
+  "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:39:47.056757+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "1d67679b13eb1454184dc4da67725d0cf168ff253de7bc801995005be2f4b70a",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 6
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-3e39f1ee-43df-40d0-8d63-0a5bf94714d6",
+    "created": 1791772796,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-tirz-2-board\",\n  \"proposed_action\": \"assign-membership\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The convened body is explicitly identified as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton across all supplied evidence. The retained agenda header states the 'Tax Increment Reinvestment Zone No. 2 Board ... will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', matching the immutable recording metadata (2021-01-13 11:00 AM, Special Called Meeting). Agenda items reference TIRZ Number Two (Westpark TIRZ), and the provider player title and native chapters corroborate the same body and date. This is identity by convened body, not by shared city/topic tokens: the evidence names the specific numbered board (No. 2), distinguishing it from the existing denton-tx-tirz-1-board feed per the family identity policy. The claimed feed denton-tx-tirz-2-board exists and describes 'Meetings of Denton TIRZ No. 2 Board,' so the membership claim is directly supported. No evidence of a joint body or participant that would warrant additional membership. The claim supports membership assignment to denton-tx-tirz-2-board.\"\n}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "The task: assess the claim that the recording belongs in denton-tx-tirz-2-board. Evidence: the agenda and provider player clearly identify the body as Tax Increment Reinvestment Zone No. 2 Board, City of Denton, Jan 13, 2021, 11:00 AM special called meeting. Existing feed denton-tx-tirz-2-board exists describing \"Meetings of Denton TIRZ No. 2 Board.\" So the claim is supported. Cite evidence refs: retained-agenda, provider-player, native-source-chapters. Proposed_action: assign/publish membership. Missing evidence: none.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "The task: assess the claim that the recording belongs in denton-tx-tirz-2-board. Evidence: the agenda and provider player clearly identify the body as Tax Increment Reinvestment Zone No. 2 Board, City of Denton, Jan 13, 2021, 11:00 AM special called meeting. Existing feed denton-tx-tirz-2-board exists describing \"Meetings of Denton TIRZ No. 2 Board.\" So the claim is supported. Cite evidence refs: retained-agenda, provider-player, native-source-chapters. Proposed_action: assign/publish membership. Missing evidence: none."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 495,
+      "prompt_tokens": 3964,
+      "total_tokens": 4459,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 137,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+    "supported": true,
+    "proposed_owner": "denton-tx-tirz-2-board",
+    "proposed_action": "assign-membership",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "missing_evidence": [],
+    "rationale": "The convened body is explicitly identified as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton across all supplied evidence. The retained agenda header states the 'Tax Increment Reinvestment Zone No. 2 Board ... will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', matching the immutable recording metadata (2021-01-13 11:00 AM, Special Called Meeting). Agenda items reference TIRZ Number Two (Westpark TIRZ), and the provider player title and native chapters corroborate the same body and date. This is identity by convened body, not by shared city/topic tokens: the evidence names the specific numbered board (No. 2), distinguishing it from the existing denton-tx-tirz-1-board feed per the family identity policy. The claimed feed denton-tx-tirz-2-board exists and describes 'Meetings of Denton TIRZ No. 2 Board,' so the membership claim is directly supported. No evidence of a joint body or participant that would warrant additional membership. The claim supports membership assignment to denton-tx-tirz-2-board."
+  },
+  "end_to_end_seconds": 21.47931466717273,
+  "diagnostics": [
+    {
+      "duration_seconds": 20.10781008284539
+    }
+  ]
+}

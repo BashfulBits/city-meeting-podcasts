@@ -1,0 +1,273 @@
+{
+  "results": [
+    {
+      "case_id": "denton-zone2-wrong-zone",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_039fff1d04a2506f016aca912e613c819b88beb2a9b60f1301",
+        "created": 1791660340,
+        "model": "gpt-6.1-sol-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone2-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Assign recording 111521 to denton-tx-tirz-2-board, not denton-tx-tirz-1-board; preserve official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 111521 identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board for the January 13, 2021, 11:00 AM Special Called Meeting. It also identifies the business as Zone Number Two (Westpark TIRZ). The approved identity policy requires ownership by the officially convened body and keeps distinct numbered boards separate. The existing No. 2 feed explicitly includes this recording's provider GUID and body label. Shared city and TIRZ terminology do not establish identity with the No. 1 Board, and the Council Work Session Room does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment; no archive-completeness inference is needed.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 239,
+          "prompt_tokens": 2594,
+          "total_tokens": 2833,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2594,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 239,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2594,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_1_sol_free",
+      "upstream_model": "gpt-6.1-sol-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-wrong-zone",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "Assign recording 111521 to denton-tx-tirz-2-board, not denton-tx-tirz-1-board; preserve official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 111521 identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board for the January 13, 2021, 11:00 AM Special Called Meeting. It also identifies the business as Zone Number Two (Westpark TIRZ). The approved identity policy requires ownership by the officially convened body and keeps distinct numbered boards separate. The existing No. 2 feed explicitly includes this recording's provider GUID and body label. Shared city and TIRZ terminology do not establish identity with the No. 1 Board, and the Council Work Session Room does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment; no archive-completeness inference is needed."
+      },
+      "duration_seconds": 70.15353895770386
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_02e2ea7e007ee354016aca91d3ae3c8194a340f435d13b7dba",
+        "created": 1791660504,
+        "model": "gpt-6.1-sol-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5a9bffdb8b1a44e186edac01\",\"supported\":null,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign the recording to the existing Health & Building Standards Commission feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 122398 identifies the convening body as the City of Denton Health and Building Standards Commission and specifies June 3, 2021 at 3:00 p.m., matching the supplied recording. The existing commission feed explicitly includes the same body label and provider GUID 122398. This establishes ownership through meeting identity and recording-specific linkage, not merely shared city or topic words. Archive completeness is unknown but is not needed for this recording-specific assignment.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 184,
+          "prompt_tokens": 2392,
+          "total_tokens": 2576,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2392,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 184,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2392,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_1_sol_free",
+      "upstream_model": "gpt-6.1-sol-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": null,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign the recording to the existing Health & Building Standards Commission feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 122398 identifies the convening body as the City of Denton Health and Building Standards Commission and specifies June 3, 2021 at 3:00 p.m., matching the supplied recording. The existing commission feed explicitly includes the same body label and provider GUID 122398. This establishes ownership through meeting identity and recording-specific linkage, not merely shared city or topic words. Archive completeness is unknown but is not needed for this recording-specific assignment."
+      },
+      "duration_seconds": 99.40609175013378
+    },
+    {
+      "case_id": "denton-library-council",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_00bbd358ce7bd7bd016aca928c631487d1b7f0ba960b26fc59",
+        "created": 1791660689,
+        "model": "gpt-6.1-sol-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5289302793d922ea2d6379a7\",\"supported\":null,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to the existing Denton: Library Board feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 120859 identifies the meeting as Library Board, held May 13, 2021 at 3:30 PM, and explicitly describes participation in the Library Advisory Board meeting. This establishes the body's identity and matches the existing Library Board feed's taxonomy. It is not a Joint Luncheon with Library Board, so the shared joint-luncheon inclusion in the City Council feed does not establish City Council ownership. The evidence supports ownership of this recording only, not archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 182,
+          "prompt_tokens": 2335,
+          "total_tokens": 2517,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2335,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 182,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2335,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_1_sol_free",
+      "upstream_model": "gpt-6.1-sol-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-council",
+        "supported": null,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to the existing Denton: Library Board feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 120859 identifies the meeting as Library Board, held May 13, 2021 at 3:30 PM, and explicitly describes participation in the Library Advisory Board meeting. This establishes the body's identity and matches the existing Library Board feed's taxonomy. It is not a Joint Luncheon with Library Board, so the shared joint-luncheon inclusion in the City Council feed does not establish City Council ownership. The evidence supports ownership of this recording only, not archive completeness."
+      },
+      "duration_seconds": 119.8346414170228
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T19:24:31.832591+00:00",
+      "model": "openai/gpt-6.1-sol-free",
+      "status": "completed",
+      "duration_seconds": 68.46220354223624
+    },
+    {
+      "started_at": "2026-10-10T19:27:16.854401+00:00",
+      "model": "openai/gpt-6.1-sol-free",
+      "status": "completed",
+      "duration_seconds": 67.9508983339183
+    },
+    {
+      "started_at": "2026-10-10T19:30:21.556380+00:00",
+      "model": "openai/gpt-6.1-sol-free",
+      "status": "completed",
+      "duration_seconds": 68.01288725016639
+    }
+  ]
+}

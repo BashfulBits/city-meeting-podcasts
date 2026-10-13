@@ -1,0 +1,598 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "hSbMasbWFLrQz7IPzcWJwQ0",
+        "created": 1791764100,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-health-own\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-health-building-standards-commission\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda explicitly states this is a meeting of the Health and Building Standards Commission of the City of Denton, matching the feed slug denton-tx-health-building-standards-commission.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TVAB3fqUWqB0IPpVFf6ML7FnL9cYbVigonw5JM82obLlFyG5rh6NjHQYCO3ChZDvdT4NxboQyVvxFaUrvJAOqYAV9NoQNPbSFDI/24FzDP0zj51WcPspO34c="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 130,
+          "prompt_tokens": 2740,
+          "total_tokens": 2870,
+          "completion_tokens_details": {
+            "text_tokens": 130
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2740,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "assign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda explicitly states this is a meeting of the Health and Building Standards Commission of the City of Denton, matching the feed slug denton-tx-health-building-standards-commission."
+      },
+      "duration_seconds": 6.393479291815311
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "iibMarzGLI3oz7IP-v2puA0",
+        "created": 1791764106,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-health-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-health-building-standards-commission\",\n  \"proposed_action\": \"reassign_feed\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda explicitly states the meeting is for the Health & Building Standards Commission, not the City Council. Therefore, the claim that it belongs in denton-tx-city-council is false.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TNnjk5LOOM9yJFPoHU09kIFWePbkjjKnCPriohtlOlnuN3Tn0SqirRonJU1bs8JXtuLyQaNH7tW+/RVdkDldKM6RvqbuVSshNvszyugKCrfhi5cz/qPIi5d8="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 134,
+          "prompt_tokens": 2736,
+          "total_tokens": 2870,
+          "completion_tokens_details": {
+            "text_tokens": 134
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2736,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "reassign_feed",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda explicitly states the meeting is for the Health & Building Standards Commission, not the City Council. Therefore, the claim that it belongs in denton-tx-city-council is false."
+      },
+      "duration_seconds": 5.231258625164628
+    },
+    {
+      "case_id": "denton-library-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "kSbMaqmSBfXiqtsPgdieMA",
+        "created": 1791764112,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-library-own\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-library-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda explicitly designates the meeting for the Library Board of the City of Denton on May 13, 2021, matching the slug denton-tx-library-board.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0Ta4en4U2MDQwkv8cqe24Wm0kAFlg6E0jUywXnHHIvphMTDtGBQXVFY82jO2j3V19DJbe0cB5alAUEudrDesqQnMqndhMSsk5vkWwRLnSCxsBDZpE1lG7bj3c="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 127,
+          "prompt_tokens": 2656,
+          "total_tokens": 2783,
+          "completion_tokens_details": {
+            "text_tokens": 127
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2656,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "assign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda explicitly designates the meeting for the Library Board of the City of Denton on May 13, 2021, matching the slug denton-tx-library-board."
+      },
+      "duration_seconds": 8.026657124981284
+    },
+    {
+      "case_id": "denton-library-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "mCbMavODI8fQz7IPhbfxmA0",
+        "created": 1791764119,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-library-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-library-board\",\n  \"proposed_action\": \"reassign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and body label clearly show that the recording is of the Library Board, not the City Council. Distinct bodies remain distinct under policy.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TFtdt2pspNBq694ZBed7SBVdrK9docbyeSuETF7DlFOAtjLT2fTCMO1Y1vXwqSnQhJL6zrLLGRExR9+hR0zgEh/85EljAJI43veDzFq5VGGmzC+jOMQaH24g="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 117,
+          "prompt_tokens": 2656,
+          "total_tokens": 2773,
+          "completion_tokens_details": {
+            "text_tokens": 117
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2656,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "reassign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda and body label clearly show that the recording is of the Library Board, not the City Council. Distinct bodies remain distinct under policy."
+      },
+      "duration_seconds": 6.124939708970487
+    },
+    {
+      "case_id": "denton-zone1-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "nibMaqDUHPLnz7IP8oCawQ0",
+        "created": 1791764126,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone1-own\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-tirz-1-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and feed configuration explicitly identify the meeting as belonging to the Downtown Denton Tax Increment Financing Zone No. 1 Board, which corresponds to the feed slug denton-tx-tirz-1-board.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TZPg11r7Ag5prnyk0Onw57dCwUq/W6EBwTMzESPWrOPljtbVX+UU64hknEYmycsErVJbfo00jfmhD/C8T0PK02TP/ADKB67KOfUXAAF0nnjFZwZ9UeJC43ZU="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 135,
+          "prompt_tokens": 2790,
+          "total_tokens": 2925,
+          "completion_tokens_details": {
+            "text_tokens": 135
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2790,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "assign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda and feed configuration explicitly identify the meeting as belonging to the Downtown Denton Tax Increment Financing Zone No. 1 Board, which corresponds to the feed slug denton-tx-tirz-1-board."
+      },
+      "duration_seconds": 6.252649374771863
+    },
+    {
+      "case_id": "denton-zone1-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "pCbMaoS8HLrQz7IPzcWJwQ0",
+        "created": 1791764132,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone1-council\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-tirz-1-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and existing feeds explicitly identify the meeting as belonging to the Downtown Denton Tax Increment Financing Zone No. 1 Board (TIRZ No. 1 Board), which under policy identity rules remains distinct from the City Council feed.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TIjz/b9uAn/CCVsHOTe+I/FMf4+GwM4BQlkJnwj9Zfs1oHoS89fuw8DM3RPD8Dp8+MzXfDvxbFgvD1jRgU+9k+CS/5D25emFrzrowPFRESZh1czMjWLwn2OY="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 139,
+          "prompt_tokens": 2787,
+          "total_tokens": 2926,
+          "completion_tokens_details": {
+            "text_tokens": 139
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2787,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "assign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda and existing feeds explicitly identify the meeting as belonging to the Downtown Denton Tax Increment Financing Zone No. 1 Board (TIRZ No. 1 Board), which under policy identity rules remains distinct from the City Council feed."
+      },
+      "duration_seconds": 5.608900709077716
+    },
+    {
+      "case_id": "denton-zone1-wrong-zone",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "uSbMauLVDKq1qtsP0KjJoAw",
+        "created": 1791764152,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone1-wrong-zone\",\n  \"supported\": false,\n  \"proposed_owner\": \"denton-tx-tirz-1-board\",\n  \"proposed_action\": \"reassign_feed\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and feed mappings show that the Downtown Denton Tax Increment Financing Zone No. 1 Board belongs to denton-tx-tirz-1-board, not denton-tx-tirz-2-board.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TlTSrxTpE2PcBDrSFtL3CVx3NvmhP1GHmpvDVzY0P+vju7nvdZk7tg24AQjIN0iwv0TJUcRDqhbooXXQaUw4F+IcUphzQDIKN+xtWdUmkPDoPUb0IQrOQ1jM="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 143,
+          "prompt_tokens": 2792,
+          "total_tokens": 2935,
+          "completion_tokens_details": {
+            "text_tokens": 143
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2792,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "reassign_feed",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda and feed mappings show that the Downtown Denton Tax Increment Financing Zone No. 1 Board belongs to denton-tx-tirz-1-board, not denton-tx-tirz-2-board."
+      },
+      "duration_seconds": 20.334881165996194
+    },
+    {
+      "case_id": "denton-zone2-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "vSbMap3mJdmMmtkP-e6RMA",
+        "created": 1791764157,
+        "model": "gemini-3.5-flash-lite",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone2-own\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-tirz-2-board\",\n  \"proposed_action\": \"assign\",\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and feed listings confirm that the recording is of the Tax Increment Reinvestment Zone No. 2 Board meeting, which correctly aligns with the slug denton-tx-tirz-2-board.\"\n}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "images": [],
+              "thinking_blocks": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "EmAKXgFpFH0TPJqvGVa5QnanJz6/QtJyYTQvKiVP7X5x5BBlX4zZ+aJIaJ91ClCs2cSM5vHNxRo5+JyLFjdwsJbjnpBbduId2x4FtPq12PvE5N9F3QzxhVqTONyeMt4NQ8M="
+                ]
+              }
+            }
+          }
+        ],
+        "usage": {
+          "completion_tokens": 134,
+          "prompt_tokens": 2792,
+          "total_tokens": 2926,
+          "completion_tokens_details": {
+            "text_tokens": 134
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "text_tokens": 2792,
+            "image_tokens": null,
+            "video_tokens": null
+          },
+          "cache_read_input_tokens": null
+        },
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_url_context_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_citation_metadata": [],
+        "service_tier": "default"
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "assign",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda and feed listings confirm that the recording is of the Tax Increment Reinvestment Zone No. 2 Board meeting, which correctly aligns with the slug denton-tx-tirz-2-board."
+      },
+      "duration_seconds": 3.9319049161858857
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-12T00:15:00.516474+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.5655543748289347
+    },
+    {
+      "started_at": "2026-10-12T00:15:06.435798+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.0243133748881519
+    },
+    {
+      "started_at": "2026-10-12T00:15:12.570382+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.3831577501259744
+    },
+    {
+      "started_at": "2026-10-12T00:15:19.896912+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.4261532919481397
+    },
+    {
+      "started_at": "2026-10-12T00:15:26.204754+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.0999585837125778
+    },
+    {
+      "started_at": "2026-10-12T00:15:32.192513+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.0677055418491364
+    },
+    {
+      "started_at": "2026-10-12T00:15:52.707274+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.3516285829246044
+    },
+    {
+      "started_at": "2026-10-12T00:15:57.383853+00:00",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "status": "completed",
+      "duration_seconds": 1.0126607920974493
+    }
+  ]
+}

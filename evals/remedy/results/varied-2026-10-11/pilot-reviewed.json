@@ -1,0 +1,131 @@
+{
+  "decision": "advance_flashlite_for_more_quality_observations_only",
+  "flashlite_review": {
+    "abstained": 0,
+    "accepted_precision": 1.0,
+    "completed": 6,
+    "correct": 5,
+    "failed": 0,
+    "finding": "One false negative: the model identified Dallas 2024 Bond Streets as the specific body but rejected its approved additional membership in the Transportation and Infrastructure feed.",
+    "incorrect": 1,
+    "supported_claim_recall": 0.75,
+    "unattempted": 107
+  },
+  "gemini37_review": {
+    "failed": 1,
+    "reason": "The local immediate-attempt limit prevented a model response; retry requires a new bounded batch.",
+    "valid_answers": 0
+  },
+  "gemini38_review": {
+    "failed": 1,
+    "reason": "Provider returned HTTP 503; retry requires a new bounded batch.",
+    "valid_answers": 0
+  },
+  "gold_hash": "5da44c165605a88f3df478bd3c920ad7eb5a6b4597ff2694d214dcc83482c2e2",
+  "input_observations": [
+    {
+      "candidate": "astra",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/astra-3abfd6130a75e742.json",
+      "sha256": "f00a1bbd950e16770993563890148c7e2e124f4ce056d1352d6aec51e986074a",
+      "status": "deferred"
+    },
+    {
+      "candidate": "deepseek",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/deepseek-3abfd6130a75e742.json",
+      "sha256": "a3209e29143599183e1401a3b8849b1ca9cf8f267390670d5217caadfcc7b02e",
+      "status": "deferred"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-3abfd6130a75e742.json",
+      "sha256": "c931939c216248de000289999e62aed61f1d2b0a7d851b7ae2a6bc9149642827",
+      "status": "completed"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4989b0af919f5894.json",
+      "sha256": "a3525b4efd604a5037af39c07db50fcb480cf1132f4f76e1941d55d70397ff80",
+      "status": "completed"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4b1e8741d6249041.json",
+      "sha256": "62080cfaef19fca6fa40bd43f051d16c9929bda56f9265522748e8284d048952",
+      "status": "completed"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4fb9987e2003d70f.json",
+      "sha256": "6c885a242f04cdf1ce5b13cbcc814805394743f449eba2fbd954162dac6a2085",
+      "status": "completed"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-884b2a75e101f848.json",
+      "sha256": "05cc91c10aba759a9a7ed2a876897d8e4dba1a02bbb11ef247742a6bc6a5ffcd",
+      "status": "completed"
+    },
+    {
+      "candidate": "flashlite",
+      "case_id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-e239d45c6ff5b7e0.json",
+      "sha256": "a87fa5c7f817414446434b9fcf44b66ed14afc6d3f1ee4e21215bf86c3740688",
+      "status": "completed"
+    },
+    {
+      "candidate": "gemini37",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini37-3abfd6130a75e742.json",
+      "sha256": "d24893503e838dba64f951837b643cba8d65c3e6db34023fef59bc3ac26b5e97",
+      "status": "failed"
+    },
+    {
+      "candidate": "gemini38",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini38-3abfd6130a75e742.json",
+      "sha256": "37179b053429c2b522c93d84a40ac6f5ab2d6fc77c8f35664ef83052eb1df17f",
+      "status": "failed"
+    },
+    {
+      "candidate": "glm_flash",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_flash-3abfd6130a75e742.json",
+      "sha256": "6b8a5543f6a16f92bdaa51b438f35c51b5a8ea4be1bb42dbccdcde5996df3dfd",
+      "status": "deferred"
+    },
+    {
+      "candidate": "glm_full",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_full-3abfd6130a75e742.json",
+      "sha256": "8da11a242210585d08afafbb3fa7fcbd2153365528f749c2cfbccc95e0e080db",
+      "status": "deferred"
+    },
+    {
+      "candidate": "kimi",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/kimi-3abfd6130a75e742.json",
+      "sha256": "fb7f5fa19991ff138539178724e90eac21533db2b397bca76f252bb4e3b21428",
+      "status": "deferred"
+    },
+    {
+      "candidate": "sol",
+      "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/sol-3abfd6130a75e742.json",
+      "sha256": "c90650e3b4b86d050aea4d2ac4acfe79a0e958a4c9dcf13c926bd1daaa0b405e",
+      "status": "deferred"
+    }
+  ],
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "next_step": "Continue the approved challenge in single-candidate batches after provider availability; keep all routes evaluation-only. These pilot observations do not qualify or activate a model.",
+  "other_candidates": "Deferred before any request because their shared provider groups had work in flight.",
+  "review_kind": "pilot-quality-and-execution-review",
+  "reviewed_at": "2026-10-11",
+  "reviewer": "Codex, using the maintainer-approved answer key"
+}

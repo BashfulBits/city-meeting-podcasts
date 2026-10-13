@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "now": 1791764242307,
+  "selection": "route:gemini_3_5_flash_lite_primary",
+  "in_flight": 0,
+  "pauses": [],
+  "routes": {
+    "gemini_3_5_flash_lite_primary": {
+      "provider": "gemini",
+      "in_flight": 0,
+      "rpd_limit": 500,
+      "rpd_used": 20,
+      "rpd_remaining": 480,
+      "rpd_resets_at": 1791788429807
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "candidate": "kimi",
+  "case_id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:40:45.065712+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "3d625488d441f30d4050c3b47c25ede038e9bd80a6691ac5463c5bd187235235",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 8
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-15a5f8fb-7884-43b1-ba75-e252046f539d",
+    "created": 1791772851,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure\", \"supported\": false, \"proposed_owner\": \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\", \"proposed_action\": \"assign\", \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\", \"maintained-policy\"], \"missing_evidence\": [], \"rationale\": \"The recording is the official Aug 22, 2023 '2024 Capital Bond Streets & Transportation Subcommittee Meeting' (provider-player), and the City of Dallas Office of Bond & Construction Management archive lists that date as 'Streets and Transportation Meeting #6' under the Streets and Transportation Subcommittee of the 2024 Bond Program (dallas-streets-archive), affirmatively establishing the convened body. The maintainer-approved directive (maintained-policy) lists three allowed memberships, including the claimed feed, but it is a publication preference, not proof of convening, and identity policy requires assigning by convened body rather than shared topic tokens such as 'Streets/Transportation.' The generic feed dallas-tx-transportation-and-infrastructure is a topic aggregation for the standing Transportation and Infrastructure context, not the 2024 bond subcommittee that actually convened this meeting. Therefore the claim that this recording belongs in dallas-tx-transportation-and-infrastructure is not supported; ownership belongs to dallas-tx-2024-bond-streets-and-transportation-subcommittee, which is also within the maintained allowed-membership set.\"}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in dallas-tx-transportation-and-infrastructure.\"\n\nThe recording: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" dated Aug 22, 2023, Dallas, TX.\n\nEvidence:\n1. provider-player: Swagit video showing the title \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" on Aug 22, 2023, with transcript discussing streets committee, bond task force, public works director, transportation team.\n\n2. dallas-streets-archive: Official City of Dallas Office of Bond & Construction Management page showing \"Streets and Transportation Subcommittee\" meeting list with August 22, 2023 \"Streets and Transportation Meeting #6 Video\". This confirms the identity: The convening body is the 2024 Bond Streets and Transportation Subcommittee.\n\n3. maintained-policy: Maintainer-approved publication directive listing allowed body feed memberships: [\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\", \"dallas-tx-bond-program-meetings\", \"dallas-tx-transportation-and-infrastructure\"]. Scope: \"Previously maintained publication preference; not proof of convening.\" Approval: maintainer chat approval 2026-10-11.\n\nThe family policy: identity - use convened body, not venue, topic or common members. The recording is the Streets and Transportation Subcommittee of the 2024 Bond program. The official archive confirms that the meeting on Aug 22, 2023 was \"Streets and Transportation Meeting #6\" of the Streets and Transportation Subcommittee.\n\nSo the owner should be the convened body feed: dallas-tx-2024-bond-streets-and-transportation-subcommittee. The claim says it belongs in dallas-tx-transportation-and-infrastructure \u2014 which is a generic topic feed for transportation meetings, not the convened body. Shared topic tokens (Streets & Transportation) do not establish identity. The system prompt says: \"Shared city/topic tokens do not establish identity.\" The maintained policy allows membership in all three, but the owner selection should be independent \u2014 select the convened body. The claim of transporting to the generic transportation feed would be incorrect as publication membership/ownership.\n\nDecision_type is \"publication-membership\". Hmm. The claim is that \"this recording belongs in dallas-tx-transportation-and-infrastructure\" under the supplied approved publication policy. The allowed memberships include that feed. But identity dictates the convened-body feed: dallas-tx-2024-bond-streets-and-transportation-subcommittee. The policy says \"Use convened body, not venue, topic or common members\". So the primary owner is the convened body.\n\nSo we should reject the claim (supported=false) and propose owner = dallas-tx-2024-bond-streets-and-transportation-subcommittee with action \"assign\" (or \"publish\"?). The schema: proposed_action, proposed_owner strings.\n\nEvidence ref IDs: cite provider-player, dallas-streets-archive, maintained-policy.\n\nMissing evidence: none, since official archive confirms convening. We could note missing nothing.\n\nRationale: The recording is the Aug 22, 2023 2024 Capital Bond Streets & Transportation Subcommittee meeting (provider-player). Official Dallas bond program archive lists this date as \"Streets and Transportation Meeting #6\" for the Streets and Transportation Subcommittee (dallas-streets-archive), establishing the convened body. The maintained policy (maintained-policy) permits assignment among three feeds; identity policy requires choosing the convened body, not a topic feed. The claim of ownership by dallas-tx-transportation-and-infrastructure is not supported; the correct owner is dallas-tx-2024-bond-streets-and-transportation-subcommittee.\n\nSupported: false. Proposed owner: dallas-tx-2024-bond-streets-and-transportation-subcommittee. Proposed action: assign/publish to that feed. Maybe \"assign-member\"? Let's use \"assign\".\n\ncase_id: use the \"id\" field: \"dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure\".\n\nmissing_evidence: [] \u2014 evidence is sufficient.\n\nRationale under 2000 chars.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "Let me analyze this case.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in dallas-tx-transportation-and-infrastructure.\"\n\nThe recording: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" dated Aug 22, 2023, Dallas, TX.\n\nEvidence:\n1. provider-player: Swagit video showing the title \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" on Aug 22, 2023, with transcript discussing streets committee, bond task force, public works director, transportation team.\n\n2. dallas-streets-archive: Official City of Dallas Office of Bond & Construction Management page showing \"Streets and Transportation Subcommittee\" meeting list with August 22, 2023 \"Streets and Transportation Meeting #6 Video\". This confirms the identity: The convening body is the 2024 Bond Streets and Transportation Subcommittee.\n\n3. maintained-policy: Maintainer-approved publication directive listing allowed body feed memberships: [\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\", \"dallas-tx-bond-program-meetings\", \"dallas-tx-transportation-and-infrastructure\"]. Scope: \"Previously maintained publication preference; not proof of convening.\" Approval: maintainer chat approval 2026-10-11.\n\nThe family policy: identity - use convened body, not venue, topic or common members. The recording is the Streets and Transportation Subcommittee of the 2024 Bond program. The official archive confirms that the meeting on Aug 22, 2023 was \"Streets and Transportation Meeting #6\" of the Streets and Transportation Subcommittee.\n\nSo the owner should be the convened body feed: dallas-tx-2024-bond-streets-and-transportation-subcommittee. The claim says it belongs in dallas-tx-transportation-and-infrastructure \u2014 which is a generic topic feed for transportation meetings, not the convened body. Shared topic tokens (Streets & Transportation) do not establish identity. The system prompt says: \"Shared city/topic tokens do not establish identity.\" The maintained policy allows membership in all three, but the owner selection should be independent \u2014 select the convened body. The claim of transporting to the generic transportation feed would be incorrect as publication membership/ownership.\n\nDecision_type is \"publication-membership\". Hmm. The claim is that \"this recording belongs in dallas-tx-transportation-and-infrastructure\" under the supplied approved publication policy. The allowed memberships include that feed. But identity dictates the convened-body feed: dallas-tx-2024-bond-streets-and-transportation-subcommittee. The policy says \"Use convened body, not venue, topic or common members\". So the primary owner is the convened body.\n\nSo we should reject the claim (supported=false) and propose owner = dallas-tx-2024-bond-streets-and-transportation-subcommittee with action \"assign\" (or \"publish\"?). The schema: proposed_action, proposed_owner strings.\n\nEvidence ref IDs: cite provider-player, dallas-streets-archive, maintained-policy.\n\nMissing evidence: none, since official archive confirms convening. We could note missing nothing.\n\nRationale: The recording is the Aug 22, 2023 2024 Capital Bond Streets & Transportation Subcommittee meeting (provider-player). Official Dallas bond program archive lists this date as \"Streets and Transportation Meeting #6\" for the Streets and Transportation Subcommittee (dallas-streets-archive), establishing the convened body. The maintained policy (maintained-policy) permits assignment among three feeds; identity policy requires choosing the convened body, not a topic feed. The claim of ownership by dallas-tx-transportation-and-infrastructure is not supported; the correct owner is dallas-tx-2024-bond-streets-and-transportation-subcommittee.\n\nSupported: false. Proposed owner: dallas-tx-2024-bond-streets-and-transportation-subcommittee. Proposed action: assign/publish to that feed. Maybe \"assign-member\"? Let's use \"assign\".\n\ncase_id: use the \"id\" field: \"dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure\".\n\nmissing_evidence: [] \u2014 evidence is sufficient.\n\nRationale under 2000 chars."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 1245,
+      "prompt_tokens": 6306,
+      "total_tokens": 7551,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 904,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+    "supported": false,
+    "proposed_owner": "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+    "proposed_action": "assign",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive",
+      "maintained-policy"
+    ],
+    "missing_evidence": [],
+    "rationale": "The recording is the official Aug 22, 2023 '2024 Capital Bond Streets & Transportation Subcommittee Meeting' (provider-player), and the City of Dallas Office of Bond & Construction Management archive lists that date as 'Streets and Transportation Meeting #6' under the Streets and Transportation Subcommittee of the 2024 Bond Program (dallas-streets-archive), affirmatively establishing the convened body. The maintainer-approved directive (maintained-policy) lists three allowed memberships, including the claimed feed, but it is a publication preference, not proof of convening, and identity policy requires assigning by convened body rather than shared topic tokens such as 'Streets/Transportation.' The generic feed dallas-tx-transportation-and-infrastructure is a topic aggregation for the standing Transportation and Infrastructure context, not the 2024 bond subcommittee that actually convened this meeting. Therefore the claim that this recording belongs in dallas-tx-transportation-and-infrastructure is not supported; ownership belongs to dallas-tx-2024-bond-streets-and-transportation-subcommittee, which is also within the maintained allowed-membership set."
+  },
+  "end_to_end_seconds": 59.00977533264086,
+  "diagnostics": [
+    {
+      "duration_seconds": 57.504743750207126
+    }
+  ]
+}

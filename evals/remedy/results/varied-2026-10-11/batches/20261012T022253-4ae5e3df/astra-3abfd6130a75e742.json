@@ -1,0 +1,25 @@
+{
+  "candidate": "astra",
+  "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "beatapi_gpt_6_astra_free",
+  "reasoning": "provider-default",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 0,
+  "observed_at": "2026-10-12T02:23:59.144584+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "92fd98645632e1118b6b955ad0382c0bdef13b2c7aa243e05322cbe61cf6e04f",
+  "route_settings_hash": "1031e67ba33ef03a53dc87eda5679133c749ccfecd7d6cf08907cdb60b28d2e3",
+  "capacity": {
+    "reason": "production provider in flight"
+  },
+  "status": "deferred",
+  "reason": "Production capacity/headroom unavailable",
+  "end_to_end_seconds": 0.14217516733333468,
+  "diagnostics": []
+}

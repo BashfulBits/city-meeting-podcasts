@@ -1,0 +1,1023 @@
+{
+  "recordings": 60,
+  "questions": [
+    {
+      "id": "addison-359742-31b194e3b25f0bf8-member-addison-tx-bond-committees",
+      "recording_case": "addison-359742-31b194e3b25f0bf8",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-bond-committees.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-359742-31b194e3b25f0bf8-wrong-target",
+      "recording_case": "addison-359742-31b194e3b25f0bf8",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-361917-1ef623b5f2bc909a-member-addison-tx-bond-committees",
+      "recording_case": "addison-361917-1ef623b5f2bc909a",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-bond-committees.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-361917-1ef623b5f2bc909a-wrong-target",
+      "recording_case": "addison-361917-1ef623b5f2bc909a",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-362796-cb34bf9c6001c32a-member-addison-tx-bond-committees",
+      "recording_case": "addison-362796-cb34bf9c6001c32a",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-bond-committees.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-362796-cb34bf9c6001c32a-wrong-target",
+      "recording_case": "addison-362796-cb34bf9c6001c32a",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-371625-902400566a6637b5-member-addison-tx-bond-committees",
+      "recording_case": "addison-371625-902400566a6637b5",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-bond-committees.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-371625-902400566a6637b5-wrong-target",
+      "recording_case": "addison-371625-902400566a6637b5",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+      "recording_case": "addison-55864-35a78fa89c7c5c5c",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56029-63b22f80ce9500ff-member-addison-tx-town-meetings",
+      "recording_case": "addison-56029-63b22f80ce9500ff",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-town-meetings.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-town-meetings",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56029-63b22f80ce9500ff-wrong-target",
+      "recording_case": "addison-56029-63b22f80ce9500ff",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-276855-4ef85ec6540cf95b-member-addison-tx-city-council",
+      "recording_case": "addison-276855-4ef85ec6540cf95b",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-276855-4ef85ec6540cf95b-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-276855-4ef85ec6540cf95b",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-276855-4ef85ec6540cf95b-wrong-target",
+      "recording_case": "addison-276855-4ef85ec6540cf95b",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-bond-committees.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+      "recording_case": "addison-295839-fcc9bde16c7f47fe",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-295839-fcc9bde16c7f47fe",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-comprehensive-plan-advisory-committee",
+      "recording_case": "addison-295839-fcc9bde16c7f47fe",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-comprehensive-plan-advisory-committee.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-comprehensive-plan-advisory-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-295839-fcc9bde16c7f47fe-wrong-target",
+      "recording_case": "addison-295839-fcc9bde16c7f47fe",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-bond-committees.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-310072-c95af66385f6cf31-member-addison-tx-city-council",
+      "recording_case": "addison-310072-c95af66385f6cf31",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-310072-c95af66385f6cf31-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-310072-c95af66385f6cf31",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-310072-c95af66385f6cf31-member-addison-tx-comprehensive-plan-advisory-committee",
+      "recording_case": "addison-310072-c95af66385f6cf31",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-comprehensive-plan-advisory-committee.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-comprehensive-plan-advisory-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-310072-c95af66385f6cf31-wrong-target",
+      "recording_case": "addison-310072-c95af66385f6cf31",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-bond-committees.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-55599-e59549e833479e1d-member-addison-tx-city-council",
+      "recording_case": "addison-55599-e59549e833479e1d",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-55599-e59549e833479e1d-wrong-target",
+      "recording_case": "addison-55599-e59549e833479e1d",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-bond-committees.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-bond-committees",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56020-235c1c030568dac0-wrong-target",
+      "recording_case": "addison-56020-235c1c030568dac0",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56021-24d5e7dc230eb900-wrong-target",
+      "recording_case": "addison-56021-24d5e7dc230eb900",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56022-ee80c45122c4f9f0-wrong-target",
+      "recording_case": "addison-56022-ee80c45122c4f9f0",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-56023-1f50e2274a6dd26c-wrong-target",
+      "recording_case": "addison-56023-1f50e2274a6dd26c",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-394474-757ab2a4aaf9bbca-member-addison-tx-tif",
+      "recording_case": "addison-394474-757ab2a4aaf9bbca",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-tif.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-tif",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-394474-757ab2a4aaf9bbca-wrong-target",
+      "recording_case": "addison-394474-757ab2a4aaf9bbca",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-148373-4b69d73512792a44-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-148373-4b69d73512792a44",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-148373-4b69d73512792a44-wrong-target",
+      "recording_case": "addison-148373-4b69d73512792a44",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-150744-e2e2e4d8c9b5330c-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-150744-e2e2e4d8c9b5330c",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-150744-e2e2e4d8c9b5330c-wrong-target",
+      "recording_case": "addison-150744-e2e2e4d8c9b5330c",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-153032-52ec3e810707f814-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-153032-52ec3e810707f814",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-153032-52ec3e810707f814-wrong-target",
+      "recording_case": "addison-153032-52ec3e810707f814",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-154641-ff8eac28f4881cd2-member-addison-tx-planning-and-zoning-commission",
+      "recording_case": "addison-154641-ff8eac28f4881cd2",
+      "question": "Under the supplied approved publication policy, this recording belongs in addison-tx-planning-and-zoning-commission.",
+      "expected_supported_draft": true,
+      "target": "addison-tx-planning-and-zoning-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "addison-154641-ff8eac28f4881cd2-wrong-target",
+      "recording_case": "addison-154641-ff8eac28f4881cd2",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in addison-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "addison-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-1792515fdd51c6c2-ownership-member-arlington-tx-environmental-task-force",
+      "recording_case": "arlington-tx-1792515fdd51c6c2-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-environmental-task-force.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-environmental-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-1792515fdd51c6c2-ownership-wrong-target",
+      "recording_case": "arlington-tx-1792515fdd51c6c2-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-25e9b8510b0a7a66-ownership-member-arlington-tx-environmental-task-force",
+      "recording_case": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-environmental-task-force.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-environmental-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-25e9b8510b0a7a66-ownership-wrong-target",
+      "recording_case": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-2d5dc451df2da130-ownership-member-arlington-tx-environmental-task-force",
+      "recording_case": "arlington-tx-2d5dc451df2da130-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-environmental-task-force.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-environmental-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-2d5dc451df2da130-ownership-wrong-target",
+      "recording_case": "arlington-tx-2d5dc451df2da130-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-35b22fcc8d07967b-ownership-member-arlington-tx-environmental-task-force",
+      "recording_case": "arlington-tx-35b22fcc8d07967b-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-environmental-task-force.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-environmental-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-35b22fcc8d07967b-ownership-wrong-target",
+      "recording_case": "arlington-tx-35b22fcc8d07967b-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-237c28f30496e3e0-ownership-member-arlington-tx-community-and-neighborhood-development-committee",
+      "recording_case": "arlington-tx-237c28f30496e3e0-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-community-and-neighborhood-development-committee.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-community-and-neighborhood-development-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-237c28f30496e3e0-ownership-wrong-target",
+      "recording_case": "arlington-tx-237c28f30496e3e0-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-30b28efc23346a6d-ownership-member-arlington-tx-community-and-neighborhood-development-committee",
+      "recording_case": "arlington-tx-30b28efc23346a6d-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-community-and-neighborhood-development-committee.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-community-and-neighborhood-development-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-30b28efc23346a6d-ownership-wrong-target",
+      "recording_case": "arlington-tx-30b28efc23346a6d-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-4357f0c39d1ae58f-ownership-member-arlington-tx-community-and-neighborhood-development-committee",
+      "recording_case": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-community-and-neighborhood-development-committee.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-community-and-neighborhood-development-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-4357f0c39d1ae58f-ownership-wrong-target",
+      "recording_case": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-d8f3b672b482369b-ownership-member-arlington-tx-community-and-neighborhood-development-committee",
+      "recording_case": "arlington-tx-d8f3b672b482369b-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in arlington-tx-community-and-neighborhood-development-committee.",
+      "expected_supported_draft": true,
+      "target": "arlington-tx-community-and-neighborhood-development-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "arlington-tx-d8f3b672b482369b-ownership-wrong-target",
+      "recording_case": "arlington-tx-d8f3b672b482369b-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in arlington-tx-council.",
+      "expected_supported_draft": false,
+      "target": "arlington-tx-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-130a7ebded8e0e1d-ownership-member-dallas-tx-2024-community-bond-task-force",
+      "recording_case": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-2024-community-bond-task-force.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-2024-community-bond-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-130a7ebded8e0e1d-ownership-wrong-target",
+      "recording_case": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in dallas-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "dallas-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-2024-bond-streets-and-transportation-subcommittee.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-bond-program-meetings",
+      "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-bond-program-meetings.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-bond-program-meetings",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+      "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-transportation-and-infrastructure.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-transportation-and-infrastructure",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-16300c982b358fe9-ownership-wrong-target",
+      "recording_case": "dallas-tx-16300c982b358fe9-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in dallas-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "dallas-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-2024-bond-streets-and-transportation-subcommittee.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2b172a76868ad86c-ownership-member-dallas-tx-bond-program-meetings",
+      "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-bond-program-meetings.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-bond-program-meetings",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2b172a76868ad86c-ownership-wrong-target",
+      "recording_case": "dallas-tx-2b172a76868ad86c-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in dallas-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "dallas-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-2024-bond-streets-and-transportation-subcommittee.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2bc4c440c974dba8-ownership-member-dallas-tx-bond-program-meetings",
+      "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-bond-program-meetings.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-bond-program-meetings",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-2bc4c440c974dba8-ownership-wrong-target",
+      "recording_case": "dallas-tx-2bc4c440c974dba8-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in dallas-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "dallas-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-bd172b762dd20b63-ownership-member-dallas-tx-redistricting-commission",
+      "recording_case": "dallas-tx-bd172b762dd20b63-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in dallas-tx-redistricting-commission.",
+      "expected_supported_draft": true,
+      "target": "dallas-tx-redistricting-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "dallas-tx-bd172b762dd20b63-ownership-wrong-target",
+      "recording_case": "dallas-tx-bd172b762dd20b63-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in dallas-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "dallas-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee",
+      "recording_case": "denton-tx-04689e3929ac104e-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-special-citizens-bond-advisory-committee.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-special-citizens-bond-advisory-committee",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-04689e3929ac104e-ownership-wrong-target",
+      "recording_case": "denton-tx-04689e3929ac104e-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-280db52d91547dd6-ownership-member-denton-tx-health-building-standards-commission",
+      "recording_case": "denton-tx-280db52d91547dd6-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-health-building-standards-commission.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-health-building-standards-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-280db52d91547dd6-ownership-wrong-target",
+      "recording_case": "denton-tx-280db52d91547dd6-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-7abd583b2ed8189a-ownership-member-denton-tx-health-building-standards-commission",
+      "recording_case": "denton-tx-7abd583b2ed8189a-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-health-building-standards-commission.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-health-building-standards-commission",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-7abd583b2ed8189a-ownership-wrong-target",
+      "recording_case": "denton-tx-7abd583b2ed8189a-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-b50c6a018b2c08e7-ownership-member-denton-tx-library-board",
+      "recording_case": "denton-tx-b50c6a018b2c08e7-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-library-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-library-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-b50c6a018b2c08e7-ownership-wrong-target",
+      "recording_case": "denton-tx-b50c6a018b2c08e7-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-c10f3f6cd97ac38f-ownership-member-denton-tx-library-board",
+      "recording_case": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-library-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-library-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-c10f3f6cd97ac38f-ownership-wrong-target",
+      "recording_case": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-city-council",
+      "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-a1aa4af8f26e120c-ownership-member-denton-tx-library-board",
+      "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-library-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-library-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-a1aa4af8f26e120c-ownership-wrong-target",
+      "recording_case": "denton-tx-a1aa4af8f26e120c-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-tirz-2-board.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-tirz-2-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+      "recording_case": "denton-tx-1c91182b70afefb3-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-2-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-tirz-2-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-1c91182b70afefb3-ownership-wrong-target",
+      "recording_case": "denton-tx-1c91182b70afefb3-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-2493e59c0844a4b4-ownership-member-denton-tx-tirz-1-board",
+      "recording_case": "denton-tx-2493e59c0844a4b4-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-1-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-tirz-1-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-2493e59c0844a4b4-ownership-wrong-target",
+      "recording_case": "denton-tx-2493e59c0844a4b4-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-2b458f3c556df459-ownership-member-denton-tx-tirz-1-board",
+      "recording_case": "denton-tx-2b458f3c556df459-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-1-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-tirz-1-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-2b458f3c556df459-ownership-wrong-target",
+      "recording_case": "denton-tx-2b458f3c556df459-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-5a2ce8afb18c6a82-ownership-member-denton-tx-tirz-1-board",
+      "recording_case": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-1-board.",
+      "expected_supported_draft": true,
+      "target": "denton-tx-tirz-1-board",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "denton-tx-5a2ce8afb18c6a82-ownership-wrong-target",
+      "recording_case": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-city-council",
+      "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-0d5832dbd08e6dd8-ownership-member-fort-worth-tx-gas-drilling-task-force",
+      "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-gas-drilling-task-force.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-gas-drilling-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-0d5832dbd08e6dd8-ownership-wrong-target",
+      "recording_case": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-crime-control-and-prevention-district.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-crime-control-and-prevention-district",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+      "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-gas-drilling-task-force",
+      "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-gas-drilling-task-force.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-gas-drilling-task-force",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-27254aa1a700569f-ownership-wrong-target",
+      "recording_case": "fort-worth-tx-27254aa1a700569f-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-crime-control-and-prevention-district.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-crime-control-and-prevention-district",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+      "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-city-council.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-emsisd-board-joint-meetings",
+      "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "question": "Under the supplied approved publication policy, this recording belongs in fort-worth-tx-emsisd-board-joint-meetings.",
+      "expected_supported_draft": true,
+      "target": "fort-worth-tx-emsisd-board-joint-meetings",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "fort-worth-tx-497b3aa05255bfb9-ownership-wrong-target",
+      "recording_case": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-crime-control-and-prevention-district.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-crime-control-and-prevention-district",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-1ba31685c3061fad-wrong-target",
+      "recording_case": "untracked-3b7588310856-1ba31685c3061fad",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-345a3a95d050eddf-wrong-target",
+      "recording_case": "untracked-3b7588310856-345a3a95d050eddf",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-3afe3a4c3aaa04d9-wrong-target",
+      "recording_case": "untracked-3b7588310856-3afe3a4c3aaa04d9",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-43599790450713d2-wrong-target",
+      "recording_case": "untracked-3b7588310856-43599790450713d2",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-93bbf0722bbc0edd-wrong-target",
+      "recording_case": "untracked-3b7588310856-93bbf0722bbc0edd",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-c33b73995d47d8f3-wrong-target",
+      "recording_case": "untracked-3b7588310856-c33b73995d47d8f3",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-d38106e9b2725a87-wrong-target",
+      "recording_case": "untracked-3b7588310856-d38106e9b2725a87",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-f1e199354d821412-wrong-target",
+      "recording_case": "untracked-3b7588310856-f1e199354d821412",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-f3eac6548e0da80c-wrong-target",
+      "recording_case": "untracked-3b7588310856-f3eac6548e0da80c",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-3b7588310856-f9c0123089539a11-wrong-target",
+      "recording_case": "untracked-3b7588310856-f9c0123089539a11",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in denton-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "denton-tx-city-council",
+      "metric": "publication-membership",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-6540eef2dc2e-00c9f506545d220a-wrong-target",
+      "recording_case": "untracked-6540eef2dc2e-00c9f506545d220a",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-city-council",
+      "metric": "unsupported-claim-rejection",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-6540eef2dc2e-00e5a51984f89df0-wrong-target",
+      "recording_case": "untracked-6540eef2dc2e-00e5a51984f89df0",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-city-council",
+      "metric": "unsupported-claim-rejection",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-6540eef2dc2e-01127a49d16869ef-wrong-target",
+      "recording_case": "untracked-6540eef2dc2e-01127a49d16869ef",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-city-council",
+      "metric": "unsupported-claim-rejection",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-6540eef2dc2e-014649318804b782-wrong-target",
+      "recording_case": "untracked-6540eef2dc2e-014649318804b782",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-city-council",
+      "metric": "unsupported-claim-rejection",
+      "approval": "pending"
+    },
+    {
+      "id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+      "recording_case": "untracked-6540eef2dc2e-018c23a1b2493ae3",
+      "question": "The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.",
+      "expected_supported_draft": false,
+      "target": "fort-worth-tx-city-council",
+      "metric": "unsupported-claim-rejection",
+      "approval": "pending"
+    }
+  ],
+  "warning": "Not approved gold; membership is not evidence of joint convening."
+}

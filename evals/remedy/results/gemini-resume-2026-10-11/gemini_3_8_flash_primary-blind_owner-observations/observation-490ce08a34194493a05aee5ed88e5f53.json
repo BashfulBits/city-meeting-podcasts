@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "d2f25fd1c63406db26a96f53bb9646ee78556bd3737f9512693a33737ceab9dc",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "2dbcebc4b79660717aa0e677a76a49b69a43cd2e",
+  "dry_run": false,
+  "manifest_hash": "ee85fdd857a3eb12b4442b982ca357b7928ba672be238222943482cb0fff406f",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-11T08:38:23.487915+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-library-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-library-board",
+        "rationale": "Official agenda confirms the meeting on May 13, 2021 at 3:30 PM is of the Denton Library Board, which matches the existing feed denton-tx-library-board.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-library-own",
+      "configuration_id": "d182d998352221dd1142ff54f981535b31f88c8c414f98395c00b782601eac0f",
+      "latency_seconds": 29.73033812502399,
+      "prompt_case_id": "case-0bec25e6b2c38e4f00fc5462",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"case-0bec25e6b2c38e4f00fc5462\",\n  \"supported\": null,\n  \"proposed_owner\": \"denton-tx-library-board\",\n  \"proposed_action\": null,\n  \"evidence_ref_ids\": [\n    \"official-agenda\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"Official agenda confirms the meeting on May 13, 2021 at 3:30 PM is of the Denton Library Board, which matches the existing feed denton-tx-library-board.\"\n}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791707949,
+        "id": "M0vLaurNBP7Qz7IPmPnxyQ0",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 3278,
+          "completion_tokens_details": {
+            "reasoning_tokens": 1101,
+            "text_tokens": 147
+          },
+          "prompt_tokens": 5058,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2576,
+            "video_tokens": null
+          },
+          "total_tokens": 8336
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": true
+}
