@@ -289,3 +289,168 @@ def test_shared_lock_blocks_calls(runner, monkeypatch, tmp_path):
     status = json.loads((results / "controller-status.json").read_text())
     assert status["waiting_for_shared_lock"]
     assert status["provider_attempts"] == 0
+
+
+@pytest.fixture
+def priority():
+    spec = importlib.util.spec_from_file_location("call_priority", DIRECTORY / "call_priority.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def older_status(**extra):
+    return {
+        "updated_at": NOW.isoformat(),
+        "manifest_hash": "old-manifest",
+        "run_id": "old-run",
+        "provider_attempts_this_run": 5,
+        "stop_reason": None,
+        "answered": 676,
+        "target": 678,
+        "routes": {"glm_full": {"state": "runner_busy"}},
+        **extra,
+    }
+
+
+def test_two_old_submissions_per_new_slot_and_resume(priority, tmp_path):
+    status = older_status()
+    policy = priority.bind_priority(tmp_path, status, NOW)
+    assert not priority.allocation(policy, status, NOW)["allow_new"]
+    status["provider_attempts_this_run"] = 6
+    assert not priority.allocation(policy, status, NOW)["allow_new"]
+    status["provider_attempts_this_run"] = 7
+    assert priority.allocation(policy, status, NOW)["contested"]
+    assert priority.allocation(policy, status, NOW)["allow_new"]
+    policy["new_contested_slots"].append("submitted-or-unknown")
+    policy = json.loads(json.dumps(policy))
+    assert not priority.allocation(policy, status, NOW)["allow_new"]
+    status["provider_attempts_this_run"] = 9
+    assert priority.allocation(policy, status, NOW)["allow_new"]
+
+
+@pytest.mark.parametrize("state", ["cooldown", "daily_quota", "provider_busy", "held_or_exhausted"])
+def test_borrowing_does_not_consume_contested_slot(priority, tmp_path, state):
+    status = older_status(routes={"glm_full": {"state": state}})
+    policy = priority.bind_priority(tmp_path, status, NOW)
+    report = priority.allocation(policy, status, NOW)
+    assert report["allow_new"] and not report["contested"]
+    assert policy["new_contested_slots"] == []
+    status["routes"]["glm_full"]["state"] = "ready"
+    assert not priority.allocation(policy, status, NOW)["allow_new"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_id": "different"},
+        {"manifest_hash": "different"},
+        {"provider_attempts_this_run": 4},
+        {"provider_attempts_this_run": True},
+        {"updated_at": (NOW - timedelta(minutes=11)).isoformat()},
+        {"updated_at": (NOW + timedelta(minutes=1)).isoformat()},
+    ],
+)
+def test_priority_invalid_or_stale_status_holds_new_calls(priority, tmp_path, change):
+    status = older_status()
+    policy = priority.bind_priority(tmp_path, status, NOW)
+    assert not priority.allocation(policy, {**status, **change}, NOW)["allow_new"]
+
+
+def test_priority_completed_or_stopped_releases_new_calls(priority, tmp_path):
+    status = older_status()
+    policy = priority.bind_priority(tmp_path, status, NOW)
+    assert priority.allocation(policy, {**status, "answered": 678}, NOW)["allow_new"]
+    assert priority.allocation(policy, {**status, "stop_reason": "exhausted"}, NOW)["allow_new"]
+    assert priority.allocation(policy, {}, NOW, active=False)["allow_new"]
+
+
+def test_priority_unreadable_active_status_holds_calls(priority, tmp_path, monkeypatch):
+    policy = priority.bind_priority(tmp_path, older_status(), NOW)
+    monkeypatch.setattr(priority, "controller_active", lambda directory: True)
+    assert not priority.inspect_priority(policy, NOW)["allow_new"]
+
+
+def test_priority_controller_lock_detection(priority, tmp_path):
+    import fcntl
+
+    path = tmp_path / "controller.lock"
+    assert not priority.controller_active(tmp_path)
+    with path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert priority.controller_active(tmp_path)
+    assert not priority.controller_active(tmp_path)
+
+
+def prepare_priority_runner(runner, monkeypatch, tmp_path):
+    older = tmp_path / "older"
+    older.mkdir()
+    (older / "controller-status.json").write_text(json.dumps(older_status()))
+    results = tmp_path / "new"
+    monkeypatch.setattr(runner.transport, "load_site_config", lambda _: {})
+    monkeypatch.setattr(
+        runner.transport, "make_storage", lambda *_: SimpleNamespace(cas_capable=True)
+    )
+    monkeypatch.setattr(runner.transport, "DispatchPauseClient", lambda: object())
+    monkeypatch.setattr(runner.transport, "headroom", lambda *_: (True, {"kind": "available"}))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run.py",
+            "--execute",
+            "--results-dir",
+            str(results),
+            "--shared-lock",
+            str(older / "run.lock"),
+            "--priority-results-dir",
+            str(older),
+        ],
+    )
+
+    def interrupted(_seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.time, "sleep", interrupted)
+    return results
+
+
+def test_priority_yield_blocks_calls_and_preserves_baseline_on_resume(
+    runner, monkeypatch, tmp_path
+):
+    results = prepare_priority_runner(runner, monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        runner, "inspect_priority", lambda *_: {"allow_new": False, "reason": "yielding_to_older"}
+    )
+    monkeypatch.setattr(runner, "attempt", lambda *_: pytest.fail("priority was bypassed"))
+    for _ in range(2):
+        with pytest.raises(KeyboardInterrupt):
+            runner.main()
+        saved = json.loads((results / "controller-status.json").read_text())
+        assert saved["call_priority"]["older_baseline_attempts"] == 5
+        assert saved["call_priority"]["new_contested_slots"] == []
+        assert saved["provider_attempts"] == 0
+
+
+@pytest.mark.parametrize("submitted", [0, 1])
+def test_priority_reserves_before_call_but_releases_preflight_deferral(
+    runner, monkeypatch, tmp_path, submitted
+):
+    results = prepare_priority_runner(runner, monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        runner, "inspect_priority", lambda *_: {"allow_new": True, "contested": True}
+    )
+
+    def attempted(*_args):
+        saved = json.loads((results / "controller-status.json").read_text())
+        assert len(saved["call_priority"]["new_contested_slots"]) == 1
+        monkeypatch.setattr(
+            runner, "inspect_priority", lambda *_: {"allow_new": False, "reason": "yield"}
+        )
+        return {"status": "deferred", "provider_attempts": submitted}
+
+    monkeypatch.setattr(runner, "attempt", attempted)
+    with pytest.raises(KeyboardInterrupt):
+        runner.main()
+    saved = json.loads((results / "controller-status.json").read_text())
+    assert len(saved["call_priority"]["new_contested_slots"]) == submitted

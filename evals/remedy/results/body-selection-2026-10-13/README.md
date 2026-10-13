@@ -56,3 +56,12 @@ Use a new score filename; existing observations/reports are never overwritten.
 `hashes-v2.json` binds the complete gold document; the initial metadata helper hashed
 only its inner cases. Original `hashes.json` is retained as superseded metadata. Frozen
 model inputs, expected answers and live requests did not change in this correction.
+
+
+Concurrent allocation: --priority-results-dir points to the older comparison using
+this same shared call lock. While both controllers have eligible work, the older run
+receives two submissions per new submission (66.7%). Failed submissions count;
+preflight deferrals do not. The new run borrows unused slots during older cooldowns,
+capacity waits or held outcomes. Allocation persists in controller-status.json;
+changed/stale older state holds new calls. After completion or controller exit, new
+work uses all slots. No response, gold answer, provider quota or retry limit changes.
