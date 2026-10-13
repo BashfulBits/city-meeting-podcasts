@@ -3983,3 +3983,12 @@ Run targeted and full offline tests, whole Ruff/format and fragment checks befor
 push and resumption. Raw live artifacts stay under evals/remedy/; no credentials print.
 Sources: https://console.groq.com/docs/api-reference and
 https://console.groq.com/docs/rate-limits (checked2026-10-13).
+
+
+Groq pre-code capacity clarification: existing pause-status reports request counts but
+not daily tokens. Read the existing authenticated v2/stats?detail=1&limit=100 endpoint
+via DispatchPauseClient's request helper for bounded route rows and tpd_used; do not
+create a Worker endpoint. Require complete route inventory and fresh numeric usage.
+Combine the observed Worker token debt and local CAS token debt conservatively;
+missing/partial evidence defers Groq calls. Local copies preserve all original limits
+and may only add the documented missing GPT-OSS daily-token cap for this evaluation.
