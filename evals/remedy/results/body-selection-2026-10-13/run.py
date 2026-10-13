@@ -1,4 +1,4 @@
-"""Bounded six-model body-selection runner; never reads scoring answers."""
+"""Bounded eight-model body-selection runner; never reads scoring answers."""
 
 import argparse
 import fcntl
@@ -17,6 +17,7 @@ from body_selection import (
     ROOT,
     BodySelectionAnswer,
     attempt_position,
+    expand_model_set,
     history,
     instant,
     load_manifest,
@@ -26,9 +27,12 @@ from body_selection import (
     write_exclusive,
 )
 from call_priority import bind_priority, inspect_priority, read_status
+from groq_routes import CANDIDATES as GROQ_CANDIDATES
+from groq_routes import CONTROLS_SOURCE, LIMITS_SOURCE, token_headroom
+from groq_routes import route_for as groq_route_for
 
 from citypods.compute.base import InferenceJob
-from citypods.compute.llm import LLMBackendConfig
+from citypods.compute.llm import LLMBackendConfig, _messages_with_schema
 from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.remedy_evaluation import canonical_hash
@@ -40,6 +44,31 @@ spec = importlib.util.spec_from_file_location("body_selection_transport", VARIED
 transport = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(transport)
 recovery = sys.modules["recovery"]
+CANDIDATES = transport.CANDIDATES | GROQ_CANDIDATES
+
+
+def route_for(candidate):
+    return (
+        groq_route_for(candidate)
+        if candidate in GROQ_CANDIDATES
+        else transport.route_for(candidate)
+    )
+
+
+def shaped_messages(case, route):
+    payload = messages(case)
+    if getattr(route, "structured_output_include_schema_in_prompt", False):
+        return _messages_with_schema(payload, BodySelectionAnswer)
+    return payload
+
+
+def headroom(client, storage, route, case):
+    enough, capacity = transport.headroom(client, storage, route)
+    if enough and route.provider == "groq":
+        request_tokens = estimate_tokens(shaped_messages(case, route)) + 16384
+        enough, token_capacity = token_headroom(transport, client, storage, route, request_tokens)
+        capacity.update(token_capacity)
+    return enough, capacity
 
 
 def snapshot(rows, cases, now):
@@ -54,12 +83,12 @@ def snapshot(rows, cases, now):
 
 
 def attempt(directory, candidate, case, previous, manifest_hash, storage, client):
-    route = transport.route_for(candidate)
+    route = route_for(candidate)
     timeout = 120 if route.provider == "gemini" else 600
     tokens = 4096 if route.provider == "gemini" else 16384
-    effort = transport.CANDIDATES[candidate][1]
+    effort = CANDIDATES[candidate][1]
     payload = messages(case)
-    estimate = estimate_tokens(payload)
+    estimate = estimate_tokens(shaped_messages(case, route))
     if (
         estimate + tokens > route.input_context_limit
         or (route.hard_input_ceiling is not None and estimate > route.hard_input_ceiling)
@@ -87,6 +116,13 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
         "qualified": False,
         **attempt_position(previous),
     }
+    if candidate in GROQ_CANDIDATES:
+        row.update(
+            controls_source=CONTROLS_SOURCE,
+            limits_source=LIMITS_SOURCE,
+            controls_verified_on="2026-10-13",
+            estimated_shaped_input_tokens=estimate,
+        )
     row["route_settings_hash"] = canonical_hash(
         {
             "route": route.route_id,
@@ -126,6 +162,16 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
         completion = backend._completion_fn()
 
         def observed(**kwargs):
+            if candidate in GROQ_CANDIDATES:
+                controls = kwargs.get("extra_body") or {}
+                if (
+                    controls.get("reasoning_effort") != "high"
+                    or controls.get("reasoning_format") != "parsed"
+                ):
+                    raise ValueError("Groq high-reasoning controls missing; no request submitted")
+                row["submitted_reasoning_controls"] = {
+                    k: controls[k] for k in ("reasoning_effort", "reasoning_format")
+                }
             row["attempt_id"] = uuid4().hex
             write_exclusive(
                 directory / "intents" / (row["attempt_id"] + ".json"),
@@ -151,10 +197,20 @@ def attempt(directory, candidate, case, previous, manifest_hash, storage, client
         ) as window:
             if not window.drained:
                 raise RuntimeError("Production did not drain; no call submitted")
+            if candidate in GROQ_CANDIDATES:
+                enough, row["capacity"] = token_headroom(
+                    transport, client, storage, route, estimate + tokens
+                )
+                if not enough:
+                    raise RuntimeError(
+                        "Groq daily tokens reserved for production; no call submitted"
+                    )
             if candidate != "glm_full":
                 client.reserve(route.route_id, 1)
             result = backend.run_immediate(job)
         row.update(raw_response=result.output, upstream_model=result.upstream_model)
+        if result.output.get("usage") is not None:
+            row["provider_usage"] = result.output["usage"]
         row["identity_held"] = result.output.get("model") not in {
             route.upstream_model,
             route.direct_model,
@@ -223,6 +279,7 @@ def main():
                 "shared_lock": str(args.shared_lock.resolve()),
                 "next_candidate_index": 0,
             }
+        expand_model_set(state, len(cases), datetime.now(UTC))
         if args.priority_results_dir:
             priority_directory = args.priority_results_dir.resolve()
             if args.shared_lock.resolve() != priority_directory / "run.lock":
@@ -249,6 +306,15 @@ def main():
                     rows = history(directory, mh, ids)
                     prior = state.get("models", {})
                     state.update(snapshot(rows, cases, now))
+                    for name, current in state["models"].items():
+                        older = prior.get(name, {})
+                        if (
+                            current["state"] == "ready"
+                            and older.get("state")
+                            in {"daily_quota", "provider_busy", "capacity_unknown"}
+                            and instant(older["next_eligible_at"]) > now
+                        ):
+                            state["models"][name] = older
                     reason = None
                     if state["answered"] == state["target"]:
                         reason = "complete"
@@ -281,19 +347,10 @@ def main():
                         current = state["models"][name]
                         if current["state"] != "ready":
                             continue
-                        older = prior.get(name, {})
-                        if older.get("state") in {
-                            "daily_quota",
-                            "provider_busy",
-                            "capacity_unknown",
-                        }:
-                            if instant(older["next_eligible_at"]) > now:
-                                state["models"][name] = older
-                                continue
                         try:
-                            enough, capacity = transport.headroom(
-                                client, storage, transport.route_for(name)
-                            )
+                            case_id = current["eligible_case_ids"][0]
+                            case = next(c for c in cases if c.case_id == case_id)
+                            enough, capacity = headroom(client, storage, route_for(name), case)
                         except Exception as exc:
                             enough = False
                             capacity = {
@@ -305,6 +362,7 @@ def main():
                             current.update(
                                 state=capacity["kind"],
                                 next_eligible_at=capacity["next_eligible_at"],
+                                capacity=capacity,
                             )
                             continue
                         selected = name
@@ -354,11 +412,12 @@ def main():
                             state["call_priority"]["new_contested_slots"].remove(priority_slot)
                         recovery.atomic_status(status_file, state)
                         if row["status"] == "deferred":
+                            capacity = row.get("capacity") or {}
                             state["models"][selected].update(
-                                state="provider_busy",
-                                next_eligible_at=(
-                                    datetime.now(UTC) + timedelta(minutes=5)
-                                ).isoformat(),
+                                state=capacity.get("kind", "provider_busy"),
+                                next_eligible_at=capacity.get("next_eligible_at")
+                                or (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+                                capacity=capacity,
                             )
                     finally:
                         fcntl.flock(shared, fcntl.LOCK_UN)

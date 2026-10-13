@@ -65,3 +65,19 @@ preflight deferrals do not. The new run borrows unused slots during older cooldo
 capacity waits or held outcomes. Allocation persists in controller-status.json;
 changed/stale older state holds new calls. After completion or controller exit, new
 work uses all slots. No response, gold answer, provider quota or retry limit changes.
+
+
+The maintainer-approved Groq expansion adds GPT-OSS120B high and Qwen3.8-27B high
+(native xhigh), for eight models and480 answers. The original60 inputs, gold,
+seven-day deadline and prior six-model answers are unchanged. Resume migrates only
+the approved six-to-eight model set; maximum attempts become5760 for480 pairs,
+still12 per pair. Older claim-checking totals remain678, with two-thirds priority.
+
+Evaluation-local copies of existing physical Groq routes pin documented high
+controls and parsed reasoning for JSON output,16384 output cap and existing600s
+request/650s case bounds. No production catalog/selection changes. Largest packets
+are attempted first, followed by a joint meeting and an insufficient-proof case.
+Keep complete evidence even if a provider rejects the borderline Qwen packet.
+Both local and Worker daily-token usage count conservatively, with20% production
+headroom. Qwen was near its existing180000-token budget at expansion and must wait.
+Request controls and provider usage are retained with each immutable observation.
