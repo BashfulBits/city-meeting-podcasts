@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Route-scoped output discovery controls.** Add a documented minimum-generation capability for
+  the verified NVIDIA-hosted Nemotron Lightning deployment, keeping other models/hosts and
+  production dispatch unchanged. Discovery requests record and enforce comparable control
+  identities, keep the charged output cap, and still require actual counts and length-terminated
+  verified repeated-line output. Natural early stops get explicit diagnostics and redacted
+  beginning/ending previews within the existing bound. Old output fixtures remain diagnostic
+  history only.
+
 - **New-route probes separate API capacity from retrieval quality.** Successful ordinary chat
   completions with positive, consistent provider-reported input/output/total usage can establish
   admitted input sizes even when sentinel retrieval fails. Sentinel accuracy remains separately
