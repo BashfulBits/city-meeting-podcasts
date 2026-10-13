@@ -51,7 +51,7 @@ def test_failed_case_recovers_before_global_success(modules):
     status = controller.snapshot(rows, state, ["one", "two", "three"], NOW)
     assert status["stop_reason"] is None
     assert status["routes"]["sol"]["state"] == "ready"
-    assert status["target"] == 24
+    assert status["target"] == 18
 
 
 def test_success_on_secondary_prevents_primary_duplicate(modules):
@@ -145,14 +145,44 @@ def test_incomplete_stopping_is_explicit(modules, kind):
     assert status["answered"] == 0
 
 
-def test_astra_is_retained_but_excluded(modules):
-    _, _, controller = modules
-    row = observation("astra", status="completed", when=NOW)
+@pytest.mark.parametrize("name", ["astra", "gemini37", "gemini38_secondary"])
+def test_discontinued_models_are_retained_but_excluded(modules, tmp_path, name):
+    recovery, _, controller = modules
+    row = observation(name, status="completed", when=NOW)
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    (batch / "one.json").write_text(json.dumps(row))
+    assert recovery.read_history(tmp_path, "manifest", {"one"}) == [row]
     state = controller.run_state(None, "manifest", NOW)
     status = controller.snapshot([row], state, ["one"], NOW)
     assert status["answered"] == 0
     assert status["provider_attempts_this_run"] == 0
-    assert status["target"] == 8
+    assert status["target"] == 6
+    assert set(status["routes"]) == set(recovery.MODELS)
+
+
+@pytest.mark.parametrize(
+    "name", ["gemini37", "gemini38", "gemini37_secondary", "gemini38_secondary"]
+)
+def test_discontinued_calls_refuse_before_credentials(modules, monkeypatch, tmp_path, name):
+    _, runner, _ = modules
+    monkeypatch.setattr(
+        sys, "argv", ["run.py", "--candidate", name, "--results-dir", str(tmp_path)]
+    )
+    monkeypatch.setattr(runner, "make_storage", lambda *_: pytest.fail("must not load credentials"))
+    with pytest.raises(SystemExit, match="Discontinued model"):
+        runner.main()
+
+
+def test_external_score_provenance(modules, monkeypatch, tmp_path):
+    spec = importlib.util.spec_from_file_location("varied_score", DIRECTORY / "score.py")
+    scorer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(scorer)
+    external = tmp_path / "result.json"
+    assert scorer.provenance_path(external) == str(external.resolve())
+    assert scorer.provenance_path(DIRECTORY / "README.md") == str(
+        (DIRECTORY / "README.md").relative_to(scorer.ROOT)
+    )
 
 
 def test_original_status_and_secrets_are_preserved_safely(modules, monkeypatch):

@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from recovery import (
+    MODELS,
     candidate_plan,
     cooldown_until,
     logical_candidate,
@@ -190,9 +191,9 @@ def main():
         raise SystemExit("Batch cap must be 1–16 provider calls")
     if args.stage == "full" and not (OUT / "pilot-reviewed.json").exists():
         raise SystemExit("Full stage requires explicit reviewed pilot marker")
-    candidates = args.candidate or [c for c in CANDIDATES if c != "astra"]
-    if "astra" in candidates:
-        raise SystemExit("Astra is excluded from the approved comparison")
+    candidates = args.candidate or list(MODELS)
+    if any(c not in MODELS for c in candidates):
+        raise SystemExit("Discontinued model is excluded from the approved comparison")
     if len(candidates) != len(set(candidates)):
         raise SystemExit("Candidate may be listed only once")
     if args.stage == "pilot" and len(candidates) != 1:
