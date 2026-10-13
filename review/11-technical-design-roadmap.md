@@ -1935,3 +1935,9 @@ Review/51 evaluation call priority — L3 approved2026-10-13: reserve two of thr
 contested call slots for the older comparison until it finishes, borrowing unused slots
 while it waits on provider cooldown/capacity. Persist allocation across resumes and
 retain all approved retry/deadline limits; see the scoped contract in review/51.
+
+
+Review/51 Groq evaluation expansion — L3 approved2026-10-13: add GPT-OSS120B high
+and Qwen3.8-27B high to the frozen60-recording independent body-selection comparison,
+480 total answers. Preserve the older run's priority and existing deadlines/limits;
+local capability overrides and daily-token headroom only, no production activation.

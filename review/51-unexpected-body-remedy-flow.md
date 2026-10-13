@@ -3939,3 +3939,47 @@ are retained as groq-input-size-audit-2026-10-13-v1.json/.md in the body-selecti
 results directory. Keep recorded hard ceilings and shared capacity unchanged.
 Current Groq documentation lists Qwen output maximum16,384, versus65,536 in our catalog;
 this is a follow-up catalog discrepancy, not a reason to alter production in this audit.
+
+
+### P1 Groq body-selection candidates — L3, approved 2026-10-13
+
+Maintainer approved adding the configured Groq GPT-OSS120B and Qwen3.8-27B routes to
+all60 unchanged independent body-selection questions. Add two logical candidates;
+comparison target becomes480 answers, while the older claim-checking target stays678.
+Keep the original manifest/prompt/schema/gold, six-model observations and seven-day
+start/deadline. Each added pair uses the same three rounds/four submitted attempts,
+maximum12; total experiment allowance grows4320→5760 only for120 additional pairs.
+Record this exact model-set expansion in persisted controller status on resume.
+
+Scope: evaluation-only groq_routes.py plus body_selection.py, run.py, README.md,
+score.py if needed, tests/test_remedy_body_selection.py and lifecycle docs under the
+existing body-selection contract. Do not edit production route catalogs, quotas,
+model activation, prompts, evidence, scoring answers, feeds, workers or workflows.
+Register local copies of the existing physical routes, explicit high reasoning
+(reasoning_effort=high on Groq; native Qwen xhigh), reasoning_format=parsed for JSON
+mode and maximum16384 output tokens. Retain600s request/650s case bounds and exact
+physical route allowlists/no fallback. Pin documented reasoning controls in local
+config/provenance, without claiming admission or maximum effort from default calls.
+GPT-OSS's missing daily-token field uses a conservative evaluation-only180000 cap
+below the public200000 limit; never raise an existing route limit. Retain Qwen's
+configured180000/day and all current input/rate ceilings. Shared quota/CAS accounting
+and provider pause/drain/reserve remain mandatory. Keep20% daily-token headroom too,
+using the higher known local/Worker usage; absent or invalid usage holds requests.
+
+For these two new candidates, try the largest two packets first, then the proven
+Fort Worth Council/school-board joint, then an insufficient-owner-proof recording.
+Continue the full unchanged set after submitted failures using existing cooldowns
+and caps; never retry a valid but wrong answer. Persist actual provider prompt/output
+usage, diagnostics, requested/observed model and exact controls. Provider input-cap
+or reasoning-control rejection remains failed evidence; do not trim the frozen packet
+or silently lower effort. The shared older comparison still gets two-thirds of
+contested slots. A safe restart takes the shared lock after any active call completes,
+then resumes the same results and deadline; never interrupt an in-flight request.
+
+Tests prove eight-model totals/migration without reset, unchanged old contexts,
+exact Groq route/effort parameters, complete schema-aware input checks, largest-first
+new-model order, daily-token headroom, no fallback and one provider call per attempt.
+Run targeted and full offline tests, whole Ruff/format and fragment checks before
+push and resumption. Raw live artifacts stay under evals/remedy/; no credentials print.
+Sources: https://console.groq.com/docs/api-reference and
+https://console.groq.com/docs/rate-limits (checked2026-10-13).
