@@ -1,0 +1,775 @@
+{
+  "cases": {
+    "recording-0111ad7ae5dc7438295e49d4": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "reviewed_body_description": "P&Z Commission"
+    },
+    "recording-02b681ca6a58bfb1b3195afd": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-library-board"
+      ],
+      "reviewed_body_description": "Library Board"
+    },
+    "recording-0312d144c749c190446edfe0": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player",
+        "dallas-streets-archive"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "reviewed_body_description": "Bond Streets subcommittee; wider feeds are publication policy"
+    },
+    "recording-05315b3b1cfb9d029ee8ed70": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "reviewed_body_description": "Community and Neighborhood Development Committee"
+    },
+    "recording-0594e78d397ac107f267d354": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "reviewed_body_description": "Council/Gas Task Force joint"
+    },
+    "recording-0850ab9885c4b28efea3adfe": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-may25"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "reviewed_body_description": "Bond Streets subcommittee; wider feeds are publication policy"
+    },
+    "recording-0f3acb8e63bc7affb3b03495": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "insufficient_owner_proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "unresolved",
+      "expected_feeds": null,
+      "reviewed_body_description": "Institutional owner not established by supplied program/player evidence"
+    },
+    "recording-161b45f0a9cde9b3077a0cdb": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission",
+        "addison-tx-comprehensive-plan-advisory-committee"
+      ],
+      "reviewed_body_description": "Joint convening of the explicitly named bodies"
+    },
+    "recording-1bff12d20029e06645d2cd1c": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-1fd48da636e2445a9d8ecebb": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-emsisd-board-joint-meetings"
+      ],
+      "reviewed_body_description": "Council/EMSISD joint"
+    },
+    "recording-25b112118800868be51c169e": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "exclude_event",
+      "expected_feeds": [],
+      "reviewed_body_description": "Ceremony/dedication; official title and approved event policy"
+    },
+    "recording-3ded66d5b721c153da629b82": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-42a8b82dd5daf9d704055f7d": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-tirz-1-board"
+      ],
+      "reviewed_body_description": "TIRZ No. 1 Board"
+    },
+    "recording-431b21d07dbce916fbd90dbd": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "insufficient_owner_proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "unresolved",
+      "expected_feeds": null,
+      "reviewed_body_description": "Institutional owner not established by supplied program/player evidence"
+    },
+    "recording-437f59fb8fa29939ebe0e94d": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-library-board"
+      ],
+      "reviewed_body_description": "Library Board"
+    },
+    "recording-461fd764c77be280ae5b37a2": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission",
+        "addison-tx-comprehensive-plan-advisory-committee"
+      ],
+      "reviewed_body_description": "Joint convening of the explicitly named bodies"
+    },
+    "recording-47a2043e1aa311edf6349cd3": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-bond-committees"
+      ],
+      "reviewed_body_description": "Bond Advisory Committee"
+    },
+    "recording-4cbdc0f5678a5408279ffae1": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player",
+        "citizen-council-june2007"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-town-meetings"
+      ],
+      "reviewed_body_description": "Historical citizen advisory compilation"
+    },
+    "recording-5098d2f4fff48e6317e3d221": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "reviewed_body_description": "Environmental Task Force Meeting"
+    },
+    "recording-56666be8fc4ca7665a4c57af": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-special-citizens-bond-advisory-committee"
+      ],
+      "reviewed_body_description": "2019 bond committee"
+    },
+    "recording-5dddfe1f523eeff020ce4343": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-june13"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "reviewed_body_description": "Bond Streets subcommittee; wider feeds are publication policy"
+    },
+    "recording-5fae14c06e8ceb8379204fb7": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "unconfigured_body",
+      "expected_feeds": [],
+      "reviewed_body_description": "Real Animal Shelter Advisory Committee; no existing local feed"
+    },
+    "recording-61dfe043572467ebf477acba": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "reviewed_body_description": "Environmental Task Force Meeting"
+    },
+    "recording-64905d6e32cae3a0ec5a7070": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "reviewed_body_description": "Environmental Task Force Meeting"
+    },
+    "recording-66513bd9e1fc74fb642e2d73": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-6711ef6cf459b6dc7add2175": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "reviewed_body_description": "P&Z Commission"
+    },
+    "recording-6dd6551430ef94bc37d87dea": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-bond-committees"
+      ],
+      "reviewed_body_description": "Bond Advisory Committee"
+    },
+    "recording-70d1f38ec59da38a678b6c19": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-746f6b2f2c3ccc31bdc3c418": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-city-council"
+      ],
+      "reviewed_body_description": "City Council"
+    },
+    "recording-76b77357565cdc16153f2a97": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "insufficient_owner_proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "unresolved",
+      "expected_feeds": null,
+      "reviewed_body_description": "Institutional owner not established by supplied program/player evidence"
+    },
+    "recording-799f0c547ee800a6268c4c67": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-7ddb7aff43035845aecd75ef": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-7ff26ff432860aa1dd1e09fd": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "reviewed_body_description": "Council/Gas Task Force joint"
+    },
+    "recording-8301b65c359ede99eb3dc3df": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-city-council",
+        "denton-tx-library-board"
+      ],
+      "reviewed_body_description": "Council/Library joint"
+    },
+    "recording-8dd902e97939f88dfa43b299": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "reviewed_body_description": "HBS Commission"
+    },
+    "recording-98b938d821e0d41caa8a48a6": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "exclude_event",
+      "expected_feeds": [],
+      "reviewed_body_description": "Ceremony/dedication; official title and approved event policy"
+    },
+    "recording-9bd0e85a0cb337726b421b81": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "reviewed_body_description": "Community and Neighborhood Development Committee"
+    },
+    "recording-9bd6780e16f497eb919d9423": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-bond-committees"
+      ],
+      "reviewed_body_description": "Bond Advisory Committee"
+    },
+    "recording-a6fa645e613b3e5b90ed44ca": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-bond-committees"
+      ],
+      "reviewed_body_description": "Bond Advisory Committee"
+    },
+    "recording-a9772c53bc450243748eccff": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "exclude_event",
+      "expected_feeds": [],
+      "reviewed_body_description": "Ceremony/dedication; official title and approved event policy"
+    },
+    "recording-ace5ee7ad06c0c01647b6539": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-tirz-1-board"
+      ],
+      "reviewed_body_description": "TIRZ No. 1 Board"
+    },
+    "recording-ad36bcef14d1a3ef3e4d7813": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "reviewed_body_description": "P&Z Commission"
+    },
+    "recording-b2b00fd4afa3e92db59d0999": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "reviewed_body_description": "Environmental Task Force"
+    },
+    "recording-b8889e50555726dfbb7f1a00": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "reviewed_body_description": "P&Z Commission"
+    },
+    "recording-c128ed27ed345a9fbfb3b3dd": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "insufficient_owner_proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "unresolved",
+      "expected_feeds": null,
+      "reviewed_body_description": "Institutional owner not established by supplied program/player evidence"
+    },
+    "recording-c2104a6abb6a7a51f3876825": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-tirz-2-board"
+      ],
+      "reviewed_body_description": "TIRZ No. 2 Board"
+    },
+    "recording-c3179aff49eb426e0d5ffd85": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "unconfigured_body",
+      "expected_feeds": [],
+      "reviewed_body_description": "Real Animal Shelter Advisory Committee; no existing local feed"
+    },
+    "recording-cc51e5260201801d13396511": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-tirz-1-board"
+      ],
+      "reviewed_body_description": "TIRZ No. 1 Board"
+    },
+    "recording-cca86af01f5030c620cd25a7": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "unconfigured_body",
+      "expected_feeds": [],
+      "reviewed_body_description": "Real Animal Shelter Advisory Committee; no existing local feed"
+    },
+    "recording-da50fa846733d6c9a7c59363": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "archive_series",
+      "expected_feeds": [],
+      "reviewed_body_description": "Candidate forum; not a Council meeting"
+    },
+    "recording-dfc5556c32049fce49d38785": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "reviewed_body_description": "Joint convening of the explicitly named bodies"
+    },
+    "recording-e433f4350ee6f597cd0a81a3": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "reviewed_body_description": "Community and Neighborhood Development Committee"
+    },
+    "recording-e477db971fbf392de8259408": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "archive_only",
+      "expected_feeds": [],
+      "reviewed_body_description": "Luncheon; possible Council attendance is not Council convening"
+    },
+    "recording-e85c0b9a114463b03d60a457": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "addison-tx-tif"
+      ],
+      "reviewed_body_description": "TIRZ No. 1 Board"
+    },
+    "recording-e8d7b11f6fe27f95223b88f1": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "reviewed_body_description": "Community and Neighborhood Development Committee"
+    },
+    "recording-eef10050e298d3758921b67a": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-cbtf-aug15"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "reviewed_body_description": "2024 CBTF"
+    },
+    "recording-f282f5df099ea90db279956b": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "dallas-tx-redistricting-commission"
+      ],
+      "reviewed_body_description": "Redistricting Commission"
+    },
+    "recording-f61541eb16037ce8c08f7073": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "existing_body_assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "expected_action": "assign_existing",
+      "expected_feeds": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "reviewed_body_description": "HBS Commission"
+    },
+    "recording-f67233b1ddc3faf3e51bb9ff": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "insufficient_owner_proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "unresolved",
+      "expected_feeds": null,
+      "reviewed_body_description": "Institutional owner not established by supplied program/player evidence"
+    },
+    "recording-ff5573e2e05ac6a223fa55a5": {
+      "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+      "category": "publication_policy_control",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "expected_action": "exclude_event",
+      "expected_feeds": [],
+      "reviewed_body_description": "Ceremony/dedication; official title and approved event policy"
+    }
+  },
+  "version": 1
+}
