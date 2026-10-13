@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
@@ -70,12 +70,21 @@ jobs:
           gh auth setup-git
           set +e
           python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
-            --permission actor-permission.json --out provider-catalog-command.json
+            --permission actor-permission.json --retry-receipt provider-catalog-discovery-retry.json \
+            --out provider-catalog-command.json
           code=$?
           set -e
           jq -r '.comment' provider-catalog-command.json > provider-catalog-command.md
           gh issue comment "$ISSUE_NUMBER" --body-file provider-catalog-command.md
           exit "$code"
+      - name: Retain authorized discovery retry receipt
+        if: always() && github.event_name == 'issue_comment'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-discovery-retry-${{ github.run_id }}
+          path: provider-catalog-discovery-retry.json
+          retention-days: 90
+          if-no-files-found: ignore
   limits:
     if: >-
       ${{ github.event_name == 'workflow_run' &&
@@ -97,7 +106,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[dev,llm]" -c constraints/dev.txt

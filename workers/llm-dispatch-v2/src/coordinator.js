@@ -1689,6 +1689,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_5XX_RETRIES", 1);
   }
 
+  /** Output-limit retries for a job pinned to one model: the cut-off is the model's, so it recurs. */
+  _maxSingleModelOutputBudgetRetries() {
+    return this._envInt("MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES", 1);
+  }
+
   /** Maximum route-only cooldown applied after a final post-Gateway 5xx. */
   _max5xxBackoffMs() {
     return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
@@ -5618,9 +5623,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+        // A job pinned to one model (every per_model judge lane, review/49 "Dispatch
+        // requirements") has no other route or model to move to, so the same cut-off recurs on
+        // each retry: it gets a small ceiling and fails to its producer, which re-plans it. The
+        // ceiling reads the shared transient count, so an earlier upstream blip can spend it; that
+        // only fails the job one retry sooner, and the producer's re-plan is the intended recovery.
+        const allowedModels = Array.isArray(backupPolicy?.allowed_models)
+          ? new Set(backupPolicy.allowed_models)
+          : null;
+        const isSingleModelJob = allowedModels !== null && allowedModels.size === 1 && backupAfterAttempts === 0;
         const shouldRetryOutputBudget =
           isOutputBudgetExhausted &&
-          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+          job.transient_retry_count < (isSingleModelJob
+            ? this._maxSingleModelOutputBudgetRetries()
+            : _retryCeiling(this._maxUpstreamCapacityRetries()));
         const shouldRequeue =
           shouldRetryOutputBudget ||
           shouldRetryRouteUnavailable ||

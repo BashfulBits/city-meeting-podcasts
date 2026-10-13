@@ -45,8 +45,10 @@ transport failures, timeouts and capacity/access errors remain inconclusive. Acc
 stop the remaining method checks. A working alternative is reported without editing route config.
 
 Checks allow 4,096 total completion tokens, including reasoning, with a 720-second read timeout and
-elapsed-time checks against the Worker response ceiling, and cap streamed event data at 64 KiB. The
-old four-token ping remains a cheap availability check, but cannot establish method support. This
+elapsed-time checks against the Worker response ceiling, and cap streamed event data at 128 KiB. The
+parser now observes complete SSE event boundaries and joins multiple `data:` fields within each
+event before JSON decoding, as required by the SSE format. The old four-token ping remains a cheap
+availability check, but cannot establish method support. This
 means up to five requests per checked model, rather than one. Every request uses plugin spacing,
 with pause renewal after the wait and during long streams. Configured-route method checks are
 charged individually to the Worker ledger; a failed charge aborts further probing instead of
@@ -668,10 +670,16 @@ change must record canary evidence and wire the existing reconcile/writer workfl
 shared writer lock. This PR does not dispatch a canary or change deployment settings.
 
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
-Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the
-exact route/account; generic 404, timeout, 429, structured-output failure and account-tier failures
-are insufficient. With multiple configured accounts, require matching retirement evidence for all
-accounts serving that route; a single key cannot retire a pooled service for everyone.
+Require fresh absence from a complete catalog, an initial definitive retired/not-served result, and
+then a **second independent provider request immediately before preparing each removal**. The
+confirmation calls the exact route on its configured account while dispatch remains paused. It must
+repeat the same definitive verdict; if the route responds as reachable, or the result is a timeout,
+rate limit, ambiguity, or a mismatched account/route, defer that removal. Include the confirming
+account, route, result and timestamp in the removal evidence. Generic 404s, structured-output
+failures and account-tier failures are insufficient. With multiple configured accounts, require
+both requests and matching retirement evidence for every account serving that route; a single key
+cannot retire a pooled service for everyone. The confirmation is an extra charged provider call, so
+respect the existing dispatch pause and scarce daily-quota checks.
 
 Prepare one removal PR on `automation/provider-catalog-removals`, rebuilt and checked like additions.
 Remove only affected route blocks. Keep logical models with any surviving route. Drop a model from
@@ -2042,7 +2050,16 @@ output, contradictory counts, transport deadline or cancellation defer the affec
 report a reason, calls/tokens spent and all admitted/refused bounds found so far. Other axes may
 continue when the remaining envelope and error scope permit. A quota rejection alone never
 becomes a context upper bound. Checkpoint after each usable observation; a lost response is not
-a success and its attempt cannot be reused.
+a success and its attempt cannot be reused. **Maintainer clarification (2026-10-12):** for one
+request-size probe that receives no usable response due to a transport timeout/connection failure,
+make at most five total calls of the same size, each with a fresh charged attempt ID. Do not change
+the probe size during these retries. If all five have no usable response, stop discovery with an
+uncertain result and report the bounds already established; do not interpret transport failure as a
+size limit. If a later call responds, keep the earlier charged attempts and report per-attempt
+telemetry whenever more than one call was needed. This bounded retry direction supersedes the
+previous no-retry wording for new-route request-cap discovery only; it does not alter configured-
+route context-probe retry policy. Every call still consumes the existing per-session and per-run
+budgets.
 
 **`test again` decision.** The maintainer can request another discovery run for the same route
 on a later day. The same maintenance workflow selects that pending route, authenticates prior
@@ -2063,7 +2080,7 @@ enter/override limits, approve preparing an addition PR, ignore or reject. No au
 automatic runtime/YAML ceiling publication occurs. Dead-route removal and structural recovery
 retain their accepted contracts and rollout gates.
 
-#### Offline implementation checkpoint — foundation ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
+#### Offline implementation checkpoint — foundation shipped ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
 
 Implementation is split into a foundation PR and a following report/retry/workflow PR under #2271.
 The foundation supplies the pure planner, bounded distinct transport, charged/fsynced checkpoints,
@@ -2074,37 +2091,70 @@ size-error number as a refused boundary, and combined semantics remain explicitl
 Other endpoints remain unsupported until a provider adapter has verified count/error fixtures.
 Thus simulator convergence does not claim that a live route's caps have been measured.
 
-The foundation is not wired to the maintenance workflow or `/apply`; it adds no new provider calls,
-quota reservations, issue choices or runtime publication. Report rendering, authenticated retry
-receipts, daily selection and activation plumbing remain the next implementation PR. #2271 stays
-open; the complete discovery initiative remains L3, not Shipped. Separate configuration design and
-reviewed live activation gates retain their place after offline integration.
+The foundation added no workflow calls, quota reservations, issue choices or runtime publication.
+The follow-up implementation in #2271 integrates reports, authenticated retry receipts and daily
+selection while keeping live discovery disabled. It reports experimental caps without publishing
+them, and does not turn configured-route maintenance into part of this workflow. The complete
+discovery initiative remains L3, not Shipped, until the implementation merges. Separate quota-pool
+configuration and reviewed live activation gates remain required for their respective scopes.
 
 #### 8.13.1 Execution contract and escape budgets
 
-This section is development-ready for offline implementation. Live discovery is disabled by
-an explicit `discovery_enabled` workflow input/default until a reviewed activation is approved.
-Design approval does not authorize provider calls. Existing configured-route calibration authority
-and six-call budgets are unchanged; new candidates use the separate discovery envelope below.
+This section's offline implementation is shipped. Live discovery requires the explicit
+`discovery_enabled` workflow input. The first activation accepts one exact `provider/model`
+candidate per manual run; broad weekly candidate discovery stays disabled until the first route's
+evidence is reviewed in a later activation. Authenticated maintainer retry receipts remain eligible
+for the daily workflow. Existing configured-route calibration authority and six-call budgets are
+unchanged; new candidates use the separate discovery envelope below.
 
 | Bound | Per candidate/session | Per maintenance run |
 | --- | --- | --- |
 | Provider submissions, including reachability and retries | 64 | 128 |
-| Reserved estimated input tokens | 2,097,152 | 4,194,304 |
+| Reserved estimated input tokens | 8,388,608 | 16,777,216 |
 | Requested output tokens | 524,288 | 1,048,576 |
 | Elapsed time, including cooldowns | 20 minutes | 40 minutes discovery work |
 | Candidate selection | One session per identity | Two candidates, at most one per provider |
-| Individual request | 524,288 input estimate; 131,072 requested output | Same |
-| Transport | 120 seconds; 4 MiB response | Same |
+| Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
+| Transport | 600 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. Token budgets are
+transport process; failed/unknown attempts are never refunded or reused. The no-response limit
+allows at most five calls total, counting the initial send. The 20-minute session deadline may stop
+a run earlier; any collected timeout attempts are retained and reported as uncertain, never as a
+refused size boundary. At a 600-second per-call deadline, at most two full-length no-response
+attempts fit in one session. Token budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
-4 MiB. Provider/account permissions, free-route evidence, known applicable shared quotas and
-provider-enforced cooldowns always bind; unknown RPD does not acquire an invented value.
+4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
+provider-enforced cooldowns always bind; unknown RPD does not acquire an invented value. The
+maintainer approved the first-route canary even when a new model's separate quota scope is unknown:
+the route is not yet eligible for repo-managed dispatch, and the existing v2 provider pause drains
+repo-managed traffic across that provider while probing. The pause cannot control unrelated clients
+using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
+converted into a numeric claim.
+The requested-output budget remains 524,288 tokens per candidate/session and 1,048,576 per run.
+With no compatible history, output searches now start at 16,384 tokens instead of 256, with input
+held near 2,048. Combined searches start at 18,432 total tokens (2,048 input plus 16,384 output);
+the input-heavy combined mix keeps output at 16,384, while the output-heavy mix keeps input near
+2,048. This gives reasoning models room to complete output and combined verification without
+adding blanket margins to later probes. A typed refusal can still reduce the fixed counterpart and
+start a distinct control identity. The 16,384-token input counterpart permits at most 32 such
+reservations per session before accounting for other output reservations. If the finite envelope
+interrupts refinement, preserve the partial bracket and use the authenticated `test again` path; do
+not silently increase aggregate spend.
 The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
+
+**Maintainer-approved discovery timeout increase — 2026-10-12:** after workflow run
+[38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+timed out five times at 120 seconds while probing a larger input after a verified 645,195-token
+input success, the maintainer approved a 600-second hard deadline for new-route discovery calls.
+The larger bound gives a slow high-input request more time to return usable counts or a typed
+size refusal. A timeout remains inconclusive; it never creates a refused boundary. The existing
+20-minute session, 40-minute run, five-call maximum, four-MiB response limit and 900-second
+provider pause remain unchanged. If the session deadline arrives first, preserve its partial
+timeout evidence and report uncertainty. Configured-route calibration retains its separate
+120-second transport deadline.
 
 Take the existing exclusive provider dispatch pause, drain current work and renew its lease before
 calls and during waits. Contention, inability to drain/renew or unclear free endpoint eligibility
@@ -2125,11 +2175,20 @@ spend: stop as soon as all supported axes converge or no safe progress remains.
 #### 8.13.2 Search, fixtures and evidence semantics
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
-transport and parser cannot edit limits or config. Seed from compatible history or published/API
-values, otherwise 2,048 input and 256 output. Input holds requested output at 256; output holds
-verified small input at approximately 2,048. Combined uses at least two distinct mixes, a small
-output/input-heavy mix and an output-heavy mix. If either fixed counterpart cannot be admitted,
-reduce it and start a new control identity rather than pooling incomparable observations.
+transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
+history, begin input at 500,000, output at 16,384, and combined searches at 18,432 total tokens.
+Pure input probes reserve 16,384 output tokens so reasoning-heavy models have substantially more
+room to finish the input verification fixture.
+If the provider rejects that output allowance, halve it and start a new
+control identity; never treat that rejection as an input boundary. Input and input-heavy combined
+control versions are `v2`, so old observations made with a 256-token counterpart are not pooled
+with the new probes.
+Output probes hold verified small input at approximately 2,048. Combined searches use a 2,048 input
+counterpart for the output-heavy mix and a 16,384 output counterpart for the input-heavy mix.
+Combined uses at least two distinct mixes, an input-heavy mix with the 16,384 output counterpart
+and an output-heavy mix with the 2,048 input counterpart. If either fixed counterpart cannot
+be admitted, reduce it and start a new control identity rather than pooling incomparable
+observations.
 
 The fixture includes unpredictable start/middle/end markers for input verification and a repeatable
 long-output task for output. A response must satisfy the verification task; HTTP success alone is
@@ -2137,13 +2196,18 @@ not admission evidence. Record actual prompt, completion, reasoning and cache co
 usage provenance, finish reason, requested sizes and local estimates. Never persist prompts or
 credentials. Native endpoint adapters must shape the same task in their documented native format.
 
-After a typed size rejection without an admitted bound, halve the relevant target until admitted.
-After admission without an upper bound, stretch by 50%. With both bounds, target their midpoint,
-using actual-count feedback to correct fixture sizing. If rounding produces an endpoint target,
-choose an interior integer; no interior integer means integer-resolution convergence. Repeated
-actual counts that do not move the bracket count as non-progress. A contradictory observation
-invalidates the bracket, retains its history and starts fresh verification within the same budget.
-No additional percentage safety discount is applied to the verified admitted endpoint.
+Search wide before spending calls on fine refinement. After a typed size rejection without an
+admitted bound, halve the target until a compatible request passes, with 2,000 input tokens as
+the smallest probe. A refusal at that floor reports no admitted bound and defers the axis. This
+descending sequence finds the first passing region; it is not binary search until both a passing
+lower bound and a refused upper bound exist. After admission without an upper bound, increase by 50%, clamping the next probe
+to the hard per-call ceiling. Once both bounds exist, test their midpoint, using actual-count
+feedback to correct fixture sizing. If the ceiling passes without a refusal, report that value as a
+verified lower bound and stop; do not label it an exact maximum. If rounding produces an endpoint
+target, choose an interior integer; no interior integer means integer-resolution convergence.
+Repeated actual counts that do not move the bracket count as non-progress. A contradictory
+observation invalidates the bracket, retains its history and starts fresh verification within the
+same budget. No additional percentage safety discount is applied to the verified admitted endpoint.
 
 Each bracket has one declared coordinate/count basis. Actual accepted input is comparable only to
 a refusal identifying that same input basis. For output, accepting `max_tokens` is not proof of
@@ -2217,7 +2281,189 @@ An override must be an explicit reviewed decision with rationale/source, never a
 issue marker interpreted as authenticated probe evidence. The exact numeric-entry/config migration
 format belongs to that separate design before implementing addition of such constrained routes.
 
-#### 8.13.5 Closed file/function plan and acceptance
+#### 8.13.5 First live activation — one manually selected new route
+
+The first activation is manual and deliberately narrower than recurring discovery. The workflow
+requires both `discovery_enabled=true` and one exact `discovery_candidate=provider/model` value.
+Reconciliation must find that exact identity in the current provider catalog, establish verified
+free eligibility, reject configured/ignored/alias routes, prove chat reachability and run the
+existing structured-output usability check before request-size discovery. A missing or ineligible
+candidate results in no model request. Only that candidate may receive discovery in the run, so its
+own bounded canary evidence can be reviewed before broad schedule activation.
+
+The workflow sends catalog and completion requests directly from the GitHub Actions runner to the
+provider API; the v2 Worker is used only for its repo-wide dispatch pause, so these requests do not
+appear in Cloudflare AI Gateway logs. Each structured-output method result records HTTP status,
+provider request ID when returned, stream event/byte counts, visible completion bytes, reported
+usage counts, finish reason and a diagnostic code. Discovery attempts also record bounded response
+shape states for message content, finish reason and usage, plus response media type/size and response
+or provider request IDs. Valid provider-reported input/output counts are kept even when the response
+content or finish reason prevents the probe from proving an admitted size.
+
+For failed discovery attempts, retain only a 128-character JSON-escaped excerpt. Prefer the
+provider's short error message or returned model text when available; otherwise show the bounded
+response prefix. Escape issue markup and redact the generated prompt and credentials before writing
+the excerpt. Successful completion text and full response bodies are never persisted. Non-success
+structured-output checks retain at most a 1-KiB escaped error-body preview, and streamed provider
+errors retain a similarly bounded preview. These diagnostics remain in the rolling issue even when
+no route candidate or request-cap artifact is produced.
+
+For malformed SSE JSON, also retain the response content type/encoding, number of `data:` lines in
+the event, a bounded escaped preview around the parser's failure offset, JSON parser message and
+line/column/offset, plus whether re-encoding with the response charset and decoding as UTF-8 would
+make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
+structured-method verdict. Credentials and full response bodies remain excluded.
+
+**Runner stream decoding correction (2026-10-12).** The NVIDIA candidate worked in local direct
+submissions, but runner run 38291210125 failed all four methods with a 127-byte malformed event
+inside `reasoning_content`; Requests inferred ISO-8859-1 for `text/event-stream` without a charset.
+Requests' Unicode `splitlines()` recognizes U+0085 and Unicode paragraph/line separators, which
+can split valid JSON inside decoded reasoning text. In particular, Latin-1 decoding maps UTF-8
+continuation byte 0x85 to U+0085. A real-Requests offline response reproduces this failure without
+provider calls. Structured canaries therefore frame LF, CRLF and CR lines directly from transport bytes,
+preserving delimiters across chunk boundaries, then strictly decode complete lines as UTF-8 before
+assembling SSE events. A single buffered line is bounded by the existing 128-KiB ceiling. This applies to every provider, not a model-specific exception.
+
+The next run records `stream_decoder`, Python/Requests/urllib3/platform versions,
+`legacy_unicode_extra_line_breaks` (the breaks the previous decoder would introduce), bytes/chunks
+read, clean HTTP-stream EOF, and whether
+the last event had a blank-line delimiter. A positive legacy-break count with a verified completion
+confirms the framing diagnosis. Malformed JSON retains a redacted 128-byte base64 window and its
+byte offset; invalid UTF-8 retains a redacted 64-byte window, decode location/reason and line length.
+These preserve exact bytes independently of issue markup escaping, separating invalid provider
+bytes, incomplete framing, JSON errors and transport exceptions. Existing request counts, provider
+pause/spacing, 128-KiB event ceiling, deadlines and qualification rules remain binding. No extra
+provider calls or workflow permissions are introduced; the rolling issue carries diagnostics even
+when discovery produces no artifact. The maintainer requested this correction and diagnostics after
+the inconclusive merged #2317 rerun.
+
+**Shared new-route chat parser follow-up (2026-10-12).** Runner run 38293878784 verified all four
+NVIDIA JSON methods and confirmed the old Unicode line-splitting hazard. Size discovery then
+deferred because NVIDIA had no registered discovery axes. The maintainer requested a general
+parser correction rather than a Nemotron exception. NVIDIA now explicitly registers input/output
+discovery using the shared `chat_discovery_observation` adapter; it applies to any of that
+provider's chat models with the documented response envelope. Native Gemini and other unverified
+endpoints remain explicitly unsupported. This does not enable configured-route calibration.
+
+Success requires strict chat usage, consistent totals, the existing input sentinels or counted
+output fixture, and the appropriate finish reason. NVIDIA's NIM documentation defines
+`completion_tokens` as generated tokens including reasoning, with reasoning details as a breakdown:
+[NIM reasoning usage](https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html).
+This provider opt-in sets the existing included-reasoning basis; compatibility branding alone never
+registers an endpoint. Other providers can reuse the same adapter after confirming these meanings.
+
+The shared refusal parser accepts documented chat/vLLM token-size messages in either nested or
+top-level typed error envelopes. It validates exact input counts, a matching fixed output
+reservation, an overflow and internally consistent total counts. A prompt-only refusal must
+report a count above its explicit context ceiling. This establishes a conditional input bracket
+at the reported output control; it does not establish an independent output or combined cap.
+Character counts, `at least` tokenizer counts, unsupported envelopes and quota errors are not
+refused coordinates. Primary reference:
+[vLLM token validation](https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/).
+Typed FastAPI/Pydantic upper-bound validation for `max_tokens`/`max_completion_tokens` can establish
+an output refusal only when its integer request value matches this attempt and the provider has
+verified included-reasoning semantics. Numeric field types and the bound must be consistent; other
+fields, mixed errors and unknown shapes remain inconclusive. Primary reference:
+[Pydantic upper-bound errors](https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal).
+
+Groq and OpenRouter share the new refusal handling with incremented discovery parser versions;
+old histories do not silently become new-version boundary proof. Combined axes remain deferred
+until their request-reservation versus generated-total semantics are verified. The buffered SSE
+usage normalizer also uses wire LF rather than Unicode line splitting, preserving reasoning text.
+No new calls occur outside the existing selected-candidate admission, pause, spacing, token/call
+budgets, deadline and manual activation. Runtime Worker/direct dispatch and provider YAML remain
+unchanged. Offline acceptance covers provider-reported successes, each refusal envelope, wrong
+axes, mismatched controls, malformed counts, quotas and Unicode SSE normalization.
+
+**Discovery boundary refinement follow-up (2026-10-12).** Run 38296813993 established verified
+input counts of 500,024 and 750,001 for NVIDIA Nemotron Lightning. The local estimate understated
+provider-counted input by roughly 29%. At the 1,000,000-token target, a special-case reservation
+override discarded that learned ratio and submitted roughly 1.29M actual tokens. The planner now
+keeps the count correction at every input target and clamps only the local reservation to the
+existing hard ceiling. It still uses provider-reported counts as bracket coordinates. A local
+regression with 1.29x actual counts must converge to the existing 0.5% goal, with every reservation
+within the approved ceiling. No ceiling or per-run budget increases are authorized by this fix.
+
+The same run captured HTTP 400 JSON with the exact prefix "This model's maximum context length
+is 1000000 tokens. However, your messages resulted in 1290360 tokens." The shared chat parser now
+accepts this explicit input-count shape for any registered compatible provider. A message-only
+error envelope is permitted only for this recorded form, with a positive exact input count above
+the declared ceiling. Character counts, lower-bound counts, quota errors, wrong axes, unknown
+fields and untyped variants of other error shapes remain inconclusive. Validate the complete outer
+envelope for message-only errors and allow only standard request-shortening advice after the count;
+appended uncertainty/approximation qualifiers cannot become exact boundary evidence. The ceiling remains a
+provider claim; the refused bracket coordinate is the reported request count, not the claim itself.
+This additive wording does not reinterpret persisted inconclusive observations as boundary proof;
+existing verified input counts keep their parser/count/control compatibility.
+
+All three output probes in that run stopped naturally before the requested 16,384 completion
+tokens. Discovery-only output fixtures now explicitly request every integer from 1 through
+1,000,000, one per line, without summaries or omissions. The existing completion cap bounds the
+actual generation. `output:v2` identifies this changed prompt and excludes `output:v1` boundary
+history; the old history remains diagnostic. A completed early-stop reply still does not establish
+an output maximum: the existing exact numeric fixture, actual counted output and length finish are
+required. Configured-route calibration keeps its existing prompt and fixture versions. The input
+control, provider pause, spacing, budgets, timeout, session deadline and combined-axis deferrals
+remain unchanged. After review/merge, the next authorized selected-candidate run can refine input
+instead of repeatedly sending the same oversized request, and test the stronger output fixture.
+
+**Approved API-capacity / retrieval-quality separation (2026-10-12).** Run 38301430270 verified
+16,384 and 24,576 output tokens including reasoning, then reached the 20-minute session deadline
+on the 36,864-token attempt. Its input completions reported about 750K tokens but miscopied or
+missed the three sentinels. The maintainer approved separating these two measurements: API request
+admission measures capacity; sentinel retrieval measures quality and can also warn of truncation.
+This supersedes only new-route discovery's input-sentinel admission gate in §8.13. Configured-route
+calibration under §8.11 retains its existing processing/sentinel proof requirements.
+
+For discovery input, HTTP 200 plus a completed ordinary chat response with nonempty visible text,
+`stop` or `length`, and positive exact integer prompt/completion counts and a consistent reported
+total establishes an API-admitted size. Validate the documented envelope, single choice, absence
+of errors/refusals/tool calls and any provided reasoning/cache breakdown. Missing, malformed or
+inconsistent usage remains inconclusive. Use provider-reported input counts for count correction
+and bracket coordinates; only explicit comparable token-size refusals establish upper bounds.
+Retrieval mistakes, early stopping, timeouts and quotas never establish a refused size.
+
+Add backward-compatible `sentinel_verification` (`passed`, `failed`, `not_checked`, legacy
+`unknown`) to discovery observations and expose it separately in the rolling issue. Grade a
+completed sentinel reply independently of usage evidence. Failed retrieval on an API-admitted
+request may retain the existing bounded/redacted failure preview; full successful bodies remain
+excluded. Trusting provider usage does not prove that every submitted token received model
+attention: failed sentinel checks remain an explicit retrieval/truncation warning for the
+maintainer. This does not add a blanket margin or automatically change route limits.
+
+The authenticated manual workflow adds `discovery_axis=all|input|output` (default `all`), wired to
+CLI `--discovery-axis`. Narrowed selection requires the existing exact candidate/manual activation
+gate, provider pause and evidence path. Filter requested axes against provider-supported axes;
+unsupported axes cannot become enabled by selection. Skipped axes report `not_selected`. An
+output-only run can resume compatible `output:v2` history from 24,576 in its own existing 20-minute
+session, including the existing two fresh baseline successes. Reachability/JSON checks still run
+and remain charged. Budgets, deadlines, concurrency, quotas and recurring-discovery gates remain
+unchanged; the selector narrows work rather than adding a quota override.
+
+Existing positive input observations remain stronger, compatible API-admission evidence. Old
+inconclusive observations are never retroactively upgraded, and absent sentinel metadata defaults
+to `unknown`. Output proof still requires the exact numeric fixture, actual generated counts and
+a length finish; combined axes remain deferred. Keep discovery parser/count/control identities
+compatible because original count coordinates and request fixtures are unchanged by this policy.
+The allowed implementation extends `discovery.py`, `rules.py`, `reconcile.py`, `issue.py`, the
+existing reconciliation script/workflow and their offline tests; no Worker/YAML/runtime changes.
+
+The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
+that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
+clients using the same upstream account. The maintainer explicitly accepted this bounded first
+canary with unknown/shared provider quota scope because the route is not yet configured for
+repo-managed jobs. The existing 64-submission, token-reservation and 20-minute session limits still
+apply; known published or configured limits and provider cooldowns are honored. Unknown scope and
+unreported quotas stay labeled unknown; this change does not infer or publish quota values.
+
+Authenticated `/apply` retry receipts remain restricted to the exact new candidate and its saved
+history. The daily workflow may resume an explicitly approved retry, but it does not scan fresh
+candidates for size discovery. The weekly schedule remains discovery-off. After reviewing the first
+route's reachability, usage, cap brackets, scope uncertainty, spend, deferrals and pause evidence,
+broader scheduled discovery requires a separate reviewed activation change. No config values are
+automatically added or changed.
+
+#### 8.13.6 Closed file/function plan and acceptance
 
 Allowed implementation files and responsibilities:
 
@@ -2233,11 +2479,13 @@ Allowed implementation files and responsibilities:
   integration, pending daily retry selection and separate budget accounting.
 - `citypods/provider_catalog/issue.py`, `apply.py`: result rendering, mutually exclusive retry
   choices, required-limit/dependency gating and no guessed provider-canonical facts.
-- `scripts/reconcile_provider_routes.py`: disabled discovery switch, pause renewal, history/receipt
-  loading, artifacts and shared run deadlines. `scripts/provider_catalog_commands.py`: authenticated
-  retry queueing and result receipts without provider calls; preserve ordinary `/apply` behavior.
+- `scripts/reconcile_provider_routes.py`: manual single-candidate discovery switch, pause renewal,
+  history/receipt loading, artifacts and shared run deadlines.
+  `scripts/provider_catalog_commands.py`: authenticated retry queueing and result receipts without
+  provider calls; preserve ordinary `/apply` behavior.
 - `.github/workflows/provider-catalog-reconcile.yml`, `provider-catalog-commands.yml`: explicit
-  discovery option, existing daily selection, bounded artifact uploads and receipt plumbing;
+  single-candidate discovery option, existing daily retry selection, bounded artifact uploads and
+  receipt plumbing;
   existing concurrency/security settings and configured-route canary authority stay intact.
 - New `tests/test_provider_catalog_discovery.py` and
   `tests/fixtures/provider_catalog/discovery/*.json`; existing catalog evidence/reconcile/apply/

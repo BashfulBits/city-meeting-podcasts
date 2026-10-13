@@ -1846,3 +1846,103 @@ def test_auto_score_histogram_places_boundary_values_in_the_upper_bucket():
     assert histogram["0.6-0.8"] == 1
     assert histogram["0.4-0.6"] == 1
     assert histogram["0.2-0.4"] == 1
+
+
+def _ts(seconds: float) -> str:
+    return f"00:{int(seconds // 60):02d}:{seconds % 60:06.3f}"
+
+
+def _provider_vtt(tmp_path: Path, cues: int, cue_seconds: float = 5.0) -> str:
+    lines = ["WEBVTT", ""]
+    for i in range(cues):
+        start, end = i * cue_seconds, (i + 1) * cue_seconds
+        lines.extend(
+            [
+                f"{_ts(start)} --> {_ts(end)}",
+                f"cue {i}",
+                "",
+            ]
+        )
+    path = tmp_path / "provider.vtt"
+    path.write_text("\n".join(lines))
+    return path.as_posix()
+
+
+def test_provider_align_sections_keep_vtt_cue_windows(tmp_path):
+    from citypods.transcript_quality import _provider_align_sections
+
+    ref = _provider_vtt(tmp_path, cues=4)
+    sections = _provider_align_sections(
+        {"audio_duration": 3000.0},
+        {"provider_source_ref": ref, "provider_source_format": "vtt"},
+    )
+    assert [(s["start"], s["end"]) for s in sections] == [
+        (0.0, 5.0),
+        (5.0, 10.0),
+        (10.0, 15.0),
+        (15.0, 20.0),
+    ]
+
+
+def test_provider_align_sections_untimed_text_is_one_full_duration_section(tmp_path):
+    from citypods.transcript_quality import _provider_align_sections
+
+    txt = tmp_path / "provider.txt"
+    txt.write_text("a long transcript with no time markers")
+    sections = _provider_align_sections(
+        {"audio_duration": 2561.0},
+        {"provider_source_ref": txt.as_posix(), "provider_source_format": "txt"},
+    )
+    assert [(s["start"], s["end"]) for s in sections] == [(0.0, 2561.0)]
+
+
+def test_oversized_provider_section_is_rejected_before_downloading_audio(tmp_path, monkeypatch):
+    from citypods import transcript_quality as tq
+    from citypods.asr import AlignmentQualityError
+
+    txt = tmp_path / "provider.txt"
+    txt.write_text("a long transcript with no time markers")
+
+    def _no_download(*_a, **_k):
+        raise AssertionError("audio must not be downloaded for an ineligible candidate")
+
+    monkeypatch.setattr(tq, "_download_audio_to_path", _no_download)
+    with pytest.raises(AlignmentQualityError, match="too long"):
+        tq._generate_provider_align_candidate(
+            {"audio_duration": 2561.0, "audio_url": "https://example.invalid/a.m4a"},
+            {"provider_source_ref": txt.as_posix(), "provider_source_format": "txt"},
+            city=None,  # type: ignore[arg-type]
+            work_dir=tmp_path,
+        )
+
+
+def test_evaluate_reports_align_ineligible_sample_as_skipped_not_failed(tmp_path, monkeypatch):
+    from citypods import transcript_quality as tq
+    from citypods.asr import AlignmentQualityError
+
+    def _ineligible(*_a, **_k):
+        raise AlignmentQualityError("alignment section is too long")
+
+    monkeypatch.setattr(tq, "_evaluate_one_sample", _ineligible)
+    result = evaluate_samples(
+        _manifest(tmp_path),
+        out_dir=tmp_path / "artifacts",
+        state_dir=tmp_path / "state",
+        config=QualityConfig(auto_margin_threshold=0.05),
+        cities_by_slug={},
+    )
+    assert result["errors"] == []
+    assert [s["sample_id"] for s in result["skipped"]] == ["sample-1"]
+    assert result["all_failed"] is False
+
+
+def test_sampler_excludes_episodes_production_marked_align_ineligible():
+    from citypods.transcript_quality import _episode_candidate_pair
+    from citypods.transcript_versions import PROVIDER_ALIGN_PIPELINE_VERSION
+
+    marker = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+
+    class _Ep:
+        provider_transcript = {"candidate": {"align_ineligible_pipeline_version": marker}}
+
+    assert _episode_candidate_pair(None, _Ep(), config=None) is None  # type: ignore[arg-type]

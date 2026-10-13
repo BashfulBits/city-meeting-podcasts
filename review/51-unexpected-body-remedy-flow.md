@@ -3757,8 +3757,14 @@ Do not edit production runtime/config, provider quotas, catalogs, credentials, f
 do not restart or interrupt the active legacy runner as part of this implementation PR.
 Update CHANGELOG, ARCHITECTURE and review/11 in the implementation change.
 
-#2409 prepared validation: 79 targeted tests and 5,848 offline tests passed (16 deselected).
-Whole Ruff/format passed across 533 files. A credentials-free plan over the actual saved history
+#2409 prepared validation after carrying current main: 79 targeted tests and 6,043 offline tests
+passed (16 deselected). Whole Ruff/format passed across 539 files. A credentials-free plan over
+the actual saved history
 reports 614/904 answered and makes all 83 unanswered non-Gemini failures eligible for bounded
 recovery. Live quotas are checked only on execution. No provider calls were launched during
 implementation; the legacy controller and original observations remain untouched.
+
+Implementation PR: [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410),
+dependent on #2277. The parent's single changelog conflict was resolved in an isolated checkout
+and carried forward. Current main's fragment convention applies: the lifecycle entry is in
+`changelog.d/2410-backfill-recovery.md`, compiled into CHANGELOG after human merge.

@@ -60,7 +60,12 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
+# New-route discovery is enabled only for an explicit, single-candidate workflow dispatch and
+# authenticated maintainer retries. Broad weekly discovery remains a separate activation gate.
+DISCOVERY_ACTIVATION_ENABLED = True
+DISCOVERY_SCHEDULED_ENABLED = False
 ANOMALY_VERDICTS = frozenset({"retired", "not_served", "not_entitled", "account_blocked"})
+RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say
 # nothing durable about the model, so those candidates are retried next run (after fresh ones).
 DEFINITIVE_VERDICTS = ANOMALY_VERDICTS | {"proven"}
@@ -135,6 +140,8 @@ class Candidate:
 
     evidence: dict[str, Any] | None = None
     evidence_digest: str | None = None
+    # Request-cap search is advisory and belongs only to newly discovered candidates.
+    discovery: dict[str, Any] | None = None
 
     @property
     def key(self) -> str:
@@ -156,6 +163,7 @@ class Anomaly:
     observed_on: str | None = None
     config_digest: str | None = None
     contended: bool = True
+    retirement_confirmation: dict[str, Any] | None = None
 
     @property
     def key(self) -> str:
@@ -176,6 +184,7 @@ class Report:
     context_states: list = field(default_factory=list)
     context_changes: list = field(default_factory=list)
     context_attempted_routes: set[str] = field(default_factory=set)
+    discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def actionable(self) -> bool:
@@ -345,8 +354,27 @@ def reconcile(
     rate_now: datetime | None = None,
     early_rate_checks: set[str] | None = None,
     context_run=None,
+    discovery_enabled: bool = False,
+    discovery_axis: str = "all",
+    discovery_history=(),
+    discovery_history_calls: Mapping[str, int] | None = None,
+    discovery_receipt_id: str | None = None,
+    discovery_receipt_ids: Mapping[str, str] | None = None,
+    discovery_run_id: str = "",
+    retry_candidate_keys: set[str] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor)
+    if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
+        raise ValueError("invalid discovery axis")
+    if discovery_axis != "all" and not (discovery_enabled and candidate_keys):
+        raise ValueError("axis selection requires an exact manual discovery candidate")
+    discovery_shared_budget = None
+    if discovery_enabled:
+        from citypods.provider_catalog.discovery import MAX_RUN_INPUT, DiscoveryBudget
+
+        discovery_shared_budget = DiscoveryBudget(
+            max_calls=128, max_input=MAX_RUN_INPUT, max_output=1_048_576
+        )
     rechecked_routes: set[str] = set()
     structured_checks = dict(previous_state.get("structured_checks") or {})
     canary_memory: dict[str, dict[str, Any]] = dict(previous_state.get("canaries") or {})
@@ -389,10 +417,14 @@ def reconcile(
             continue
         provider_routes = [r for r in routes if r.get("provider") == provider]
         # A daily run calls only providers with deferred routes or bounded early-check triggers.
-        if due_only and not any(
-            str(r.get("route_id")) in deferred
-            or str(r.get("route_id")) in (early_rate_checks or set())
-            for r in provider_routes
+        if (
+            due_only
+            and not any(
+                str(r.get("route_id")) in deferred
+                or str(r.get("route_id")) in (early_rate_checks or set())
+                for r in provider_routes
+            )
+            and not any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
         ):
             continue
         catalog = fetch_catalog(rules, cfg, session)
@@ -513,6 +545,18 @@ def reconcile(
             candidate.evidence_digest = candidate_digest(
                 RouteEvidence.from_dict(candidate.evidence), candidate.lanes
             )
+            if discovery_history:
+                candidate.discovery = _discovery_history_summary(
+                    provider,
+                    model,
+                    record,
+                    rules,
+                    cfg,
+                    discovery_history,
+                    (discovery_history_calls or {}).get(
+                        _candidate_discovery_identity(provider, model, rules, cfg), 0
+                    ),
+                )
             return candidate
 
         # --- configured-route health: one live route per upstream model -------------------------
@@ -549,27 +593,83 @@ def reconcile(
         candidates: list[tuple[str, Mapping[str, Any], float | None, bool]] = []
         configured_models = {str(r.get("upstream_model") or "") for r in provider_routes}
         configured_identities = {_identity(m, rules.free_suffix): m for m in configured_models if m}
-        if not due_only and not rules.observation_only and not catalog.error:
+        if (
+            (not due_only or retry_candidate_keys)
+            and not rules.observation_only
+            and not catalog.error
+        ):
+            retry_models_seen: set[str] = set()
+
+            def terminal_retry(
+                model,
+                record,
+                reason,
+                calls=0,
+                _provider=provider,
+                _cfg=cfg,
+                _rules=rules,
+            ):
+                key = f"{_provider}/{model}"
+                receipt_id = (discovery_receipt_ids or {}).get(key)
+                if (
+                    not discovery_enabled
+                    or not receipt_id
+                    or key not in (retry_candidate_keys or set())
+                    or any(
+                        row.get("session", {}).get("receipt_id") == receipt_id
+                        for row in report.discovery_sessions
+                    )
+                ):
+                    return
+                report.discovery_sessions.append(
+                    _terminal_discovery_session(
+                        _provider,
+                        model,
+                        record,
+                        _cfg,
+                        _rules,
+                        run_id=discovery_run_id or "local",
+                        today=today,
+                        receipt_id=receipt_id,
+                        reason=reason,
+                        calls=calls,
+                    )
+                )
+
             for model, record in sorted(catalog.models.items()):
-                if candidate_keys is not None and f"{provider}/{model}" not in candidate_keys:
+                key = f"{provider}/{model}"
+                if key in (retry_candidate_keys or set()):
+                    retry_models_seen.add(key)
+                if candidate_keys is not None and key not in candidate_keys:
                     continue
-                if model in configured_models or not rules.chat_filter(model, record):
+                if retry_candidate_keys is not None and key not in retry_candidate_keys:
+                    continue
+                if model in configured_models:
+                    terminal_retry(model, record, "route_already_configured")
+                    continue
+                if not rules.chat_filter(model, record):
+                    terminal_retry(model, record, "unsupported_chat_route")
                     continue
                 if decisions.is_ignored(provider, model, today):
+                    terminal_retry(model, record, "route_ignored_by_maintainer")
                     continue
                 alias_of = configured_identities.get(_identity(model, rules.free_suffix))
                 if alias_of:
+                    terminal_retry(model, record, "route_alias_already_configured")
                     continue  # the same model under another name is already configured
                 context = _context_limit(record)
                 if context is not None and context < min_context:
+                    terminal_retry(model, record, "catalog_context_below_candidate_floor")
                     continue
                 free = rules.free_evidence(model, record, ctx) if rules.free_evidence else False
                 if free is False:
+                    terminal_retry(model, record, "free_route_evidence_no_longer_eligible")
                     continue
                 memory = canary_memory.get(f"{provider}/{model}")
                 age = _days_since(memory.get("on") if memory else None, today)
                 remembered = (
                     candidate_keys is None
+                    and retry_candidate_keys is None
                     and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
@@ -598,6 +698,16 @@ def reconcile(
                     continue
                 score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
                 candidates.append((model, record, score, memory is not None))
+            for key in retry_candidate_keys or set():
+                provider_prefix, separator, model = key.partition("/")
+                if (
+                    provider_prefix == provider
+                    and separator
+                    and model
+                    and key not in retry_models_seen
+                    and not catalog.error
+                ):
+                    terminal_retry(model, {}, "route_absent_from_current_catalog")
             # Never-tried first, then retries of inconclusive results; best-scored first within
             # each, unscored last. So a candidate that keeps failing cannot starve new ones.
             candidates.sort(key=lambda c: (c[3], c[2] is None, -(c[2] or 0), c[0]))
@@ -857,7 +967,56 @@ def reconcile(
                             pause.contended,
                         )
                     )
+                    candidate = report.candidates[-1]
+                    if (
+                        discovery_enabled
+                        and not pause.contended
+                        and len(report.discovery_sessions) < 2
+                        and not any(
+                            row.get("session", {}).get("provider") == provider
+                            for row in report.discovery_sessions
+                        )
+                    ):
+                        try:
+                            session_record = _discover_candidate_caps(
+                                candidate,
+                                record,
+                                provider_cfg=cfg,
+                                rules=rules,
+                                pause=pause,
+                                session=session,
+                                today=today,
+                                run_id=discovery_run_id,
+                                receipt_id=(discovery_receipt_ids or {}).get(
+                                    candidate.key, discovery_receipt_id
+                                ),
+                                history=discovery_history,
+                                shared_budget=discovery_shared_budget,
+                                selected_axes=(discovery_axis,)
+                                if discovery_axis != "all"
+                                else None,
+                                sleep=sleep,
+                            )
+                            candidate.discovery = session_record["summary"]
+                            report.discovery_sessions.append(session_record["artifact"])
+                        except Exception as exc:
+                            # Discovery is advisory; preserve the proven reachability result.
+                            candidate.discovery = {
+                                "retryable": False,
+                                "reason": "discovery_stopped_safely",
+                                "detail": f"Search stopped safely ({type(exc).__name__}).",
+                                "axes": [],
+                                "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                            }
                 else:
+                    terminal_retry(
+                        model,
+                        record,
+                        "reachability_not_proven",
+                        1 + len((_evidence or {}).get("methods") or ()),
+                    )
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
@@ -1081,7 +1240,10 @@ def _merge_into_last_full(
         if c.get("structured_output_method")
     ]
     report.anomalies = carried + report.anomalies
-    report.candidates = candidates + report.candidates
+    current_candidates = report.candidates
+    current_keys = {candidate.key for candidate in current_candidates}
+    report.candidates = [candidate for candidate in candidates if candidate.key not in current_keys]
+    report.candidates.extend(current_candidates)
     report.observations = list(last_full.get("observations") or []) + report.observations
 
 
@@ -1109,6 +1271,355 @@ def _candidate(
         structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
+
+
+def _candidate_discovery_identity(provider, model, rules, provider_cfg):
+    from citypods.provider_catalog.discovery import discovery_identity
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts:
+        return ""
+    return discovery_identity(
+        provider, str(accounts[0].get("id") or ""), model, chat_url(rules, provider_cfg)
+    )
+
+
+def _terminal_discovery_session(
+    provider, model, record, provider_cfg, rules, *, run_id, today, receipt_id, reason, calls=0
+):
+    """Record a selected retry that reached a terminal eligibility result without size probes."""
+    from citypods.provider_catalog.discovery import discovery_identity
+    from citypods.provider_catalog.evidence import digest
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    account_id = str(accounts[0].get("id") or "") if accounts else ""
+    endpoint = chat_url(rules, provider_cfg)
+    identity = discovery_identity(provider, account_id, model, endpoint)
+    key = f"{provider}/{model}"
+    metadata = {
+        "session_id": digest([run_id, receipt_id, key, identity, today.isoformat(), reason]),
+        "identity": identity,
+        "provider": provider,
+        "account_id": account_id,
+        "upstream_model": model,
+        "endpoint": endpoint,
+        "catalog_digest": digest(record),
+        "free_evidence_digest": digest([provider, model, record]),
+        "parser_version": rules.discovery_parser_version,
+        "fixture_version": "discovery-v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "sources": [
+            rules.catalog.url
+            or f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+        ],
+        "receipt_id": receipt_id,
+    }
+    if calls:
+        metadata["reachability_calls"] = calls
+    return {"session": metadata, "attempts": [], "reason": reason}
+
+
+def _discovery_claims(record):
+    """Extract the same published size claims for fresh and history-built reports."""
+    return {
+        "input": positive_bound(
+            record, ("inputTokenLimit", "max_input_tokens", "input_context_limit")
+        ),
+        "output": positive_bound(
+            record,
+            (
+                "outputTokenLimit",
+                "max_output_tokens",
+                "max_completion_tokens",
+                "top_provider.max_completion_tokens",
+                "output_context_limit",
+            ),
+        ),
+        "total_input_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+        "total_output_heavy": positive_bound(
+            record, ("context_length", "context_window", "max_context_length")
+        ),
+    }
+
+
+def _discovery_history_summary(
+    provider, model, record, rules, provider_cfg, history, history_calls=0
+):
+    from citypods.provider_catalog.discovery import (
+        Bracket,
+        default_discovery_seed,
+        discovery_identity,
+    )
+    from citypods.provider_catalog.probe import chat_url
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts:
+        return None
+    identity = discovery_identity(
+        provider, str(accounts[0].get("id") or ""), model, chat_url(rules, provider_cfg)
+    )
+    source = rules.catalog.url or (
+        f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+    )
+    compatible = [
+        item
+        for item in history
+        if item.request.identity == identity
+        and item.request.parser_version == rules.discovery_parser_version
+        and item.request.fixture_version == "discovery-v1"
+    ]
+    if not compatible:
+        return None
+    claims = _discovery_claims(record)
+    axes = []
+    for axis in ("input", "output", "total_input_heavy", "total_output_heavy"):
+        bracket = Bracket(axis, default_discovery_seed(axis))
+        for item in compatible:
+            if item.request.axis == axis:
+                bracket.observe(item)
+        summary = bracket.summary()
+        summary["published"] = claims[axis]
+        summary["source"] = source
+        axes.append(summary)
+    return {
+        "retryable": bool(compatible)
+        and any(
+            row["axis"] in rules.discovery_axes and row["status"] != "converged" for row in axes
+        ),
+        "reason": "partial",
+        "detail": "Bounds are rebuilt from authenticated, compatible provider observations.",
+        "reachability": "verified",
+        "calls": history_calls or len(compatible),
+        "input_tokens": sum(item.request.input_tokens for item in compatible),
+        "output_tokens": sum(item.request.output_tokens for item in compatible),
+        "axes": axes,
+        "attempt_diagnostics": _discovery_attempt_diagnostics(compatible),
+    }
+
+
+def _discovery_attempt_diagnostics(attempts):
+    """Keep recent bounded response metadata visible with the candidate's discovery result."""
+    rows = []
+    for item in list(attempts)[-12:]:
+        if isinstance(item, Mapping):
+            request_data = item.get("request") or {}
+            observation_data = item.get("observation") or {}
+        else:
+            request_data = item.request
+            observation_data = item
+
+        def field(data, key):
+            return data.get(key) if isinstance(data, Mapping) else getattr(data, key, None)
+
+        rows.append(
+            {
+                "axis": field(request_data, "axis"),
+                "target": field(request_data, "target"),
+                "reserved_input": field(request_data, "input_tokens"),
+                "requested_output": field(request_data, "output_tokens"),
+                "outcome": field(observation_data, "outcome"),
+                "diagnostic": field(observation_data, "diagnostic"),
+                "response_status": field(observation_data, "response_status"),
+                "response_media_type": field(observation_data, "response_media_type"),
+                "response_bytes": field(observation_data, "response_bytes"),
+                "message_content_state": field(observation_data, "message_content_state"),
+                "finish_reason_state": field(observation_data, "finish_reason_state"),
+                "finish_reason": field(observation_data, "finish_reason"),
+                "usage_state": field(observation_data, "usage_state"),
+                "sentinel_verification": field(observation_data, "sentinel_verification"),
+                "reported_input": field(observation_data, "reported_input"),
+                "reported_output": field(observation_data, "reported_output"),
+                "provider_request_id": field(observation_data, "provider_request_id"),
+                "response_id": field(observation_data, "response_id"),
+                "response_preview": field(observation_data, "response_preview"),
+            }
+        )
+    return rows
+
+
+def _discover_candidate_caps(
+    candidate,
+    record,
+    *,
+    provider_cfg,
+    rules,
+    pause,
+    session,
+    today,
+    run_id,
+    receipt_id,
+    history,
+    shared_budget,
+    sleep,
+    selected_axes=None,
+):
+    """Run the separate, charged size search only after candidate reachability is proven."""
+    import secrets
+    import tempfile
+    from pathlib import Path
+
+    from citypods.provider_catalog.discovery import (
+        DiscoveryBudget,
+        DiscoveryJournal,
+        discovery_identity,
+        run_discovery,
+    )
+    from citypods.provider_catalog.evidence import digest
+    from citypods.provider_catalog.probe import (
+        account_key,
+        build_discovery_request,
+        chat_url,
+        measure_discovery,
+    )
+
+    accounts = provider_cfg.get("accounts") or []
+    if not accounts or not isinstance(accounts[0], Mapping):
+        raise ValueError("candidate has no verified provider account")
+    account_id = str(accounts[0].get("id") or "")
+    if not account_id or not account_key(provider_cfg, account_id):
+        raise ValueError("candidate provider account is unavailable")
+    endpoint = chat_url(rules, provider_cfg)
+    identity = discovery_identity(candidate.provider, account_id, candidate.model, endpoint)
+    # Count the completed reachability call and each structural-output call against the
+    # per-candidate submission ceiling; their prompt sizes are not request-cap reservations.
+    evidence = candidate.evidence or {}
+    reachability_calls = 1 + len(evidence.get("methods") or ())
+    session_id = digest(
+        [run_id, receipt_id, candidate.key, identity, today.isoformat(), secrets.token_hex(16)]
+    )
+    metadata = {
+        "session_id": session_id,
+        "identity": identity,
+        "provider": candidate.provider,
+        "account_id": account_id,
+        "upstream_model": candidate.model,
+        "endpoint": endpoint,
+        "catalog_digest": digest(record),
+        "free_evidence_digest": digest([candidate.provider, candidate.model, record]),
+        "parser_version": rules.discovery_parser_version,
+        "fixture_version": "discovery-v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "sources": [
+            rules.catalog.url
+            or f"{provider_cfg.get('api_base', '').rstrip('/')}/{rules.catalog.path.lstrip('/')}"
+        ],
+        "receipt_id": receipt_id,
+        "reachability_calls": reachability_calls,
+    }
+    route = {
+        "provider": candidate.provider,
+        "account_id": account_id,
+        "upstream_model": candidate.model,
+        "route_id": candidate.key,
+    }
+    nonce = secrets.token_hex(32)
+    # Token reservations below describe the size-search requests, which carry the
+    # explicit measured token sizes.
+    budget = DiscoveryBudget(calls=reachability_calls)
+    if shared_budget is not None:
+        shared_budget.calls += reachability_calls
+    # Reachability/structured-output checks just completed; space the first size probe too.
+    last_submission = time.monotonic()
+    try:
+        provider_rpm = float(provider_cfg.get("rpm") or 0)
+    except (TypeError, ValueError):
+        provider_rpm = 0
+    interval = max(
+        rules.canary_interval_seconds,
+        60 / provider_rpm if provider_rpm > 0 else 0,
+    )
+
+    def measure(request, before_call, timeout):
+        def paced_admission():
+            nonlocal last_submission
+            if last_submission is not None and interval:
+                pause.renew()
+                sleep(max(0, interval - (time.monotonic() - last_submission)))
+            receipt = before_call()
+            last_submission = time.monotonic()
+            return receipt
+
+        transient = build_discovery_request(request, route, provider_cfg, rules, nonce=nonce)
+        return measure_discovery(
+            request,
+            transient,
+            rules,
+            session=session,
+            before_call=paced_admission,
+            clock=time.monotonic,
+            timeout=timeout,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="citypods-discovery-") as folder:
+        journal = DiscoveryJournal(Path(folder) / "checkpoint.json", metadata)
+        try:
+            result = run_discovery(
+                session_id=session_id,
+                identity=identity,
+                parser_version=rules.discovery_parser_version,
+                supported_axes=rules.discovery_axes,
+                selected_axes=selected_axes,
+                measure=measure,
+                renew=pause.renew,
+                journal=journal,
+                history=history,
+                budget=budget,
+                shared_budget=shared_budget,
+                sleep=sleep,
+            )
+        except Exception as exc:
+            # Preserve charged attempts even if orchestration fails after admission.
+            reason = f"discovery_stopped_safely:{type(exc).__name__}"
+            journal.data["reason"] = reason
+            journal.save()
+            result = None
+        axes = []
+        claims = _discovery_claims(record)
+        for bracket in result.brackets if result is not None else ():
+            axes.append(
+                {
+                    **bracket,
+                    "axis": bracket["axis"],
+                    "published": claims.get(bracket["axis"]),
+                    "source": metadata["sources"][0],
+                }
+            )
+        summary = {
+            "retryable": bool(journal.data["attempts"])
+            and (
+                result is None
+                or any(
+                    row["axis"] in rules.discovery_axes and row["status"] != "converged"
+                    for row in axes
+                )
+            ),
+            "reason": result.reason if result is not None else journal.data["reason"],
+            "detail": "Only verified comparable accepted and refused counts establish a cap.",
+            "reachability": "verified",
+            "calls": reachability_calls + len(journal.data["attempts"]),
+            "input_tokens": sum(row["request"]["input_tokens"] for row in journal.data["attempts"]),
+            "output_tokens": sum(
+                row["request"]["output_tokens"] for row in journal.data["attempts"]
+            ),
+            "axes": axes,
+            "attempt_diagnostics": _discovery_attempt_diagnostics(journal.data["attempts"]),
+        }
+        if result is not None and result.transport_retries:
+            summary["transport_retries"] = [
+                [dict(attempt) for attempt in group] for group in result.transport_retries
+            ]
+        return {
+            "summary": summary,
+            "artifact": {
+                "session": metadata,
+                "attempts": journal.data["attempts"],
+                "reason": result.reason if result is not None else journal.data["reason"],
+            },
+        }
 
 
 def _record_health(
@@ -1151,6 +1662,132 @@ def _record_health(
     )
     anomaly.new = anomaly.key not in known
     report.anomalies.append(anomaly)
+
+
+def confirm_retirement_candidates(
+    report: Report,
+    limits: Mapping[str, Any],
+    *,
+    session: requests.Session,
+    control: DispatchControl,
+    today: date,
+    canary_fn: CanaryFn = canary,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Make an independent exact-account request before a removal can be recommended.
+
+    The normal reconciliation canary is the initial signal. A second request is made only for a
+    complete same-day catalog absence plus a definitive retired/not-served result, while that
+    provider is paused. The second result must repeat the same verdict; any other outcome leaves
+    the anomaly unconfirmed so retirement planning fails closed.
+    """
+    routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
+    by_id = {str(route.get("route_id")): route for route in routes}
+    rules_by_provider = all_rules()
+    providers = limits.get("providers") or {}
+    for anomaly in report.anomalies:
+        if anomaly.verdict not in RETIREMENT_VERDICTS or not anomaly.absent_from_catalog:
+            continue
+        catalog = (report.state.get("catalogs") or {}).get(anomaly.provider) or {}
+        records = catalog.get("models")
+        if (
+            catalog.get("provider") != anomaly.provider
+            or catalog.get("observed_at") != today.isoformat()
+            or catalog.get("complete") is not True
+            or not isinstance(records, (list, tuple))
+            or any(not isinstance(record, (list, tuple)) or len(record) != 6 for record in records)
+            or any(record[0] == anomaly.model for record in records)
+        ):
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "current complete catalog absence is not verified"
+            )
+            continue
+        route = by_id.get(anomaly.route_id)
+        if (
+            not route
+            or route.get("provider") != anomaly.provider
+            or route.get("upstream_model") != anomaly.model
+            or anomaly.config_digest != digest(route)
+        ):
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "route identity or digest does not match the current config"
+            )
+            continue
+        rules = rules_by_provider.get(anomaly.provider)
+        provider_cfg = providers.get(anomaly.provider)
+        if not rules or not provider_cfg:
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "provider configuration is unavailable"
+            )
+            continue
+        api_key = account_key(provider_cfg, route.get("account_id"))
+        if not api_key:
+            report.observations.append(
+                f"{anomaly.route_id}: fresh removal confirmation skipped; "
+                "the exact route account has no configured credential"
+            )
+            continue
+        rid = anomaly.route_id
+        try:
+            scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
+        except (TypeError, ValueError):
+            scarce = True
+        confirmation_data: dict[str, Any] | None = None
+        with control.paused(anomaly.provider) as pause:
+            if pause.contended:
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation deferred; provider dispatch pause contended"
+                )
+                continue
+            quota = control.route_quota(anomaly.provider).get(rid) or {}
+            remaining = quota.get("rpd_remaining")
+            if scarce and (remaining is None or remaining <= 0):
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation deferred; "
+                    "daily quota is unavailable or spent"
+                )
+                continue
+            if rules.canary_interval_seconds:
+                sleep(rules.canary_interval_seconds)
+            pause.renew()
+            control.reserve(rid)
+            response = canary_fn(rules, provider_cfg, anomaly.model, api_key, session)
+            confirmation = classify(response, rules)
+            checked_at = datetime.now(UTC).isoformat()
+            if confirmation.verdict != anomaly.verdict:
+                report.observations.append(
+                    f"{rid}: fresh removal confirmation did not repeat {anomaly.verdict}; "
+                    f"observed {confirmation.verdict} at {checked_at}; removal deferred"
+                )
+                continue
+            confirmation_data = {
+                "provider": anomaly.provider,
+                "account_id": route.get("account_id"),
+                "route_id": rid,
+                "model": anomaly.model,
+                "config_digest": anomaly.config_digest,
+                "verdict": confirmation.verdict,
+                "status": response.status,
+                "checked_at": checked_at,
+            }
+        # paused() records expiry in its context-manager exit path, so the final contention
+        # decision must happen after leaving the block. A result from an expired pause is not
+        # independent of production dispatch and cannot support a removal recommendation.
+        if pause.contended:
+            report.observations.append(
+                f"{rid}: fresh removal confirmation deferred; pause expired before completion"
+            )
+            continue
+        assert confirmation_data is not None
+        confirmation_data["contended"] = False
+        anomaly.retirement_confirmation = confirmation_data
+        report.observations.append(
+            f"{rid}: independent removal confirmation repeated {confirmation.verdict} "
+            f"at {checked_at} for account {route.get('account_id')}"
+        )
 
 
 @dataclass

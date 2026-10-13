@@ -41,7 +41,8 @@ When you implement from an L3 `review/NN` doc:
    - a test the doc specifies cannot pass as written, or a golden value differs from what the code produces;
    - a result is surprising (live data, limits, costs) or a step would change production behaviour, spend quota, or touch credentials.
 3. Do not widen scope to fix unrelated problems you notice; record them in the PR description as follow-ups.
-4. Finish with the doc-update contract (below): update `review/11`, `CHANGELOG.md`, and `ARCHITECTURE.md` as the doc lists.
+4. Finish with the doc-update contract (below): update `review/11`, `changelog.d/`, and
+   `ARCHITECTURE.md` as the doc lists.
 
 ## GitHub execution metadata
 
@@ -73,11 +74,15 @@ When you move a feature along the pipeline, update the listed docs in the **same
 | Committed to near-term | `ROADMAP.md` + `review/11` catalog (L1 sketch inline) |
 | Designed (approach chosen) | break out to `review/NN`; `review/11` entry → L2 + link |
 | Development-ready | mature `review/NN` to L3; cut GitHub Issue(s); `review/11` → L3 |
-| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
+| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add a **changelog fragment in `changelog.d/<slug>.md`** (do NOT edit `CHANGELOG.md` directly); update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 
 `review/11` is a **living** document; `review/00–10` and frozen breakouts are point-in-time records.
 
 ## Conventions you must respect
+
+- **Changelog fragments (`changelog.d/`)** — never edit `CHANGELOG.md` directly in a PR. Add
+  `changelog.d/<id>-<slug>.md` instead. This ensures concurrent PRs rebase cleanly on main
+  without merge conflicts. A GitHub Action compiles fragments into `CHANGELOG.md` upon merge.
 
 - **Append-only records** (`records.merge_persisted`) — never drop archived meetings (#52).
 - **Split hashes** — `audio_spec_hash` (bytes) vs `feed_content_hash` (RSS) invalidate independently;
@@ -97,7 +102,9 @@ When you move a feature along the pipeline, update the listed docs in the **same
   can queue weeks of catalog rework; one that *doesn't* can leave a stale-format catalog while the docs
   claim otherwise — both have bitten this project.
 - **Dependencies are pinned; adding one has a contract.** Declare `>=` floors in `pyproject.toml`,
-  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`), never re-declare deps in the
+  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`, which regenerates the per-lane
+  `constraints/*.in`), set workflow Pythons only via the two `.python-version` files (never a
+  `python-version:` literal; `scripts/python_lanes.py` enforces it), never re-declare deps in the
   external-worker image builders, and treat *output-affecting* bumps (`faster-whisper`, `ctranslate2`,
   `stable-ts`, `Pillow`, ffmpeg, base image, model revisions) as version-coupled per the rule above.
   Full policy + the light-touch update flow: [`review/22`](review/22-dependency-and-reproducibility-policy.md).
