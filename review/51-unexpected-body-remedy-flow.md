@@ -3887,3 +3887,33 @@ suggested-assignment comparison after full GLM completes. Keep those results sep
 from the new60-recording body-selection scores. Defer production model recommendations
 and selection until the new experiment is scored. Body-selection work is retained in
 draft PR#2413, dependent on#2411, while immutable results accumulate.
+
+
+### P1 concurrent evaluation call priority — L3, approved 2026-10-13
+
+Maintainer approved 50–75% of contested provider-call slots for the older113-question
+comparison until it finishes. Choose two older submissions per one new submission
+(66.7%) when both runs are eligible. An older cooldown, quota wait, exhausted/held
+allowance or completed/stopped controller releases unused slots to body selection.
+This corrects shared-lock starvation; it changes neither provider capacity nor retry limits.
+
+Implement evaluation-only call_priority.py beside the body-selection runner, its explicit
+--priority-results-dir option, tests/test_remedy_body_selection.py and lifecycle docs.
+Persist the exact older results directory, manifest hash, controller run ID, initial
+submitted-attempt counter and new contested attempt IDs. Count older submitted attempts,
+including failed calls, rather than successful answers. Never reset allocation on resume;
+a changed controller identity/counter or stale/unreadable status holds new calls for review.
+The older runner_busy state represents eligible work despite its five-minute lock retry.
+Yield before acquiring the shared provider lock and recheck under that lock. Deferred
+preflight checks consume no slot. Borrowed calls during older capacity/cooldown waits
+consume no reserved new slot; publish allocation/wait reasons in controller-status.json.
+Use the existing controller lock to detect an older controller that has stopped.
+
+Move the new runner to the tested checkout only after taking its shared call lock,
+which proves its current provider call has finished. Interrupt the idle new controller,
+then resume with the same result directory, deadline, intents and bounded retry counters.
+Do not interrupt the older controller or any submitted request. No production files,
+model routes, prompts, gold answers, credentials, quota limits or admission rules change.
+Tests cover two-to-one contention, retries counting as slots, borrowing during cooldown,
+completion/stopping, stale or changed state, resume and zero-call preflight deferrals.
+Run targeted tests, full offline suite, whole Ruff/format and fragment validation before push.
