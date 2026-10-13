@@ -234,6 +234,9 @@ def _discovery_attempt_diagnostics(value):
         ):
             number = row.get(name)
             row[name] = number if type(number) is int and 0 <= number <= 4 * 1024 * 1024 else None
+        for name, bound in (("stream_bytes", 64 * 1024 * 1024), ("stream_events", 1_000_000)):
+            value = row.get(name)
+            row[name] = value if type(value) is int and 0 <= value <= bound else None
         status = row.get("response_status")
         row["response_status"] = status if type(status) is int and 100 <= status <= 599 else None
         for name in ("provider_request_id", "response_id"):
@@ -489,9 +492,10 @@ def render_body(
                     "bounded preview on failed attempts):",
                     "",
                     "| Axis / target | Outcome / diagnostic | HTTP / media / bytes | "
-                    "Content / finish / usage | Provider counts | Sentinel accuracy | "
+                    "Content / finish / usage | Provider counts | Stream bytes / events | "
+                    "Sentinel accuracy | "
                     "Correlation IDs | Preview |",
-                    "|---|---|---|---|---:|---|---|---|",
+                    "|---|---|---|---|---:|---|---|---|---|",
                 ]
                 for attempt in attempts:
                     status = attempt["response_status"] or "—"
@@ -515,6 +519,8 @@ def render_body(
                         f"{attempt['message_content_state']} / "
                         f"{attempt['finish_reason_state']} ({attempt['finish_reason']}) / "
                         f"{attempt['usage_state']} | {counts} | "
+                        f"{_discovery_count(attempt['stream_bytes'])} / "
+                        f"{_discovery_count(attempt['stream_events'])} | "
                         f"{attempt['sentinel_verification']} | {ids} | "
                         f"{attempt['response_preview'] or '—'} |"
                     )

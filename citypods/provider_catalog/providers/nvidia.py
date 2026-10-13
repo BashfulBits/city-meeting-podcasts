@@ -109,9 +109,21 @@ def discovery_output_min_tokens(endpoint: str, model: str) -> bool:
     )
 
 
+def discovery_output_stream_usage(endpoint: str, model: str) -> bool:
+    """Verified hosted SSE/final-usage capability; independent from minimum-generation support.
+
+    https://docs.nvidia.com/nim/large-language-models/2.0.10/reference/api-reference.html
+    """
+    return (
+        endpoint == "https://integrate.api.nvidia.com/v1/chat/completions"
+        and model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    )
+
+
 RULES = ProviderRules(
     discovery_axes=("input", "output"),
     discovery_output_min_tokens=discovery_output_min_tokens,
+    discovery_output_stream_usage=discovery_output_stream_usage,
     discovery_parser_version="nvidia-discovery-chat-v1",
     discovery_observation=discovery_observation,
     model_identity=namespaced_identity(""),

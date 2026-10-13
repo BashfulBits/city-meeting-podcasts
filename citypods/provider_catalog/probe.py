@@ -958,6 +958,110 @@ def _context_envelope(raw, content_type):
     )
 
 
+class DiscoverySSECollector:
+    """Incremental discovery-only SSE; transport overhead never becomes retained answer text."""
+
+    MAX_WIRE = 64 * 1024 * 1024
+    MAX_FRAME = 128 * 1024
+    MAX_EVENTS = 1_000_000
+
+    def __init__(self):
+        self.pending = bytearray()
+        self.content = bytearray()
+        self.content_bytes = 0
+        self.wire_bytes = 0
+        self.events = 0
+        self.usage = None
+        self.finish = None
+        self.done = False
+
+    def feed(self, chunk):
+        self.wire_bytes += len(chunk)
+        if self.wire_bytes > self.MAX_WIRE:
+            raise ContextEnvelopeError("stream_bytes_exceeded")
+        self.pending.extend(chunk)
+        self.pending = bytearray(self.pending.replace(b"\r\n", b"\n"))
+        while (end := self.pending.find(b"\n\n")) >= 0:
+            if end > self.MAX_FRAME:
+                raise ContextEnvelopeError("stream_frame_exceeded")
+            frame = bytes(self.pending[:end]).decode("utf-8", errors="strict")
+            del self.pending[: end + 2]
+            self._frame(frame)
+        if len(self.pending) > self.MAX_FRAME:
+            raise ContextEnvelopeError("stream_frame_exceeded")
+
+    def _frame(self, frame):
+        self.events += 1
+        if self.events > self.MAX_EVENTS:
+            raise ContextEnvelopeError("stream_events_exceeded")
+        lines = [line[5:].strip() for line in frame.split("\n") if line.startswith("data:")]
+        if not lines:
+            return
+        if self.done:
+            raise ContextEnvelopeError("invalid_sse_envelope")
+        value = "\n".join(lines)
+        if value == "[DONE]":
+            self.done = True
+            return
+        try:
+            event = strict_context_json(value)
+        except (TypeError, ValueError) as exc:
+            raise ContextEnvelopeError("invalid_sse_json") from exc
+        if (
+            not isinstance(event, dict)
+            or event.get("object") != "chat.completion.chunk"
+            or event.get("error")
+        ):
+            raise ContextEnvelopeError("invalid_sse_envelope")
+        if event.get("usage") is not None:
+            if self.usage is not None:
+                raise ContextEnvelopeError("conflicting_sse_usage")
+            self.usage = event["usage"]
+        choices = event.get("choices")
+        if not isinstance(choices, list) or len(choices) > 1:
+            raise ContextEnvelopeError("invalid_sse_choice")
+        if not choices:
+            return
+        choice = choices[0]
+        if not isinstance(choice, dict) or choice.get("error") or choice.get("index", 0) != 0:
+            raise ContextEnvelopeError("invalid_sse_choice")
+        delta = choice.get("delta")
+        if not isinstance(delta, dict) or delta.get("tool_calls") or delta.get("refusal"):
+            raise ContextEnvelopeError("invalid_sse_delta")
+        for key in ("reasoning_content", "reasoning", "content"):
+            if delta.get(key) is not None and not isinstance(delta[key], str):
+                raise ContextEnvelopeError("invalid_sse_content")
+        if delta.get("content") is not None:
+            content = delta["content"]
+            self.content_bytes += len(content.encode("utf-8"))
+            if self.content_bytes > _CONTEXT_BYTES:
+                raise ContextEnvelopeError("stream_content_exceeded")
+            self.content.extend(content.encode("utf-8"))
+        if choice.get("finish_reason") is not None:
+            if self.finish is not None and self.finish != choice["finish_reason"]:
+                raise ContextEnvelopeError("conflicting_sse_finish_reason")
+            self.finish = choice["finish_reason"]
+
+    def complete(self):
+        if self.pending.strip() or not self.done or self.usage is None or self.finish is None:
+            raise ContextEnvelopeError("incomplete_sse")
+        body = json.dumps(
+            {
+                "object": "chat.completion",
+                "usage": self.usage,
+                "choices": [
+                    {
+                        "finish_reason": self.finish,
+                        "message": {"content": self.content.decode("utf-8")},
+                    }
+                ],
+            }
+        )
+        if len(body.encode("utf-8")) > _CONTEXT_BYTES:
+            raise ContextEnvelopeError("stream_content_exceeded")
+        return body
+
+
 def _collect_context(
     session,
     request,
@@ -967,6 +1071,7 @@ def _collect_context(
     *,
     retain_error_body=False,
     retain_response_preview=False,
+    discovery_stream=False,
 ):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
     from citypods.provider_catalog.registry import rules_for
@@ -974,6 +1079,8 @@ def _collect_context(
     started = clock()
     started_at_ms = time.time_ns() // 1_000_000
     response = None
+    sse = None
+    normalized_bytes = 0
     raw = bytearray()
     raw_size = 0
     first_byte_ms = None
@@ -991,15 +1098,24 @@ def _collect_context(
         diagnostics = {
             "diagnostic_code": code,
             "response_media_type": _response_media_type(response_headers),
-            "response_bytes": min(raw_size, _CONTEXT_BYTES),
+            "response_bytes": normalized_bytes
+            if sse is not None
+            else min(raw_size, _CONTEXT_BYTES),
             "duration_ms": min(120_000, max(0, round((clock() - started) * 1000))),
             "first_byte_ms": first_byte_ms,
             "request_started_at_ms": started_at_ms,
             "request_finished_at_ms": finished_at_ms,
             **rules_for(request.provider).context_rate_diagnostics(response_headers),
         }
+        if sse is not None:
+            diagnostics["stream_bytes"] = min(sse.wire_bytes, sse.MAX_WIRE)
+            diagnostics["stream_events"] = min(sse.events, sse.MAX_EVENTS)
         if request_id := _context_provider_request_id(response_headers):
             diagnostics["provider_request_id"] = request_id
+        if retain_response_preview and sse is not None and body:
+            diagnostics["response_preview"] = _discovery_response_excerpt(
+                body.encode("utf-8"), request, headers
+            )
         if retain_response_preview and raw:
             diagnostics["response_preview"] = _discovery_response_excerpt(raw, request, headers)
         if retain_error_body and status is not None and status >= 400:
@@ -1029,12 +1145,19 @@ def _collect_context(
             allow_redirects=False,
             timeout=(min(20, timeout), timeout),
         )
+        if discovery_stream and response.status_code == 200:
+            if _response_media_type(response.headers) != "text/event-stream":
+                return result(response.status_code, code="stream_media_type_mismatch")
+            sse = DiscoverySSECollector()
         for chunk in response.iter_content(chunk_size=16384):
             if first_byte_ms is None:
                 first_byte_ms = min(120_000, max(0, round((clock() - started) * 1000)))
             if clock() - started >= timeout:
                 raw_size = len(raw)
                 return result(response.status_code, timed_out=True, code="transport_timeout")
+            if sse is not None:
+                sse.feed(chunk)
+                continue
             if len(raw) + len(chunk) > _CONTEXT_BYTES:
                 raw_size = len(raw) + len(chunk)
                 return result(
@@ -1046,6 +1169,10 @@ def _collect_context(
             raw_size = len(raw)
         if clock() - started >= timeout:
             return result(response.status_code, timed_out=True, code="transport_timeout")
+        if sse is not None:
+            body = sse.complete()
+            normalized_bytes = len(body.encode("utf-8"))
+            return result(response.status_code, body=body, code="response_received")
         try:
             body = raw.decode("utf-8", errors="strict")
         except UnicodeError:
@@ -1056,6 +1183,8 @@ def _collect_context(
             except ContextEnvelopeError as exc:
                 return result(response.status_code, code=exc.code)
         return result(response.status_code, body=body, code="response_received")
+    except ContextEnvelopeError as exc:
+        return result(response.status_code if response is not None else None, code=exc.code)
     except requests.Timeout:
         raw_size = len(raw) if "raw" in locals() else raw_size
         return result(
@@ -1093,7 +1222,13 @@ def _collect_context(
 
 
 def _context_http_worker(
-    pipe, request, session, timeout, retain_error_body, retain_response_preview
+    pipe,
+    request,
+    session,
+    timeout,
+    retain_error_body,
+    retain_response_preview,
+    discovery_stream=False,
 ):
     """Preflight before admission; parent permission is required before any provider submission."""
     from citypods.provider_catalog.registry import rules_for
@@ -1129,6 +1264,7 @@ def _context_http_worker(
                 time.monotonic,
                 retain_error_body=retain_error_body,
                 retain_response_preview=retain_response_preview,
+                discovery_stream=discovery_stream,
             )
         )
     except (OSError, ValueError, KeyError, EOFError):
@@ -1159,6 +1295,7 @@ def _measure_response(
     max_timeout=120,
     retain_error_body=False,
     retain_response_preview=False,
+    discovery_stream=False,
 ):
     """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
     import multiprocessing
@@ -1170,7 +1307,8 @@ def _measure_response(
     parent, child = ctx.Pipe()
     process = ctx.Process(
         target=_context_http_worker,
-        args=(child, request, session, timeout, retain_error_body, retain_response_preview),
+        args=(child, request, session, timeout, retain_error_body, retain_response_preview)
+        + ((True,) if discovery_stream else ()),
     )
     observation = Response(
         None,
@@ -1352,6 +1490,14 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     body = dict(
         transient.shaped_body["body"], messages=list(messages), max_tokens=request.output_tokens
     )
+    if dimension == "output":
+        streaming = rules.discovery_output_stream_usage(
+            chat_url(rules, provider_cfg), route["upstream_model"]
+        )
+        if type(streaming) is not bool:
+            raise ValueError("invalid discovery streaming capability")
+        if streaming:
+            body.update(stream=True, stream_options={"include_usage": True})
     if dimension == "output" and output_min_tokens:
         body["min_tokens"] = request.output_tokens
     if len(json.dumps(body).encode()) > _CONTEXT_BYTES:
@@ -1400,5 +1546,6 @@ def measure_discovery(
         timeout=timeout,
         max_timeout=MAX_RESPONSE_TIMEOUT_SECONDS,
         retain_response_preview=True,
+        discovery_stream=bool(transient.shaped_body["body"].get("stream")),
     )
     return rules.discovery_observation(response, request, transient)

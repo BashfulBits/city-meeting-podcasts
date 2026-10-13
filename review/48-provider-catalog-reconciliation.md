@@ -2507,6 +2507,57 @@ fencing, early-stop classification and redaction. The approved file plan additio
 `providers/nvidia.py`; use the existing `rules.py`, `probe.py`, `discovery.py`, `reconcile.py` and
 their tests, with no new API endpoint, dependency, Worker or production catalog edit.
 
+**Approved streamed output transport (2026-10-13).** The purpose of this workflow remains
+new-route onboarding: reachable free candidates, validated JSON methods, provider claims and
+bounded per-request input/output/combined-cap discovery for maintainer review. Sustained rates,
+daily/monthly quota inference, burst/refill behavior and recurring maintenance remain in #2264.
+Neither a timeout nor a framing limit is evidence of a refused token size.
+
+Run 38341337478 revalidated 16,384 twice and admitted 24,576 under `output:v3:min_tokens`;
+36,864 returned HTTP 504 at roughly 303 seconds without usage. Buffered completion latency is a
+plausible transport bottleneck, not a proved intrinsic model ceiling. A paused local streamed
+4,096-token probe returned final usage (2,478 input, 4,096 completion, 6,574 total, 646 reasoning),
+`length` and a valid fixture; first data arrived at 348ms. Its decoded stream used 1,334,918 bytes,
+about 326 bytes per completion token. The existing 4-MiB aggregate ceiling would prevent larger
+streamed probes despite their small assembled answers. The maintainer explicitly approved this
+byte-bound extension while preserving token/call/time budgets and correct served-route scope.
+
+Add default-off `ProviderRules.discovery_output_stream_usage(endpoint, model)`, separate from
+minimum-generation support. Initially register only the same verified NVIDIA hosted Lightning
+endpoint/model combination. On those discovery output calls send `stream=true` and
+`stream_options.include_usage=true`. Input probes, reachability/JSON checks, configured-route
+calibration and Worker/direct dispatch retain their current paths. Unsupported/ignored streaming
+or missing final usage is inconclusive; no silent buffered fallback. Primary references:
+[NIM API](https://docs.nvidia.com/nim/large-language-models/2.0.10/reference/api-reference.html) and
+[vLLM stream options](https://docs.vllm.ai/en/v0.14.1/api/vllm/entrypoints/openai/protocol/).
+
+The discovery-only incremental collector caps decoded HTTP stream data at 64 MiB, pending SSE
+frames at 128 KiB, events at 1,000,000 and the assembled/normalized response at the existing 4 MiB.
+Discard framing, redundant metadata and reasoning text after validating each event. Preserve UTF-8
+across split chunks and delimit only with wire LF/CRLF, never Unicode line splitting. Require a
+complete `[DONE]` stream, one final usage object and consistent finish reason. Error envelopes,
+bad choices/deltas, conflicting usage/finish, post-terminal data, unfinished frames, invalid UTF-8,
+overflows and cancellations cannot establish capacity. Keep process admission/preflight,
+600-second hard cancellation, cleanup, provider pause and the 20-minute session unchanged.
+
+Record optional bounded `stream_bytes` / `stream_events` in discovery observations and issue
+telemetry, separately from compact `response_bytes`; these count decoded framing data, not billed
+or compressed network bytes. Legacy artifacts default to absent metrics. Never persist the raw
+stream, full answer or reasoning. Failed completed output retains the existing bounded/redacted
+preview; verified repeated output clears it. Stream delivery changes no prompt, fixed counterpart,
+minimum-generation control, usage-count meaning or boundary coordinate, so compatible
+`output:v3:min_tokens` history remains valid and receives its normal two fresh baseline checks.
+New provider/route opt-ins require documented semantics and independent streamed final-usage
+verification; minimum support alone never implies streaming support.
+
+Use existing `rules.py`, `probe.py`, `discovery.py`, `providers/nvidia.py`, `reconcile.py`,
+`issue.py` and their tests, plus lifecycle docs. No dependency, Worker endpoint/schema, credential,
+production YAML, route activation, token ceiling or timeout change. Acceptance covers split
+UTF-8/CRLF and multiline SSE, large discarded metadata with a small retained answer, every byte/
+event bound, malformed or partial terminal evidence, safe cancellation, exact route exclusion,
+optional metric compatibility/sanitization and verified-output preview suppression. A bounded
+larger local proof precedes the implementation PR; GitHub verification follows maintainer merge.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first

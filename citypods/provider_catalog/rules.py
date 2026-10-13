@@ -242,6 +242,7 @@ class ProviderRules:
     # Opt in only for a documented and verified endpoint/model combination. This is a
     # discovery transport capability, not a model limit or a production dispatch control.
     discovery_output_min_tokens: Callable[[str, str], bool] = lambda _endpoint, _model: False
+    discovery_output_stream_usage: Callable[[str, str], bool] = lambda _endpoint, _model: False
     discovery_parser_version: str = "unsupported-v1"
     discovery_observation: Callable = lambda response, request, transient: unsupported_discovery(
         response, request, transient
@@ -930,6 +931,8 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             diagnostics_value(response.context_diagnostics, "provider_request_id")
         ),
         response_id=response_id,
+        stream_bytes=diagnostics_value(response.context_diagnostics, "stream_bytes"),
+        stream_events=diagnostics_value(response.context_diagnostics, "stream_events"),
         sentinel_verification=_discovery_sentinel_verification(request, transient, payload),
     )
     if observation.outcome != "verified":
@@ -985,7 +988,10 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
                 coordinate=usage["completion_tokens"],
                 count_basis="completion_including_reasoning",
                 verified=True,
-                **(values | {"diagnostic": "verified_repeated_output_fixture"}),
+                **(
+                    values
+                    | {"diagnostic": "verified_repeated_output_fixture", "response_preview": ""}
+                ),
             )
         values["diagnostic"] = "output_fixture_not_reached"
         return DiscoveryObservation(request, stamp, **values)
@@ -1017,6 +1023,9 @@ def diagnostics_value(diagnostics, name):
     if name == "response_media_type":
         allowed = {"unknown", "application/json", "text/event-stream", "other"}
         return value if value in allowed else "unknown"
+    if name in {"stream_bytes", "stream_events"}:
+        bound = 64 * 1024 * 1024 if name == "stream_bytes" else 1_000_000
+        return value if type(value) is int and 0 <= value <= bound else None
     if name == "response_bytes":
         return value if type(value) is int and 0 <= value <= 4 * 1024 * 1024 else None
     if name == "provider_request_id":
