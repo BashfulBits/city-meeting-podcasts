@@ -115,7 +115,7 @@ julius==0.2.8
     # via torch-audiomentations
 kiwisolver==1.5.0
     # via matplotlib
-lightning==2.6.5
+lightning==2.6.6
     # via pyannote-audio
 lightning-utilities==0.15.3
     # via
