@@ -2226,3 +2226,114 @@ def test_verified_stream_output_does_not_retain_failure_preview():
     response = Response(200, body=json.dumps(body), context_diagnostics={"response_preview": '"1"'})
     observed = rules_for("nvidia").discovery_observation(response, req, transient)
     assert observed.outcome == "admitted" and observed.response_preview == ""
+
+
+@pytest.mark.parametrize("bad", ["early_usage", "late_content"])
+def test_stream_usage_must_be_final_and_content_cannot_follow_finish(bad):
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    raw = stream_fixture()
+    if bad == "early_usage":
+        frame = dict(object="chat.completion.chunk", choices=[], usage=dict(total_tokens=1))
+        raw = ("data: " + json.dumps(frame) + "\n\n").encode() + raw
+    else:
+        frame = dict(object="chat.completion.chunk", choices=[dict(delta=dict(content="1\n"))])
+        raw = raw.replace(
+            b"data: [DONE]", ("data: " + json.dumps(frame) + "\n\ndata: [DONE]").encode()
+        )
+    with pytest.raises(ValueError):
+        stream = DiscoverySSECollector()
+        stream.feed(raw)
+        stream.complete()
+
+
+def test_stream_done_finishes_without_waiting_for_http_eof():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield stream_fixture()
+            raise AssertionError("must not wait for HTTP EOF after complete DONE")
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    captured = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: response),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+    )
+    assert captured.context_diagnostics["diagnostic_code"] == "response_received"
+    assert response.closed
+
+
+def test_stream_keeps_consistent_response_id_and_rejects_cross_response_data():
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    prefix = b'data: {"object":"chat.completion.chunk","id":"chatcmpl-test","choices":[]}\n\n'
+    stream = DiscoverySSECollector()
+    stream.feed(prefix + stream_fixture())
+    assert json.loads(stream.complete())["id"] == "chatcmpl-test"
+    other = prefix.replace(b"chatcmpl-test", b"other")
+    with pytest.raises(ValueError):
+        DiscoverySSECollector().feed(prefix + other + stream_fixture())
+
+
+def test_stream_accepts_multiline_json_data_without_unicode_line_splitting():
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    event = dict(object="chat.completion.chunk", choices=[])
+    prefix = "\n".join("data: " + line for line in json.dumps(event, indent=2).split("\n"))
+    stream = DiscoverySSECollector()
+    stream.feed((prefix + "\n\n").encode() + stream_fixture())
+    assert json.loads(stream.complete())["usage"]["completion_tokens"] == 4096
+
+
+def test_stream_timings_use_the_authorized_deadline_not_a_two_minute_clip():
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    tick = SimpleNamespace(now=0)
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+
+        def iter_content(self, chunk_size):
+            tick.now = 200
+            yield stream_fixture()
+
+        def close(self):
+            pass
+
+    observed = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {},
+        600,
+        lambda: tick.now,
+        discovery_stream=True,
+    )
+    assert observed.context_diagnostics["duration_ms"] == 200_000
+    assert observed.context_diagnostics["first_byte_ms"] == 200_000

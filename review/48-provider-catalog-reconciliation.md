@@ -2535,7 +2535,9 @@ The discovery-only incremental collector caps decoded HTTP stream data at 64 MiB
 frames at 128 KiB, events at 1,000,000 and the assembled/normalized response at the existing 4 MiB.
 Discard framing, redundant metadata and reasoning text after validating each event. Preserve UTF-8
 across split chunks and delimit only with wire LF/CRLF, never Unicode line splitting. Require a
-complete `[DONE]` stream, one final usage object and consistent finish reason. Error envelopes,
+complete `[DONE]` stream, one final usage object after finish, and a consistent finish reason.
+Once the terminal message is validated, close without waiting for HTTP EOF. Reject further
+content after finish and conflicting/post-terminal data already present in the collected chunk. Error envelopes,
 bad choices/deltas, conflicting usage/finish, post-terminal data, unfinished frames, invalid UTF-8,
 overflows and cancellations cannot establish capacity. Keep process admission/preflight,
 600-second hard cancellation, cleanup, provider pause and the 20-minute session unchanged.
@@ -2556,7 +2558,18 @@ production YAML, route activation, token ceiling or timeout change. Acceptance c
 UTF-8/CRLF and multiline SSE, large discarded metadata with a small retained answer, every byte/
 event bound, malformed or partial terminal evidence, safe cancellation, exact route exclusion,
 optional metric compatibility/sanitization and verified-output preview suppression. A bounded
-larger local proof precedes the implementation PR; GitHub verification follows maintainer merge.
+larger local test precedes the implementation PR; GitHub verification follows maintainer merge.
+The initial streamed 36,864-token local attempt hit the 600-second subprocess deadline without
+final usage, so it established no size bound. That test does not identify the provider timeout's
+root cause. Review also found the collector must stop at DONE rather than HTTP EOF; the corrected
+terminal behavior has an explicit non-closing HTTP-stream regression. Retain the existing verified
+24,576 lower bound and the escape-hatch result rather than asserting a larger intrinsic cap.
+A final local 4,096-token test of incremental parsing and DONE termination succeeded: 2,481 input,
+4,096 completion, 6,577 total, 945 reasoning, `length`, 1,575 valid lines; 1,321,516 decoded stream
+bytes / 4,002 events became a 5,181-byte compact envelope. First data arrived at 934ms and the
+call took about 103 seconds. This validates streamed final usage, not a 36,864-token boundary.
+Transport timing diagnostics use the authorized deadline rather than clipping discovery durations
+to the configured-route 120-second ceiling. No timeout ceiling change is included here.
 
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other

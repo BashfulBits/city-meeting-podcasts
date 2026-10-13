@@ -972,6 +972,7 @@ class DiscoverySSECollector:
         self.wire_bytes = 0
         self.events = 0
         self.usage = None
+        self.response_id = None
         self.finish = None
         self.done = False
 
@@ -1013,15 +1014,24 @@ class DiscoverySSECollector:
             or event.get("error")
         ):
             raise ContextEnvelopeError("invalid_sse_envelope")
-        if event.get("usage") is not None:
-            if self.usage is not None:
-                raise ContextEnvelopeError("conflicting_sse_usage")
-            self.usage = event["usage"]
+        response_id = event.get("id")
+        if response_id is not None:
+            if (
+                not isinstance(response_id, str)
+                or not 1 <= len(response_id) <= 128
+                or (self.response_id is not None and self.response_id != response_id)
+            ):
+                raise ContextEnvelopeError("invalid_sse_envelope")
+            self.response_id = response_id
+        incoming_usage = event.get("usage")
         choices = event.get("choices")
         if not isinstance(choices, list) or len(choices) > 1:
             raise ContextEnvelopeError("invalid_sse_choice")
         if not choices:
+            self._usage(incoming_usage)
             return
+        if self.finish is not None or self.usage is not None:
+            raise ContextEnvelopeError("invalid_sse_envelope")
         choice = choices[0]
         if not isinstance(choice, dict) or choice.get("error") or choice.get("index", 0) != 0:
             raise ContextEnvelopeError("invalid_sse_choice")
@@ -1042,12 +1052,24 @@ class DiscoverySSECollector:
                 raise ContextEnvelopeError("conflicting_sse_finish_reason")
             self.finish = choice["finish_reason"]
 
+        self._usage(incoming_usage)
+
+    def _usage(self, value):
+        if value is None:
+            return
+        if self.usage is not None:
+            raise ContextEnvelopeError("conflicting_sse_usage")
+        if self.finish is None or not isinstance(value, dict):
+            raise ContextEnvelopeError("invalid_final_sse_usage")
+        self.usage = value
+
     def complete(self):
         if self.pending.strip() or not self.done or self.usage is None or self.finish is None:
             raise ContextEnvelopeError("incomplete_sse")
         body = json.dumps(
             {
                 "object": "chat.completion",
+                "id": self.response_id,
                 "usage": self.usage,
                 "choices": [
                     {
@@ -1101,7 +1123,7 @@ def _collect_context(
             "response_bytes": normalized_bytes
             if sse is not None
             else min(raw_size, _CONTEXT_BYTES),
-            "duration_ms": min(120_000, max(0, round((clock() - started) * 1000))),
+            "duration_ms": min(round(timeout * 1000), max(0, round((clock() - started) * 1000))),
             "first_byte_ms": first_byte_ms,
             "request_started_at_ms": started_at_ms,
             "request_finished_at_ms": finished_at_ms,
@@ -1151,12 +1173,16 @@ def _collect_context(
             sse = DiscoverySSECollector()
         for chunk in response.iter_content(chunk_size=16384):
             if first_byte_ms is None:
-                first_byte_ms = min(120_000, max(0, round((clock() - started) * 1000)))
+                first_byte_ms = min(
+                    round(timeout * 1000), max(0, round((clock() - started) * 1000))
+                )
             if clock() - started >= timeout:
                 raw_size = len(raw)
                 return result(response.status_code, timed_out=True, code="transport_timeout")
             if sse is not None:
                 sse.feed(chunk)
+                if sse.done:
+                    break
                 continue
             if len(raw) + len(chunk) > _CONTEXT_BYTES:
                 raw_size = len(raw) + len(chunk)
