@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/51 P1 comparison evidence.** Retain the approved varied 60-recording challenge and
+  candidate-specific pilot reports under `evals/remedy/`. The first pilot batches expose one
+  repeated Dallas multi-feed miss and an unresolved GLM Flash response-name hold. These are
+  regression results only: no blind-owner admission truth, feed changes or model activation.
+
+- **Recover stalled P1 evaluation backfill (#2409).** Evaluation-only scheduling retries failed
+  questions independently, waits for actual quota resets, and applies bounded route cooldowns.
+  Saved diagnostics preserve original provider errors. Persistent controller status and attempt
+  intents prevent duplicate successes and blind retries after interrupted calls. Gemini keys
+  share one model score; Astra remains retained outside the 904-answer comparison.
+  No production routes, quotas, timeouts, feeds or pipeline versions change.
+
 - **Route-scoped output discovery controls.** Add a documented minimum-generation capability for
   the verified NVIDIA-hosted Nemotron Lightning deployment, keeping other models/hosts and
   production dispatch unchanged. Discovery requests record and enforce comparable control
