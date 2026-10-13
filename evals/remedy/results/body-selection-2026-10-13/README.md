@@ -52,3 +52,7 @@ PYTHONPATH=. python evals/remedy/results/body-selection-2026-10-13/score.py \
 ```
 
 Use a new score filename; existing observations/reports are never overwritten.
+
+`hashes-v2.json` binds the complete gold document; the initial metadata helper hashed
+only its inner cases. Original `hashes.json` is retained as superseded metadata. Frozen
+model inputs, expected answers and live requests did not change in this correction.

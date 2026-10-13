@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from citypods.remedy_evaluation import canonical_hash
+
 DIRECTORY = Path(__file__).resolve().parents[1] / "evals/remedy/results/body-selection-2026-10-13"
 NOW = datetime(2026, 10, 13, 15, tzinfo=UTC)
 
@@ -69,6 +71,14 @@ def test_sixty_answer_free_recordings(selection):
         assert all(ref["id"] != "maintained-policy" for ref in payload["evidence_refs"])
         assert case.case_id.startswith("recording-")
         assert case.case_id not in payload["recordings"][0]["title"]
+
+
+def test_frozen_hashes_bind_whole_input_and_gold_documents(selection):
+    manifest, _ = selection.load_manifest()
+    gold = json.loads((selection.PACKET / "gold.json").read_text())
+    hashes = json.loads((selection.PACKET / "hashes-v2.json").read_text())
+    assert hashes["manifest_hash"] == canonical_hash(manifest)
+    assert hashes["gold_hash"] == canonical_hash(gold)
 
 
 def test_joint_selection_is_a_set_not_a_single_owner(selection):

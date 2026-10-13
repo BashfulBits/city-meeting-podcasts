@@ -89,10 +89,10 @@ def main():
     write_exclusive(PACKET / "gold.json", {"version": 1, "cases": gold})
     write_exclusive(PACKET / "case-map.json", mapping)
     write_exclusive(
-        PACKET / "hashes.json",
+        PACKET / "hashes-v2.json",
         {
             "manifest_hash": canonical_hash(frozen),
-            "gold_hash": canonical_hash(gold),
+            "gold_hash": canonical_hash({"version": 1, "cases": gold}),
             "source_review_hash": canonical_hash(review),
         },
     )
