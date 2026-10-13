@@ -3881,3 +3881,9 @@ metadata is retained, model inputs/answers unchanged, and116 targeted checks pas
 The corrected controller started2026-10-13 14:47UTC. First valid Flash-Lite, GLM Flash
 and Sol answers independently named the Addison Bond Advisory Committee and cited
 official evidence. Live results remain incremental; this is not completion or admission.
+
+Maintainer reporting direction2026-10-13: show the full six-model113-question
+suggested-assignment comparison after full GLM completes. Keep those results separate
+from the new60-recording body-selection scores. Defer production model recommendations
+and selection until the new experiment is scored. Body-selection work is retained in
+draft PR#2413, dependent on#2411, while immutable results accumulate.
