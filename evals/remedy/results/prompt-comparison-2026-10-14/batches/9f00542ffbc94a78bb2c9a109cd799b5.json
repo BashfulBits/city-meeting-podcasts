@@ -1,0 +1,166 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Denton City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Denton Library Board"
+      }
+    ],
+    "case_id": "recording-8301b65c359ede99eb3dc3df",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "denton-tx-city-council",
+      "denton-tx-library-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda explicitly states that the City Council will convene in a Joint Meeting with the Library Board on March 3, 2014. Both are therefore proven participants, and the joint-meeting policy supports assignment to both configured body feeds. The player confirms the recording as the joint luncheon with the Library Board. The subsequent Council closed and open sessions further support Council membership; their gas-well subject matter does not establish Gas Well Task Force participation. This is a governmental joint meeting, not an economic-development luncheon covered by the archive-only rule."
+  },
+  "attempt_id": "b5e7d85c949641b2bee278f752853898",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-8301b65c359ede99eb3dc3df",
+  "case_input_hash": "f13c564c99f39df3adb6cb1d01a59b52a101e9f7f59f0bb3e57aad739ec6e9dc",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 7.061480167001719
+    }
+  ],
+  "end_to_end_seconds": 43.18078095799865,
+  "finished_at": "2026-10-14T22:50:58.589722+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T22:50:15.408715+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "54109adfb3425763c3acbeabd96fce6da9875d5690daf80397a4386e21b3ad0a",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3931,
+        "output_tokens": 227
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 227,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3931,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3931,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4158,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-8301b65c359ede99eb3dc3df\",\"bodies\":[{\"name\":\"Denton City Council\",\"evidence_ref_ids\":[\"retained-agenda\"]},{\"name\":\"Denton Library Board\",\"evidence_ref_ids\":[\"retained-agenda\"]}],\"feed_slugs\":[\"denton-tx-city-council\",\"denton-tx-library-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda explicitly states that the City Council will convene in a Joint Meeting with the Library Board on March 3, 2014. Both are therefore proven participants, and the joint-meeting policy supports assignment to both configured body feeds. The player confirms the recording as the joint luncheon with the Library Board. The subsequent Council closed and open sessions further support Council membership; their gas-well subject matter does not establish Gas Well Task Force participation. This is a governmental joint meeting, not an economic-development luncheon covered by the archive-only rule.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792018257,
+    "id": "resp_08c85f2a6c4ccfb4016ad0074cf1ec81989d91c103bedd05fd",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3931,
+          "output_tokens": 227
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 227,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3931,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3931,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4158,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
