@@ -283,6 +283,7 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
     assert calls
     assert {key for key, _ in calls} <= candidate_keys
     assert len(calls) <= 2
+    assert selected_axes and all(axes is None for axes in selected_axes)
     assert len({key.split("/", 1)[0] for key, _ in calls}) == len(calls)
     configured = {f"{route['provider']}/{route['upstream_model']}" for route in LIMITS["routes"]}
     assert all(key not in configured for key, _ in calls)

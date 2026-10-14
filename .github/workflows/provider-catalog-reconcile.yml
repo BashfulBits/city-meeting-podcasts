@@ -29,7 +29,7 @@ on:
         default: ""
         type: string
       discovery_axis:
-        description: "Size search axes for the selected new route; output gets its own bounded session"
+        description: "Search all input/output/combined limits, or isolate input/output; bounded sessions"
         required: false
         default: all
         type: choice
