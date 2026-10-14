@@ -2973,3 +2973,8 @@ retry receipt. Absent, ignored, configured or unverified-free selections make no
 artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
 and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
 38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
+
+Reachability failures now log bounded exception-class chains and awaiting-headers/reading-response
+phase, plus any received HTTP status. Logs exclude exception text, URLs, credentials and response
+bodies. Existing canary transport/timeouts and free-route eligibility remain unchanged. The
+shared probe module and reconciliation tests implement this authorized diagnostic extension.

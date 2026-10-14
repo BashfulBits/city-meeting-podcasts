@@ -1854,3 +1854,27 @@ def test_explicit_absent_candidate_retains_terminal_evidence_without_provider_ca
     assert row["reason"] == "route_absent_from_current_catalog"
     assert row["session"]["upstream_model"] == "missing-small-model"
     assert row["attempts"] == []
+
+
+def test_reachability_logs_exception_chain_without_secret_text(caplog):
+    import requests
+
+    from citypods.provider_catalog.probe import canary
+    from citypods.provider_catalog.rules import ProviderRules
+
+    class BrokenSession:
+        def post(self, *args, **kwargs):
+            raise requests.ConnectionError(
+                requests.exceptions.ChunkedEncodingError(ConnectionResetError("secret URL/token"))
+            )
+
+    result = canary(
+        ProviderRules(name="generic"),
+        {"api_base": "https://example.test"},
+        "new/model",
+        "secret-key",
+        BrokenSession(),
+    )
+    assert result.transport_error == "ConnectionError"
+    assert "awaiting_headers" in caplog.text and "ConnectionResetError" in caplog.text
+    assert "secret" not in caplog.text and "https://" not in caplog.text
