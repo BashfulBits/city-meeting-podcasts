@@ -2663,3 +2663,41 @@ def test_configured_context_does_not_emit_discovery_progress():
     )
     assert result.body == "{}"
     assert snapshots == []
+
+
+def test_progress_preserves_headers_of_falsey_http_error_response():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    snapshots = []
+
+    class Response:
+        status_code = 429
+        headers = {"Content-Type": "application/json"}
+
+        def __bool__(self):
+            return False
+
+        def iter_content(self, chunk_size):
+            yield b'{"error":{"message":"rate limit"}}'
+
+        def close(self):
+            pass
+
+    result = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+        progress=snapshots.append,
+    )
+    assert result.status == 429
+    headers = snapshots[1]
+    assert headers.status == 429
+    assert headers.context_diagnostics["response_media_type"] == "application/json"
+    assert "phase=headers" in headers.context_diagnostics["response_preview"]

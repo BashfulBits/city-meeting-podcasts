@@ -1153,7 +1153,7 @@ def _collect_context(
         diagnostics = {
             "response_preview": _safe_structured_preview(state),
             "response_media_type": _response_media_type(response.headers)
-            if response
+            if response is not None
             else "unknown",
             "duration_ms": min(round(timeout * 1000), max(0, round((now - started) * 1000))),
             "first_byte_ms": first_byte_ms,
