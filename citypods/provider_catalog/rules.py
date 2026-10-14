@@ -1076,7 +1076,11 @@ def chat_discovery_observation(
         if observation.outcome == "verified" or usage_state in {"total_missing", "total_invalid"}:
             values["diagnostic"] = "api_input_usage_incomplete"
         return DiscoveryObservation(request, stamp, **values)
-    if request.axis == "output" and _chat_input_capacity(payload, response) and finish == "stop":
+    if (
+        request.axis == "output"
+        and _chat_input_capacity(payload, response, require_content=False)
+        and finish == "stop"
+    ):
         values["diagnostic"] = "output_stopped_early"
     if (
         request.axis == "output"

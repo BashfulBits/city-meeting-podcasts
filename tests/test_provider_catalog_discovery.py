@@ -3622,3 +3622,27 @@ def test_published_output_hint_caps_fixed_output_and_fences_history(tmp_path, ax
 def test_counterpart_hint_cannot_raise_existing_allowance(tmp_path):
     with pytest.raises(ValueError, match="fixed-counterpart hint"):
         execute(tmp_path, lambda *a: None, counterparts={"input": 32768})
+
+
+def test_reasoning_only_natural_stop_can_guide_smaller_output_but_not_prove_capacity():
+    import json
+
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "output")
+    payload = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 2048,
+            "completion_tokens": 1000,
+            "total_tokens": 3048,
+            "completion_tokens_details": {"reasoning_tokens": 1000},
+        },
+        "choices": [{"message": {"content": None}, "finish_reason": "stop"}],
+    }
+    result = general_discovery_rules(rules).discovery_observation(
+        Response(200, body=json.dumps(payload)), req, transient
+    )
+    assert result.diagnostic == "output_stopped_early"
+    assert result.reported_output == 1000 and result.coordinate is None
+    assert not result.verified
