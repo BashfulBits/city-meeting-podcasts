@@ -9,7 +9,7 @@ import tempfile
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.provider_catalog.evidence import digest
@@ -527,15 +527,18 @@ def run_discovery(
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
             continue
-        previous = [
+        compatible_history = [
             item
             for item in history
             if item.request.identity == identity
             and item.request.axis == axis
             and item.request.parser_version == parser_version
             and item.request.fixture_version == "discovery-v1"
-            and item.outcome in {"admitted", "refused"}
-            and item.verified
+        ]
+        previous = [
+            item
+            for item in compatible_history
+            if item.outcome in {"admitted", "refused"} and item.verified
         ]
         previous.sort(key=lambda item: datetime.fromisoformat(item.observed_at))
         counterpart = INPUT_OUTPUT_COUNTERPART if axis in {"input", "total_input_heavy"} else 2_048
@@ -571,6 +574,9 @@ def run_discovery(
             if item.request.axis == axis and item.request.control == control:
                 bracket.observe(item)
         fresh_successes, quota_retry = 0, False
+        required_fresh = 1 if axis == "output" else 2
+        upper_recheck = None
+        recent_output_cost = None
         pending_transport = []
         while not bracket.converged and bracket.nonprogress < 3:
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
@@ -604,9 +610,43 @@ def run_discovery(
                 break
             target = (
                 pending.lower
-                if previous and fresh_successes < 2 and pending.lower
+                if previous and fresh_successes < required_fresh and pending.lower
+                else upper_recheck
+                if upper_recheck is not None
                 else bracket.target()
             )
+            checking_upper = upper_recheck is not None and target == upper_recheck
+            if (
+                axis == "output"
+                and bracket.lower is not None
+                and target > bracket.lower
+                and not checking_upper
+            ):
+                # Failed targets guide cheaper retry sizes; they are never refused bounds.
+                failed = [
+                    item.request.target
+                    for item in compatible_history + observations
+                    if item.request.axis == axis
+                    and item.request.control == control
+                    and item.request.target > bracket.lower
+                    and timedelta(0)
+                    <= datetime.now(UTC) - datetime.fromisoformat(item.observed_at)
+                    <= timedelta(days=1)
+                    and (
+                        item.diagnostic in {"worker_response_timeout", "transport_timeout"}
+                        or item.outcome == "outage"
+                        or (
+                            item.diagnostic == "provider_sse_error"
+                            and item.response_preview == '"Internal server error"'
+                        )
+                    )
+                ]
+                if failed:
+                    hint = min(failed)
+                    if hint - bracket.lower <= max(1, math.ceil(bracket.lower / 200)):
+                        bracket.reason = "output_time_limited_lower_bound"
+                        break
+                    target = min(target, bracket.lower + (hint - bracket.lower) // 2)
             if axis == "input" and bracket.lower is None and bracket.upper is not None:
                 target = max(target, MIN_INPUT_PROBE)
             if request_ceiling is not None and target > request_ceiling:
@@ -635,6 +675,11 @@ def run_discovery(
             if input_tokens > MAX_INPUT or output_tokens > MAX_OUTPUT:
                 bracket.reason = "per_call_ceiling"
                 break
+            if axis == "output" and recent_output_cost is not None:
+                expected = min(MAX_RESPONSE_TIMEOUT_SECONDS, math.ceil(target * recent_output_cost))
+                if deadline - clock() < expected:
+                    bracket.reason = "insufficient_output_probe_window"
+                    break
             ordinal = len(journal.data["attempts"]) + 1
             request = DiscoveryRequest(
                 session_id,
@@ -673,6 +718,7 @@ def run_discovery(
                     deadline,
                 )
 
+            call_started = clock()
             try:
                 renew()
                 observation = measure(
@@ -701,6 +747,16 @@ def run_discovery(
                     tuple(transport_retries),
                 )
             observations.append(observation)
+            if (
+                axis == "output"
+                and observation.outcome == "admitted"
+                and observation.verified
+                and positive(observation.coordinate)
+                and clock() > call_started
+            ):
+                recent_output_cost = (clock() - call_started) / observation.coordinate
+            if checking_upper:
+                upper_recheck = None
             budget.settle(observation)
             if shared_budget:
                 shared_budget.settle(observation)
@@ -776,6 +832,8 @@ def run_discovery(
                 brackets[-1] = bracket
                 previous = []
                 fresh_successes = 0
+                upper_recheck = None
+                recent_output_cost = None
                 continue
             bracket.observe(observation)
             if (
@@ -785,7 +843,7 @@ def run_discovery(
             ):
                 bracket.reason = "hard_ceiling_lower_bound"
                 break
-            if previous and fresh_successes < 2:
+            if previous and fresh_successes < required_fresh:
                 compatible = (
                     observation.outcome == "admitted"
                     and (pending.basis is None or observation.count_basis == pending.basis)
@@ -794,7 +852,15 @@ def run_discovery(
                 )
                 if compatible:
                     fresh_successes += 1
-                    if fresh_successes == 2:
+                    if axis == "output":
+                        # The fresh lower proves itself. Re-test an old refusal rather than
+                        # importing it as current proof or spending a second identical success.
+                        upper_recheck = (
+                            pending.upper
+                            if pending.upper is not None and pending.upper > (bracket.lower or 0)
+                            else None
+                        )
+                    elif fresh_successes == 2:
                         # Rebuild chronologically: each boundary is consumed exactly once,
                         # with current evidence taking precedence over contradicted old limits.
                         bracket = Bracket(axis, bracket.seed)

@@ -1743,7 +1743,7 @@ def test_output_only_session_resumes_output_history_without_input_probes(tmp_pat
         history=(previous,),
     )
     assert requests and all(req.axis == "output" for req in requests)
-    assert [req.output_tokens for req in requests[:2]] == [24576, 24576]
+    assert [req.output_tokens for req in requests[:2]] == [24576, 36864]
     assert result.brackets[0]["reason"] == "not_selected"
     assert result.brackets[1]["status"] == "converged"
 
@@ -2701,3 +2701,162 @@ def test_progress_preserves_headers_of_falsey_http_error_response():
     assert headers.status == 429
     assert headers.context_diagnostics["response_media_type"] == "application/json"
     assert "phase=headers" in headers.context_diagnostics["response_preview"]
+
+
+def _output_history(target, admitted=True, **values):
+    from datetime import UTC, datetime
+
+    req = replace(request("output"), target=target, output_tokens=target)
+    item = observation(req, target, admitted, **values)
+    return replace(item, observed_at=datetime.now(UTC).isoformat())
+
+
+@pytest.mark.parametrize("new_cap", [3000, 8000])
+def test_resumed_output_checks_both_old_bounds_and_detects_limit_changes(tmp_path, new_cap):
+    history = [_output_history(4000), _output_history(5000, False)]
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        return observation(req, req.output_tokens, req.output_tokens <= new_cap)
+
+    result = execute(tmp_path, measure, selected_axes=("output",), history=history)
+    output = result.brackets[1]
+    assert seen[0] == 4000
+    if new_cap > 4000:
+        assert seen[1] == 5000  # re-test refusal instead of duplicating lower baseline
+        assert output["admitted"] > 5000
+    else:
+        assert seen[1] == 2000  # old lower refused: halve, discard old evidence
+        assert output["admitted"] <= new_cap
+    assert output["status"] == "converged"
+    assert output["admitted"] <= new_cap < output["refused"]
+
+
+@pytest.mark.parametrize("diagnostic", ["worker_response_timeout", "provider_sse_error"])
+def test_output_time_failure_guides_smaller_probe_without_refused_boundary(tmp_path, diagnostic):
+    from datetime import UTC, datetime
+
+    history = [_output_history(46080)]
+    failed_req = replace(request("output"), target=55296, output_tokens=55296)
+    history.append(
+        DiscoveryObservation(
+            failed_req,
+            datetime.now(UTC).isoformat(),
+            diagnostic=diagnostic,
+            response_preview='"Internal server error"'
+            if diagnostic == "provider_sse_error"
+            else "",
+        )
+    )
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        return observation(req, req.output_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        selected_axes=("output",),
+        history=history,
+        budget=DiscoveryBudget(max_calls=2),
+    )
+    assert seen == [46080, 50688]
+    assert result.brackets[1]["admitted"] == 50688
+    assert result.brackets[1]["refused"] is None
+    assert result.brackets[1]["status"] == "partial"
+
+
+@pytest.mark.parametrize("why", ["old", "wrong_control", "quota", "authentication"])
+def test_output_retry_hints_ignore_expired_incompatible_and_non_time_failures(tmp_path, why):
+    from datetime import UTC, datetime, timedelta
+
+    req = replace(request("output"), target=55296, output_tokens=55296)
+    failed = DiscoveryObservation(
+        req, datetime.now(UTC).isoformat(), diagnostic="worker_response_timeout"
+    )
+    if why == "old":
+        failed = replace(failed, observed_at=(datetime.now(UTC) - timedelta(days=2)).isoformat())
+    elif why == "wrong_control":
+        failed = replace(failed, request=replace(req, control="output:v3:min_tokens"))
+    elif why == "quota":
+        failed = replace(failed, outcome="quota", diagnostic="provider_rate_limited")
+    else:
+        failed = replace(
+            failed, diagnostic="provider_sse_error", response_preview='"Invalid API key"'
+        )
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        return observation(req, req.output_tokens)
+
+    execute(
+        tmp_path,
+        measure,
+        selected_axes=("output",),
+        history=[_output_history(46080), failed],
+        budget=DiscoveryBudget(max_calls=2),
+    )
+    assert seen == [46080, 69120]
+
+
+def test_slow_output_resume_spends_one_baseline_and_one_useful_probe(tmp_path):
+    from datetime import UTC, datetime
+
+    failed_req = replace(request("output"), target=55296, output_tokens=55296)
+    history = [
+        _output_history(46080),
+        DiscoveryObservation(
+            failed_req,
+            datetime.now(UTC).isoformat(),
+            diagnostic="worker_response_timeout",
+        ),
+    ]
+    now, seen = [0.0], []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        now[0] += 530 if req.output_tokens == 46080 else 584
+        return observation(req, req.output_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        selected_axes=("output",),
+        history=history,
+        clock=lambda: now[0],
+        deadline=1200,
+    )
+    assert seen == [46080, 50688]
+    assert result.brackets[1]["reason"] == "insufficient_output_probe_window"
+    assert result.brackets[1]["admitted"] == 50688
+    assert result.brackets[1]["refused"] is None
+    assert result.budget["calls"] == 2
+
+
+def test_stale_upper_requires_new_refusal_even_when_old_bracket_was_converged(tmp_path):
+    seen = []
+    history = [_output_history(4000), _output_history(4010, False)]
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        if req.output_tokens == 4010:
+            from datetime import UTC, datetime
+
+            return DiscoveryObservation(
+                req, datetime.now(UTC).isoformat(), diagnostic="worker_response_timeout"
+            )
+        return observation(req, req.output_tokens)
+
+    result = execute(tmp_path, measure, selected_axes=("output",), history=history)
+    assert seen == [4000, 4010]
+    assert result.brackets[1]["refused"] is None
+    assert result.brackets[1]["status"] == "partial"
+    assert result.brackets[1]["reason"] == "output_time_limited_lower_bound"
