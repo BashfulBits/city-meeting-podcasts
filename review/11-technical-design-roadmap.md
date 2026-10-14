@@ -1968,3 +1968,9 @@ directed continued Qwen/GPT-OSS evaluation until each route's first new provider
 then a durable evaluation pause. Bypass only their local daily-token gates; retain
 all other controls, original call caps/horizon and immutable actual usage. No
 production changes. Contract and scope: review/51.
+
+
+Review/51 feed-context diagnostic — L3 approved2026-10-14: separate14-call comparison
+of explicit membership policy vs existing-feed title examples for one Dallas Bond
+Streets recording; no production changes or rearming original Groq pauses. Retain
+and repeat the seven-model common-question/21-pair audit after final results.

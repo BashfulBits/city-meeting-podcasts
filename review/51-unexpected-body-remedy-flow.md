@@ -4182,3 +4182,49 @@ Coverage includes preserved minute/request settlement and pre-existing daily deb
 exact two-route scope, immutable actual usage, old429 exclusion and durable new429
 pauses across restarts. Controller handoff occurs under the shared call lock only
 after every intent has a final result. No production route/catalog changes.
+
+
+### P1 feed-context diagnostic — L3, approved2026-10-14
+
+Maintainer requests a separate one-recording, two-prompt, seven-model diagnostic
+(14provider submissions maximum) for Dallas recording270975, August22,2023.
+Compare explicit city/source-bound feed-membership policy against representative
+existing titles grouped by feed. Keep original evidence, question, response schema,
+route reasoning controls and frozen expected three-feed answer unchanged. Gold is
+loaded only after calls. This tests publication-context clarity, not independent
+institution discovery or production qualification. The existing60-recording study
+and Groq429 pauses are unchanged; the new request authorizes at most two diagnostic
+submissions per model, including GPT-OSS, without rearming its original study pause.
+
+Scope: new evals/remedy/holdout/feed-context-2026-10-14/{prepare.py,packet.json,README.md}
+and evals/remedy/results/feed-context-2026-10-14/{run.py,score.py}; optional-message
+parameters on existing body-selection run.py/shaped_messages/attempt; corresponding
+tests/test_remedy_feed_context.py and lifecycle docs. Preserve all existing callers
+and prompt hashes by default. Reuse current exact seven model routes, schema,
+shared call lock, CAS request/minute accounting and approved coordination bypass.
+Normal Groq daily-token gates/reserve apply to this separate job; wait for available
+capacity rather than modifying budgets or the paused original experiment.
+Each pair submits once, no SDK/provider retries, immutable pre-call intent/results,
+unknown interrupted outcomes held. Persist a bounded seven-day diagnostic horizon.
+
+Fetch public same-city feed RSS read-only through validate_source_url; retain URL,
+retrieval timestamp and hash. Examples are real episode titles, not selector regexes.
+Exclude the target UID/providerGUID/title-date entry from examples. Select bounded
+representatives by a declared rule independent of model answers; never silently
+replace missing histories with invented examples. Retain full title inventory for
+size comparison, but send bounded examples. Hash both prompt variants and measure
+schema-shaped input tokens/characters per route, showing estimator vs provider usage.
+Report exact three-feed match, institutional identity retained for manual review,
+missing/extra feeds, completion and latency separately. A local failure is not a
+provider call. Whole Ruff/format and targeted/full offline before live submissions.
+No production catalog/feed/record/audio/Worker/workflow changes or activation.
+
+Pair-audit retention: use the same seven models excluding Qwen; first intersect
+completed recordings across all seven, then score all21 unordered pairs on that
+identical set. Agreement means exact unordered feed set plus publication action;
+truepositive=agreement matching frozen gold, falsepositive=shared wrong recommendation,
+negative=different recommendations. Report counts and percentages plus common-set
+category coverage and partial-completion bias; never treat omitted answers as correct.
+Retain script, input hashes and per-case results under evals/remedy/. At final scoring
+repeat this audit, preserving interim artifacts and separately flagging suspected
+publication-policy inconsistencies rather than editing approved truth implicitly.
