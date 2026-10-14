@@ -1,0 +1,162 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Health and Building Standards Commission"
+      }
+    ],
+    "case_id": "recording-f61541eb16037ce8c08f7073",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-health-building-standards-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda explicitly states that the Health and Building Standards Commission of the City of Denton will convene a Regular Meeting on April 22, 2021, at 3:00 p.m. The provider player and native chapters for recording 119886 corroborate that convening body. Its configured subscription feed is denton-tx-health-building-standards-commission. No other convening participant or applicable archive/exclusion category is established by the supplied evidence."
+  },
+  "attempt_id": "8ffdce97dc0b4ec18054067679f3e9a4",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-f61541eb16037ce8c08f7073",
+  "case_input_hash": "97479c9e6191e9b95fdc744141c95ca57d433fea5bc2120b27c1b459145dd07a",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.004995374998543
+    }
+  ],
+  "end_to_end_seconds": 57.59850187499978,
+  "finished_at": "2026-10-14T17:33:08.598333+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:32:10.999474+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "477d9493cb0a9e380ab2affdc86ef556177d6dd20d28eb3498af1969a3cf8c8f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4367,
+        "output_tokens": 201
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 201,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4367,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4367,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4568,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-f61541eb16037ce8c08f7073\",\"bodies\":[{\"name\":\"Health and Building Standards Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-health-building-standards-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The official agenda explicitly states that the Health and Building Standards Commission of the City of Denton will convene a Regular Meeting on April 22, 2021, at 3:00 p.m. The provider player and native chapters for recording 119886 corroborate that convening body. Its configured subscription feed is denton-tx-health-building-standards-commission. No other convening participant or applicable archive/exclusion category is established by the supplied evidence.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999187,
+    "id": "resp_0541d7c2c4752f84016acfbccd21a48199b250a92e5a580745",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4367,
+          "output_tokens": 201
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 201,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4367,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4367,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4568,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
