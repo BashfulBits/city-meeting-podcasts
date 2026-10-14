@@ -1,0 +1,162 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning & Zoning Commission (P&Z)"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Comprehensive Plan Advisory Committee (CPAC)"
+      }
+    ],
+    "case_id": "recording-461fd764c77be280ae5b37a2",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-comprehensive-plan-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "Official agenda and provider player identify the recording as Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. The agenda\u2019s call to order and quorum statement name Mayor Bruce Arfsten for City Council, Chair Denise Fansler for P&Z, and Chair Susan Halpern for CPAC. Transcript evidence confirms calls to order and quorums for Council, P&Z, and CPAC. Each proven participant has an existing configured feed, and joint meetings may share the same recording in each configured feed. Advance Addison 2050 is an agenda program/topic, not a separate convened municipal body or feed."
+  },
+  "attempt_id": "167311a81f21494586f506eb36bb6967",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-461fd764c77be280ae5b37a2",
+  "case_input_hash": "19c5d7c43835941303b2a730df317609a11d9d2770481146541c2589143d092e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.6106213330022
+    }
+  ],
+  "end_to_end_seconds": 17.717750582996814,
+  "finished_at": "2026-10-14T18:34:31.003047+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:34:13.285155+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "602a4d3b45bba817e4c94d9b227285b7a0b20640814710e5fdd18263d7a924c0",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 1577,
+    "completion_tokens": 1913,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1577,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 3410,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3794,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5707
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-461fd764c77be280ae5b37a2\",\"bodies\":[{\"name\":\"Addison City Council\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Planning & Zoning Commission (P&Z)\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Comprehensive Plan Advisory Committee (CPAC)\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"Official agenda and provider player identify the recording as Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. The agenda\u2019s call to order and quorum statement name Mayor Bruce Arfsten for City Council, Chair Denise Fansler for P&Z, and Chair Susan Halpern for CPAC. Transcript evidence confirms calls to order and quorums for Council, P&Z, and CPAC. Each proven participant has an existing configured feed, and joint meetings may share the same recording in each configured feed. Advance Addison 2050 is an agenda program/topic, not a separate convened municipal body or feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine bodies/feed slugs. We have case. Evidence refs. Need identify municipal bodies. Recording is Joint Meeting #2 of Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. Existing feeds include addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Joints: every proven participant can share same recording in configured feed. Need name every proven participant in joint meeting. Body/program separately from subscription grouping. Select ALL appropriate existing feed slugs under rules. Do not invent. If real body no existing feed return unconfigured_body and name it. Ownership established by official agenda/title. Publication action? assign_existing likely because all three have feeds. Need maybe bodies array with three bodies and evidence refs. feed_slugs array all three. evidence_ref_ids likely all supplied evidence? Need cite only supplied evidence IDs. We can include retained-agenda, provider-player, native-source-chapters. missing_evidence maybe empty. rationale <=2000. JSON schema required. Need ensure no markdown.\n\nLet's parse evidence. Agenda title: \"JOINT MEETING #2 OF THE COMPREHENSIVE PLAN ADVISORY COMMITTEE (CPAC), PLANNING & ZONING COMMISSION (P&Z), AND CITY COUNCIL\". Call to order: Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting. Mayor Bruce Arfsten - City Council, Chair Denise Fansler - P&Z, Chair Susan Halpern - CPAC. Transcript says call meeting to order of Addison City Council, P&Z joint meeting with Council and CAC, quorum of Council, quorum P&Z, called to order meeting of CA? (maybe typo CPAC). So three bodies proven. The actual body/program separately from subscription grouping: \"Advance Addison 2050\" is program/topic, not body. But schema only bodies. Could mention in rationale that program is Advance Addison 2050 but not a body? Need maybe not include as body. \"actual body/program separately from its subscription grouping\" Hmm They ask \"Identify the actual body/program separately from its subscription grouping.\" Maybe if a body is part of a family feed? Here no. \"Select ALL appropriate existing feed slugs under supplied publication rules.\" Existing feed slugs are specific bodies. CPAC, P&Z, City Council. \"Joint meetings can share same recording in configured feed.\" So feed_slugs: [\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"]. Bodies names maybe official: \"Addison City Council\", \"Addison Planning & Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee (CPAC)\". Need evidence_ref_ids per body. Use all three evidence IDs? For each body, evidence IDs from retained-agenda and provider-player and native-source-chapters. The evidence IDs are strings: \"retained-agenda\", \"provider-player\", \"native-source-chapters\". Could assign same set for each. Schema evidence_ref_ids top-level array too. We'll include all three.\n\nNeed publication_action assign_existing because all have existing feed slugs. missing_evidence [] maybe. rationale concise. case_id echo.\n\nNeed ensure maxItems. Bodies max 10. Feed slugs max 15.\n\nPotential issue: Is \"Comprehensive Plan Advisory Committee\" maybe a committee, existing feed. Yes. \"Planning & Zoning Commission\" existing feed. \"City Council\" existing. \"Advance Addison 2050\" is program? The agenda item 2: \"Present and discuss an update on the Advance Addison 2050 public engagement efforts and market analysis.\" Is Advance Addison 2050 a program? They say \"Identify actual body/program separately from subscription grouping.\" Hmm Maybe the recording belongs to \"Advance Addison 2050\" program? Let's think.\n\nQuestion: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names. ... Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs under the supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\"\n\nWe must not infer from shared members, venue, topic words, city names. Here official title proves. Bodies: CPAC, P&Z, City Council. \"Advance Addison 2050\" is topic/program. Should not include as body. It says \"actual body/program separately from its subscription grouping\" maybe if there is a program feed? Existing feed \"Addison: Public Briefings\" etc. But \"Advance Addison 2050\" not an existing feed. It is not a municipal body? It is a comprehensive plan program, not a convened body. The recording belongs to joint meeting of three bodies. The program might be \"Advance Addison 2050\" public engagement, but not a body. Should we mention in rationale that Advance Addison 2050 is topic/program not a separate feed? Could help.\n\nNeed maybe \"bodies\" list names only, evidence. \"feed_slugs\" list three. \"publication_action\": assign_existing. \"evidence_ref_ids\": all evidence IDs. \"missing_evidence\": [].\nRationale: Official agenda and player title identify joint meeting #2 of CPAC, P&Z, and City Council. Transcript confirms quorum/call to order for Council and P&Z and CPAC. Each has existing configured feed; joint meeting can be shared. Advance Addison 2050 is agenda program/topic, not a separate convened body. Evidence IDs.\n\nNeed JSON. Ensure valid. No markdown. Could include \"Addison City Council\", \"Addison Planning and Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee\" maybe official with ampersand? Use official names from title: \"Comprehensive Plan Advisory Committee (CPAC)\", \"Planning & Zoning Commission (P&Z)\", \"City Council\". Add \"Addison\" prefix? Existing feed titles \"Addison: City Council\" etc. Body name can be official. Evidence has \"Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee\". Use names: \"Addison City Council\", \"Addison Planning & Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee (CPAC)\". Should be fine.\n\nNeed cite evidence for body names and assignments. For each body evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Top-level evidence_ref_ids all.\n\nPotential issue: \"publication_action\": \"assign_existing\" only if all bodies have existing feeds. Yes.\n\nPotential issue: \"unconfigured_body\" if real body no feed. None.\n\nPotential issue: \"archive_only\" if promotional/orientation films/economic-development luncheons. Not.\n\nPotential issue: \"exclude_event\" for ceremonies/dedications. Not.\n\nPotential issue: \"archive_series\" candidate forums. Not.\n\nPotential issue: \"unresolved\" if ownership cannot be established. Established.\n\nNeed final only JSON. Use exact case_id. Let's compose.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine bodies/feed slugs. We have case. Evidence refs. Need identify municipal bodies. Recording is Joint Meeting #2 of Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. Existing feeds include addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Joints: every proven participant can share same recording in configured feed. Need name every proven participant in joint meeting. Body/program separately from subscription grouping. Select ALL appropriate existing feed slugs under rules. Do not invent. If real body no existing feed return unconfigured_body and name it. Ownership established by official agenda/title. Publication action? assign_existing likely because all three have feeds. Need maybe bodies array with three bodies and evidence refs. feed_slugs array all three. evidence_ref_ids likely all supplied evidence? Need cite only supplied evidence IDs. We can include retained-agenda, provider-player, native-source-chapters. missing_evidence maybe empty. rationale <=2000. JSON schema required. Need ensure no markdown.\n\nLet's parse evidence. Agenda title: \"JOINT MEETING #2 OF THE COMPREHENSIVE PLAN ADVISORY COMMITTEE (CPAC), PLANNING & ZONING COMMISSION (P&Z), AND CITY COUNCIL\". Call to order: Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting. Mayor Bruce Arfsten - City Council, Chair Denise Fansler - P&Z, Chair Susan Halpern - CPAC. Transcript says call meeting to order of Addison City Council, P&Z joint meeting with Council and CAC, quorum of Council, quorum P&Z, called to order meeting of CA? (maybe typo CPAC). So three bodies proven. The actual body/program separately from subscription grouping: \"Advance Addison 2050\" is program/topic, not body. But schema only bodies. Could mention in rationale that program is Advance Addison 2050 but not a body? Need maybe not include as body. \"actual body/program separately from its subscription grouping\" Hmm They ask \"Identify the actual body/program separately from its subscription grouping.\" Maybe if a body is part of a family feed? Here no. \"Select ALL appropriate existing feed slugs under supplied publication rules.\" Existing feed slugs are specific bodies. CPAC, P&Z, City Council. \"Joint meetings can share same recording in configured feed.\" So feed_slugs: [\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"]. Bodies names maybe official: \"Addison City Council\", \"Addison Planning & Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee (CPAC)\". Need evidence_ref_ids per body. Use all three evidence IDs? For each body, evidence IDs from retained-agenda and provider-player and native-source-chapters. The evidence IDs are strings: \"retained-agenda\", \"provider-player\", \"native-source-chapters\". Could assign same set for each. Schema evidence_ref_ids top-level array too. We'll include all three.\n\nNeed publication_action assign_existing because all have existing feed slugs. missing_evidence [] maybe. rationale concise. case_id echo.\n\nNeed ensure maxItems. Bodies max 10. Feed slugs max 15.\n\nPotential issue: Is \"Comprehensive Plan Advisory Committee\" maybe a committee, existing feed. Yes. \"Planning & Zoning Commission\" existing feed. \"City Council\" existing. \"Advance Addison 2050\" is program? The agenda item 2: \"Present and discuss an update on the Advance Addison 2050 public engagement efforts and market analysis.\" Is Advance Addison 2050 a program? They say \"Identify actual body/program separately from subscription grouping.\" Hmm Maybe the recording belongs to \"Advance Addison 2050\" program? Let's think.\n\nQuestion: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names. ... Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs under the supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\"\n\nWe must not infer from shared members, venue, topic words, city names. Here official title proves. Bodies: CPAC, P&Z, City Council. \"Advance Addison 2050\" is topic/program. Should not include as body. It says \"actual body/program separately from its subscription grouping\" maybe if there is a program feed? Existing feed \"Addison: Public Briefings\" etc. But \"Advance Addison 2050\" not an existing feed. It is not a municipal body? It is a comprehensive plan program, not a convened body. The recording belongs to joint meeting of three bodies. The program might be \"Advance Addison 2050\" public engagement, but not a body. Should we mention in rationale that Advance Addison 2050 is topic/program not a separate feed? Could help.\n\nNeed maybe \"bodies\" list names only, evidence. \"feed_slugs\" list three. \"publication_action\": assign_existing. \"evidence_ref_ids\": all evidence IDs. \"missing_evidence\": [].\nRationale: Official agenda and player title identify joint meeting #2 of CPAC, P&Z, and City Council. Transcript confirms quorum/call to order for Council and P&Z and CPAC. Each has existing configured feed; joint meeting can be shared. Advance Addison 2050 is agenda program/topic, not a separate convened body. Evidence IDs.\n\nNeed JSON. Ensure valid. No markdown. Could include \"Addison City Council\", \"Addison Planning and Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee\" maybe official with ampersand? Use official names from title: \"Comprehensive Plan Advisory Committee (CPAC)\", \"Planning & Zoning Commission (P&Z)\", \"City Council\". Add \"Addison\" prefix? Existing feed titles \"Addison: City Council\" etc. Body name can be official. Evidence has \"Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee\". Use names: \"Addison City Council\", \"Addison Planning & Zoning Commission\", \"Addison Comprehensive Plan Advisory Committee (CPAC)\". Should be fine.\n\nNeed cite evidence for body names and assignments. For each body evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Top-level evidence_ref_ids all.\n\nPotential issue: \"publication_action\": \"assign_existing\" only if all bodies have existing feeds. Yes.\n\nPotential issue: \"unconfigured_body\" if real body no feed. None.\n\nPotential issue: \"archive_only\" if promotional/orientation films/economic-development luncheons. Not.\n\nPotential issue: \"exclude_event\" for ceremonies/dedications. Not.\n\nPotential issue: \"archive_series\" candidate forums. Not.\n\nPotential issue: \"unresolved\" if ownership cannot be established. Established.\n\nNeed final only JSON. Use exact case_id. Let's compose.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002860,
+    "id": "1efb834741d40d83887b1818b1f5adf3",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 1577,
+      "completion_tokens": 1913,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1577,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 3410,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3794,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5707
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
