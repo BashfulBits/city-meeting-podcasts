@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-6711ef6cf459b6dc7add2175",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda and provider player identify the convened body as the Addison Planning and Zoning Commission in a Work Session; the work session is a meeting type, not a separate body. Existing feed addison-tx-planning-and-zoning-commission matches this proven body. No evidence proves a joint meeting or any other body."
+  },
+  "attempt_id": "77b7ce24c44c4bc0a78f7a833c039417",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-6711ef6cf459b6dc7add2175",
+  "case_input_hash": "af128d585e076b763970a04af45340be89e926361c9ae6178c6b808ab45f207c",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.045086750000337
+    }
+  ],
+  "end_to_end_seconds": 56.895955333999154,
+  "finished_at": "2026-10-14T19:52:15.415470+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T19:51:18.519164+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "648879b0de79ab02147e03a6cda4261983004cd3de941d37fd76473b0c2c7c77",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 734,
+    "completion_tokens": 909,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 734,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 3321,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3705,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4614
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-6711ef6cf459b6dc7add2175\",\"bodies\":[{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider player identify the convened body as the Addison Planning and Zoning Commission in a Work Session; the work session is a meeting type, not a separate body. Existing feed addison-tx-planning-and-zoning-commission matches this proven body. No evidence proves a joint meeting or any other body.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies from recording. We have evidence. Body label Planning & Zoning Commission Work Session. City Addison TX. Evidence agenda and player. Need identify actual body/program separately from subscription grouping. Select all appropriate existing feed slugs under rules. Need not invent. If real body has no feed, unconfigured_body and name it. Ownership established? Recording is Planning and Zoning Commission Work Session for Addison. Existing feed addison-tx-planning-and-zoning-commission. Need maybe body is Planning and Zoning Commission (not \"Work Session\" as separate). Work Session is meeting type, not body. So bodies: Planning and Zoning Commission. Evidence refs retained-agenda, provider-player, native-source-chapters. Publication action assign_existing. feed_slugs [\"addison-tx-planning-and-zoning-commission\"]. Evidence_ref_ids maybe all three. missing_evidence empty. Rationale concise.\n\nNeed ensure \"Name every proven participant in a joint meeting.\" No joint meeting indicated. Only P&Z Commission. Maybe city secretary posts agenda, director speaks. Not participants? \"proven participant\" maybe bodies, not individuals. No joint. We must identify actual body/program separately from subscription grouping. Body name: Planning and Zoning Commission. The Work Session is meeting type. Feed slug matches.\n\nNeed cite only supplied evidence IDs. Evidence for body names and assignments. Use evidence_ref_ids array at top and in body. Maybe evidence_ref_ids all three. Publication_action assign_existing. case_id exact.\n\nCheck if there are any other bodies? The agenda mentions Planning and Zoning Commission Regular Meeting later same date? But this recording is Work Session of same body. Not separate body. No joint. City Council mentioned in discussion of cases moving to City Council, but not convened. Do not include.\n\nWhat about \"Addison TreeHouse\" venue no. \"Town of Addison\" owner? Body is Planning and Zoning Commission. Existing feed.\n\nCould there be \"Planning & Zoning Commission Work Session\" as body? The schema IdentifiedBody name. We should name \"Planning and Zoning Commission\" or \"Planning & Zoning Commission\"? Evidence uses both. Use official title maybe \"Planning and Zoning Commission\" as in feed title. Body label \"Planning & Zoning Commission Work Session\". The body is Planning and Zoning Commission. The meeting type Work Session.\n\nNeed return JSON only.\n\nLet's craft:\n{\n  \"case_id\": \"recording-6711ef6cf459b6dc7add2175\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda and provider player identify the convened body as the Addison Planning and Zoning Commission in a Work Session; the work session is a meeting type, not a separate body. Existing feed addison-tx-planning-and-zoning-commission matches this proven body. No evidence proves a joint meeting or any other body.\"\n}\n\nNeed maybe include all evidence refs? We cite three. Good.\n\nCheck max lengths. Rationale under 2000. Good.\n\nFinal JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies from recording. We have evidence. Body label Planning & Zoning Commission Work Session. City Addison TX. Evidence agenda and player. Need identify actual body/program separately from subscription grouping. Select all appropriate existing feed slugs under rules. Need not invent. If real body has no feed, unconfigured_body and name it. Ownership established? Recording is Planning and Zoning Commission Work Session for Addison. Existing feed addison-tx-planning-and-zoning-commission. Need maybe body is Planning and Zoning Commission (not \"Work Session\" as separate). Work Session is meeting type, not body. So bodies: Planning and Zoning Commission. Evidence refs retained-agenda, provider-player, native-source-chapters. Publication action assign_existing. feed_slugs [\"addison-tx-planning-and-zoning-commission\"]. Evidence_ref_ids maybe all three. missing_evidence empty. Rationale concise.\n\nNeed ensure \"Name every proven participant in a joint meeting.\" No joint meeting indicated. Only P&Z Commission. Maybe city secretary posts agenda, director speaks. Not participants? \"proven participant\" maybe bodies, not individuals. No joint. We must identify actual body/program separately from subscription grouping. Body name: Planning and Zoning Commission. The Work Session is meeting type. Feed slug matches.\n\nNeed cite only supplied evidence IDs. Evidence for body names and assignments. Use evidence_ref_ids array at top and in body. Maybe evidence_ref_ids all three. Publication_action assign_existing. case_id exact.\n\nCheck if there are any other bodies? The agenda mentions Planning and Zoning Commission Regular Meeting later same date? But this recording is Work Session of same body. Not separate body. No joint. City Council mentioned in discussion of cases moving to City Council, but not convened. Do not include.\n\nWhat about \"Addison TreeHouse\" venue no. \"Town of Addison\" owner? Body is Planning and Zoning Commission. Existing feed.\n\nCould there be \"Planning & Zoning Commission Work Session\" as body? The schema IdentifiedBody name. We should name \"Planning and Zoning Commission\" or \"Planning & Zoning Commission\"? Evidence uses both. Use official title maybe \"Planning and Zoning Commission\" as in feed title. Body label \"Planning & Zoning Commission Work Session\". The body is Planning and Zoning Commission. The meeting type Work Session.\n\nNeed return JSON only.\n\nLet's craft:\n{\n  \"case_id\": \"recording-6711ef6cf459b6dc7add2175\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda and provider player identify the convened body as the Addison Planning and Zoning Commission in a Work Session; the work session is a meeting type, not a separate body. Existing feed addison-tx-planning-and-zoning-commission matches this proven body. No evidence proves a joint meeting or any other body.\"\n}\n\nNeed maybe include all evidence refs? We cite three. Good.\n\nCheck max lengths. Rationale under 2000. Good.\n\nFinal JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792007529,
+    "id": "d55e6a481548a8a500b6329820ab89d1",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 734,
+      "completion_tokens": 909,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 734,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 3321,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3705,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4614
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
