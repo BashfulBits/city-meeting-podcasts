@@ -1224,7 +1224,7 @@ def test_local_restart_does_not_restart_wall_time_budget(tmp_path, monkeypatch):
     class LaterDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
-            return start + timedelta(seconds=1201)
+            return start + timedelta(seconds=discovery.MAX_SESSION_SECONDS + 1)
 
     monkeypatch.setattr(discovery, "datetime", LaterDateTime)
     result = run_discovery(
@@ -2890,3 +2890,52 @@ def test_output_upper_recheck_repeats_same_size_after_quota_delay(tmp_path):
     assert seen[:3] == [4000, 4500, 4500]
     assert result.brackets[1]["status"] == "converged"
     assert result.brackets[1]["admitted"] <= 4200 < result.brackets[1]["refused"]
+
+
+def test_default_hour_session_allows_slow_refinement_without_expanding_other_budgets(tmp_path):
+    now, seen = [0.0], []
+
+    def measure(req, admit, timeout):
+        assert timeout <= 600
+        admit()
+        seen.append(req.output_tokens)
+        now[0] += 500
+        return observation(req, req.output_tokens)
+
+    result = execute(
+        tmp_path, measure, selected_axes=("output",), seeds={"output": 4000}, clock=lambda: now[0]
+    )
+    assert len(seen) > 2
+    assert now[0] > 1200 and now[0] <= 3600
+    assert result.budget["max_calls"] == 64
+    assert result.budget["max_output"] == 524288
+    assert result.brackets[1]["refused"] is None
+
+
+def test_hour_deadline_preserves_checkpoint_elapsed_time_and_explicit_shorter_ceiling(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    journal = DiscoveryJournal(tmp_path / "aged.json", {"identity": "physical"})
+    journal.data["started_at"] = (datetime.now(UTC) - timedelta(seconds=3000)).isoformat()
+    timeouts = []
+
+    def measure(req, admit, timeout):
+        admit()
+        timeouts.append(timeout)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    run_discovery(
+        session_id="session",
+        identity="physical",
+        parser_version="parser-v1",
+        supported_axes=("output",),
+        selected_axes=("output",),
+        measure=measure,
+        renew=lambda: None,
+        journal=journal,
+        clock=lambda: 0,
+    )
+    assert 590 <= timeouts[0] <= 600
+    timeouts.clear()
+    execute(tmp_path, measure, selected_axes=("output",), clock=lambda: 0, deadline=300)
+    assert timeouts == [300]

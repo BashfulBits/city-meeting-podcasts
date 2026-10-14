@@ -295,6 +295,10 @@ SSE parsing discards framing/reasoning and caps decoded stream data at 64 MiB, p
 128 KiB and assembled responses at 4 MiB. Streams require final usage, consistent finish and DONE;
 partial/error streams remain inconclusive. Optional stream byte/event metrics accompany compact
 response size.
+New-route discovery sessions have a one-hour elapsed-time ceiling; at most two candidates
+permit two hours of discovery work. Manual discovery gets a three-hour workflow wrapper for
+evidence/cleanup, while ordinary reconciliation keeps its two-hour timeout. The 600-second
+per-call deadline and all call/token budgets are unchanged; checkpoint age consumes the hour.
 New-route output discovery resumes with one fresh admitted-size check and a fresh check of any
 historical refused upper. Recent authenticated time failures guide smaller retry targets but
 never supply cap evidence. A current-run timing estimate can defer a probe before admission
