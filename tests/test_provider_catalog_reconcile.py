@@ -1830,3 +1830,27 @@ def test_reachable_confirmation_cancels_retirement_evidence(monkeypatch):
 
     assert anomaly.retirement_confirmation is None
     assert any("observed proven" in message for message in report.observations)
+
+
+def test_explicit_absent_candidate_retains_terminal_evidence_without_provider_calls(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    selected = "groq/missing-small-model"
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        discovery_enabled=True,
+        discovery_run_id="manual-selected",
+        candidate_keys={selected},
+        canary_fn=lambda *a, **k: pytest.fail("no provider submission for absent model"),
+    )
+    assert len(report.discovery_sessions) == 1
+    row = report.discovery_sessions[0]
+    assert row["reason"] == "route_absent_from_current_catalog"
+    assert row["session"]["upstream_model"] == "missing-small-model"
+    assert row["attempts"] == []

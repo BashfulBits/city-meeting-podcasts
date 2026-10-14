@@ -2065,3 +2065,9 @@ true-cap convergence remain unknown. No production publication or GitHub-history
 Local one-hour output search after #2426 verified 54,720 completion tokens, then preserved
 two streaming deadline failures as inconclusive. Four calls completed within the session;
 `output_time_limited_lower_bound` leaves the numerical upper unknown. See review/48 evidence.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.

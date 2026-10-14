@@ -2967,3 +2967,9 @@ The 144-token distance to the latest failed target is not a verified refusal bra
 tokens; canceled calls have no actual final usage. The hour allowed four attempts in one session,
 but the unchanged per-call deadline still limits proof for slow generation. No production cap
 was published and no additional call was automatically started after the escape.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
