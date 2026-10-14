@@ -88,7 +88,11 @@ def main():
                     "answers": answers,
                     "choice_correct": answers.get("choice") in own["expected_choice"],
                     "raw_usage": row["raw_response"].get("usage"),
-                    "enqueue_seconds": row["elapsed_seconds"],
+                    "transport": row.get("transport", "worker"),
+                    "provider_seconds": row.get("provider_seconds"),
+                    "enqueue_seconds": row["elapsed_seconds"]
+                    if row.get("transport") != "existing_local_pilot"
+                    else None,
                     "end_to_end_seconds": row.get("end_to_end_seconds", row["elapsed_seconds"]),
                     "scope": "Bounded candidate choice, not a free-form feed assignment",
                 }
