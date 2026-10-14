@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-25b112118800868be51c169e",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No agenda, program, or official record identifying a convening municipal body or host for the Spruill Park Dedication Ceremony; the event title alone does not establish ownership.",
+      "No supplied evidence linking the ceremony to any configured Addison body (e.g., City Council or a parks/recreation board), and no proven joint-meeting participants."
+    ],
+    "publication_action": "exclude_event",
+    "rationale": "The supplied provider player (recording 56021) confirms the recording is the 'Spruill Park Dedication Ceremony \u2013 Sep 20, 2009' in Addison, TX. The title and player metadata name an event, not a convened municipal body, and no agenda or other supplied evidence proves which body, if any, convened or hosted it; under the identity rule, the city name, venue, and topic words cannot establish ownership, so no body is named and no institution is invented. However, the general approved publication rules state that ceremonies, dedications, and their site-tour segments are excluded from body feeds, and this item is squarely a dedication ceremony per the provider evidence, so exclude_event applies without needing ownership proof. This classification does not declare the recording non-governmental; it only excludes it from body feeds. None of the existing feed slugs (including addison-tx-town-meetings and addison-tx-public-briefings) covers ceremonies or dedications, so no feed slug is assigned. If a convening body were later proven, the event-exclusion rule would still bar placement in its configured feed."
+  },
+  "attempt_id": "282f6cca1eaa413f8d21155fa3950ac8",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-25b112118800868be51c169e",
+  "case_input_hash": "68e993f2c49924f66d04c27e2ee80cc2b5f3c748357f59b45ca38033ca46f8b1",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 25.660622083003545
+    }
+  ],
+  "end_to_end_seconds": 27.978875875000085,
+  "finished_at": "2026-10-14T18:46:06.615594+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:45:38.636550+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "a506c5a73a4f86b441f4b757ec756c1a68dc478ab7f4542dd36718e39f580458",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1961,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1596,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 1573,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3534
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"recording-25b112118800868be51c169e\", \"bodies\": [], \"feed_slugs\": [], \"publication_action\": \"exclude_event\", \"evidence_ref_ids\": [\"provider-player\"], \"missing_evidence\": [\"No agenda, program, or official record identifying a convening municipal body or host for the Spruill Park Dedication Ceremony; the event title alone does not establish ownership.\", \"No supplied evidence linking the ceremony to any configured Addison body (e.g., City Council or a parks/recreation board), and no proven joint-meeting participants.\"], \"rationale\": \"The supplied provider player (recording 56021) confirms the recording is the 'Spruill Park Dedication Ceremony \u2013 Sep 20, 2009' in Addison, TX. The title and player metadata name an event, not a convened municipal body, and no agenda or other supplied evidence proves which body, if any, convened or hosted it; under the identity rule, the city name, venue, and topic words cannot establish ownership, so no body is named and no institution is invented. However, the general approved publication rules state that ceremonies, dedications, and their site-tour segments are excluded from body feeds, and this item is squarely a dedication ceremony per the provider evidence, so exclude_event applies without needing ownership proof. This classification does not declare the recording non-governmental; it only excludes it from body feeds. None of the existing feed slugs (including addison-tx-town-meetings and addison-tx-public-briefings) covers ceremonies or dedications, so no feed slug is assigned. If a convening body were later proven, the event-exclusion rule would still bar placement in its configured feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"Spruill Park Dedication Ceremony \u2013 Sep 20, 2009\" from Addison, TX. The provider player evidence confirms this: \"Sep 20, 2009 Spruill Park Dedication Ceremony - Addison, TX Video index...\"\n\nThe task: determine which municipal body or bodies this recording belongs to, based on supplied official evidence.\n\nKey considerations:\n\n1. The recording is a park dedication ceremony. The policy states: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This is the \"events\" rule.\n\n2. So this is a ceremony/dedication \u2014 meaning it should be excluded from body feeds. The publication action \"exclude_event\" applies when the general approved publication rules apply (ceremonies/dedications are excluded from body feeds).\n\n3. Body identification: Is there a proven convening body? The evidence only shows the title \"Spruill Park Dedication Ceremony\" \u2014 no agenda, no body name. The body_label is \"Spruill Park Dedication Ceremony\" which is an event label, not a municipal body. There's no evidence identifying which municipal body (e.g., City Council, Park & Recreation board) convened or hosted the ceremony. The city is Addison, TX, but city name alone doesn't establish the body.\n\n4. The policy says: \"Missing ownership proof requires unresolved; it does not prove exclusion.\" Hmm, but also \"Ceremonies, dedications... are excluded from body feeds\" \u2014 the event rule applies regardless of body ownership? Let me think.\n\nThe instruction says: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" The general rules include the events rule: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This recording is clearly a dedication ceremony, so exclude_event applies under the general publication rules.\n\nBut also \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nHmm, there's tension. Which takes precedence? The recording is a dedication ceremony. The events rule says ceremonies/dedications are excluded from body feeds. So publication_action = exclude_event seems right \u2014 the general rule applies to this event type. We don't need to establish ownership to exclude it from body feeds, because the exclusion rule is type-based, not ownership-based.\n\nBut wait \u2014 \"Missing ownership proof requires unresolved; it does not prove exclusion.\" This suggests that if we cannot prove ownership, we cannot conclude the recording is excluded... Actually, I think the distinction: exclusion from body feeds due to event type is a general rule applying to all recordings. The unresolved option is when we cannot determine ownership and the event rule doesn't clearly apply.\n\nActually, let me reconsider. The events rule: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This is a general publication rule. The recording is a dedication ceremony. So exclude_event applies.\n\nHowever, the bodies field: should we list any bodies? There's no proven municipal body. The body_label \"Spruill Park Dedication Ceremony\" is an event name, not a body. We shouldn't invent \"Addison Parks and Recreation Department\" or \"Addison City Council\" without evidence.\n\nSo bodies: empty array? The schema requires \"bodies\" array (can be empty, maxItems 10, no minItems). So bodies: [].\n\nFeed slugs: none \u2014 exclude_event means it's excluded from body feeds, so feed_slugs: [].\n\nPublication action: exclude_event.\n\nEvidence: provider-player only.\n\nMissing evidence: no agenda or official record identifying the convening body/host; the event label alone doesn't establish a municipal body.\n\nRationale: The recording is a park dedication ceremony (Sep 20, 2009, Addison, TX), confirmed by provider player. Under the events policy, ceremonies/dedications are excluded from body feeds, so exclude_event. No supplied evidence identifies a convening municipal body \u2014 the title names an event, not a body; no agenda; city name alone doesn't prove ownership. Therefore no body assignment is made, and no feed slugs apply. If a body were later proven, it still wouldn't get the recording in its feed due to the event exclusion rule.\n\nWait \u2014 should publication_action be \"unresolved\" instead? Let me weigh.\n\nThe instruction: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" vs. \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\"\n\nThe events rule is a general approved publication rule, and it clearly applies: this is a dedication ceremony. So exclude_event is the correct action. The unresolved path is for when we can't establish ownership AND no general rule classifies the item. Here, the item type (dedication ceremony) is established by evidence, and the general rule excludes it from body feeds regardless of which body may have participated. So exclude_event.\n\nThe note \"Missing ownership proof requires unresolved; it does not prove exclusion\" \u2014 I read this as: lack of ownership proof alone cannot be used to justify exclusion (i.e., you can't say \"we don't know who owns it, so exclude it\"). But here exclusion is justified by the event type rule, not by missing ownership. So exclude_event stands.\n\nAlso note \"Empty feeds alone do not mean a non-meeting\" \u2014 irrelevant here since we have a clear event type.\n\nBodies: empty list. Should I name the event as a body? No \u2014 \"Spruill Park Dedication Ceremony\" is not a municipal body. The instructions say identify the actual body/program separately from its subscription grouping, name every proven participant in a joint meeting. No proven participants here. So bodies: [].\n\nMissing evidence: \"No agenda or official record identifying the convening body or host of the Spruill Park Dedication Ceremony\" \u2014 cite the gap. Also perhaps \"No evidence linking the ceremony to any configured Addison body feed.\"\n\nEvidence ref ids: [\"provider-player\"].\n\nFeed slugs: [] \u2014 since exclude_event, we don't assign any feeds. Should we include any? No.\n\nRationale (max 2000 chars): \"The supplied provider player confirms recording 56021 is the 'Spruill Park Dedication Ceremony \u2013 Sep 20, 2009' in Addison, TX. The title and player metadata name an event, not a convened municipal body, and no agenda or other supplied evidence identifies a host body (e.g., City Council or a parks board); per the identity rule, city name, venue and topic cannot establish ownership. Under the events policy, ceremonies and dedications are excluded from body feeds, so the recording is classified exclude_event with no feed assignment. No body is named in 'bodies' because none is proven; this does not declare the recording non-governmental. If a convening body were later proven, the event exclusion rule would still bar placement in its body feed.\"\n\nThat's within 2000 chars.\n\nCase_id: \"recording-25b112118800868be51c169e\".\n\nLet me double check existing feeds: none is for a park dedication. \"addison-tx-town-meetings\" is for town halls, community meetings, open houses and historical citizen input \u2014 could a dedication ceremony fit \"community meetings\"? The events rule explicitly excludes ceremonies/dedications from body feeds, so no. Also \"addison-tx-public-briefings\" is educational briefings \u2014 no.\n\nSo final answer: exclude_event, bodies [], feed_slugs [], evidence [\"provider-player\"], missing_evidence describing the ownership gap.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"Spruill Park Dedication Ceremony \u2013 Sep 20, 2009\" from Addison, TX. The provider player evidence confirms this: \"Sep 20, 2009 Spruill Park Dedication Ceremony - Addison, TX Video index...\"\n\nThe task: determine which municipal body or bodies this recording belongs to, based on supplied official evidence.\n\nKey considerations:\n\n1. The recording is a park dedication ceremony. The policy states: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This is the \"events\" rule.\n\n2. So this is a ceremony/dedication \u2014 meaning it should be excluded from body feeds. The publication action \"exclude_event\" applies when the general approved publication rules apply (ceremonies/dedications are excluded from body feeds).\n\n3. Body identification: Is there a proven convening body? The evidence only shows the title \"Spruill Park Dedication Ceremony\" \u2014 no agenda, no body name. The body_label is \"Spruill Park Dedication Ceremony\" which is an event label, not a municipal body. There's no evidence identifying which municipal body (e.g., City Council, Park & Recreation board) convened or hosted the ceremony. The city is Addison, TX, but city name alone doesn't establish the body.\n\n4. The policy says: \"Missing ownership proof requires unresolved; it does not prove exclusion.\" Hmm, but also \"Ceremonies, dedications... are excluded from body feeds\" \u2014 the event rule applies regardless of body ownership? Let me think.\n\nThe instruction says: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" The general rules include the events rule: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This recording is clearly a dedication ceremony, so exclude_event applies under the general publication rules.\n\nBut also \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nHmm, there's tension. Which takes precedence? The recording is a dedication ceremony. The events rule says ceremonies/dedications are excluded from body feeds. So publication_action = exclude_event seems right \u2014 the general rule applies to this event type. We don't need to establish ownership to exclude it from body feeds, because the exclusion rule is type-based, not ownership-based.\n\nBut wait \u2014 \"Missing ownership proof requires unresolved; it does not prove exclusion.\" This suggests that if we cannot prove ownership, we cannot conclude the recording is excluded... Actually, I think the distinction: exclusion from body feeds due to event type is a general rule applying to all recordings. The unresolved option is when we cannot determine ownership and the event rule doesn't clearly apply.\n\nActually, let me reconsider. The events rule: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This is a general publication rule. The recording is a dedication ceremony. So exclude_event applies.\n\nHowever, the bodies field: should we list any bodies? There's no proven municipal body. The body_label \"Spruill Park Dedication Ceremony\" is an event name, not a body. We shouldn't invent \"Addison Parks and Recreation Department\" or \"Addison City Council\" without evidence.\n\nSo bodies: empty array? The schema requires \"bodies\" array (can be empty, maxItems 10, no minItems). So bodies: [].\n\nFeed slugs: none \u2014 exclude_event means it's excluded from body feeds, so feed_slugs: [].\n\nPublication action: exclude_event.\n\nEvidence: provider-player only.\n\nMissing evidence: no agenda or official record identifying the convening body/host; the event label alone doesn't establish a municipal body.\n\nRationale: The recording is a park dedication ceremony (Sep 20, 2009, Addison, TX), confirmed by provider player. Under the events policy, ceremonies/dedications are excluded from body feeds, so exclude_event. No supplied evidence identifies a convening municipal body \u2014 the title names an event, not a body; no agenda; city name alone doesn't prove ownership. Therefore no body assignment is made, and no feed slugs apply. If a body were later proven, it still wouldn't get the recording in its feed due to the event exclusion rule.\n\nWait \u2014 should publication_action be \"unresolved\" instead? Let me weigh.\n\nThe instruction: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" vs. \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\"\n\nThe events rule is a general approved publication rule, and it clearly applies: this is a dedication ceremony. So exclude_event is the correct action. The unresolved path is for when we can't establish ownership AND no general rule classifies the item. Here, the item type (dedication ceremony) is established by evidence, and the general rule excludes it from body feeds regardless of which body may have participated. So exclude_event.\n\nThe note \"Missing ownership proof requires unresolved; it does not prove exclusion\" \u2014 I read this as: lack of ownership proof alone cannot be used to justify exclusion (i.e., you can't say \"we don't know who owns it, so exclude it\"). But here exclusion is justified by the event type rule, not by missing ownership. So exclude_event stands.\n\nAlso note \"Empty feeds alone do not mean a non-meeting\" \u2014 irrelevant here since we have a clear event type.\n\nBodies: empty list. Should I name the event as a body? No \u2014 \"Spruill Park Dedication Ceremony\" is not a municipal body. The instructions say identify the actual body/program separately from its subscription grouping, name every proven participant in a joint meeting. No proven participants here. So bodies: [].\n\nMissing evidence: \"No agenda or official record identifying the convening body or host of the Spruill Park Dedication Ceremony\" \u2014 cite the gap. Also perhaps \"No evidence linking the ceremony to any configured Addison body feed.\"\n\nEvidence ref ids: [\"provider-player\"].\n\nFeed slugs: [] \u2014 since exclude_event, we don't assign any feeds. Should we include any? No.\n\nRationale (max 2000 chars): \"The supplied provider player confirms recording 56021 is the 'Spruill Park Dedication Ceremony \u2013 Sep 20, 2009' in Addison, TX. The title and player metadata name an event, not a convened municipal body, and no agenda or other supplied evidence identifies a host body (e.g., City Council or a parks board); per the identity rule, city name, venue and topic cannot establish ownership. Under the events policy, ceremonies and dedications are excluded from body feeds, so the recording is classified exclude_event with no feed assignment. No body is named in 'bodies' because none is proven; this does not declare the recording non-governmental. If a convening body were later proven, the event exclusion rule would still bar placement in its body feed.\"\n\nThat's within 2000 chars.\n\nCase_id: \"recording-25b112118800868be51c169e\".\n\nLet me double check existing feeds: none is for a park dedication. \"addison-tx-town-meetings\" is for town halls, community meetings, open houses and historical citizen input \u2014 could a dedication ceremony fit \"community meetings\"? The events rule explicitly excludes ceremonies/dedications from body feeds, so no. Also \"addison-tx-public-briefings\" is educational briefings \u2014 no.\n\nSo final answer: exclude_event, bodies [], feed_slugs [], evidence [\"provider-player\"], missing_evidence describing the ownership gap.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792003484,
+    "id": "09617887f2802898f5e5fd0c950277bb",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1961,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1596,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 1573,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3534
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
