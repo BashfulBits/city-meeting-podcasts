@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **General new-route discovery.** Interpret shared chat usage and explicit size errors before
+  optional provider extensions; attempt all axes without route-specific parser registration.
+  Unknown response formats remain inconclusive and histories use a new parser identity.
+
 - **Combined request discovery.** Test NVIDIA input-heavy and output-heavy context reservations
   using generated-output fixtures, exact summed refusals and explicit clipping diagnostics.
   Timeouts, early stopping and clipping alone do not establish a numerical upper cap.
