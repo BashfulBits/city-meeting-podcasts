@@ -568,7 +568,13 @@ def run_discovery(
         control_version = (
             "v3" if axis == "output" else "v2" if axis in {"input", "total_input_heavy"} else "v1"
         )
-        base_control = output_control if axis == "output" else f"{axis}:{control_version}"
+        base_control = (
+            output_control
+            if axis == "output"
+            else f"{axis}:reservation-v1"
+            if axis.startswith("total_")
+            else f"{axis}:{control_version}"
+        )
         control = base_control
         compatible = [
             item

@@ -1550,7 +1550,11 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         raise ValueError("discovery per-call ceiling")
     if not isinstance(nonce, str) or len(nonce) < 32:
         raise ValueError("discovery needs an unpredictable session nonce")
-    dimension = "output" if request.axis == "output" else "input"
+    if request.axis.startswith("total_") and request.control.split(":opposite=", 1)[0] != (
+        f"{request.axis}:reservation-v1"
+    ):
+        raise ValueError("discovery combined generation control mismatch")
+    dimension = "output" if request.axis != "input" else "input"
     transient = build_context_request(
         route,
         provider_cfg,
@@ -1571,7 +1575,10 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             chat_url(rules, provider_cfg), route["upstream_model"]
         )
         expected_control = output_discovery_control(output_min_tokens)
-        if request.control.split(":opposite=", 1)[0] != expected_control:
+        if (
+            request.axis == "output"
+            and request.control.split(":opposite=", 1)[0] != expected_control
+        ):
             raise ValueError("discovery output generation control mismatch")
         # Keep the task fixed across output targets. A million-line request invites a model
         # to abbreviate; this bounded prefix benchmark explicitly expects server truncation.

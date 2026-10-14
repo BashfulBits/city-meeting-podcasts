@@ -1958,3 +1958,7 @@ and chained exception class in the existing stop reason, excluding URLs and resp
 This approved diagnostic change uses discovery.py and its tests only; no control retry or
 provider call is added. Combined-axis enabling remains gated on explicit consumption versus
 reservation semantics and an output-heavy fixture that actually generates the requested output.
+
+NVIDIA new-route discovery enables both combined-token request mixes using provider input
+plus requested output, filled-output proof and explicit summed-context refusals. Clipped/early
+output remains diagnostic; no automatic runtime cap changes. See review/48 approved contract.

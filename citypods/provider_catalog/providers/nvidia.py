@@ -93,7 +93,9 @@ def discovery_observation(response, request, transient):
 
     https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html
     """  # noqa: E501
-    return chat_discovery_observation(response, request, transient, reasoning_basis="included")
+    return chat_discovery_observation(
+        response, request, transient, reasoning_basis="included", combined=True
+    )
 
 
 def discovery_output_min_tokens(endpoint: str, model: str) -> bool:
@@ -121,7 +123,7 @@ def discovery_output_stream_usage(endpoint: str, model: str) -> bool:
 
 
 RULES = ProviderRules(
-    discovery_axes=("input", "output"),
+    discovery_axes=("input", "output", "total_input_heavy", "total_output_heavy"),
     discovery_output_min_tokens=discovery_output_min_tokens,
     discovery_output_stream_usage=discovery_output_stream_usage,
     discovery_parser_version="nvidia-discovery-chat-v1",
