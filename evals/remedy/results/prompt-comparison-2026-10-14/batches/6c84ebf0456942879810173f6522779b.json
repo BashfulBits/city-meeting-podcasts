@@ -1,0 +1,135 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas)"
+      }
+    ],
+    "case_id": "recording-c2104a6abb6a7a51f3876825",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-2-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained official agenda (recording_id 111521) states that 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', matching the recording date and the provider player title/ID 111521, so the convening body is the TIRZ No. 2 Board itself. The agenda's item 'make a recommendation to City Council' is a subject-matter reference to another body, not proof of a joint convening, and no other body is named as a participant; venue (Council Work Session Room) and topic words (Westpark TIRZ annual report) do not alter ownership. The existing feed 'denton-tx-tirz-2-board' ('Meetings of Denton TIRZ No. 2 Board') is the direct configured feed for this proven body, so publication_action is assign_existing with that single feed. The separate 'denton-tx-tirz-1-board' feed is for a different numbered board (identity policy: numbered boards differ) and is excluded. No unconfigured body, archival, or exclusion treatment applies."
+  },
+  "attempt_id": "849341e06a884a169bc970f7ed68cb7a",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-c2104a6abb6a7a51f3876825",
+  "case_input_hash": "3fcaf9b983139e6bc11ef163a717b387b6daba1e278f211d10da8cad1b76dfab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 22.26873954199982
+    }
+  ],
+  "end_to_end_seconds": 23.68123212499995,
+  "finished_at": "2026-10-14T17:09:52.008834+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T17:09:28.327430+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "29bc0288cdefbae628964bf93a3d49d84d1cc6dcd0998ea6103b34bf86bf74c0",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1417,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1012,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4342,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5759
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n  \"bodies\": [\n    {\n      \"name\": \"Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas)\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-2-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained official agenda (recording_id 111521) states that 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', matching the recording date and the provider player title/ID 111521, so the convening body is the TIRZ No. 2 Board itself. The agenda's item 'make a recommendation to City Council' is a subject-matter reference to another body, not proof of a joint convening, and no other body is named as a participant; venue (Council Work Session Room) and topic words (Westpark TIRZ annual report) do not alter ownership. The existing feed 'denton-tx-tirz-2-board' ('Meetings of Denton TIRZ No. 2 Board') is the direct configured feed for this proven body, so publication_action is assign_existing with that single feed. The separate 'denton-tx-tirz-1-board' feed is for a different numbered board (identity policy: numbered boards differ) and is excluded. No unconfigured body, archival, or exclusion treatment applies.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify the convening body for this recording. The agenda (retained-agenda) clearly says \"Tax Increment Reinvestment Zone No. 2 Board, City of Denton\" Special Called Meeting on January 13, 2021. The recording ID 111521 matches. There's an existing feed \"denton-tx-tirz-2-board\" - \"Meetings of Denton TIRZ No. 2 Board.\"\n\nSo the body is \"Tax Increment Reinvestment Zone No. 2 Board\" (City of Denton). Feed slug: denton-tx-tirz-2-board. Publication action: assign_existing.\n\nNote the board makes a recommendation to City Council \u2014 that's a reference to another body, not a joint meeting. Only one body convened. The feed for TIRZ No. 1 Board differs \u2014 numbered boards differ per identity policy.\n\nBodies array: name \"Tax Increment Reinvestment Zone No. 2 Board\" with evidence refs: retained-agenda, provider-player, native-source-chapters perhaps. Main: retained-agenda.\n\nMissing evidence: none relevant. Rationale: agenda certifies Special Called Meeting of TIRZ No. 2 Board of the City of Denton; recording 111521 player title matches; feed denton-tx-tirz-2-board is configured for that body's meetings. Recommendation to City Council is a topic, not joint convening.\n\nOutput JSON only, no markdown? The system prompt says output valid JSON, ends with ```... Actually says \"Ensure that the answer always ends with ``` to indicate the end of the JSON object.\" Hmm, the system says always output valid JSON and end with ``` to indicate the end. But schema says return one JSON object only (no Markdown or commentary). The user instruction says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema.\" The system prompt says end with ``` to indicate the end of the JSON object. Conflict. I'll follow the user schema but the system says to end with ```. The system says \"You should always follow instructions and output a valid JSON object... If unsure, default to {\"answer\": \"$your_answer\"}. Ensure always ends with ``` to indicate the end of the JSON object.\"\n\nI'll output raw JSON ending with ``` fenced? Safest: output JSON within a code block starting ``` and ending ```. But \"no Markdown\" in task... The system prompt takes precedence over user? Typically system instructions matter. The system prompt seems to be a general wrapper. I'll output the JSON object only, no markdown fences except the ending ``` requirement. Hmm, ending with ``` without opening would be weird. I'll just output plain JSON followed by nothing? The system explicitly requires ending with ```. To satisfy both, I could wrap in a code fence. I'll wrap in ```json ... ``` to be safe? Actually \"Return one JSON object only (no Markdown or commentary)\". The ending ``` is required by system. I'll do:\n\n{...json...}\n```\n\nHmm. I think wrapping the whole thing in a fenced code block is the most common interpretation: start with ```json, end with ```. That satisfies \"ends with ```\". I'll do that.\n\nJSON content:\n\n{\n  \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n  \"bodies\": [\n    {\n      \"name\": \"Tax Increment Reinvestment Zone No. 2 Board (City of Denton)\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-2-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda, recording_id 111521) certifies a Special Called Meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, on January 13, 2021 at 11:00 a.m. in the Council Work Session Room at City Hall \u2014 matching the recording's date and provider ID 111521 in provider-player. The convening body is the TIRZ No. 2 Board itself; the agenda's recommendation 'to City Council' is a subject-matter reference, not evidence of a joint convening, and no second body is named as participating. The existing feed denton-tx-tirz-2-board ('Meetings of Denton TIRZ No. 2 Board') directly matches this proven body, so assign_existing applies; the distinct denton-tx-tirz-1-board feed is for a different numbered board and is not supported.\"\n}\n\nRationale under 2000 chars, fine.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify the convening body for this recording. The agenda (retained-agenda) clearly says \"Tax Increment Reinvestment Zone No. 2 Board, City of Denton\" Special Called Meeting on January 13, 2021. The recording ID 111521 matches. There's an existing feed \"denton-tx-tirz-2-board\" - \"Meetings of Denton TIRZ No. 2 Board.\"\n\nSo the body is \"Tax Increment Reinvestment Zone No. 2 Board\" (City of Denton). Feed slug: denton-tx-tirz-2-board. Publication action: assign_existing.\n\nNote the board makes a recommendation to City Council \u2014 that's a reference to another body, not a joint meeting. Only one body convened. The feed for TIRZ No. 1 Board differs \u2014 numbered boards differ per identity policy.\n\nBodies array: name \"Tax Increment Reinvestment Zone No. 2 Board\" with evidence refs: retained-agenda, provider-player, native-source-chapters perhaps. Main: retained-agenda.\n\nMissing evidence: none relevant. Rationale: agenda certifies Special Called Meeting of TIRZ No. 2 Board of the City of Denton; recording 111521 player title matches; feed denton-tx-tirz-2-board is configured for that body's meetings. Recommendation to City Council is a topic, not joint convening.\n\nOutput JSON only, no markdown? The system prompt says output valid JSON, ends with ```... Actually says \"Ensure that the answer always ends with ``` to indicate the end of the JSON object.\" Hmm, the system says always output valid JSON and end with ``` to indicate the end. But schema says return one JSON object only (no Markdown or commentary). The user instruction says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema.\" The system prompt says end with ``` to indicate the end of the JSON object. Conflict. I'll follow the user schema but the system says to end with ```. The system says \"You should always follow instructions and output a valid JSON object... If unsure, default to {\"answer\": \"$your_answer\"}. Ensure always ends with ``` to indicate the end of the JSON object.\"\n\nI'll output raw JSON ending with ``` fenced? Safest: output JSON within a code block starting ``` and ending ```. But \"no Markdown\" in task... The system prompt takes precedence over user? Typically system instructions matter. The system prompt seems to be a general wrapper. I'll output the JSON object only, no markdown fences except the ending ``` requirement. Hmm, ending with ``` without opening would be weird. I'll just output plain JSON followed by nothing? The system explicitly requires ending with ```. To satisfy both, I could wrap in a code fence. I'll wrap in ```json ... ``` to be safe? Actually \"Return one JSON object only (no Markdown or commentary)\". The ending ``` is required by system. I'll do:\n\n{...json...}\n```\n\nHmm. I think wrapping the whole thing in a fenced code block is the most common interpretation: start with ```json, end with ```. That satisfies \"ends with ```\". I'll do that.\n\nJSON content:\n\n{\n  \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n  \"bodies\": [\n    {\n      \"name\": \"Tax Increment Reinvestment Zone No. 2 Board (City of Denton)\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-2-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda, recording_id 111521) certifies a Special Called Meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, on January 13, 2021 at 11:00 a.m. in the Council Work Session Room at City Hall \u2014 matching the recording's date and provider ID 111521 in provider-player. The convening body is the TIRZ No. 2 Board itself; the agenda's recommendation 'to City Council' is a subject-matter reference, not evidence of a joint convening, and no second body is named as participating. The existing feed denton-tx-tirz-2-board ('Meetings of Denton TIRZ No. 2 Board') directly matches this proven body, so assign_existing applies; the distinct denton-tx-tirz-1-board feed is for a different numbered board and is not supported.\"\n}\n\nRationale under 2000 chars, fine.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791997790,
+    "id": "3daf2a060df33ceac6a5ac4279304b23",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1417,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1012,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4342,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5759
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
