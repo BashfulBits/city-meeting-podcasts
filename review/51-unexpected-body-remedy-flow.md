@@ -4247,3 +4247,15 @@ Whole Ruff/format551 files, fragments and diff checks clean. Fixture isolation n
 restores all evaluation-local route dictionaries after tests. Fourteen mocked
 provider jobs verified exact variant messages, one submission, no SDK retry and
 pre-call intent provenance. Original default prompt/shape and Groq pauses remain.
+
+
+Feed-context diagnostic completed2026-10-14:14submitted,13answers,one fullGLM
+title-variant900s timeout, no retries. Explicit policy7/7 exact three-feed matches;
+retrieved titles5correct,one Flash-Lite omission of both broader feeds,one unanswered.
+Results/intents and immutable scored report are retained under
+evals/remedy/results/feed-context-2026-10-14; RESULTS.md includes actual prompt usage
+and provider latency. Actual successful inputs5881–6221 tokens with policy and
+6236–6517 with titles. This is rule-following vs inference from examples on one known
+error, not general accuracy or independent qualification. Existing identity/serving
+family admission holds remain. Original60-recording study and its Groq pauses unchanged.
+Keep final common-question21-pair audit pending remaining main-study results.
