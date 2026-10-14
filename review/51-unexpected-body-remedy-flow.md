@@ -4123,3 +4123,9 @@ set the existing round-robin next_candidate_index to Qwen, so it gets the first
 eligible slot after the active request finishes. Then continue the normal cycle.
 Do not repeat this priority on later resumptions, alter shared allocation, bypass
 actual token waits or change any attempt allowance. Test initial and repeat resumes.
+
+
+First-slot verification:169 targeted checks and6,157 offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment checks clean. Release
+resumption prioritizes Qwen once; repeat resumption preserves normal queue position.
+All attempt counters, original horizon and real token waits remain unchanged.

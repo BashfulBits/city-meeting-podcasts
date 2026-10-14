@@ -351,6 +351,8 @@ def main():
             qwen = state.get("models", {}).get("qwen38", {})
             if str(qwen.get("capacity", {}).get("reason", "")).startswith("Qwen held: bypass"):
                 qwen["next_eligible_at"] = None
+            if not state.get("qwen_bypass_enabled", False):
+                state["next_candidate_index"] = MODELS.index("qwen38")
             state["qwen_bypass_enabled"] = True
             state["qwen_bypass_approval_ref"] = (
                 "review/51 Qwen hold removal; maintainer chat2026-10-13"
