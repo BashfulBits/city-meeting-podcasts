@@ -1,0 +1,165 @@
+{
+  "cases": [
+    {
+      "case_id": "recording-0312d144c749c190446edfe0",
+      "judges": {
+        "A": {
+          "attempt_id": "e46ec955901242c399dc3cd3245160e1",
+          "candidate": "sol",
+          "prompt_hash": "6777e97a3a8366389eb08acf00925ea13f805f7fb569f8ef64d8fb615ac941cd"
+        },
+        "B": {
+          "attempt_id": "5f9a499db1fc4e79b758a6c6f03a0e05",
+          "candidate": "glm_flash",
+          "prompt_hash": "6777e97a3a8366389eb08acf00925ea13f805f7fb569f8ef64d8fb615ac941cd"
+        }
+      }
+    },
+    {
+      "case_id": "recording-0850ab9885c4b28efea3adfe",
+      "judges": {
+        "A": {
+          "attempt_id": "559dc3a6d87b488bb4d5b93ea20d2a02",
+          "candidate": "sol",
+          "prompt_hash": "d277d7f0b0c5133fcc6c1f0f1789f42d7540f66487d0da6a428ece5e0c8b3388"
+        },
+        "B": {
+          "attempt_id": "097badfe20a14ebb9e57cf8bbd86ff8c",
+          "candidate": "glm_flash",
+          "prompt_hash": "d277d7f0b0c5133fcc6c1f0f1789f42d7540f66487d0da6a428ece5e0c8b3388"
+        }
+      }
+    },
+    {
+      "case_id": "recording-1fd48da636e2445a9d8ecebb",
+      "judges": {
+        "A": {
+          "attempt_id": "7e0662695129401f90192eced70689d2",
+          "candidate": "glm_flash",
+          "prompt_hash": "f9ee07d1208e4eca0beb3bfe20f9657917d61d26cd2af99dfd5049313cfa1201"
+        },
+        "B": {
+          "attempt_id": "b4d44872a5b240ea94600cbf9756081c",
+          "candidate": "sol",
+          "prompt_hash": "f9ee07d1208e4eca0beb3bfe20f9657917d61d26cd2af99dfd5049313cfa1201"
+        }
+      }
+    },
+    {
+      "case_id": "recording-4cbdc0f5678a5408279ffae1",
+      "judges": {
+        "A": {
+          "attempt_id": "7dc9a8d8041b414998e6083cdf211b30",
+          "candidate": "sol",
+          "prompt_hash": "c6142190065268cb3d50f9cac2300768edb5fba3257ca47de3f563760540e13f"
+        },
+        "B": {
+          "attempt_id": "b5edcf92a2b94a938187a9ec76708aca",
+          "candidate": "glm_flash",
+          "prompt_hash": "c6142190065268cb3d50f9cac2300768edb5fba3257ca47de3f563760540e13f"
+        }
+      }
+    },
+    {
+      "case_id": "recording-5dddfe1f523eeff020ce4343",
+      "judges": {
+        "A": {
+          "attempt_id": "22c5d33b2b344f61b0edc2a5dca35bf7",
+          "candidate": "sol",
+          "prompt_hash": "278875943929584981dfefbf1c2cc68c1a1600bc31284367318fd65016638204"
+        },
+        "B": {
+          "attempt_id": "291c6bd7550447ecba90d8cdf0eaa361",
+          "candidate": "glm_flash",
+          "prompt_hash": "278875943929584981dfefbf1c2cc68c1a1600bc31284367318fd65016638204"
+        }
+      }
+    },
+    {
+      "case_id": "recording-64905d6e32cae3a0ec5a7070",
+      "judges": {
+        "A": {
+          "attempt_id": "4813d529d9a94467a4982c8f82fe978a",
+          "candidate": "glm_flash",
+          "prompt_hash": "3503c90acbeb5ac14ea3997a3aa2957cec719f998e74cebe869b93ea4a71f5a8"
+        },
+        "B": {
+          "attempt_id": "d4aed01438104eb58bae0cde0a4a513a",
+          "candidate": "sol",
+          "prompt_hash": "3503c90acbeb5ac14ea3997a3aa2957cec719f998e74cebe869b93ea4a71f5a8"
+        }
+      }
+    },
+    {
+      "case_id": "recording-76b77357565cdc16153f2a97",
+      "judges": {
+        "A": {
+          "attempt_id": "296dfb903c8147aea8a07c9fbed0d776",
+          "candidate": "sol",
+          "prompt_hash": "1189c830ba3844ad55d973e2a5bfdca68f7c47a521f1bd230a48c6e228e701d9"
+        },
+        "B": {
+          "attempt_id": "67453c9c629c442b969276d39a005edc",
+          "candidate": "glm_flash",
+          "prompt_hash": "1189c830ba3844ad55d973e2a5bfdca68f7c47a521f1bd230a48c6e228e701d9"
+        }
+      }
+    },
+    {
+      "case_id": "recording-eef10050e298d3758921b67a",
+      "judges": {
+        "A": {
+          "attempt_id": "e69fca60cb1446a0b13651da01183d23",
+          "candidate": "glm_flash",
+          "prompt_hash": "c0a4d13450f638791468fde0d6b238a424d97aaa1bf8a49f314a78f3cf52b296"
+        },
+        "B": {
+          "attempt_id": "daaeb3d3c32a470bb0ecd3b4cfc8c9c2",
+          "candidate": "sol",
+          "prompt_hash": "c0a4d13450f638791468fde0d6b238a424d97aaa1bf8a49f314a78f3cf52b296"
+        }
+      }
+    }
+  ],
+  "prepared_at": "2026-10-14T23:30:41.328381+00:00",
+  "retrieval_urls": [
+    "https://addisontx.new.swagit.com/videos/56029",
+    "https://agendas.addisontx.gov/docs/2007/CM/20070612_376/373_2007-06-12%20Agenda_Meeting%20Combined%20Meeting.pdf",
+    "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+    "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225",
+    "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b",
+    "https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/119/Streets%20and%20Transportation%20Meeting%20061323_Meeting%20Minutes.pdf",
+    "https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/163/CBTF%20Meeting_081523_Meeting%20Minutes.pdf",
+    "https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf",
+    "https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx",
+    "https://dallastx.new.swagit.com/videos/233032",
+    "https://dallastx.new.swagit.com/videos/259821",
+    "https://dallastx.new.swagit.com/videos/269608",
+    "https://dallastx.new.swagit.com/videos/270975",
+    "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+    "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+    "https://www.citymeetings.fyi/addison-tx-community-partnership-committee/audio_feed.xml",
+    "https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/audio_feed.xml",
+    "https://www.citymeetings.fyi/addison-tx-town-meetings/audio_feed.xml",
+    "https://www.citymeetings.fyi/addison-tx-unified-development-code-advisory-committee/audio_feed.xml",
+    "https://www.citymeetings.fyi/arlington-tx-arlington-tomorrow-foundation/audio_feed.xml",
+    "https://www.citymeetings.fyi/arlington-tx-council/audio_feed.xml",
+    "https://www.citymeetings.fyi/arlington-tx-environmental-task-force/audio_feed.xml",
+    "https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/audio_feed.xml",
+    "https://www.citymeetings.fyi/arlington-tx/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/audio_feed.xml",
+    "https://www.citymeetings.fyi/dallas-tx-bond-program-meetings/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-board-of-adjustment/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-city-council-worksession/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-city-council/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-minority-and-women-business-enterprise-advisory-committee/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx-state-of-city/audio_feed.xml",
+    "https://www.citymeetings.fyi/fort-worth-tx/audio_feed.xml"
+  ]
+}

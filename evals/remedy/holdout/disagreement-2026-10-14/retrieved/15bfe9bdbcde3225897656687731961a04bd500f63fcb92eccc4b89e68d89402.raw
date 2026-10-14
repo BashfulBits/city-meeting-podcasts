@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2024 Bond Economic Development, Housing and Homeless Solutions Subcommittee (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Dallas 2024 bond Economic Development, Housing and Homeless Solutions subcommittee proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Dallas 2024 bond Economic Development, Housing and Homeless Solutions subcommittee proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/artwork.jpg</url>
+      <title>Dallas: 2024 Bond Economic Development, Housing and Homeless Solutions Subcommittee</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/</link>
+    </image>
+    <item>
+      <title>2024 Bond ECONOM – Aug 22, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/a0d3c568e2b94174/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/270973">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/chapters/a0d3c568e2b94174.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/a0d3c568e2b94174-asr-f0998d196f32.vtt" type="text/vtt"/>
+      <pubDate>Tue, 22 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a0d3c568e2b94174</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/a0d3c568e2b94174-c512fdfda144.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5312</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Task Force Economic Development – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/8969ad6d91ed23d2/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269610">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/chapters/8969ad6d91ed23d2.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">8969ad6d91ed23d2</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6846</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond ECONOM Meeting – Jun 20, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/b28f5bf275cc5706/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259828">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/chapters/b28f5bf275cc5706.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/b28f5bf275cc5706-asr-15a665ee3161.vtt" type="text/vtt"/>
+      <pubDate>Tue, 20 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">b28f5bf275cc5706</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/b28f5bf275cc5706-2600bc058760.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5248</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond ECONOM Meeting – Jun 13, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/b10cfe2ba62a8958/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259831">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-economic-development-subcommittee/chapters/b10cfe2ba62a8958.json" type="application/json+chapters"/>
+      <pubDate>Tue, 13 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">b10cfe2ba62a8958</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/b10cfe2ba62a8958-d4310ee8c66a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5505</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

@@ -4357,3 +4357,14 @@ uncertainty/probabilities,latency/usage and identity holds. No implicit gold cha
 Test8-case selection,no answer leak,deterministic retrieval,target exclusion,
 choice eligibility including neither,fit limits and immutable/unknown guards;
 whole Ruff/format and full offline suite before provider submissions.
+
+JEV preflight: queued audit-remedy purpose is unregistered. Use the existing
+judge:anchor lane for these isolated shadow-evaluation recipes; read-only ingress
+is open with4056 write units available. No new lane,limit or Worker deployment.
+DeepSeek retains its existing audit-remedy direct policy.
+
+Disagreement diagnostic verification2026-10-14:55 targeted checks and6208 full
+offline tests passed,16deselected;whole Ruff/format559 files clean. Eight frozen
+packets use38 retrieval URLs,one explicit5MB-cap failure. JEV largest estimated
+state-plus-question18274tokens,fits28000. Normal DeepSeek/JEV capacity and existing
+judge:anchor ingress verified read-only before provider submissions.
