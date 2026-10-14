@@ -3005,7 +3005,10 @@ def test_combined_proof_requires_filled_output_allowance(axis, completion, finis
     assert result.outcome == expected
     if expected == "admitted":
         assert result.coordinate == 21384
-        assert result.count_basis == "input_plus_requested_output"
+        bracket = Bracket(axis, 21384)
+        bracket.observe(result)
+        assert bracket.lower == 21384
+        assert result.count_basis == "prompt_plus_requested_output"
     else:
         assert result.coordinate is None
         assert "combined_output_" in result.diagnostic
@@ -3028,9 +3031,83 @@ def test_combined_refusal_requires_explicit_sum_not_output_field_limit():
     result = rules.discovery_observation(Response(400, body=json.dumps(payload)), req, transient)
     assert result.outcome == "refused"
     assert result.coordinate == 5000 + req.output_tokens
-    assert result.count_basis == "input_plus_requested_output"
+    bracket = Bracket(req.axis, req.target)
+    bracket.observe(result)
+    assert bracket.upper == result.coordinate
+    assert result.count_basis == "prompt_plus_requested_output"
     payload["error"]["message"] = payload["error"]["message"].replace("21384", "21385")
     assert (
         rules.discovery_observation(Response(400, body=json.dumps(payload)), req, transient).outcome
         == "inconclusive"
     )
+
+
+def test_combined_empty_length_response_reports_clipping_without_size_refusal():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "total_input_heavy")
+    body = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 999979,
+            "completion_tokens": 21,
+            "total_tokens": 1000000,
+            "completion_tokens_details": {"reasoning_tokens": 21},
+        },
+        "choices": [{"message": {"role": "assistant", "content": None}, "finish_reason": "length"}],
+    }
+    result = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert result.outcome == "inconclusive" and not result.verified
+    assert result.coordinate is None
+    assert result.reported_input == 999979 and result.reported_output == 21
+    assert result.diagnostic == "combined_output_clipped:actual_total=1000000"
+
+
+def test_combined_output_parameter_rejection_is_not_a_context_boundary():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "total_output_heavy")
+    body = {
+        "detail": [
+            {
+                "type": "less_than_equal",
+                "loc": ["body", "max_tokens"],
+                "ctx": {"le": 1024},
+                "input": req.output_tokens,
+            }
+        ]
+    }
+    result = rules.discovery_observation(Response(422, body=json.dumps(body)), req, transient)
+    assert result.outcome == "inconclusive" and result.coordinate is None
+
+
+@pytest.mark.parametrize("axis", ["total_input_heavy", "total_output_heavy"])
+def test_combined_nvidia_fixture_requests_full_streamed_output(axis):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.nvidia import RULES
+
+    model = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    cfg = {
+        "api_base": "https://integrate.api.nvidia.com/v1",
+        "accounts": [{"id": "a", "api_key_env": "KEY"}],
+    }
+    route = {
+        "route_id": "candidate",
+        "provider": "nvidia",
+        "account_id": "a",
+        "upstream_model": model,
+    }
+    req = replace(
+        request(axis),
+        control=f"{axis}:reservation-v1",
+        identity=discovery_identity("nvidia", "a", model, cfg["api_base"] + "/chat/completions"),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    body = transient.shaped_body["body"]
+    assert body["min_tokens"] == body["max_tokens"] == req.output_tokens
+    assert body["stream"] is True and body["stream_options"]["include_usage"] is True
+    assert "Repeat the line 1" in transient.messages[1]["content"]

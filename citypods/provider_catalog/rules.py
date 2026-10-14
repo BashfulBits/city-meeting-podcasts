@@ -720,7 +720,7 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
             return {
                 "coordinate": counts["total"],
                 "reported_input": input_count,
-                "count_basis": "input_plus_requested_output",
+                "count_basis": "prompt_plus_requested_output",
                 "diagnostic": "verified_combined_reservation_refusal",
             }
         # A combined overflow with fixed output bounds the conditional input search only.
@@ -1017,7 +1017,7 @@ def chat_discovery_observation(
                     outcome="admitted",
                     verified=True,
                     coordinate=usage["prompt_tokens"] + request.output_tokens,
-                    count_basis="input_plus_requested_output",
+                    count_basis="prompt_plus_requested_output",
                     **(
                         values
                         | {"diagnostic": "verified_combined_output_filled", "response_preview": ""}
