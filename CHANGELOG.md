@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Make resumed output discovery progress on slow routes.** Recheck an admitted lower once
+  and re-test a genuine refused upper instead of duplicating the lower baseline. Recent time
+  failures guide smaller retry sizes without becoming token-limit evidence. A timing estimate
+  defers probes that cannot fit the remaining session. Existing budgets, input/combined rules,
+  dispatch and production limits remain unchanged.
+
 - **Preserve discovery diagnostics on hard cancellation.** Streamed discovery transports report
   throttled, payload-free progress to the local parent. Timeout results retain the last request
   phase, structural stream state and bounded counters; progress never supplies capacity proof
