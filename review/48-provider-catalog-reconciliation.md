@@ -2246,7 +2246,8 @@ local artifacts as history authority. Read at most six sessions per candidate, 6
 2 MiB per artifact; original observation age is never renewed by copying it into a later artifact.
 Parser, fixture, account, endpoint or model identity changes require baseline revalidation.
 A new catalog digest alone requires fresh reachability/free verification, not erasure of compatible
-size evidence. Resume only after two compatible fresh successes; contradictions reopen the axis.
+size evidence. Input/combined axes resume after two compatible fresh successes. Output uses the approved
+fresh-lower/fresh-upper policy below; contradictions reopen the axis.
 
 The existing rolling issue gains `- [ ] candidate:<key> test again` next to add/ignore choices.
 The maintainer checks it and submits existing `/apply`. Retry conflicts with add/ignore for that
@@ -2548,7 +2549,7 @@ or compressed network bytes. Legacy artifacts default to absent metrics. Never p
 stream, full answer or reasoning. Failed completed output retains the existing bounded/redacted
 preview; verified repeated output clears it. Stream delivery changes no prompt, fixed counterpart,
 minimum-generation control, usage-count meaning or boundary coordinate, so compatible
-`output:v3:min_tokens` history remains valid and receives its normal two fresh baseline checks.
+`output:v3:min_tokens` history remains valid and receives the reviewed baseline checks below.
 New provider/route opt-ins require documented semantics and independent streamed final-usage
 verification; minimum support alone never implies streaming support.
 
@@ -2738,6 +2739,44 @@ No artifact schema, provider request, timeout/budget, Worker, production config 
 change. No new live request is included; repeat diagnostics require explicit authorization.
 
 
+#### Efficient resumed output search — implemented in PR #2424
+
+The maintainer explicitly approved replacing duplicate output baseline calls on 2026-10-13.
+A verified 46,080 output call took 530.423 seconds: two such baselines consume approximately
+1,061 of the existing 1,200-second session, leaving no useful large-probe window. This change
+spends the second call on useful new evidence rather than silently expanding time/token budgets.
+
+Only output changes. Recheck the compatible historical admitted lower bound once. Do not import
+a historical refused upper into current proof: re-test it next when present. A fresh refusal
+sets the current upper; a fresh admission reopens growth; a time/server failure remains partial.
+If the lower is now refused, discard prior boundaries and seek smaller sizes. Existing identity,
+account, endpoint, parser, fixture, count basis and control fences remain binding. Input and
+combined axes retain their two-success contract.
+
+Compatible authenticated failures within the last 24 hours may guide an output retry size,
+never supply a refused boundary. Eligible hints are transport/local timeouts, typed outage
+outcomes, and the observed SSE `Internal server error` diagnostic. Authentication/quota errors,
+expired observations and mismatched controls are excluded. Choose a midpoint between the
+current admitted lower and the nearest failed larger target, capped by the ordinary next target.
+Failures at or below the new admitted lower cease to constrain exploration. Once that retry
+space is within the existing 0.5% precision goal, stop with `output_time_limited_lower_bound`,
+not cap convergence. Expiry lets later approved retries explore upward again.
+
+Use measured successful output duration per actual completion coordinate from the current run
+to estimate whether its next output target fits the remaining session, capped at the existing
+600-second call deadline. If it does not fit, stop before admission with
+`insufficient_output_probe_window`. This is a scheduling estimate only: no numerical route
+limit, blanket cap margin, timing artifact schema or guaranteed latency claim. All 600-second,
+20-minute, call/token and shared-run ceilings bind as before.
+
+File plan: `discovery.py`, existing discovery tests, lifecycle docs and changelog fragment.
+No Worker/runtime, request body, provider parser, history authentication/schema, workflow,
+production limits or configured-route calibration changes. Acceptance covers stale lower/upper
+changes, fresh refusal requirements, time-only hints with no fabricated cap, hint expiry and
+control fencing, slow-run progress and pre-admission time deferral, unchanged input behavior,
+contradictions, checkpoint/budget accounting and all existing offline checks. No live call is
+part of this implementation; local/GitHub canary continuation remains separately authorized.
+
 #### Direct output-discovery evidence after cancellation-safe progress
 
 After merged #2422, the maintainer authorized one direct 55,296-output-token probe with the
@@ -2775,3 +2814,22 @@ reasoning semantics; successful output retained no preview. This raises the veri
 to 46,080 but supplies no refused upper bound or 0.5% convergence. Transport time failures at
 55,296 remain incomparable to numerical size refusals. Do not publish a true maximum from them.
 The one-call diagnostic budget stopped normally; no automatic retry or production change.
+
+
+The revised output-search implementation in merged #2424 was exercised locally in a single
+bounded 20-minute diagnostic, using prior reviewed local records only as diagnostic hints,
+not authenticated GitHub history. It sent exactly two direct calls with no Worker interaction:
+
+| Target output | Provider prompt | Completion (reasoning included) | Reasoning | Finish | Duration |
+| --- | --- | --- | --- | --- | --- |
+| 46,080 revalidation | 2,477 | 46,080 | 913 | length | 499.033s |
+| 50,688 new probe | 2,477 | 50,688 | 1,025 | length | 513.217s |
+
+Both repeated-output fixtures verified. Total charged usage was 4,954 input and 96,768 output
+tokens across two calls, within the original ceilings. The runner stopped before a third
+admission with `insufficient_output_probe_window`, rather than submitting a call with a shortened
+timeout unlikely to complete. Its final bracket records admitted 50,688, refused unknown,
+completion-including-reasoning count basis and partial status. No numerical upper or 0.5%
+convergence was inferred from time failures. Successful observations retained no preview.
+The lower bound is diagnostic evidence only, not a production config change. Separate GitHub
+canary verification must obtain its own authenticated history and still use its admission guards.
