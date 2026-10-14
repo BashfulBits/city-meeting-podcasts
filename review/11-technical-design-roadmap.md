@@ -2060,3 +2060,8 @@ history claims; see review/48's execution record.
 The subsequent bounded local output session verified 54,144 after one 52,992 revalidation,
 then deferred further admission. This is the current local lower bound; numerical upper and
 true-cap convergence remain unknown. No production publication or GitHub-history authority.
+
+
+Local one-hour output search after #2426 verified 54,720 completion tokens, then preserved
+two streaming deadline failures as inconclusive. Four calls completed within the session;
+`output_time_limited_lower_bound` leaves the numerical upper unknown. See review/48 evidence.

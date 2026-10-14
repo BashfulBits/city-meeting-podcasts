@@ -2944,3 +2944,26 @@ input and 107,136 output tokens. Again, `insufficient_output_probe_window` stopp
 before a third admission. The verified local lower bound is now 54,144, with no numerical
 refused upper or true-cap convergence. The next unmeasured hint target would be 54,720. This
 continues the same reviewed diagnostic exception and changes no production limits or authority.
+
+
+The first local one-hour search after merged #2426 completed four direct calls in about
+39 minutes, without Worker reservations or pauses. Prior local records were diagnostic hints
+only; this does not establish authenticated workflow history.
+
+| Output target | Result | Actual completion | Reasoning | Duration |
+| --- | --- | --- | --- | --- |
+| 54,144 | verified, length | 54,144 | 881 | 528.748s |
+| 54,720 | verified, length | 54,720 | 1,001 | 588.610s |
+| 55,008 | local deadline, still streaming | unknown | unknown | 600s |
+| 54,864 | local deadline, still streaming | unknown | unknown | 600s |
+
+Both successes reported 2,476 prompt tokens. The two cancellations retained HTTP 200 and active
+streaming diagnostics with no finish or final usage; `worker_response_timeout` names the local
+transport subprocess here, not a Cloudflare Worker failure. The planner reduced the next size
+after the first timeout and stopped with `output_time_limited_lower_bound` after the second.
+Its final bracket is admitted 54,720, refused unknown, partial, with target width 274.
+The 144-token distance to the latest failed target is not a verified refusal bracket or true
+0.5% cap convergence. Charged/reserved totals were four calls, 9,048 input and 218,736 output
+tokens; canceled calls have no actual final usage. The hour allowed four attempts in one session,
+but the unchanged per-call deadline still limits proof for slow generation. No production cap
+was published and no additional call was automatically started after the escape.
