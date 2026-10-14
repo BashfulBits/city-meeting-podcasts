@@ -2101,3 +2101,9 @@ See review/48's reproduction, file plan and acceptance contract.
 Review/48 combined proof clarification (maintainer approved 2026-10-14): length replies with
 at least the requested output prove the requested combined reservation; actual usage remains
 separate, and clipped/naturally stopped replies do not establish that proof.
+
+Review/48 varied-output follow-up (2026-10-14, implementation in progress): local shared-fixture
+comparison reached 4,096 generated tokens on NVIDIA using varied numbered rows. Fence changed
+output and combined history, preserve input-only evidence, and retain negative-budget errors as
+non-numerical guidance. No production caps, timeout changes or maintenance promotion; review/48
+owns the file plan, acceptance and diagnostic evidence.

@@ -1099,20 +1099,11 @@ def chat_discovery_observation(
         values["diagnostic"] = "output_stopped_early"
     if (
         request.axis == "output"
-        and request.control.split(":opposite=", 1)[0] in {"output:v3", "output:v3:min_tokens"}
+        and request.control.split(":opposite=", 1)[0] in {"output:v4", "output:v4:min_tokens"}
         and reasoning_basis == "included"
         and _chat_input_capacity(payload, response, require_content=False)
         and finish == "length"
     ):
-        lines = content.splitlines() if isinstance(content, str) else []
-        fixture_matches = len(lines) >= 3 and all(line == "1" for line in lines)
-        diagnostic = (
-            "verified_repeated_output_fixture"
-            if fixture_matches
-            else "api_output_admitted_no_visible_content"
-            if not content
-            else "api_output_admitted_fixture_mismatch"
-        )
         return DiscoveryObservation(
             request,
             stamp,
@@ -1120,9 +1111,9 @@ def chat_discovery_observation(
             coordinate=usage["completion_tokens"],
             count_basis="completion_including_reasoning",
             verified=True,
-            **(values | {"diagnostic": diagnostic, "response_preview": ""}),
+            **(values | {"diagnostic": "verified_generated_output", "response_preview": ""}),
         )
-    if request.axis == "output" and request.control.startswith("output:v3"):
+    if request.axis == "output" and request.control.startswith("output:v4"):
         return DiscoveryObservation(request, stamp, **values)
     if observation.outcome == "verified":
         count = (

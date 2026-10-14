@@ -1581,7 +1581,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     if not isinstance(nonce, str) or len(nonce) < 32:
         raise ValueError("discovery needs an unpredictable session nonce")
     if request.axis.startswith("total_") and request.control.split(":opposite=", 1)[0] != (
-        f"{request.axis}:reservation-v1"
+        f"{request.axis}:reservation-v2"
     ):
         raise ValueError("discovery combined generation control mismatch")
     dimension = "output" if request.axis != "input" else "input"
@@ -1610,23 +1610,21 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
             and request.control.split(":opposite=", 1)[0] != expected_control
         ):
             raise ValueError("discovery output generation control mismatch")
-        # Keep the task fixed across output targets. A million-line request invites a model
-        # to abbreviate; this bounded prefix benchmark explicitly expects server truncation.
+        # A fixed varied sequence discourages repetition-induced voluntary stops. Output
+        # proof still depends on usage and finish, never conformity to these instructions.
         messages = (
             {
                 "role": "system",
-                "content": "You are generating a deterministic test sequence, not answering a "
-                "question. A partial prefix is the intended result: the API will stop generation "
-                "at its token allowance. Start producing immediately. Do not plan the full "
-                "sequence, explain feasibility, summarize, or choose a shorter response.",
+                "content": "You are a test-data generator. Produce raw data immediately. "
+                "A partial prefix is expected because the server will truncate your response. "
+                "Do not explain or abbreviate.",
             },
             {
                 "role": "user",
-                "content": "Repeat the line 1 followed by a newline, 131072 times. "
-                "Every line must be exactly 1. This is repeated test data, "
-                "not a count or numbered list. Never "
-                "use prose, code fences, ellipsis, a multiplication expression, or a closing "
-                "remark. Continue repeating the same line until the server truncates output.",
+                "content": "Write 100000 rows. Each row contains its increasing row number "
+                "followed by a space and the words red blue green amber violet. Start with "
+                "row 1 and increment by one. No headings, code fences, omissions, ellipses "
+                "or closing remarks. Continue until the server stops you.",
             },
         )
     if dimension == "output" and request.input_tokens > MIN_OUTPUT_INPUT:
