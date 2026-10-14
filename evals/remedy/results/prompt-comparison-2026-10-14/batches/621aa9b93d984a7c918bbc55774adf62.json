@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Bond Advisory Committee (Town of Addison, TX)"
+      }
+    ],
+    "case_id": "recording-6dd6551430ef94bc37d87dea",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "Recording-specific official evidence identifies the convening body: the posted agenda (retained-agenda) is headed 'Regular Meeting of the Bond Advisory Committee' for Thursday, Oct 30, 2025, 6:00 PM, posted by the Town's Chief of Staff, with agenda items including appointing a chairperson for the Bond Advisory Committee; the Swagit player title and transcript (provider-player) confirm the meeting was called to order as 'the regular meeting of the Bond Advisory Committee,' and the chapters (native-source-chapters) mirror the agenda. This is a single-body meeting with no proven joint participants. The convened body is the Bond Advisory Committee itself, not the City Council or any numbered board; the Police and Courts Building is only the venue and the 'Police and Courts Facility' item is only a topic, so per the identity rule neither venue nor topic was substituted. The existing feed 'addison-tx-bond-committees' is described as 'Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee,' which directly matches this body and its agenda topics (May 2026 Bond Election Timeline, Municipal Debt and Financial Review, Challenges of Current Police and Courts Facility), so the recording is assigned to that configured bond-family feed. No other supplied feed's scope (zoning, council, community partnership, comprehensive plan, P&Z, briefings, TIF, public input, UDC) fits."
+  },
+  "attempt_id": "8712110ed909424392396289e942dc57",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-6dd6551430ef94bc37d87dea",
+  "case_input_hash": "da82471d1cb7272552010ca3ad2710bbbcc9791e602e7b1ae041b41cd588d4a4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.83906858300179
+    }
+  ],
+  "end_to_end_seconds": 20.302389875003428,
+  "finished_at": "2026-10-14T21:13:09.764995+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T21:12:49.462468+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "3f2ca6737af17ed3cf2a7f0cf544e9bb5dd219ee9055494cce9efc8a8754f694",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1231,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 777,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3577,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4808
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\",\n        \"native-source-chapters\"\n      ],\n      \"name\": \"Bond Advisory Committee (Town of Addison, TX)\"\n    }\n  ],\n  \"case_id\": \"recording-6dd6551430ef94bc37d87dea\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-bond-committees\"\n  ],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"Recording-specific official evidence identifies the convening body: the posted agenda (retained-agenda) is headed 'Regular Meeting of the Bond Advisory Committee' for Thursday, Oct 30, 2025, 6:00 PM, posted by the Town's Chief of Staff, with agenda items including appointing a chairperson for the Bond Advisory Committee; the Swagit player title and transcript (provider-player) confirm the meeting was called to order as 'the regular meeting of the Bond Advisory Committee,' and the chapters (native-source-chapters) mirror the agenda. This is a single-body meeting with no proven joint participants. The convened body is the Bond Advisory Committee itself, not the City Council or any numbered board; the Police and Courts Building is only the venue and the 'Police and Courts Facility' item is only a topic, so per the identity rule neither venue nor topic was substituted. The existing feed 'addison-tx-bond-committees' is described as 'Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee,' which directly matches this body and its agenda topics (May 2026 Bond Election Timeline, Municipal Debt and Financial Review, Challenges of Current Police and Courts Facility), so the recording is assigned to that configured bond-family feed. No other supplied feed's scope (zoning, council, community partnership, comprehensive plan, P&Z, briefings, TIF, public input, UDC) fits.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Bond Advisory Committee \u2013 Oct 30, 2025\" from Addison, TX, recording ID 359742.\n\nEvidence:\n1. `retained-agenda`: The official agenda for \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" on Thursday, October 30, 2025, 6:00 PM, Court Room, Addison Police and Courts Building, Addison, TX. Agenda items include \"Appoint a Chairperson for the Bond Advisory Committee.\" Posted by Sarah Kuechler, Chief of Staff.\n2. `provider-player`: Swagit video player titled \"Oct 30, 2025 Bond Advisory Committee - Addison, TX\", transcript confirms \"this is the regular meeting of the Bond Advisory Committee.\"\n3. `native-source-chapters`: Chapters matching the agenda.\n\nSo the convening body is the Bond Advisory Committee of the Town of Addison (TX). The agenda is a recording-specific official document, posted by the Chief of Staff, calling a \"Regular Meeting of the Bond Advisory Committee.\"\n\nExisting feeds:\n- `addison-tx-bond-committees`: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This matches \u2014 the agenda discusses \"Challenges of Current Police and Courts Facility\" and \"May 2026 Bond Election Timeline,\" consistent with the 2026 Police and Courts facility Bond Advisory Committee.\n\nOther feeds don't match: Board of Zoning Adjustment, City Council, Community Partnership Committee, Comprehensive Plan Advisory Committee, Planning and Zoning Commission, Public Briefings, TIF, Public Input (town halls/community meetings), UDC Advisory Committee.\n\nThe Bond Advisory Committee is a real body with an existing feed (`addison-tx-bond-committees`), which is a family/grouping feed for bond committees. So publication_action = assign_existing.\n\nBodies: name \"Bond Advisory Committee\" (Addison, TX). The body label given is \"Bond Advisory Committee\". The agenda title says \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE.\" Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nMissing evidence: none really. The recording-specific agenda confirms convening body. Could note that no evidence links to any other body. The policy \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" The venue is the Police and Courts Building \u2014 but that doesn't make it a Police/Courts body; it's the Bond Advisory Committee. The feed description explicitly includes \"the 2026 Police and Courts facility Bond Advisory Committee,\" and the agenda topics (May 2026 Bond Election Timeline, Challenges of Current Police and Courts Facility) support this identification.\n\nNo joints involved \u2014 single body.\n\npublication_action: assign_existing.\n\nRationale: The official posted agenda (retained-agenda) convenes a \"Regular Meeting of the Bond Advisory Committee\" on Oct 30, 2025, matching the recording title and player transcript (provider-player). The bond-committees feed explicitly covers bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee, matching agenda topics (May 2026 Bond Election, Police and Courts facility challenges). Venue (Police and Courts Building) and topics alone were not used; the convened body is the Bond Advisory Committee.\n\nmissing_evidence: could be empty array, or note nothing needed. I'll leave empty. Maybe note that no separate committee roster exists, but not required. I'll keep empty since evidence suffices.\n\nevidence_ref_ids: all three.\n\ncase_id: \"recording-6dd6551430ef94bc37d87dea\".\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Bond Advisory Committee \u2013 Oct 30, 2025\" from Addison, TX, recording ID 359742.\n\nEvidence:\n1. `retained-agenda`: The official agenda for \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" on Thursday, October 30, 2025, 6:00 PM, Court Room, Addison Police and Courts Building, Addison, TX. Agenda items include \"Appoint a Chairperson for the Bond Advisory Committee.\" Posted by Sarah Kuechler, Chief of Staff.\n2. `provider-player`: Swagit video player titled \"Oct 30, 2025 Bond Advisory Committee - Addison, TX\", transcript confirms \"this is the regular meeting of the Bond Advisory Committee.\"\n3. `native-source-chapters`: Chapters matching the agenda.\n\nSo the convening body is the Bond Advisory Committee of the Town of Addison (TX). The agenda is a recording-specific official document, posted by the Chief of Staff, calling a \"Regular Meeting of the Bond Advisory Committee.\"\n\nExisting feeds:\n- `addison-tx-bond-committees`: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This matches \u2014 the agenda discusses \"Challenges of Current Police and Courts Facility\" and \"May 2026 Bond Election Timeline,\" consistent with the 2026 Police and Courts facility Bond Advisory Committee.\n\nOther feeds don't match: Board of Zoning Adjustment, City Council, Community Partnership Committee, Comprehensive Plan Advisory Committee, Planning and Zoning Commission, Public Briefings, TIF, Public Input (town halls/community meetings), UDC Advisory Committee.\n\nThe Bond Advisory Committee is a real body with an existing feed (`addison-tx-bond-committees`), which is a family/grouping feed for bond committees. So publication_action = assign_existing.\n\nBodies: name \"Bond Advisory Committee\" (Addison, TX). The body label given is \"Bond Advisory Committee\". The agenda title says \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE.\" Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nMissing evidence: none really. The recording-specific agenda confirms convening body. Could note that no evidence links to any other body. The policy \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" The venue is the Police and Courts Building \u2014 but that doesn't make it a Police/Courts body; it's the Bond Advisory Committee. The feed description explicitly includes \"the 2026 Police and Courts facility Bond Advisory Committee,\" and the agenda topics (May 2026 Bond Election Timeline, Challenges of Current Police and Courts Facility) support this identification.\n\nNo joints involved \u2014 single body.\n\npublication_action: assign_existing.\n\nRationale: The official posted agenda (retained-agenda) convenes a \"Regular Meeting of the Bond Advisory Committee\" on Oct 30, 2025, matching the recording title and player transcript (provider-player). The bond-committees feed explicitly covers bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee, matching agenda topics (May 2026 Bond Election, Police and Courts facility challenges). Venue (Police and Courts Building) and topics alone were not used; the convened body is the Bond Advisory Committee.\n\nmissing_evidence: could be empty array, or note nothing needed. I'll leave empty. Maybe note that no separate committee roster exists, but not required. I'll keep empty since evidence suffices.\n\nevidence_ref_ids: all three.\n\ncase_id: \"recording-6dd6551430ef94bc37d87dea\".\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792012372,
+    "id": "22179ce8d8b1c22eca1f6ca238754f6c",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1231,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 777,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3577,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4808
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
