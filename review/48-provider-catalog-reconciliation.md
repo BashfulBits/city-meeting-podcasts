@@ -3053,3 +3053,74 @@ then reduced the fixed output and fenced the control with `:opposite=8192`. Two 
 replies reported 9,814 and 18,904 input tokens plus 8,192 output, proving conditional combined
 lower bounds of 18,006 and 27,096. It stopped at the deliberately smaller local three-call budget,
 with no refused upper. No normal workflow default seed, production cap or activation was changed.
+
+
+### Seeded discovery and early-stop recovery — approved 2026-10-14
+
+After merged #2436, Liquid workflow 38617709662 passed reachability/JSON and produced input
+46,756, output 8,192, combined input-heavy 62,814 (fixed output 8,192), and output-heavy 10,089
+lower bounds. Refusals used approximate counts and output clipped, so numerical uppers remain
+unknown. It spent 33 size plus five qualification calls and reserved 2,061,216 input/410,398
+output tokens; no transport/pause failure occurred. One natural combined stop was inconclusive
+until its next request filled output. These are workflow-authenticated observations.
+
+NVIDIA GPT-OSS-20B workflow 38619484923 passed free/chat/JSON gates but all four size searches
+stalled after three identical targets each (12 size plus five qualification calls; 1,518,432
+reserved input/196,608 output). Input returned a computed negative `max_tokens` error; output
+and both combined mixes ended naturally short of their allowance. No cap was fabricated.
+The same model reproduced both behaviors directly on this machine: the 500k input returned
+HTTP 400 with negative budget, and a 16,384-output request generated 4,109 then stopped. Thus
+this is a route/response convergence gap, not evidence that GitHub alone causes the failure.
+Prior successful local tests were mostly Liquid, a different provider/model.
+
+The maintainer requested shared fixes and published LiteLLM limits as starting points:
+
+- In existing `rules.py`, narrowly recognize a matching negative computed output-budget error
+  on HTTP 400. It supplies **smaller-input guidance**, no exact cap/count. Input-heavy searches
+  halve their target; output-heavy searches reduce the fixed input and fence its control.
+- In `discovery.py`, a valid natural stop may select a smaller next output allowance, bounded
+  to three recovery attempts per axis. It never proves a passing size or upper bound itself.
+  Only a fresh length-terminated valid usage reply establishes output capacity; combined still
+  must fill all requested output. Existing lower bounds guide smaller upward probes instead of
+  discarding known passing output. Counterpart changes reset incompatible history/control.
+- In `reconcile.py`, read the installed LiteLLM package's bundled cost/context map without
+  importing the SDK or fetching its remote map. Use only exact provider-qualified entries with
+  matching `litellm_provider`; NVIDIA's namespace is `nvidia_nim`. Missing entries, malformed
+  data or absent dependency use normal defaults. Never borrow another host's same-model limits,
+  strip free suffixes, or infer input/output from legacy ambiguous `max_tokens`.
+- Provider API claims take precedence over LiteLLM starting hints. Clamp initial targets to
+  existing per-dimension ceilings. Combined targets are experimental mixes, not inferred
+  combined proofs from LiteLLM. No hint pre-populates a bracket or creates cap evidence.
+- Existing `issue.py` reports exact LiteLLM key, installed package version and input/output
+  values separately from provider API claims and measured brackets, including explicit missing
+  matches. Fresh reports and history-built reports both include the metadata. Journal/evidence
+  schema, admission, workflow inputs, limits, credentials, production config and dependencies
+  are unchanged. The workflow pins LiteLLM 1.105.0; the initial local environment had 1.83.7,
+  so catalog-version differences must be visible rather than silently treated as route proof.
+
+File/test plan: the four existing modules above, discovery/reconciliation tests, this document,
+review/11, ARCHITECTURE and a changelog fragment. Acceptance covers strict negative-error
+recognition without numerical bounds, target halving/fixed-input reduction, smaller-output
+recovery and finite escape, exact provider metadata matches, legacy-field exclusion, provider
+claim precedence, seed ceilings, offline package lookup and separate issue reporting. No new
+provider/model-specific parsing branch or recurring configured-route maintenance is introduced.
+
+Available output hints also cap the initial fixed output used by input/input-heavy probes,
+with an explicit `:opposite=` control so previous larger-output measurements are not reused.
+The helper only reduces existing counterpart allowances; it cannot raise the budget. Inspection
+of the workflow-pinned LiteLLM 1.105.0 wheel found Liquid at 65,536 input/8,192 output and no
+exact NVIDIA GPT-OSS-20B entry; the older local 1.83.7 snapshot lacked Liquid. This snapshot
+difference is reported, not silently converted into route proof. No local environment package
+was changed during that metadata-only wheel inspection.
+
+With shared recovery changes, six direct local NVIDIA input attempts halved 500k/250k/125k,
+verified 121,055 input, then tried higher midpoint targets with no fabricated refused count.
+Six output attempts first stopped at 1,149, verified that allowance with length, then refined
+upward/downward to a verified 1,292 before the finite early-stop escape. Both remain diagnostic
+lower bounds; no maximum is claimed. No Worker reservation, pause, production cap or setting
+was changed for these explicitly authorized direct local tests.
+
+A four-call local input-heavy combined check also recovered: natural stops at 1,549 and 906
+selected smaller allowances, then two fresh length replies filled 774 requested output tokens.
+They reported 1,937 and 3,317 input, giving conditional combined lower bounds 2,711 and 4,091
+under `:opposite=774`. The local four-call budget stopped further stretching; upper unknown.

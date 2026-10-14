@@ -446,6 +446,19 @@ def render_body(
         for candidate in discoveries:
             result = candidate.discovery or {}
             lines += [f"### `{candidate.key}`", ""]
+            hints = result.get("litellm")
+            if isinstance(hints, dict):
+                lines += [
+                    f"LiteLLM {hints.get('version', 'unknown')} exact route "
+                    f"`{hints.get('key', '')}`: "
+                    f"input {_discovery_count(hints.get('input'))}, "
+                    f"output {_discovery_count(hints.get('output'))}. "
+                    "[Catalog source](https://github.com/BerriAI/litellm/blob/main/"
+                    "model_prices_and_context_window.json). "
+                    "Starting hints only; missing entries use normal defaults. "
+                    "These values are not measured bounds.",
+                    "",
+                ]
             lines += [
                 "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
                 "Count basis / control | Status / note |",

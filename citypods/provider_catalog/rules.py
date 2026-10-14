@@ -1014,10 +1014,19 @@ def chat_discovery_observation(
                 and error.get("param") in {"messages", "max_tokens", "max_completion_tokens"}
                 and text == "Please reduce the length of the messages or completion."
             )
-            if proxy_size or qualitative_size:
+            negative_budget = re.fullmatch(
+                r"(?P<field>max_tokens|max_completion_tokens) must be at least 1, "
+                r"got (?P<value>-[1-9][0-9]*)\. \(parameter=(?P=field), value=(?P=value)\)",
+                text,
+            )
+            if proxy_size or qualitative_size or negative_budget:
                 # Approximate proxy counts and count-free refusals can guide a smaller request,
                 # but cannot manufacture an exact provider-counted boundary.
-                values["diagnostic"] = "size_refused_without_exact_counts"
+                values["diagnostic"] = (
+                    "computed_input_budget_exhausted"
+                    if negative_budget
+                    else "size_refused_without_exact_counts"
+                )
                 return DiscoveryObservation(request, stamp, **values)
     if request.axis.startswith("total_"):
         if (
@@ -1067,7 +1076,11 @@ def chat_discovery_observation(
         if observation.outcome == "verified" or usage_state in {"total_missing", "total_invalid"}:
             values["diagnostic"] = "api_input_usage_incomplete"
         return DiscoveryObservation(request, stamp, **values)
-    if request.axis == "output" and _chat_input_capacity(payload, response) and finish == "stop":
+    if (
+        request.axis == "output"
+        and _chat_input_capacity(payload, response, require_content=False)
+        and finish == "stop"
+    ):
         values["diagnostic"] = "output_stopped_early"
     if (
         request.axis == "output"

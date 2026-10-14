@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
+from functools import lru_cache
 from typing import Any, Protocol
 
 import requests
@@ -1322,6 +1323,69 @@ def _terminal_discovery_session(
     return {"session": metadata, "attempts": [], "reason": reason}
 
 
+@lru_cache(maxsize=1)
+def _litellm_discovery_catalog():
+    """Read pinned package metadata without importing LiteLLM or fetching its remote cost map."""
+    import json
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        package = distribution("litellm")
+        path = package.locate_file("litellm/model_prices_and_context_window_backup.json")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return (data if isinstance(data, dict) else {}), package.version
+    except (PackageNotFoundError, OSError, ValueError):
+        return {}, "unavailable"
+
+
+def _litellm_discovery_limits(provider, model):
+    """Exact provider-qualified lookup only; never borrow another host's deployment limits."""
+    catalog, version = _litellm_discovery_catalog()
+    namespace = {"nvidia": "nvidia_nim"}.get(provider, provider)
+    key = f"{namespace}/{model}"
+    row = catalog.get(key)
+    if not isinstance(row, Mapping) or row.get("litellm_provider") != namespace:
+        row = {}
+    return {
+        "key": key,
+        "version": version,
+        "input": positive_bound(row, ("max_input_tokens",)),
+        "output": positive_bound(row, ("max_output_tokens",)),
+        "source": "https://github.com/BerriAI/litellm/blob/main/"
+        "model_prices_and_context_window.json",
+    }
+
+
+def _discovery_starting_points(record, litellm):
+    """Catalog claims seed experiments, never pre-populate a passing or refused boundary."""
+    from citypods.provider_catalog.discovery import (
+        INPUT_OUTPUT_COUNTERPART,
+        MAX_INPUT,
+        MAX_OUTPUT,
+    )
+
+    claims = _discovery_claims(record)
+    seeds = {}
+    input_claim = claims["input"] or litellm.get("input")
+    output_claim = claims["output"] or litellm.get("output")
+    if input_claim:
+        seeds["input"] = min(MAX_INPUT, input_claim)
+        seeds["total_input_heavy"] = seeds["input"] + INPUT_OUTPUT_COUNTERPART
+    if output_claim:
+        seeds["output"] = min(MAX_OUTPUT, output_claim)
+        seeds["total_output_heavy"] = seeds["output"] + 2048
+    for axis in ("total_input_heavy", "total_output_heavy"):
+        if claims[axis]:
+            # Total is a starting target only; request shaping still enforces each dimension.
+            ceiling = (
+                MAX_INPUT + INPUT_OUTPUT_COUNTERPART
+                if axis == "total_input_heavy"
+                else MAX_OUTPUT + 2048
+            )
+            seeds[axis] = min(ceiling, claims[axis])
+    return seeds
+
+
 def _discovery_claims(record):
     """Extract the same published size claims for fresh and history-built reports."""
     return {
@@ -1378,6 +1442,7 @@ def _discovery_history_summary(
     if not compatible:
         return None
     claims = _discovery_claims(record)
+    litellm = _litellm_discovery_limits(provider, model)
     axes = []
     for axis in ("input", "output", "total_input_heavy", "total_output_heavy"):
         bracket = Bracket(axis, default_discovery_seed(axis))
@@ -1403,6 +1468,7 @@ def _discovery_history_summary(
         "output_tokens": sum(item.request.output_tokens for item in compatible),
         "axes": axes,
         "attempt_diagnostics": _discovery_attempt_diagnostics(compatible),
+        "litellm": litellm,
     }
 
 
@@ -1470,6 +1536,7 @@ def _discover_candidate_caps(
     from pathlib import Path
 
     from citypods.provider_catalog.discovery import (
+        INPUT_OUTPUT_COUNTERPART,
         DiscoveryBudget,
         DiscoveryJournal,
         discovery_identity,
@@ -1525,6 +1592,13 @@ def _discover_candidate_caps(
         "upstream_model": candidate.model,
         "route_id": candidate.key,
     }
+    litellm = _litellm_discovery_limits(candidate.provider, candidate.model)
+    seeds = _discovery_starting_points(record, litellm)
+    counterparts = {
+        axis: min(INPUT_OUTPUT_COUNTERPART, seeds["output"])
+        for axis in ("input", "total_input_heavy")
+        if "output" in seeds
+    }
     nonce = secrets.token_hex(32)
     # Token reservations below describe the size-search requests, which carry the
     # explicit measured token sizes.
@@ -1572,6 +1646,8 @@ def _discover_candidate_caps(
                 parser_version=rules.discovery_parser_version,
                 supported_axes=rules.discovery_axes,
                 selected_axes=selected_axes,
+                seeds=seeds,
+                counterparts=counterparts,
                 output_min_tokens=rules.discovery_output_min_tokens(endpoint, candidate.model),
                 measure=measure,
                 renew=pause.renew,
@@ -1618,6 +1694,7 @@ def _discover_candidate_caps(
             ),
             "axes": axes,
             "attempt_diagnostics": _discovery_attempt_diagnostics(journal.data["attempts"]),
+            "litellm": litellm,
         }
         if result is not None and result.transport_retries:
             summary["transport_retries"] = [

@@ -296,6 +296,14 @@ SSE parsing discards framing/reasoning and caps decoded stream data at 64 MiB, p
 128 KiB and assembled responses at 4 MiB. Streams require final usage, consistent finish and DONE;
 partial/error streams remain inconclusive. Optional stream byte/event metrics accompany compact
 response size.
+Discovery initial targets use provider API claims first, then exact provider-qualified input/output
+metadata from the installed LiteLLM package's bundled map. Lookup performs no SDK import or remote
+map fetch, ignores ambiguous legacy `max_tokens`, and does not borrow other providers' limits.
+The issue shows the key/version and missing values separately from measured brackets. Hints are
+starting experiments only, clamped to existing ceilings. A computed negative output-budget error
+can guide smaller input without producing a numerical refusal. Natural output stops can guide up
+to three smaller-output recovery attempts per axis; only fresh full/length evidence establishes
+capacity. Changed fixed counterparts fence history; upper bounds remain unknown without proof.
 New-route discovery sessions have a one-hour elapsed-time ceiling; at most two candidates
 permit two hours of discovery work. Manual discovery gets a three-hour workflow wrapper for
 evidence/cleanup, while ordinary reconciliation keeps its two-hour timeout. The 720-second

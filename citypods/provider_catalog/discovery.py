@@ -487,6 +487,7 @@ def run_discovery(
     renew,
     journal,
     seeds=None,
+    counterparts=None,
     history=(),
     budget=None,
     shared_budget=None,
@@ -586,7 +587,14 @@ def run_discovery(
             if axis.startswith("total_")
             else f"{axis}:{control_version}"
         )
-        control = base_control
+        hinted_counterpart = (counterparts or {}).get(axis, counterpart)
+        if not positive(hinted_counterpart) or hinted_counterpart > counterpart:
+            raise ValueError("invalid discovery fixed-counterpart hint")
+        if hinted_counterpart != counterpart:
+            counterpart = hinted_counterpart
+            control = f"{base_control}:opposite={counterpart}"
+        else:
+            control = base_control
         compatible = [
             item
             for item in previous + observations
@@ -621,7 +629,8 @@ def run_discovery(
                 item.request.target
                 for item in compatible_history
                 if item.request.control == control
-                and item.diagnostic == "size_refused_without_exact_counts"
+                and item.diagnostic
+                in {"size_refused_without_exact_counts", "computed_input_budget_exhausted"}
                 and item.request.target > (pending.lower or 0)
             ),
             default=None,
@@ -629,6 +638,7 @@ def run_discovery(
         recent_output_cost = None
         clipped_count = None
         clipped_recheck = None
+        early_stop_retries = 0
         pending_transport = []
         while not bracket.converged and bracket.nonprogress < 3:
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
@@ -924,6 +934,50 @@ def run_discovery(
                     break
                 continue
             quota_retry = False
+            early_stop = observation.diagnostic == "output_stopped_early" or (
+                axis.startswith("total_")
+                and observation.diagnostic.startswith("combined_output_stopped_early:")
+            )
+            if (
+                early_stop
+                and observation.finish_reason == "stop"
+                and positive(observation.reported_output)
+            ):
+                if early_stop_retries >= 3 or request.output_tokens <= 1:
+                    bracket.reason = "early_stopping_after_smaller_probes"
+                    break
+                early_stop_retries += 1
+                smaller = max(1, min(request.output_tokens // 2, observation.reported_output))
+                if axis == "output":
+                    if bracket.lower is not None:
+                        if request.output_tokens - bracket.lower <= max(
+                            1, math.ceil(bracket.lower / 200)
+                        ):
+                            bracket.reason = "output_early_stop_limited_lower_bound"
+                            break
+                        smaller = bracket.lower + (request.output_tokens - bracket.lower) // 2
+                    clipped_recheck = smaller
+                elif axis == "total_input_heavy":
+                    next_target = max(1, target - counterpart) + smaller
+                    counterpart = smaller
+                    control = f"{base_control}:opposite={counterpart}"
+                    bracket = Bracket(axis, next_target, reason="fixed_counterpart_reduced")
+                    clipped_count = None
+                    brackets[-1] = bracket
+                    previous = []
+                    fresh_successes = 0
+                    qualitative_upper = None
+                else:
+                    if smaller < 3 * counterpart:
+                        counterpart = max(1, smaller // 3)
+                        control = f"{base_control}:opposite={counterpart}"
+                        bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
+                        brackets[-1] = bracket
+                        previous = []
+                        fresh_successes = 0
+                        qualitative_upper = None
+                    clipped_recheck = counterpart + smaller
+                continue
             if (
                 axis == "output"
                 and observation.outcome == "admitted"
@@ -975,7 +1029,24 @@ def run_discovery(
                 continue
             if axis.startswith("total_") and target == clipped_recheck:
                 clipped_recheck = None
-            if observation.diagnostic == "size_refused_without_exact_counts":
+            if (
+                observation.diagnostic == "computed_input_budget_exhausted"
+                and axis in {"output", "total_output_heavy"}
+                and counterpart > 1
+            ):
+                counterpart = max(1, counterpart // 2)
+                control = f"{base_control}:opposite={counterpart}"
+                bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
+                brackets[-1] = bracket
+                previous = []
+                fresh_successes = 0
+                upper_recheck = None
+                qualitative_upper = None
+                continue
+            if observation.diagnostic in {
+                "size_refused_without_exact_counts",
+                "computed_input_budget_exhausted",
+            }:
                 if (
                     axis in {"input", "total_input_heavy"}
                     and (
