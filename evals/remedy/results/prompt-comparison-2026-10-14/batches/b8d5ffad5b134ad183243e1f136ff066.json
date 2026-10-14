@@ -1,0 +1,131 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-25b112118800868be51c169e",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "exclude_event",
+    "rationale": "The supplied official recording evidence identifies the item only as the Sep 20, 2009 Spruill Park Dedication Ceremony in Addison, TX. That is a ceremony/dedication event title, not evidence of a convening municipal body or joint body. Under the supplied publication rules, ceremonies, dedications, and their site-tour segments are excluded from body feeds. No existing feed slug is appropriate, and no separate unconfigured body is proven by the recording-specific evidence."
+  },
+  "attempt_id": "995db8d2d64045b296215e62a47a27d2",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-25b112118800868be51c169e",
+  "case_input_hash": "68e993f2c49924f66d04c27e2ee80cc2b5f3c748357f59b45ca38033ca46f8b1",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.536330290999103
+    }
+  ],
+  "end_to_end_seconds": 56.31125512499966,
+  "finished_at": "2026-10-14T14:08:03.608576+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T14:07:07.296972+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "0a094715afd824558bed7d8c0fbccc4b628fb754a2d2fe69373edccc81bab7ff",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 769,
+    "completion_tokens": 926,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 769,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 1181,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 1821,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 2747
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-25b112118800868be51c169e\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"exclude_event\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The supplied official recording evidence identifies the item only as the Sep 20, 2009 Spruill Park Dedication Ceremony in Addison, TX. That is a ceremony/dedication event title, not evidence of a convening municipal body or joint body. Under the supplied publication rules, ceremonies, dedications, and their site-tour segments are excluded from body feeds. No existing feed slug is appropriate, and no separate unconfigured body is proven by the recording-specific evidence.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies. Evidence only provider-player: title Sep 20 2009 Spruill Park Dedication Ceremony - Addison, TX Video index. Existing feeds. Policy: events: Ceremonies, dedications and their site-tour segments are excluded from body feeds. So publication_action likely exclude_event. Bodies? The recording belongs to? It is a ceremony/dedication, not a formal municipal body. Need identify convening institution from official evidence. No body named. The body_label \"Spruill Park Dedication Ceremony\" is event title, not formal municipal convening institution. Policy says ceremonies/dedications excluded from body feeds. So no bodies? But schema requires bodies array. Could be empty? It says Name every proven participant in joint meeting. None. If ownership cannot be established, return unresolved? However policy events explicitly exclude ceremonies/dedications from body feeds. Publication_action exclude_event only when general approved publication rules apply. Here general rule applies: ceremonies, dedications excluded. We should output exclude_event, bodies empty? feed_slugs empty. evidence_ref_ids provider-player. missing_evidence maybe ownership? But if excluded by event type, no need ownership. Need perhaps cite policy? But evidence_ref_ids only supplied evidence IDs. We can cite provider-player for title. Rationale: official recording title identifies a dedication ceremony, not a municipal body. Per policy events, ceremonies/dedications are excluded from body feeds. No body or feed slug assigned. If asked identify actual body/program separately from subscription grouping, none proven. Could there be city of Addison as municipal body? The city is venue? \"Addison, TX\" in title. But ceremony is city event maybe City Council? Not enough. Policy says exclude_event. Publication action exclude_event. Bodies empty. Missing evidence: no official agenda/notice naming convening body. But publication rule excludes event; still missing evidence can mention no convening body evidence. Should we include no bodies. The schema allows bodies empty? No minItems. Yes.\n\nNeed JSON matching schema. Include case_id. feed_slugs [] publication_action exclude_event evidence_ref_ids [\"provider-player\"] missing_evidence maybe [\"No official evidence identifies a convening municipal body; recording title is a dedication ceremony.\"] rationale max 2000. Need no Markdown.\n\nDouble-check instructions: \"If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap. Use archive_only, archive_series or exclude_event only when the general approved publication rules apply. Empty feeds alone do not mean a non-meeting.\" Here policy explicitly says ceremonies, dedications excluded from body feeds. So exclude_event. Not unresolved because event type rule. No body. Could there be \"Spruill Park Dedication Ceremony\" as body? No, it's an event. The schema bodies maybe should include \"Spruill Park Dedication Ceremony\"? But body_label is not a municipal body. It asks \"Which municipal body or bodies does this recording belong to?\" If ceremony, no body. Return bodies empty. Good.\n\nNeed maybe mention evidence_ref_ids includes provider-player. Missing evidence: none? But \"missing_evidence\" required array. Could be [\"No official evidence of a convening municipal body; title is event.\"] But if policy excludes, not missing. Still can note no body proof. Maybe missing_evidence empty is acceptable. But instruction says cite gap if unresolved; not unresolved. We can leave [].\n\nLet's formulate rationale concise. Ensure no extra.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies. Evidence only provider-player: title Sep 20 2009 Spruill Park Dedication Ceremony - Addison, TX Video index. Existing feeds. Policy: events: Ceremonies, dedications and their site-tour segments are excluded from body feeds. So publication_action likely exclude_event. Bodies? The recording belongs to? It is a ceremony/dedication, not a formal municipal body. Need identify convening institution from official evidence. No body named. The body_label \"Spruill Park Dedication Ceremony\" is event title, not formal municipal convening institution. Policy says ceremonies/dedications excluded from body feeds. So no bodies? But schema requires bodies array. Could be empty? It says Name every proven participant in joint meeting. None. If ownership cannot be established, return unresolved? However policy events explicitly exclude ceremonies/dedications from body feeds. Publication_action exclude_event only when general approved publication rules apply. Here general rule applies: ceremonies, dedications excluded. We should output exclude_event, bodies empty? feed_slugs empty. evidence_ref_ids provider-player. missing_evidence maybe ownership? But if excluded by event type, no need ownership. Need perhaps cite policy? But evidence_ref_ids only supplied evidence IDs. We can cite provider-player for title. Rationale: official recording title identifies a dedication ceremony, not a municipal body. Per policy events, ceremonies/dedications are excluded from body feeds. No body or feed slug assigned. If asked identify actual body/program separately from subscription grouping, none proven. Could there be city of Addison as municipal body? The city is venue? \"Addison, TX\" in title. But ceremony is city event maybe City Council? Not enough. Policy says exclude_event. Publication action exclude_event. Bodies empty. Missing evidence: no official agenda/notice naming convening body. But publication rule excludes event; still missing evidence can mention no convening body evidence. Should we include no bodies. The schema allows bodies empty? No minItems. Yes.\n\nNeed JSON matching schema. Include case_id. feed_slugs [] publication_action exclude_event evidence_ref_ids [\"provider-player\"] missing_evidence maybe [\"No official evidence identifies a convening municipal body; recording title is a dedication ceremony.\"] rationale max 2000. Need no Markdown.\n\nDouble-check instructions: \"If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap. Use archive_only, archive_series or exclude_event only when the general approved publication rules apply. Empty feeds alone do not mean a non-meeting.\" Here policy explicitly says ceremonies, dedications excluded from body feeds. So exclude_event. Not unresolved because event type rule. No body. Could there be \"Spruill Park Dedication Ceremony\" as body? No, it's an event. The schema bodies maybe should include \"Spruill Park Dedication Ceremony\"? But body_label is not a municipal body. It asks \"Which municipal body or bodies does this recording belong to?\" If ceremony, no body. Return bodies empty. Good.\n\nNeed maybe mention evidence_ref_ids includes provider-player. Missing evidence: none? But \"missing_evidence\" required array. Could be [\"No official evidence of a convening municipal body; title is event.\"] But if policy excludes, not missing. Still can note no body proof. Maybe missing_evidence empty is acceptable. But instruction says cite gap if unresolved; not unresolved. We can leave [].\n\nLet's formulate rationale concise. Ensure no extra.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791986875,
+    "id": "a707aa80ceebbb7f373528ea7c853057",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 769,
+      "completion_tokens": 926,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 769,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 1181,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 1821,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 2747
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
