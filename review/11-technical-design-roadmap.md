@@ -1980,3 +1980,9 @@ Review/51 prompt optimization — L3 approved2026-10-14: three general prompts,6
 recordings, Sol/GLM Flash/DeepSeek V4.1 Flash (540jobs); three pairs per prompt.
 Separate shared wrong agreements, extra/missing feeds and disagreements. Durable
 workspace and remote checkpoints; no activation or old-controller restarts.
+
+
+Review/51 P1 disagreement follow-up (2026-10-14):maintainer selected original Sol
+plus GLM Flash and approved an8-case broader-context diagnostic with DeepSeek V4.1
+Flash and JEV multiple-choice,16logical submissions. Contract in review/51;
+identity/admission holds remain,no production activation.

@@ -4309,3 +4309,51 @@ Prompt-comparison verification2026-10-14:125 targeted checks and6201 full offlin
 tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks clean.
 Read-only Worker and shared-quota preflight confirms all three routes available;
 launch uses normal coordination. No provider requests occurred during preflight.
+
+
+### P1 disagreement adjudication diagnostic — L3, approved2026-10-14
+
+Maintainer selected original-prompt Sol plus GLM Flash for the remedy pair, with
+production identity/admission holds unchanged. Completed540-answer comparison has
+52correct agreements,zero shared wrong agreements,eight disagreements for this pair.
+Broader-context follow-up is explicitly approved in chat:8recordings times2evaluators
+(DeepSeek V4.1 Flash and JEV1.13),16logical jobs,local orchestration. Not activation.
+
+Scope:evals/remedy/holdout/disagreement-2026-10-14/{prepare.py,packet.json,README.md,
+retrieved/},evals/remedy/results/disagreement-2026-10-14/{run.py,score.py,observations/},
+tests/test_remedy_disagreement.py and lifecycle docs. Reuse frozen60-case inputs,
+original completed judge responses and approved gold only in offline scoring.
+Select exactly8action/feed-set disagreements algorithmically. Anonymize judges as
+A/B with deterministic balanced order; retain provenance outside live context.
+Context comes from union of selected feeds plus3other same-city feeds ranked by
+Jaccard tokens from recording title and both proposed body names;3distinct title
+patterns per selected feed,exclude all60study UIDs/titles. Fetch public RSS and
+original cited official URLs with SSRF validation,size caps,validated redirects,
+content hashes and explicit missing-context status. Add full extracted document
+text up to16000characters per original URL,record truncation. No target-derived
+feed mapping,no gold consultation or manual relevance picks. Original rules/feed
+catalog unchanged; existing RSS is fallible historical context,not ownership proof.
+
+DeepSeek uses existing direct-only structured body-selection adapter,900s/950s
+bounds,16384output,one application attempt/no SDK retry per packet. JEV uses
+existing JevBackend systemone build and existing Worker dispatch through local
+orchestration;no copied/direct JEV client. Ask choice A/B/neither supported/
+insufficient evidence and independent support probabilities for A/B. DeepSeek
+returns independent final assignment and rationale;JEV is bounded comparison,
+not free-form body discovery. Same packet content,both proposals untrusted.
+Respect JEV28000state-plus-largest/58000total estimated input,shared quotas and
+production priority.16logical submissions;Worker-owned retries remain bounded by
+existing policy. Unknown local intent or lost receipt held;do not resubmit. Save
+receipts and poll original JEV handles only,deadline24h. Raw evidence/intents/
+observations backed up before next request;stop on backup failure. No production
+feed/catalog/quota/Worker/schema modifications. Separate new artifact PR because
+2413 already merged. No merge or new CodeRabbit request authorized in this slice.
+
+Offline score reports original and expanded-context exact assignments,extra/missing
+feeds,actions and unknown-owner guardrail separately. JEV choice accuracy is based
+on frozen candidate outcomes and is not equivalent to full assignment accuracy;
+if neither candidate equals truth,neither is the correct bounded choice. Keep
+uncertainty/probabilities,latency/usage and identity holds. No implicit gold changes.
+Test8-case selection,no answer leak,deterministic retrieval,target exclusion,
+choice eligibility including neither,fit limits and immutable/unknown guards;
+whole Ruff/format and full offline suite before provider submissions.
