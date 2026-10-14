@@ -15,6 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Combined request discovery.** Test NVIDIA input-heavy and output-heavy context reservations
+  using generated-output fixtures, exact summed refusals and explicit clipping diagnostics.
+  Timeouts, early stopping and clipping alone do not establish a numerical upper cap.
+
+- **Discovery deadline.** Align new-route discovery calls with the v2 Worker’s 720-second default
+  deadline, retaining the one-hour session and token/call budgets. Clarify the manual all-axis
+  input/output/combined search option; timeout failures remain inconclusive for model size caps.
+
+- **Discovery recovery.** Preserve resumed token calibration, handle additional exact refusal
+  advice and retain bounded error tails. Retry transient pause-control transport failure once
+  without retrying provider submissions or quota admissions.
+
+- **Discovery pause diagnostics.** Retain bounded control-operation and failure-category details
+  when pause renewal stops a request-cap search, without response text or credentials.
+
+- **Normalize category headings in changelog compilation.** Fragment files containing
+  standard Keep a Changelog subheadings (`### Added`, `### Fixed`, etc.) are now accepted
+  and automatically normalized into list items under `## Unreleased`.
+
 - **Allow longer bounded new-route discovery.** Candidate searches can run for one hour,
   retaining original checkpoint elapsed time. Manually enabled discovery gets a three-hour
   workflow wrapper for evidence and cleanup; ordinary reconciliation keeps two hours. Per-call
