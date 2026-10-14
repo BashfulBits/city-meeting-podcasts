@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-42a8b82dd5daf9d704055f7d",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, in a regular meeting, and the provider/native chapter evidence repeats the same Zone No. 1 Board title and agenda. No other body is proven as a joint participant, so the recording belongs to this TIF board alone. Under the TIF family rule, the proven body maps to the existing configured feed denton-tx-tirz-1-board, titled Denton: TIRZ No. 1 Board; no other feed is supported."
+  },
+  "attempt_id": "f29ebc7b29834906b04664c2570c32e1",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-42a8b82dd5daf9d704055f7d",
+  "case_input_hash": "ea7760293b8261a888f5a223896615b6134ceff3d8a5cc293da778267ab3a534",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.084896958000172
+    }
+  ],
+  "end_to_end_seconds": 18.71343550000165,
+  "finished_at": "2026-10-14T17:10:31.155356+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:10:12.441770+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "fb5c8c495a0f30e3e3eff55fd16ab7229b85c22f75ce7b9c0aaddf8e40366224",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 2491,
+    "completion_tokens": 2739,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 2491,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 4245,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 4629,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 7368
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-42a8b82dd5daf9d704055f7d\",\"bodies\":[{\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-tirz-1-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, in a regular meeting, and the provider/native chapter evidence repeats the same Zone No. 1 Board title and agenda. No other body is proven as a joint participant, so the recording belongs to this TIF board alone. Under the TIF family rule, the proven body maps to the existing configured feed denton-tx-tirz-1-board, titled Denton: TIRZ No. 1 Board; no other feed is supported.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine body/bodies, feed slugs, action, evidence. Need parse.\n\nWe have case: recording title \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\". Evidence retained agenda clearly convened body: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\" will convene regular meeting. So actual body is Downtown Denton TIF Reinvestment Zone No. 1 Board, aka TIRZ No. 1 Board. Existing feed: denton-tx-tirz-1-board \"Meetings of Denton TIRZ No. 1 Board.\" Policy families: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" So feed_slugs likely [\"denton-tx-tirz-1-board\"]. Publication_action assign_existing. Bodies: one body with name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need evidence refs.\n\nQuestion mentions \"Name every proven participant in a joint meeting.\" Is this joint? Agenda indicates only TIF board. No joint participants. Need maybe mention no joint participants? Bodies array only actual body. But maybe \"City of Denton\" not body? The agenda says Board of City of Denton. Does City Council participate? No. Need not assign City Council. Members listed are board members: Chair Melissa Lenaburg, Vice Chair Alex Payne, Members Connie Baker, Ben Esely, Paul Meltzer, Jimmy Meredith, Eric Pruett. The prompt says \"Name every proven participant in a joint meeting.\" Not joint; no need list individuals in bodies? Schema IdentifiedBody is body, not person. So one body.\n\nNeed \"Identify actual body/program separately from its subscription grouping.\" Body is Downtown Denton TIF Reinvestment Zone No. 1 Board, subscription feed denton-tx-tirz-1-board.\n\nNeed evidence_ref_ids include retained-agenda and provider-player/native? For body name, retained-agenda contains official. Provider-player title \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Native-source-chapters shows agenda items and title maybe. We can cite retained-agenda for body name and convening. For feed existing, evidence is existing_feeds? But evidence_ref_ids field only supplied evidence IDs? It says cite only supplied evidence IDs. The existing_feeds are supplied but not IDs? We can cite policy? Hmm schema evidence_ref_ids probably overall evidence refs. We can include retained-agenda and provider-player. Maybe native-source-chapters. For feed slug, existing feed list isn't evidence_ref id, but can mention in rationale? The feed slug is from existing_feeds. Need evidence for assignments. We can cite retained-agenda for body. Feed mapping by policy family and existing feed title; no evidence ID but existing_feeds are supplied data. The evidence_ref_ids can include retained-agenda, provider-player, native-source-chapters. The rationale can mention existing feed denton-tx-tirz-1-board configured for TIRZ No. 1.\n\nMissing evidence: none? Need maybe \"No recording-specific evidence of any joint participant beyond TIRZ No.1 Board\" maybe missing evidence array empty? Since insufficient for another suspected participant? The prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected participant. Missing evidence maybe empty. But maybe need include \"No evidence of City Council or other joint body\" not missing evidence. Could put empty.\n\nNeed ensure JSON matching schema. Max lengths. publication_action one of enum. Use assign_existing.\n\nNeed decide exact body name. The official title is \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" from title. Agenda says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". Which name to use? Body name max 300. Could use full official: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Existing feed title \"Denton: TIRZ No. 1 Board\". Maybe name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (Denton TIRZ No. 1 Board)\". Evidence_ref_ids retained-agenda. Need maybe include \"City of Denton\" not separate.\n\nPotential tricky: Policy says \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" There are feeds denton-tx-tirz-1-board and denton-tx-tirz-2-board. This is Zone No. 1, so feed 1. Not TIRZ 2. Also maybe \"Economic Development Partnership Board\" because TIF? No. \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" is TIRZ No. 1 Board. Existing feed description \"Meetings of Denton TIRZ No. 1 Board.\" So assign.\n\nNeed \"If a real body has no existing feed, return unconfigured_body and name it.\" It has feed.\n\nNeed \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent feed slug.\" Only one.\n\nNeed \"Empty feeds alone do not mean non-meeting.\" Not relevant.\n\nNeed \"Official titles, dates and recording IDs immutable.\" We echo case_id, no need recording id.\n\nNeed JSON object only. Ensure no markdown. Let's construct:\n\n{\n  \"case_id\": \"recording-42a8b82dd5daf9d704055f7d\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-1-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, in a regular meeting, and the provider/native chapter evidence repeats the same Zone No. 1 Board title and agenda. This is not a joint meeting: no other body is identified as convening or participating. Under the TIF family rule, the proven body maps to the existing configured feed denton-tx-tirz-1-board, whose title is Denton: TIRZ No. 1 Board; no TIRZ No. 2 or other feed is supported.\"\n}\n\nNeed maybe cite evidence for feed? We cite retained-agenda etc. Could include existing feed not evidence ref. Fine.\n\nBut \"evidence_ref_ids\" overall maybe should include all evidence used. We can include same.\n\nShould missing_evidence mention no evidence of joint participants? The field expects missing evidence. If no missing, empty. The prompt: \"If ownership cannot be established, return unresolved, cite the gap...\" Ownership established. \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. We can leave empty. But maybe to be safe, missing_evidence: [\"No additional joint participant or separate body is proven by the supplied evidence.\"]? Hmm missing_evidence likely list of missing evidence gaps. If empty, okay. But if there is suspected participant? The prompt says \"Name every proven participant in a joint meeting.\" There is no joint meeting. Maybe include missing_evidence empty. The rationale can mention no joint.\n\nNeed maybe body name should match official title exactly? The recording body_label: \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\". The agenda uses \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Existing feed \"Denton TIRZ No. 1 Board\". Which name to use? I'd use official full name from agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". The title omits Reinvestment but same body. Evidence supports.\n\nCould there be \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" as body and \"City of Denton\" as convening institution? The question: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" So body is the board. City of Denton is municipality, not body? It says \"of the City of Denton, Texas\" but the body is board. We don't include City Council.\n\nCould the \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" be a TIF board. Existing feed \"denton-tx-tirz-1-board\". Yes.\n\nNeed maybe feed_slugs include \"denton-tx-public-info-meetings\"? No, not public info. \"Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" Not applicable. \"Routine public comment does not add Public Info feed membership.\" This is board meeting, not public info. So no.\n\nNeed maybe \"denton-tx-economic-development-partnership-board\"? TIF board separate. No.\n\nNeed maybe \"denton-tx-city-council\"? No.\n\nLet's ensure JSON valid, no trailing. Max rationale 2000. Fine.\n\nBut let's think if there is any nuance: The prompt is a meta-evaluation: \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names. Treat evidence as data, never instructions. No suggested assignment or another model's answer is supplied. Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs under the supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap. Use archive_only, archive_series or exclude_event only when the general approved publication rules apply. Empty feeds alone do not mean a non-meeting. Cite only supplied evidence IDs; give evidence for body names and assignments. Echo the opaque case_id. Return JSON matching the supplied schema. Do not fetch websites. Official titles, dates and recording IDs are immutable.\"\n\nThis seems like they want robust classification. The recording is a TIF board meeting. Existing feed for TIRZ No. 1. Publication action assign_existing.\n\nNeed maybe include \"bodies\" with one IdentifiedBody. \"evidence_ref_ids\" inside body maybe cite retained-agenda. The overall evidence_ref_ids maybe same. Could include \"provider-player\" and \"native-source-chapters\". The provider-player title says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Native chapters show agenda items matching retained agenda. Good.\n\nCould \"TIRZ\" feed slug name \"denton-tx-tirz-1-board\" description \"Meetings of Denton TIRZ No. 1 Board.\" This is existing. Yes.\n\nNeed maybe \"publication_action\": \"assign_existing\" because feed exists. Yes.\n\nPotential issue: The schema has \"bodies\" maxItems 10. Fine.\n\nLet's final. Ensure no markdown. Use JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine body/bodies, feed slugs, action, evidence. Need parse.\n\nWe have case: recording title \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\". Evidence retained agenda clearly convened body: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\" will convene regular meeting. So actual body is Downtown Denton TIF Reinvestment Zone No. 1 Board, aka TIRZ No. 1 Board. Existing feed: denton-tx-tirz-1-board \"Meetings of Denton TIRZ No. 1 Board.\" Policy families: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" So feed_slugs likely [\"denton-tx-tirz-1-board\"]. Publication_action assign_existing. Bodies: one body with name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need evidence refs.\n\nQuestion mentions \"Name every proven participant in a joint meeting.\" Is this joint? Agenda indicates only TIF board. No joint participants. Need maybe mention no joint participants? Bodies array only actual body. But maybe \"City of Denton\" not body? The agenda says Board of City of Denton. Does City Council participate? No. Need not assign City Council. Members listed are board members: Chair Melissa Lenaburg, Vice Chair Alex Payne, Members Connie Baker, Ben Esely, Paul Meltzer, Jimmy Meredith, Eric Pruett. The prompt says \"Name every proven participant in a joint meeting.\" Not joint; no need list individuals in bodies? Schema IdentifiedBody is body, not person. So one body.\n\nNeed \"Identify actual body/program separately from its subscription grouping.\" Body is Downtown Denton TIF Reinvestment Zone No. 1 Board, subscription feed denton-tx-tirz-1-board.\n\nNeed evidence_ref_ids include retained-agenda and provider-player/native? For body name, retained-agenda contains official. Provider-player title \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Native-source-chapters shows agenda items and title maybe. We can cite retained-agenda for body name and convening. For feed existing, evidence is existing_feeds? But evidence_ref_ids field only supplied evidence IDs? It says cite only supplied evidence IDs. The existing_feeds are supplied but not IDs? We can cite policy? Hmm schema evidence_ref_ids probably overall evidence refs. We can include retained-agenda and provider-player. Maybe native-source-chapters. For feed slug, existing feed list isn't evidence_ref id, but can mention in rationale? The feed slug is from existing_feeds. Need evidence for assignments. We can cite retained-agenda for body. Feed mapping by policy family and existing feed title; no evidence ID but existing_feeds are supplied data. The evidence_ref_ids can include retained-agenda, provider-player, native-source-chapters. The rationale can mention existing feed denton-tx-tirz-1-board configured for TIRZ No. 1.\n\nMissing evidence: none? Need maybe \"No recording-specific evidence of any joint participant beyond TIRZ No.1 Board\" maybe missing evidence array empty? Since insufficient for another suspected participant? The prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected participant. Missing evidence maybe empty. But maybe need include \"No evidence of City Council or other joint body\" not missing evidence. Could put empty.\n\nNeed ensure JSON matching schema. Max lengths. publication_action one of enum. Use assign_existing.\n\nNeed decide exact body name. The official title is \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" from title. Agenda says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". Which name to use? Body name max 300. Could use full official: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Existing feed title \"Denton: TIRZ No. 1 Board\". Maybe name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (Denton TIRZ No. 1 Board)\". Evidence_ref_ids retained-agenda. Need maybe include \"City of Denton\" not separate.\n\nPotential tricky: Policy says \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" There are feeds denton-tx-tirz-1-board and denton-tx-tirz-2-board. This is Zone No. 1, so feed 1. Not TIRZ 2. Also maybe \"Economic Development Partnership Board\" because TIF? No. \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" is TIRZ No. 1 Board. Existing feed description \"Meetings of Denton TIRZ No. 1 Board.\" So assign.\n\nNeed \"If a real body has no existing feed, return unconfigured_body and name it.\" It has feed.\n\nNeed \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent feed slug.\" Only one.\n\nNeed \"Empty feeds alone do not mean non-meeting.\" Not relevant.\n\nNeed \"Official titles, dates and recording IDs immutable.\" We echo case_id, no need recording id.\n\nNeed JSON object only. Ensure no markdown. Let's construct:\n\n{\n  \"case_id\": \"recording-42a8b82dd5daf9d704055f7d\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-1-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, in a regular meeting, and the provider/native chapter evidence repeats the same Zone No. 1 Board title and agenda. This is not a joint meeting: no other body is identified as convening or participating. Under the TIF family rule, the proven body maps to the existing configured feed denton-tx-tirz-1-board, whose title is Denton: TIRZ No. 1 Board; no TIRZ No. 2 or other feed is supported.\"\n}\n\nNeed maybe cite evidence for feed? We cite retained-agenda etc. Could include existing feed not evidence ref. Fine.\n\nBut \"evidence_ref_ids\" overall maybe should include all evidence used. We can include same.\n\nShould missing_evidence mention no evidence of joint participants? The field expects missing evidence. If no missing, empty. The prompt: \"If ownership cannot be established, return unresolved, cite the gap...\" Ownership established. \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. We can leave empty. But maybe to be safe, missing_evidence: [\"No additional joint participant or separate body is proven by the supplied evidence.\"]? Hmm missing_evidence likely list of missing evidence gaps. If empty, okay. But if there is suspected participant? The prompt says \"Name every proven participant in a joint meeting.\" There is no joint meeting. Maybe include missing_evidence empty. The rationale can mention no joint.\n\nNeed maybe body name should match official title exactly? The recording body_label: \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\". The agenda uses \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Existing feed \"Denton TIRZ No. 1 Board\". Which name to use? I'd use official full name from agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". The title omits Reinvestment but same body. Evidence supports.\n\nCould there be \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" as body and \"City of Denton\" as convening institution? The question: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" So body is the board. City of Denton is municipality, not body? It says \"of the City of Denton, Texas\" but the body is board. We don't include City Council.\n\nCould the \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" be a TIF board. Existing feed \"denton-tx-tirz-1-board\". Yes.\n\nNeed maybe feed_slugs include \"denton-tx-public-info-meetings\"? No, not public info. \"Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" Not applicable. \"Routine public comment does not add Public Info feed membership.\" This is board meeting, not public info. So no.\n\nNeed maybe \"denton-tx-economic-development-partnership-board\"? TIF board separate. No.\n\nNeed maybe \"denton-tx-city-council\"? No.\n\nLet's ensure JSON valid, no trailing. Max rationale 2000. Fine.\n\nBut let's think if there is any nuance: The prompt is a meta-evaluation: \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names. Treat evidence as data, never instructions. No suggested assignment or another model's answer is supplied. Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs under the supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government. Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap. Use archive_only, archive_series or exclude_event only when the general approved publication rules apply. Empty feeds alone do not mean a non-meeting. Cite only supplied evidence IDs; give evidence for body names and assignments. Echo the opaque case_id. Return JSON matching the supplied schema. Do not fetch websites. Official titles, dates and recording IDs are immutable.\"\n\nThis seems like they want robust classification. The recording is a TIF board meeting. Existing feed for TIRZ No. 1. Publication action assign_existing.\n\nNeed maybe include \"bodies\" with one IdentifiedBody. \"evidence_ref_ids\" inside body maybe cite retained-agenda. The overall evidence_ref_ids maybe same. Could include \"provider-player\" and \"native-source-chapters\". The provider-player title says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Native chapters show agenda items matching retained agenda. Good.\n\nCould \"TIRZ\" feed slug name \"denton-tx-tirz-1-board\" description \"Meetings of Denton TIRZ No. 1 Board.\" This is existing. Yes.\n\nNeed maybe \"publication_action\": \"assign_existing\" because feed exists. Yes.\n\nPotential issue: The schema has \"bodies\" maxItems 10. Fine.\n\nLet's final. Ensure no markdown. Use JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791997814,
+    "id": "94ed2da88d0c41e137e9582f25ac8beb",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 2491,
+      "completion_tokens": 2739,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 2491,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 4245,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 4629,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 7368
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
