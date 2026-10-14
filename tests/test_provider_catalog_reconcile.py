@@ -1878,3 +1878,94 @@ def test_reachability_logs_exception_chain_without_secret_text(caplog):
     assert result.transport_error == "ConnectionError"
     assert "awaiting_headers" in caplog.text and "ConnectionResetError" in caplog.text
     assert "secret" not in caplog.text and "https://" not in caplog.text
+
+
+def test_litellm_hints_match_exact_provider_and_never_legacy_or_other_hosts(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    monkeypatch.setattr(
+        module,
+        "_litellm_discovery_catalog",
+        lambda: (
+            {
+                "groq/new/model": {
+                    "litellm_provider": "groq",
+                    "max_input_tokens": 131072,
+                    "max_output_tokens": 32768,
+                    "max_tokens": 9,
+                },
+                "nvidia_nim/new/model": {"litellm_provider": "nvidia_nim", "max_tokens": 9999},
+                "openrouter/wrong/model": {"litellm_provider": "groq", "max_input_tokens": 123},
+            },
+            "test-version",
+        ),
+    )
+    hints = module._litellm_discovery_limits("groq", "new/model")
+    assert hints["input"] == 131072 and hints["output"] == 32768
+    assert hints["version"] == "test-version"
+    missing = module._litellm_discovery_limits("openrouter", "new/model")
+    assert missing["input"] is None and missing["output"] is None
+    legacy = module._litellm_discovery_limits("nvidia", "new/model")
+    assert legacy["key"] == "nvidia_nim/new/model"
+    assert legacy["input"] is None and legacy["output"] is None
+    assert module._litellm_discovery_limits("openrouter", "wrong/model")["input"] is None
+
+
+def test_discovery_hints_seed_but_do_not_claim_bounds_and_respect_ceilings():
+    from citypods.provider_catalog.reconcile import _discovery_starting_points
+
+    assert _discovery_starting_points({}, {}) == {}
+    hints = {"input": 131072, "output": 32768}
+    seeds = _discovery_starting_points({}, hints)
+    assert seeds == {
+        "input": 131072,
+        "output": 32768,
+        "total_input_heavy": 147456,
+        "total_output_heavy": 34816,
+    }
+    catalog = {"max_input_tokens": 8000, "max_output_tokens": 8192, "context_length": 65536}
+    seeds = _discovery_starting_points(catalog, hints)
+    assert seeds["input"] == 8000 and seeds["output"] == 8192
+    assert seeds["total_input_heavy"] == seeds["total_output_heavy"] == 65536
+    huge = _discovery_starting_points({"context_length": 10**9}, {"input": 10**9, "output": 10**9})
+    assert huge == {
+        "input": 1000000,
+        "output": 131072,
+        "total_input_heavy": 1016384,
+        "total_output_heavy": 133120,
+    }
+
+
+def test_issue_lists_litellm_separately_from_measured_bounds(monkeypatch):
+    report, _, _ = _run(monkeypatch)
+    report.candidates[0].discovery = {
+        "axes": [{"axis": "input", "admitted": 1234, "refused": None}],
+        "litellm": {"key": "groq/new/model", "version": "1.test", "input": 131072, "output": 32768},
+    }
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert "LiteLLM 1.test exact route `groq/new/model`" in body
+    assert "input 131,072, output 32,768" in body
+    assert "not measured bounds" in body
+    assert "1,234" in body
+
+
+def test_litellm_discovery_reads_installed_metadata_without_sdk_import(tmp_path, monkeypatch):
+    from importlib import metadata
+    from types import SimpleNamespace
+
+    import citypods.provider_catalog.reconcile as module
+
+    path = tmp_path / "cost-map.json"
+    path.write_text('{"provider/model":{"max_input_tokens":8192}}')
+    package = SimpleNamespace(version="pinned-version", locate_file=lambda name: path)
+    monkeypatch.setattr(metadata, "distribution", lambda name: package)
+    module._litellm_discovery_catalog.cache_clear()
+    try:
+        catalog, version = module._litellm_discovery_catalog()
+        assert catalog["provider/model"]["max_input_tokens"] == 8192
+        assert version == "pinned-version"
+        module._litellm_discovery_catalog.cache_clear()
+        path.write_text("not JSON")
+        assert module._litellm_discovery_catalog() == ({}, "unavailable")
+    finally:
+        module._litellm_discovery_catalog.cache_clear()

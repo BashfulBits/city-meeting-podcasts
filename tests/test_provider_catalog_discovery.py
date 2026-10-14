@@ -447,8 +447,15 @@ def test_safe_stop_after_charged_discovery_attempt_keeps_retryable_artifact(tmp_
         "accounts": [{"id": "account", "api_key_env": "GROQ_DISCOVERY_TEST_KEY"}],
     }
     monkeypatch.setenv("GROQ_DISCOVERY_TEST_KEY", "test-only")
+    import citypods.provider_catalog.reconcile as reconcile_module
+
+    hints = {"input": 6000, "output": 2048, "key": "groq/meta/llama-new", "version": "test"}
+    monkeypatch.setattr(reconcile_module, "_litellm_discovery_limits", lambda *args: hints)
 
     def charged_then_stop(**kwargs):
+        assert kwargs["seeds"]["input"] == 6000
+        assert kwargs["seeds"]["total_input_heavy"] == 8192
+        assert kwargs["counterparts"] == {"input": 2048, "total_input_heavy": 2048}
         request = DiscoveryRequest(
             kwargs["session_id"],
             "charged-attempt",
@@ -480,6 +487,8 @@ def test_safe_stop_after_charged_discovery_attempt_keeps_retryable_artifact(tmp_
     )
 
     assert result["summary"]["retryable"] is True
+    assert result["summary"]["litellm"] == hints
+    assert "litellm" not in result["artifact"]["session"]
     assert result["summary"]["calls"] == 2
     assert result["artifact"]["attempts"][0]["observation"] is None
 
@@ -3450,3 +3459,166 @@ def test_qualitative_hint_cannot_replace_verified_output_upper_recheck(tmp_path)
         budget=DiscoveryBudget(max_calls=2),
     )
     assert seen == [4000, 8000]
+
+
+@pytest.mark.parametrize("provider", ["groq", "nvidia", "openrouter"])
+@pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
+def test_negative_computed_budget_is_only_smaller_input_guidance(provider, field):
+    import json
+
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    message = f"{field} must be at least 1, got -352879. (parameter={field}, value=-352879)"
+    result = general_discovery_rules(rules).discovery_observation(
+        Response(400, body=json.dumps({"error": {"message": message}})), req, transient
+    )
+    assert result.diagnostic == "computed_input_budget_exhausted"
+    assert result.coordinate is None and result.reported_input is None and not result.verified
+    for bad in [message.replace("-352879", "0"), message.replace("value=-352879", "value=-7")]:
+        malformed = general_discovery_rules(rules).discovery_observation(
+            Response(400, body=json.dumps({"error": {"message": bad}})), req, transient
+        )
+        assert malformed.diagnostic != "computed_input_budget_exhausted"
+
+
+def test_negative_input_budget_halves_instead_of_repeating_seed(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.input_tokens)
+        if req.input_tokens > 125000:
+            return DiscoveryObservation(req, STAMP, diagnostic="computed_input_budget_exhausted")
+        return observation(req, req.input_tokens)
+
+    result = execute(
+        tmp_path, measure, supported_axes=("input",), budget=DiscoveryBudget(max_calls=3)
+    )
+    assert seen[:3] == [500000, 250000, 125000]
+    assert result.brackets[0]["admitted"] == 125000
+    assert result.brackets[0]["refused"] is None
+
+
+@pytest.mark.parametrize("axis", ["output", "total_input_heavy", "total_output_heavy"])
+def test_early_output_stop_tries_smaller_and_requires_new_full_proof(tmp_path, axis):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        if len(seen) == 1:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                reported_input=req.input_tokens,
+                reported_output=1024,
+                finish_reason="stop",
+                diagnostic="output_stopped_early"
+                if axis == "output"
+                else "combined_output_stopped_early:actual_total=3072",
+            )
+        return observation(
+            req, req.output_tokens if axis == "output" else req.input_tokens + req.output_tokens
+        )
+
+    result = execute(tmp_path, measure, selected_axes=(axis,), budget=DiscoveryBudget(max_calls=2))
+    assert seen[1].output_tokens == 1024
+    bracket = next(row for row in result.brackets if row["axis"] == axis)
+    assert bracket["admitted"] is not None and bracket["refused"] is None
+    if axis == "total_input_heavy":
+        assert seen[1].input_tokens == seen[0].input_tokens
+
+
+def test_repeated_early_stops_have_finite_escape_and_no_fake_boundary(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            reported_output=req.output_tokens // 2,
+            finish_reason="stop",
+            diagnostic="output_stopped_early",
+        )
+
+    result = execute(tmp_path, measure, selected_axes=("output",))
+    assert seen == [16384, 8192, 4096, 2048]
+    assert result.brackets[1]["reason"] == "early_stopping_after_smaller_probes"
+    assert result.brackets[1]["admitted"] is None
+    assert result.brackets[1]["refused"] is None
+
+
+@pytest.mark.parametrize("axis", ["output", "total_output_heavy"])
+def test_negative_computed_budget_reduces_fixed_input_not_output(axis, tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        if len(seen) == 1:
+            return DiscoveryObservation(req, STAMP, diagnostic="computed_input_budget_exhausted")
+        return observation(
+            req, req.output_tokens if axis == "output" else req.input_tokens + req.output_tokens
+        )
+
+    execute(tmp_path, measure, selected_axes=(axis,), budget=DiscoveryBudget(max_calls=2))
+    assert seen[1].input_tokens == seen[0].input_tokens // 2
+    assert seen[1].control.endswith(":opposite=1024")
+
+
+def test_early_stop_after_verified_lower_uses_smaller_upward_probe(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        if len(seen) == 2:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                reported_output=1000,
+                finish_reason="stop",
+                diagnostic="output_stopped_early",
+            )
+        return observation(req, req.output_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        selected_axes=("output",),
+        seeds={"output": 8000},
+        budget=DiscoveryBudget(max_calls=3),
+    )
+    assert seen == [8000, 12000, 10000]
+    assert result.brackets[1]["admitted"] == 10000
+    assert result.brackets[1]["refused"] is None
+
+
+@pytest.mark.parametrize("axis", ["input", "total_input_heavy"])
+def test_published_output_hint_caps_fixed_output_and_fences_history(tmp_path, axis):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        return observation(
+            req, req.input_tokens if axis == "input" else req.input_tokens + req.output_tokens
+        )
+
+    execute(
+        tmp_path,
+        measure,
+        selected_axes=(axis,),
+        counterparts={axis: 8192},
+        budget=DiscoveryBudget(max_calls=1),
+    )
+    assert seen[0].output_tokens == 8192
+    assert seen[0].control.endswith(":opposite=8192")
+
+
+def test_counterpart_hint_cannot_raise_existing_allowance(tmp_path):
+    with pytest.raises(ValueError, match="fixed-counterpart hint"):
+        execute(tmp_path, lambda *a: None, counterparts={"input": 32768})

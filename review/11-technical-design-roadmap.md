@@ -2081,3 +2081,11 @@ size refusals guide search but never supply exact upper bounds; clipping, daily 
 finite per-axis time escapes remain explicit partial results. Local configured-route diagnostics
 exercise the same engine without adding recurring configured-route maintenance. See review/48's
 local convergence contract and evidence; broader characterization stays Deferred under #2264.
+
+
+Review/48 seeded-discovery follow-up (2026-10-14, implementation in progress): authenticated
+Liquid canary passed all axes with lower bounds, but NVIDIA GPT-OSS-20B exposed negative-budget
+errors and natural output stopping, reproduced locally. The maintainer authorized shared
+smaller-input/output recovery and exact-match LiteLLM published input/output starting hints,
+reported separately with package version. No hint, early stop or computed negative budget
+establishes a numerical refused bound. Scope and acceptance are recorded in review/48.
