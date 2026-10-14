@@ -2739,7 +2739,7 @@ No artifact schema, provider request, timeout/budget, Worker, production config 
 change. No new live request is included; repeat diagnostics require explicit authorization.
 
 
-#### Approved L3 refinement: efficient resumed output search
+#### Efficient resumed output search — implemented in PR #2424
 
 The maintainer explicitly approved replacing duplicate output baseline calls on 2026-10-13.
 A verified 46,080 output call took 530.423 seconds: two such baselines consume approximately
@@ -2776,3 +2776,60 @@ changes, fresh refusal requirements, time-only hints with no fabricated cap, hin
 control fencing, slow-run progress and pre-admission time deferral, unchanged input behavior,
 contradictions, checkpoint/budget accounting and all existing offline checks. No live call is
 part of this implementation; local/GitHub canary continuation remains separately authorized.
+
+#### Direct output-discovery evidence after cancellation-safe progress
+
+After merged #2422, the maintainer authorized one direct 55,296-output-token probe with the
+existing 600-second local deadline and no Worker reservation/pause. Its last progress snapshot
+showed HTTP 200, first data at 362ms, 16,532,085 decoded stream bytes and 50,440 events. The
+structural state was `phase=streaming eof=0 done=0 finish=missing usage=0 pending=0`, with
+49,512 retained content bytes. The parent cancelled at 600 seconds. This preserves evidence
+that streaming had been progressing; it supplies no provider token counts or size refusal.
+
+The maintainer then approved one same-size direct diagnostic with a 1,200-second local deadline.
+It received HTTP 200 with first data at 485ms, 17,778,319 streamed bytes and 54,246 events, then
+the provider sent an SSE error message, `Internal server error`, after 600.298 seconds. The
+local timeout did not cause this error: its deadline was 1,200 seconds. No finish, usage or
+verified output count returned. The journal retained an inconclusive `provider_sse_error`.
+The repeated approximately 600-second timing suggests an upstream execution time limit, but
+the generic message does not prove a particular timeout mechanism or an intrinsic model limit.
+Attribute the observed error to this hosted endpoint/route, not every NVIDIA model or provider.
+
+Do not increase production timeouts on this evidence, infer tokens from event/text counts, or
+insert 55,296 as a refused upper bound. The independently verified 36,864 output lower bound
+remains; the upper bound is unknown. A smaller future probe can seek another verified lower
+bound without converting this timing failure into a size bracket. True 0.5% cap convergence
+still requires an independently verified numerical size refusal; otherwise retain partial
+evidence and the existing escape/resumable discovery contract. No new live call, search-policy
+change, deployment or production timeout change is authorized by this evidence record.
+
+
+The maintainer then authorized a smaller direct 46,080-output-token probe at the unchanged
+600-second deadline. It completed successfully: HTTP 200, 2,474 prompt tokens, 46,080 completion
+tokens including 1,138 reasoning, 48,554 total, `length`, and a verified repeated-output fixture
+with 22,471 lines. First data arrived at 356ms; total duration was 530.423 seconds. The stream
+had 15,080,780 bytes and 46,007 events, normalized to a 67,870-byte response. The local
+observation/journal records an admitted coordinate of 46,080 with completion-including-
+reasoning semantics; successful output retained no preview. This raises the verified lower bound
+to 46,080 but supplies no refused upper bound or 0.5% convergence. Transport time failures at
+55,296 remain incomparable to numerical size refusals. Do not publish a true maximum from them.
+The one-call diagnostic budget stopped normally; no automatic retry or production change.
+
+
+The revised output-search implementation in merged #2424 was exercised locally in a single
+bounded 20-minute diagnostic, using prior reviewed local records only as diagnostic hints,
+not authenticated GitHub history. It sent exactly two direct calls with no Worker interaction:
+
+| Target output | Provider prompt | Completion (reasoning included) | Reasoning | Finish | Duration |
+| --- | --- | --- | --- | --- | --- |
+| 46,080 revalidation | 2,477 | 46,080 | 913 | length | 499.033s |
+| 50,688 new probe | 2,477 | 50,688 | 1,025 | length | 513.217s |
+
+Both repeated-output fixtures verified. Total charged usage was 4,954 input and 96,768 output
+tokens across two calls, within the original ceilings. The runner stopped before a third
+admission with `insufficient_output_probe_window`, rather than submitting a call with a shortened
+timeout unlikely to complete. Its final bracket records admitted 50,688, refused unknown,
+completion-including-reasoning count basis and partial status. No numerical upper or 0.5%
+convergence was inferred from time failures. Successful observations retained no preview.
+The lower bound is diagnostic evidence only, not a production config change. Separate GitHub
+canary verification must obtain its own authenticated history and still use its admission guards.

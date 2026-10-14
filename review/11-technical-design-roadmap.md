@@ -1931,3 +1931,19 @@ Review/48 approved L3 output-search refinement: one fresh lower check plus re-te
 genuine refused upper, replacing two identical output baselines. Recent time failures guide
 smaller retry targets without becoming cap evidence; insufficient remaining session time stops
 before admission. Input/combined contracts and all budgets stay unchanged. See review/48.
+
+Review/48 output diagnostic evidence: cancellation-safe progress showed ongoing streamed
+response processing near the 600-second stop. A separately approved 1,200-second direct
+diagnostic at the same 55,296 size then received a hosted-route SSE `Internal server error`
+at 600.298 seconds. This is not a size refusal; retain the verified 36,864 lower bound and
+unknown upper bound. No production timeout or search-policy change; see review/48's record.
+
+A subsequently approved direct 46,080-output-token probe completed in 530.423 seconds with
+provider usage, length finish and fixture verification. Review/48's verified hosted-route output
+lower bound is now 46,080; numerical upper bound and 0.5% convergence remain unknown.
+
+Efficient review/48 output search shipped in #2424. Its bounded direct local verification used
+one 46,080 baseline and admitted 50,688 next, then deferred a third call before admission due
+to insufficient session time. The local verified lower bound is 50,688; the numerical upper
+remains unknown. These local diagnostics are not authenticated GitHub-history authority or
+production limit changes; the separate GitHub canary remains.
