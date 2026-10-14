@@ -3209,3 +3209,9 @@ Raw error capture was private and bounded; no key or credential was printed or m
 Overfilled length replies are now labeled `combined_output_overfilled`, not early stopping,
 without changing equality-based proof pending the maintainer's decision. The local observations
 are diagnostics, not authenticated workflow history, and do not publish any production cap.
+
+The follow-up CLI review found a valid precedence issue: collector diagnostics may classify
+`free_rate_limited` broadly as quota before examining the explicit typed prompt-cap reason.
+That narrowly recognized HTTP 400 input-size evidence is now checked first. Regression cases
+include `provider_error_class=rate_limited`; a different typed reason still remains quota,
+so true throughput/daily errors are not reclassified as context proof.

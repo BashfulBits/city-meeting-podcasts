@@ -3856,15 +3856,28 @@ def test_typed_free_prompt_cap_is_input_guidance_not_throughput_or_exact_cap(pro
         "metadata": {"reason": "err_free_prompt_cap"},
     }
     result = general_discovery_rules(rules).discovery_observation(
-        Response(400, body=json.dumps({"error": error})), req, transient
+        Response(
+            400,
+            body=json.dumps({"error": error}),
+            context_diagnostics={"provider_error_class": "rate_limited"},
+        ),
+        req,
+        transient,
     )
     assert result.diagnostic == "input_size_refused_without_exact_counts"
     assert result.coordinate is None and not result.verified and result.outcome == "inconclusive"
     error["metadata"]["reason"] = "different_rate_limit"
     other = general_discovery_rules(rules).discovery_observation(
-        Response(400, body=json.dumps({"error": error})), req, transient
+        Response(
+            400,
+            body=json.dumps({"error": error}),
+            context_diagnostics={"provider_error_class": "rate_limited"},
+        ),
+        req,
+        transient,
     )
     assert other.diagnostic != "input_size_refused_without_exact_counts"
+    assert other.outcome == "quota"
 
 
 def test_typed_prompt_cap_reduces_target_without_creating_refused_upper(tmp_path):
