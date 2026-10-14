@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Explain incomplete discovery output streams.** Failed streamed output probes retain a
+  bounded structural preview identifying HTTP EOF, DONE, finish/usage presence and pending
+  frame size. Provider error explanations take priority. Generated/reasoning text and successful
+  output remain excluded; incomplete streams never establish token limits. Budgets, timeouts
+  and production dispatch are unchanged.
+
 - **Bounded streaming for new-route output discovery.** The verified NVIDIA-hosted Lightning
   route requests streamed final usage so longer generations can send data before completion.
   Incremental parsing caps stream data at 64 MiB and assembled responses at 4 MiB, requires
