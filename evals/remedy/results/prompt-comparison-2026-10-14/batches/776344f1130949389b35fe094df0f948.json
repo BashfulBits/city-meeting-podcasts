@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-b8889e50555726dfbb7f1a00",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda), posted by Addison's City Secretary, convenes the 'Planning and Zoning Commission WORK SESSION' for Tuesday, November 16, 2021, at 5:00 PM, and the provider player for recording 148373 (provider-player) carries the matching title 'Nov 16, 2021 Planning & Zoning Commission Work Session' with the identical agenda text and chapter structure (native-source-chapters), so the recording-specific convening body is proven to be the Addison Planning and Zoning Commission. The feed addison-tx-planning-and-zoning-commission is described as covering 'Planning and Zoning Commission meetings for Addison,' which plainly encompasses this Commission's work session; a work session is a meeting of the same body, not a distinct institution. No joint meeting is involved: the transcript's mention of the City Council acting on prior P&Z cases is a report on another body's actions, not evidence of joint convening, so no other feed membership applies. No other supplied feed (Zoning Adjustment, Bond Committees, Council, TIF, UDC Advisory, etc.) matches this body's identity under the identity rule."
+  },
+  "attempt_id": "c480ed7a6a0a4f66bbcb8b5b74759b99",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-b8889e50555726dfbb7f1a00",
+  "case_input_hash": "6259eece37a05c73703d12ee53ac2b9633e80d0235a0ad575a1e92047bcd3d36",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.998134458001005
+    }
+  ],
+  "end_to_end_seconds": 13.37616879199777,
+  "finished_at": "2026-10-14T20:35:46.653700+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T20:35:33.277422+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "8a38494c8ffe736ad4757a40e16deabcbe892047d645b49c897047a47330c7f2",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 811,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 408,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3920,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 256,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4731
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\":[{\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"name\":\"Addison Planning and Zoning Commission\"}],\"case_id\":\"recording-b8889e50555726dfbb7f1a00\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"missing_evidence\":[],\"publication_action\":\"assign_existing\",\"rationale\":\"The retained agenda (retained-agenda), posted by Addison's City Secretary, convenes the 'Planning and Zoning Commission WORK SESSION' for Tuesday, November 16, 2021, at 5:00 PM, and the provider player for recording 148373 (provider-player) carries the matching title 'Nov 16, 2021 Planning & Zoning Commission Work Session' with the identical agenda text and chapter structure (native-source-chapters), so the recording-specific convening body is proven to be the Addison Planning and Zoning Commission. The feed addison-tx-planning-and-zoning-commission is described as covering 'Planning and Zoning Commission meetings for Addison,' which plainly encompasses this Commission's work session; a work session is a meeting of the same body, not a distinct institution. No joint meeting is involved: the transcript's mention of the City Council acting on prior P&Z cases is a report on another body's actions, not evidence of joint convening, so no other feed membership applies. No other supplied feed (Zoning Adjustment, Bond Committees, Council, TIF, UDC Advisory, etc.) matches this body's identity under the identity rule.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is a Planning & Zoning Commission Work Session for Addison, TX, on November 16, 2021. The agenda (retained-agenda) shows \"PLANNING AND ZONING COMMISSION WORK SESSION\" posted by the City Secretary of the Town of Addison. The provider player confirms the same.\n\nThe convening body: Addison Planning and Zoning Commission (work session). This is a real body with an existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison.\"). A work session is a meeting of the P&Z Commission, so it fits.\n\nNo joint meeting; only the P&Z Commission is proven. The City Council is referenced in the transcript (council acted on cases) but that's a reference, not a convener.\n\nPublication action: assign_existing. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids to cite: retained-agenda, provider-player, native-source-chapters possibly. The native-source-chapters just confirms the agenda items, not the body directly. I can cite retained-agenda and provider-player.\n\nMissing evidence: none relevant. The work session vs regular meeting distinction \u2014 the feed says \"Planning and Zoning Commission meetings\" generally, so work sessions are covered.\n\nRationale: Agenda posted by City Secretary announces Planning and Zoning Commission Work Session on Nov 16, 2021; provider player for recording 148373 with matching title and agenda text confirms same convening body. Feed addison-tx-planning-and-zoning-commission covers P&Z Commission meetings including work sessions. No joint participants proven; references to City Council actions are informational only.\n\nEcho case_id: recording-b8889e50555726dfbb7f1a00.\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is a Planning & Zoning Commission Work Session for Addison, TX, on November 16, 2021. The agenda (retained-agenda) shows \"PLANNING AND ZONING COMMISSION WORK SESSION\" posted by the City Secretary of the Town of Addison. The provider player confirms the same.\n\nThe convening body: Addison Planning and Zoning Commission (work session). This is a real body with an existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison.\"). A work session is a meeting of the P&Z Commission, so it fits.\n\nNo joint meeting; only the P&Z Commission is proven. The City Council is referenced in the transcript (council acted on cases) but that's a reference, not a convener.\n\nPublication action: assign_existing. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids to cite: retained-agenda, provider-player, native-source-chapters possibly. The native-source-chapters just confirms the agenda items, not the body directly. I can cite retained-agenda and provider-player.\n\nMissing evidence: none relevant. The work session vs regular meeting distinction \u2014 the feed says \"Planning and Zoning Commission meetings\" generally, so work sessions are covered.\n\nRationale: Agenda posted by City Secretary announces Planning and Zoning Commission Work Session on Nov 16, 2021; provider player for recording 148373 with matching title and agenda text confirms same convening body. Feed addison-tx-planning-and-zoning-commission covers P&Z Commission meetings including work sessions. No joint participants proven; references to City Council actions are informational only.\n\nEcho case_id: recording-b8889e50555726dfbb7f1a00.\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792010145,
+    "id": "2cf8d99fa5e93ed68570129a0ab09059",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 811,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 408,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3920,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 256,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4731
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
