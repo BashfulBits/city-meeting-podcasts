@@ -1,0 +1,162 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Library Board of the City of Denton, Texas"
+      }
+    ],
+    "case_id": "recording-02b681ca6a58bfb1b3195afd",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-library-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained official agenda explicitly states that the Library Board of the City of Denton, Texas will convene in a Regular Meeting on May 13, 2021 at 3:30 p.m.; the provider player and native chapters for recording 120859 confirm the same convening body. This body matches the configured Library Board feed. References to the City Council, Friends of the Denton Public Libraries, and Emily Fowler Library Foundation concern agenda reports or recommendations, not joint convening bodies. Routine public comment does not warrant assignment to the Public Info Meetings feed."
+  },
+  "attempt_id": "c82ce01bcd404ad59e478a01cb9c8ffa",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-02b681ca6a58bfb1b3195afd",
+  "case_input_hash": "3b975375e44a86a5acb4cabb4894600d6f200ac93d9b29a3187fd81703828265",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.233537500000239
+    }
+  ],
+  "end_to_end_seconds": 59.45625870799995,
+  "finished_at": "2026-10-14T16:26:09.626314+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T16:25:10.169706+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5cf561f8db45ab87bca674626290867ad26b1ce59b0e8e8a5c1f2553e2d7dd31",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4845,
+        "output_tokens": 222
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 222,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4845,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4845,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 5067,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-02b681ca6a58bfb1b3195afd\",\"bodies\":[{\"name\":\"Library Board of the City of Denton, Texas\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-library-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained official agenda explicitly states that the Library Board of the City of Denton, Texas will convene in a Regular Meeting on May 13, 2021 at 3:30 p.m.; the provider player and native chapters for recording 120859 confirm the same convening body. This body matches the configured Library Board feed. References to the City Council, Friends of the Denton Public Libraries, and Emily Fowler Library Foundation concern agenda reports or recommendations, not joint convening bodies. Routine public comment does not warrant assignment to the Public Info Meetings feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791995168,
+    "id": "resp_0c1cfc4fa4fdb11d016acfad18f538819aacf251cea7fd3ffa",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4845,
+          "output_tokens": 222
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 222,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4845,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4845,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 5067,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
