@@ -1867,3 +1867,11 @@ def test_manual_context_diagnostic_artifact_uploads_even_after_failure():
     text = Path(".github/workflows/provider-catalog-reconcile.yml").read_text()
     step = text.split("- name: Retain manual context evidence", 1)[1]
     assert "if: always() && github.event_name == 'workflow_dispatch'" in step
+
+
+def test_manual_discovery_has_cleanup_time_without_extending_ordinary_reconciliation():
+    workflow = yaml.safe_load(Path(".github/workflows/provider-catalog-reconcile.yml").read_text())
+    timeout = workflow["jobs"]["reconcile"]["timeout-minutes"]
+    assert "github.event_name == 'workflow_dispatch'" in timeout
+    assert "inputs.discovery_enabled == true" in timeout
+    assert "180 || 120" in timeout

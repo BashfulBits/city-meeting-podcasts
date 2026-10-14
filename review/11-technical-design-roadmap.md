@@ -1947,3 +1947,8 @@ one 46,080 baseline and admitted 50,688 next, then deferred a third call before 
 to insufficient session time. The local verified lower bound is 50,688; the numerical upper
 remains unknown. These local diagnostics are not authenticated GitHub-history authority or
 production limit changes; the separate GitHub canary remains.
+
+Review/48 maintainer-approved timing extension: one-hour candidate discovery sessions, at most
+two hours of discovery work per run, and three-hour enclosing manual-discovery workflow timeout.
+Ordinary reconciliation remains two hours. Per-call 600 seconds and all numeric quota/token/call
+ceilings remain unchanged; checkpoint elapsed time still binds. See review/48.

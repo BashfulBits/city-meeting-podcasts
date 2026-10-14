@@ -82,9 +82,11 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    # NVIDIA's first bytes can take several minutes and every provider waits for its in-flight
-    # work to drain before probing; a typical run takes 10-20 minutes.
-    timeout-minutes: 120
+    # Two bounded one-hour discovery sessions plus health/drain work and evidence cleanup.
+    # Per-call deadlines and all call/token ceilings remain unchanged.
+    timeout-minutes: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+          inputs.discovery_enabled == true && 180 || 120 }}
     permissions:
       contents: read
       issues: write

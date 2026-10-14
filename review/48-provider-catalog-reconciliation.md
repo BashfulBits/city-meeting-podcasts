@@ -2112,17 +2112,17 @@ unchanged; new candidates use the separate discovery envelope below.
 | Provider submissions, including reachability and retries | 64 | 128 |
 | Reserved estimated input tokens | 8,388,608 | 16,777,216 |
 | Requested output tokens | 524,288 | 1,048,576 |
-| Elapsed time, including cooldowns | 20 minutes | 40 minutes discovery work |
+| Elapsed time, including cooldowns | 60 minutes | 120 minutes discovery work |
 | Candidate selection | One session per identity | Two candidates, at most one per provider |
 | Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
 | Transport | 600 seconds; 4 MiB response | Same |
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
 transport process; failed/unknown attempts are never refunded or reused. The no-response limit
-allows at most five calls total, counting the initial send. The 20-minute session deadline may stop
+allows at most five calls total, counting the initial send. The 60-minute session deadline may stop
 a run earlier; any collected timeout attempts are retained and reported as uncertain, never as a
-refused size boundary. At a 600-second per-call deadline, at most two full-length no-response
-attempts fit in one session. Token budgets are
+refused size boundary. The five-call no-response ceiling still stops unanswered requests even when more session
+time remains; longer sessions do not increase that retry allowance. Token budgets are
 reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
 when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
 4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
@@ -2142,7 +2142,8 @@ start a distinct control identity. The 16,384-token input counterpart permits at
 reservations per session before accounting for other output reservations. If the finite envelope
 interrupts refinement, preserve the partial bracket and use the authenticated `test again` path; do
 not silently increase aggregate spend.
-The parent workflow retains its 120-minute timeout; discovery stops before its own deadline and
+Manual discovery uses a 180-minute workflow timeout; ordinary reconciliation retains 120
+minutes. Discovery stops before its own session deadline and
 leaves time for artifact upload, issue synchronization and pause cleanup.
 
 **Maintainer-approved discovery timeout increase — 2026-10-12:** after workflow run
@@ -2833,3 +2834,27 @@ completion-including-reasoning count basis and partial status. No numerical uppe
 convergence was inferred from time failures. Successful observations retained no preview.
 The lower bound is diagnostic evidence only, not a production config change. Separate GitHub
 canary verification must obtain its own authenticated history and still use its admission guards.
+
+
+#### Approved one-hour discovery sessions
+
+The maintainer requested an initial one-hour session ceiling so slow output searches can refine
+more sizes per run. This supersedes historical 20-minute/40-minute timing references above.
+Set the existing runner's session ceiling to 3,600 seconds, subtracting original checkpoint
+elapsed time exactly as before. An explicit earlier caller deadline still binds; restarting
+does not grant a fresh hour. At most two candidate sessions allow 120 minutes of discovery
+work per reconciliation run. No per-call extension: the 600-second transport ceiling stays.
+All 64/128 call, five-no-response, 8M/16M input and 524,288/1,048,576 output ceilings stay.
+Revalidation, hint expiry, size proof and time-window admission guards stay unchanged.
+
+The manual discovery-enabled workflow receives a 180-minute enclosing timeout to leave room
+for discovery, health/drain work, evidence upload and cleanup. Ordinary reconciliation keeps
+120 minutes. Candidate count/provider selection, pause lease and renewal, artifact retention,
+workflow permissions and provider parameters are unchanged. This extension does not turn
+provider errors/timeouts into size refusals or promise true-cap convergence on every route.
+
+File plan: `discovery.py`, the existing reconcile workflow, discovery/workflow tests and lifecycle
+docs/changelog. Acceptance proves more than two slow successful refinement calls fit the default
+hour, all existing numeric budgets bind, checkpoint elapsed time persists and explicit shorter
+deadlines remain effective. Update the expired-checkpoint golden test to use the new ceiling.
+No Worker, quota, production-config, parser or dependency changes; no live calls in acceptance.

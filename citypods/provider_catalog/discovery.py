@@ -46,6 +46,7 @@ MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
 MAX_RESPONSE_TIMEOUT_SECONDS = 600
+MAX_SESSION_SECONDS = 3_600
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
     "transport_connection_error",
@@ -491,7 +492,8 @@ def run_discovery(
         raise ValueError("invalid discovery session start")
     elapsed = (datetime.now(UTC) - started).total_seconds()
     deadline = min(
-        deadline if deadline is not None else float("inf"), clock() + max(0, 1200 - elapsed)
+        deadline if deadline is not None else float("inf"),
+        clock() + max(0, MAX_SESSION_SECONDS - elapsed),
     )
     observations, brackets = [], []
     transport_retries = []
