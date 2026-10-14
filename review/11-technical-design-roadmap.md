@@ -1869,6 +1869,9 @@ own bounded session; configured-route calibration and recurring-discovery gates 
 Approved output early-stop follow-up (2026-10-13): route-scoped minimum generation for the
 verified NVIDIA-hosted Lightning deployment, separate probe control identities and explicit
 stopping diagnostics; actual output counts, verified fixture text and budgets stay binding.
+Approved streaming follow-up (2026-10-13): incremental discovery-only SSE with 64-MiB stream /
+4-MiB assembled bounds, final usage and existing cancellation/pause budgets, initially scoped to
+the verified hosted Lightning route. This advances onboarding caps, not recurring maintenance.
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This

@@ -2507,6 +2507,83 @@ fencing, early-stop classification and redaction. The approved file plan additio
 `providers/nvidia.py`; use the existing `rules.py`, `probe.py`, `discovery.py`, `reconcile.py` and
 their tests, with no new API endpoint, dependency, Worker or production catalog edit.
 
+**Approved streamed output transport (2026-10-13).** The purpose of this workflow remains
+new-route onboarding: reachable free candidates, validated JSON methods, provider claims and
+bounded per-request input/output/combined-cap discovery for maintainer review. Sustained rates,
+daily/monthly quota inference, burst/refill behavior and recurring maintenance remain in #2264.
+Neither a timeout nor a framing limit is evidence of a refused token size.
+
+Run 38341337478 revalidated 16,384 twice and admitted 24,576 under `output:v3:min_tokens`;
+36,864 returned HTTP 504 at roughly 303 seconds without usage. Buffered completion latency is a
+plausible transport bottleneck, not a proved intrinsic model ceiling. A paused local streamed
+4,096-token probe returned final usage (2,478 input, 4,096 completion, 6,574 total, 646 reasoning),
+`length` and a valid fixture; first data arrived at 348ms. Its decoded stream used 1,334,918 bytes,
+about 326 bytes per completion token. The existing 4-MiB aggregate ceiling would prevent larger
+streamed probes despite their small assembled answers. The maintainer explicitly approved this
+byte-bound extension while preserving token/call/time budgets and correct served-route scope.
+
+Add default-off `ProviderRules.discovery_output_stream_usage(endpoint, model)`, separate from
+minimum-generation support. Initially register only the same verified NVIDIA hosted Lightning
+endpoint/model combination. On those discovery output calls send `stream=true` and
+`stream_options.include_usage=true`. Input probes, reachability/JSON checks, configured-route
+calibration and Worker/direct dispatch retain their current paths. Unsupported/ignored streaming
+or missing final usage is inconclusive; no silent buffered fallback. Primary references:
+[NIM API](https://docs.nvidia.com/nim/large-language-models/2.0.10/reference/api-reference.html) and
+[vLLM stream options](https://docs.vllm.ai/en/v0.14.1/api/vllm/entrypoints/openai/protocol/).
+
+The discovery-only incremental collector caps decoded HTTP stream data at 64 MiB, pending SSE
+frames at 128 KiB, events at 1,000,000 and the assembled/normalized response at the existing 4 MiB.
+Discard framing, redundant metadata and reasoning text after validating each event. Preserve UTF-8
+across split chunks and delimit only with wire LF/CRLF, never Unicode line splitting. Require a
+complete `[DONE]` stream, one final usage object after finish, and a consistent finish reason.
+Once the terminal message is validated, close without waiting for HTTP EOF. Reject further
+content after finish and conflicting/post-terminal data already present in the collected chunk. Error envelopes,
+bad choices/deltas, conflicting usage/finish, post-terminal data, unfinished frames, invalid UTF-8,
+overflows and cancellations cannot establish capacity. Keep process admission/preflight,
+600-second hard cancellation, cleanup, provider pause and the 20-minute session unchanged.
+
+Record optional bounded `stream_bytes` / `stream_events` in discovery observations and issue
+telemetry, separately from compact `response_bytes`; these count decoded framing data, not billed
+or compressed network bytes. Legacy artifacts default to absent metrics. Never persist the raw
+stream, full answer or reasoning. Failed completed output retains the existing bounded/redacted
+preview; verified repeated output clears it. Stream delivery changes no prompt, fixed counterpart,
+minimum-generation control, usage-count meaning or boundary coordinate, so compatible
+`output:v3:min_tokens` history remains valid and receives its normal two fresh baseline checks.
+New provider/route opt-ins require documented semantics and independent streamed final-usage
+verification; minimum support alone never implies streaming support.
+
+Use existing `rules.py`, `probe.py`, `discovery.py`, `providers/nvidia.py`, `reconcile.py`,
+`issue.py` and their tests, plus lifecycle docs. No dependency, Worker endpoint/schema, credential,
+production YAML, route activation, token ceiling or timeout change. Acceptance covers split
+UTF-8/CRLF and multiline SSE, large discarded metadata with a small retained answer, every byte/
+event bound, malformed or partial terminal evidence, safe cancellation, exact route exclusion,
+optional metric compatibility/sanitization and verified-output preview suppression. A bounded
+larger local test precedes the implementation PR; GitHub verification follows maintainer merge.
+The initial streamed 36,864-token local attempt hit the 600-second subprocess deadline without
+final usage, so it established no size bound. That test does not identify the provider timeout's
+root cause. Review also found the collector must stop at DONE rather than HTTP EOF; the corrected
+terminal behavior has an explicit non-closing HTTP-stream regression. Retain the existing verified
+24,576 lower bound and the escape-hatch result rather than asserting a larger intrinsic cap.
+A final local 4,096-token test of incremental parsing and DONE termination succeeded: 2,481 input,
+4,096 completion, 6,577 total, 945 reasoning, `length`, 1,575 valid lines; 1,321,516 decoded stream
+bytes / 4,002 events became a 5,181-byte compact envelope. First data arrived at 934ms and the
+call took about 103 seconds. This validates streamed final usage, not a 36,864-token boundary.
+Transport timing diagnostics use the authorized deadline rather than clipping discovery durations
+to the configured-route 120-second ceiling. No timeout ceiling change is included here.
+On 2026-10-13 the maintainer approved one paused local diagnostic at the same 36,864-token
+size with a 1,200-second deadline. The diagnostic varies time alone, retains the existing token
+and one-call budgets, and changes no committed workflow or production timeout. Its result must
+be recorded as completed usage evidence or an inconclusive failure, never a numerical refusal.
+The approved test received HTTP 200 with first data at 359ms, 7,537,360 streamed bytes and
+22,977 events, then failed SSE envelope validation after 600.216 seconds. The local call allowance
+was 1,200 seconds; this was not its hard cancellation. No final usage or finish was retained,
+and the offending event shape was not retained, so an upstream timeout is a hypothesis rather
+than a verified cause. No higher cap or numerical refusal was established. The provider pause
+was released and read-only status confirmed zero in-flight calls and no active pauses. Keep the
+600-second production ceiling and the verified 24,576 lower bound; do not raise timeouts based
+on this result. A future diagnostic must distinguish invalid event shapes before attributing
+the failure to a provider or endpoint.
+
 The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
 that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
 clients using the same upstream account. The maintainer explicitly accepted this bounded first
@@ -2571,3 +2648,38 @@ recovery. Run full offline Python tests, whole-repository Ruff lint/format and b
 No live canary is part of offline acceptance. Implement discovery/report/retry first, then integrate
 reviewed addition values after the separate configuration contract, then propose a finite reviewed
 activation and GitHub canary with evidence/rollback before recurring discovery is enabled.
+
+
+Streaming failure diagnostics distinguish provider error events from invalid event types and
+unexpected object tags. Retain only a bounded/redacted provider error in the existing failed
+response preview, never sibling generated content or reasoning. These events supply no capacity
+proof. Discovery capacity-parser reuse omits transport duration/first-byte fields from the
+configured-context evidence projection: that schema retains its 120-second contract, while
+original discovery transport diagnostics keep their actual timings. Long failures must remain
+journalable inconclusive observations, not collapse into a schema ValueError or invalid JSON.
+Regression acceptance includes provider errors, malformed shapes, preview exclusion/redaction,
+and failure projection beyond the configured-context deadline. No extra live call is implicit.
+
+The maintainer approved one repeat local diagnostic with these failure-detail fixes. It stopped
+before any provider submission: `v2/dispatch:pause` returned HTTP 500 with the explicit Durable
+Objects free-tier rows-read exhaustion message. Do not bypass the pause guard or infer a NVIDIA
+size result from this failure. Resume the approved single test only after pause admission works.
+This Worker quota failure is separate from the earlier 600-second SSE-envelope failure.
+
+After the DO rows-read exhaustion blocked pause admission, the maintainer explicitly authorized
+the same single local diagnostic to submit directly without Worker reservation or pause. This
+is a diagnostic-only exception: retain the one-call/token budget and 1,200-second local deadline,
+make no production-path change, and treat quota interference from concurrent traffic as
+inconclusive. Normal discovery workflow admission/pause contracts remain unchanged.
+
+The authorized direct diagnostic completed successfully: HTTP 200, 2,483 prompt tokens,
+36,864 completion tokens including 1,418 reasoning tokens, 39,347 total, and `length`. The
+repeated-output verifier accepted the fixture (17,723 lines). First data arrived at 401ms;
+completion took 311.441 seconds. The 11,964,623-byte / 36,480-event stream normalized to a
+53,626-byte envelope. The observation/journal records a verified 36,864 output lower bound,
+no refused upper bound, and one-call budget exhaustion rather than convergence. The corrected
+long-duration projection preserved the observation; successful output retained no preview.
+This success fits the existing 600-second workflow deadline, so it does not justify increasing
+that deadline or attribute the earlier stream failure to the Worker. The prior provider call
+also used direct HTTP; its Worker interaction was pause coordination. Next GitHub verification
+follows merge, and further boundary search requires its separately authorized bounded run.

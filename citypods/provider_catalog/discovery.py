@@ -156,6 +156,8 @@ class DiscoveryObservation:
     response_id: str | None = None
     response_preview: str = ""
     sentinel_verification: str = "unknown"
+    stream_bytes: int | None = None
+    stream_events: int | None = None
 
     def __post_init__(self):
         if (
@@ -175,6 +177,10 @@ class DiscoveryObservation:
             "other",
         }:
             raise ValueError("invalid discovery response media type")
+        for name, bound in (("stream_bytes", 64 * 1024 * 1024), ("stream_events", 1_000_000)):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or not 0 <= value <= bound):
+                raise ValueError("invalid discovery stream diagnostic")
         if not isinstance(self.sentinel_verification, str) or self.sentinel_verification not in {
             "unknown",
             "passed",

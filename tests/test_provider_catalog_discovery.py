@@ -2041,3 +2041,393 @@ def test_checkpoint_charges_remain_but_old_output_fixture_is_not_boundary_proof(
     assert all(req.target == DEFAULT_OUTPUT_SEED for req in seen)
     assert result.brackets[1]["admitted"] is None
     assert result.budget["calls"] == 1 + len(seen)
+
+
+def stream_fixture(content="1\n1\n1", usage=None):
+    import json
+
+    usage = usage or dict(prompt_tokens=2048, completion_tokens=4096, total_tokens=6144)
+    frames = [
+        dict(object="chat.completion.chunk", choices=[dict(index=0, delta=dict(content=content))]),
+        dict(object="chat.completion.chunk", choices=[dict(delta={}, finish_reason="length")]),
+        dict(object="chat.completion.chunk", choices=[], usage=usage),
+    ]
+    return (
+        "".join("data: " + json.dumps(f, ensure_ascii=False) + "\r\n\r\n" for f in frames)
+        + "data: [DONE]\r\n\r\n"
+    ).encode()
+
+
+@pytest.mark.parametrize("width", [1, 3, 16384])
+def test_incremental_stream_handles_split_utf8_and_crlf(width):
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    raw = stream_fixture("1\n😀\u2028\n1")
+    stream = DiscoverySSECollector()
+    for offset in range(0, len(raw), width):
+        stream.feed(raw[offset : offset + width])
+    body = json.loads(stream.complete())
+    assert body["choices"][0]["message"]["content"] == "1\n😀\u2028\n1"
+    assert body["usage"]["completion_tokens"] == 4096
+    assert stream.wire_bytes == len(raw)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "missing_done",
+        "unfinished",
+        "duplicate_usage",
+        "post_done",
+        "error",
+        "bad_object",
+        "conflicting_finish",
+    ],
+)
+def test_incremental_stream_rejects_incomplete_or_conflicting_evidence(bad):
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    raw = stream_fixture()
+    if bad == "missing_done":
+        raw = raw.replace(b"data: [DONE]\r\n\r\n", b"")
+    elif bad == "unfinished":
+        raw = raw[:-1]
+    elif bad == "duplicate_usage":
+        frame = b'data: {"object":"chat.completion.chunk","choices":[],"usage":{}}\r\n\r\n'
+        raw = raw.replace(b"data: [DONE]", frame + b"data: [DONE]")
+    elif bad == "post_done":
+        raw += b"data: {}\r\n\r\n"
+    elif bad == "error":
+        raw = b'data: {"error":{"message":"no proof"}}\n\n' + raw
+    elif bad == "bad_object":
+        raw = raw.replace(b"chat.completion.chunk", b"other")
+    elif bad == "conflicting_finish":
+        raw = (
+            b'data: {"object":"chat.completion.chunk",'
+            b'"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n' + raw
+        )
+    stream = DiscoverySSECollector()
+    from citypods.provider_catalog.probe import ContextEnvelopeError
+
+    expected = {
+        "missing_done": "incomplete_sse",
+        "unfinished": "incomplete_sse",
+        "duplicate_usage": "conflicting_sse_usage",
+        "post_done": "invalid_sse_envelope",
+        "error": "provider_sse_error",
+        "bad_object": "invalid_sse_object",
+        "conflicting_finish": "invalid_sse_envelope",
+    }
+    with pytest.raises(ContextEnvelopeError) as error:
+        stream.feed(raw)
+        stream.complete()
+    assert error.value.code == expected[bad]
+
+
+def test_stream_discards_large_metadata_but_keeps_small_answer():
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    stream = DiscoverySSECollector()
+    frame = (
+        b'data: {"object":"chat.completion.chunk","choices":[],"padding":"'
+        + b"x" * 1000
+        + b'"}\n\n'
+    )
+    for _ in range(5000):
+        stream.feed(frame)
+    stream.feed(stream_fixture())
+    assert stream.wire_bytes > 4 * 1024 * 1024
+    assert len(stream.complete().encode()) < 4096
+    assert not stream.pending
+
+
+@pytest.mark.parametrize("bound", ["MAX_WIRE", "MAX_FRAME", "MAX_EVENTS"])
+def test_stream_enforces_each_hard_bound(monkeypatch, bound):
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    monkeypatch.setattr(DiscoverySSECollector, bound, 1)
+    stream = DiscoverySSECollector()
+    with pytest.raises(ValueError, match="exceeded"):
+        stream.feed(stream_fixture())
+
+
+def test_stream_normalized_expansion_remains_within_four_mib(monkeypatch):
+    import citypods.provider_catalog.probe as probe
+
+    stream = probe.DiscoverySSECollector()
+    stream.feed(stream_fixture("😀" * 100))
+    monkeypatch.setattr(probe, "_CONTEXT_BYTES", 500)
+    with pytest.raises(ValueError, match="content exceeded"):
+        stream.complete()
+
+
+def test_stream_opt_in_is_scoped_and_output_only():
+    _, transient = minimum_generation_fixture()
+    assert transient.shaped_body["body"]["stream"] is True
+    assert transient.shaped_body["body"]["stream_options"] == {"include_usage": True}
+    _, transient = minimum_generation_fixture("input")
+    assert transient.shaped_body["body"]["stream"] is False
+    _, _, transient = _chat_discovery_fixture("nvidia", "output")
+    assert transient.shaped_body["body"]["stream"] is False
+
+
+def test_stream_collector_handles_large_wire_without_retaining_it():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    frame = (
+        b'data: {"object":"chat.completion.chunk","choices":[],"padding":"'
+        + b"x" * 1000
+        + b'"}\n\n'
+    )
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            for _ in range(5000):
+                yield frame
+            yield stream_fixture()
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    session = SimpleNamespace(post=lambda *args, **kwargs: response)
+    captured = _collect_context(session, transient, {}, 600, time.monotonic, discovery_stream=True)
+    assert response.closed
+    assert captured.context_diagnostics["stream_bytes"] > 4 * 1024 * 1024
+    assert captured.context_diagnostics["response_bytes"] < 4096
+    assert captured.context_diagnostics["stream_events"] == 5004
+    assert captured.context_diagnostics["diagnostic_code"] == "response_received"
+
+
+def test_stream_diagnostics_are_optional_and_strictly_bounded():
+    from citypods.provider_catalog.issue import _discovery_attempt_diagnostics
+
+    row = asdict(DiscoveryObservation(request(), STAMP))
+    del row["stream_bytes"]
+    del row["stream_events"]
+    assert DiscoveryObservation.from_dict(row).stream_bytes is None
+    for name, bad in (("stream_bytes", 64 * 1024 * 1024 + 1), ("stream_events", True)):
+        with pytest.raises(ValueError, match="stream diagnostic"):
+            DiscoveryObservation.from_dict(row | {name: bad})
+    parsed = _discovery_attempt_diagnostics([dict(stream_bytes=12_000_000, stream_events=1000)])[0]
+    assert parsed["stream_bytes"] == 12_000_000 and parsed["stream_events"] == 1000
+
+
+def test_verified_stream_output_does_not_retain_failure_preview():
+    import json
+
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import Response
+
+    req, transient = minimum_generation_fixture()
+    body = dict(
+        object="chat.completion",
+        usage=dict(prompt_tokens=2048, completion_tokens=4096, total_tokens=6144),
+        choices=[dict(message=dict(content="1\n1\n1"), finish_reason="length")],
+    )
+    response = Response(200, body=json.dumps(body), context_diagnostics={"response_preview": '"1"'})
+    observed = rules_for("nvidia").discovery_observation(response, req, transient)
+    assert observed.outcome == "admitted" and observed.response_preview == ""
+
+
+@pytest.mark.parametrize("bad", ["early_usage", "late_content"])
+def test_stream_usage_must_be_final_and_content_cannot_follow_finish(bad):
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    raw = stream_fixture()
+    if bad == "early_usage":
+        frame = dict(object="chat.completion.chunk", choices=[], usage=dict(total_tokens=1))
+        raw = ("data: " + json.dumps(frame) + "\n\n").encode() + raw
+    else:
+        frame = dict(object="chat.completion.chunk", choices=[dict(delta=dict(content="1\n"))])
+        raw = raw.replace(
+            b"data: [DONE]", ("data: " + json.dumps(frame) + "\n\ndata: [DONE]").encode()
+        )
+    with pytest.raises(ValueError):
+        stream = DiscoverySSECollector()
+        stream.feed(raw)
+        stream.complete()
+
+
+def test_stream_done_finishes_without_waiting_for_http_eof():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield stream_fixture()
+            raise AssertionError("must not wait for HTTP EOF after complete DONE")
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    captured = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: response),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+    )
+    assert captured.context_diagnostics["diagnostic_code"] == "response_received"
+    assert response.closed
+
+
+def test_stream_keeps_consistent_response_id_and_rejects_cross_response_data():
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    prefix = b'data: {"object":"chat.completion.chunk","id":"chatcmpl-test","choices":[]}\n\n'
+    stream = DiscoverySSECollector()
+    stream.feed(prefix + stream_fixture())
+    assert json.loads(stream.complete())["id"] == "chatcmpl-test"
+    other = prefix.replace(b"chatcmpl-test", b"other")
+    with pytest.raises(ValueError):
+        DiscoverySSECollector().feed(prefix + other + stream_fixture())
+
+
+def test_stream_accepts_multiline_json_data_without_unicode_line_splitting():
+    import json
+
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    event = dict(object="chat.completion.chunk", choices=[])
+    prefix = "\n".join("data: " + line for line in json.dumps(event, indent=2).split("\n"))
+    stream = DiscoverySSECollector()
+    stream.feed((prefix + "\n\n").encode() + stream_fixture())
+    assert json.loads(stream.complete())["usage"]["completion_tokens"] == 4096
+
+
+def test_stream_timings_use_the_authorized_deadline_not_a_two_minute_clip():
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    tick = SimpleNamespace(now=0)
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+
+        def iter_content(self, chunk_size):
+            tick.now = 200
+            yield stream_fixture()
+
+        def close(self):
+            pass
+
+    observed = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {},
+        600,
+        lambda: tick.now,
+        discovery_stream=True,
+    )
+    assert observed.context_diagnostics["duration_ms"] == 200_000
+    assert observed.context_diagnostics["first_byte_ms"] == 200_000
+
+
+@pytest.mark.parametrize(
+    ("event", "code"),
+    [([], "invalid_sse_event_type"), ({"object": "other"}, "invalid_sse_object")],
+)
+def test_stream_identifies_invalid_event_shape(event, code):
+    import json
+
+    from citypods.provider_catalog.probe import ContextEnvelopeError, DiscoverySSECollector
+
+    collector = DiscoverySSECollector()
+    with pytest.raises(ContextEnvelopeError) as error:
+        collector.feed(("data: " + json.dumps(event) + "\n\n").encode())
+    assert error.value.code == code
+    assert collector.error_preview == b""
+
+
+def test_stream_provider_error_is_diagnostic_only_and_excludes_generated_siblings():
+    import json
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    event = {
+        "error": {"message": "upstream timed out", "code": 504},
+        "reasoning": "private reasoning",
+        "content": "generated text",
+    }
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield ("data: " + json.dumps(event) + "\n\n").encode()
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    captured = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: response),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+        retain_response_preview=True,
+    )
+    assert captured.context_diagnostics["diagnostic_code"] == "provider_sse_error"
+    assert "upstream timed out" in captured.context_diagnostics["response_preview"]
+    assert "private reasoning" not in captured.context_diagnostics["response_preview"]
+    assert "generated text" not in captured.context_diagnostics["response_preview"]
+    assert captured.body == ""
+    assert response.closed
+
+
+@pytest.mark.parametrize("code", ["provider_sse_error", "stream_bytes_exceeded"])
+def test_long_discovery_failure_survives_configured_context_evidence_validation(code):
+    from citypods.provider_catalog.rules import Response, chat_discovery_observation
+
+    request, transient = minimum_generation_fixture()
+    response = Response(
+        200,
+        context_diagnostics={
+            "diagnostic_code": code,
+            "duration_ms": 600216,
+            "first_byte_ms": 359,
+            "response_preview": "upstream timeout",
+            "stream_bytes": 7537360,
+            "stream_events": 22977,
+        },
+    )
+    observed = chat_discovery_observation(response, request, transient, reasoning_basis="included")
+    assert not observed.verified
+    assert observed.diagnostic == code
+    assert observed.response_preview == "upstream timeout"
+    assert observed.stream_events == 22977

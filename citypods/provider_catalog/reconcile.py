@@ -1426,6 +1426,8 @@ def _discovery_attempt_diagnostics(attempts):
                 "response_status": field(observation_data, "response_status"),
                 "response_media_type": field(observation_data, "response_media_type"),
                 "response_bytes": field(observation_data, "response_bytes"),
+                "stream_bytes": field(observation_data, "stream_bytes"),
+                "stream_events": field(observation_data, "stream_events"),
                 "message_content_state": field(observation_data, "message_content_state"),
                 "finish_reason_state": field(observation_data, "finish_reason_state"),
                 "finish_reason": field(observation_data, "finish_reason"),

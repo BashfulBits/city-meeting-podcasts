@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -242,6 +242,7 @@ class ProviderRules:
     # Opt in only for a documented and verified endpoint/model combination. This is a
     # discovery transport capability, not a model limit or a production dispatch control.
     discovery_output_min_tokens: Callable[[str, str], bool] = lambda _endpoint, _model: False
+    discovery_output_stream_usage: Callable[[str, str], bool] = lambda _endpoint, _model: False
     discovery_parser_version: str = "unsupported-v1"
     discovery_observation: Callable = lambda response, request, transient: unsupported_discovery(
         response, request, transient
@@ -832,7 +833,29 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
     stamp = datetime.now(UTC).isoformat()
     if request.axis.startswith("total_"):
         return DiscoveryObservation(request, stamp, diagnostic="combined_semantics_unverified")
-    observation = chat_context_observation(response, transient, reasoning_basis=reasoning_basis)
+    # Reuse capacity parsing without projecting discovery transport timings into the
+    # configured-context evidence schema, whose deadline remains 120 seconds.
+    capacity_response = replace(
+        response,
+        context_diagnostics={
+            key: value
+            for key, value in response.context_diagnostics.items()
+            if key not in {"duration_ms", "first_byte_ms"}
+        },
+    )
+    observation = chat_context_observation(
+        capacity_response, transient, reasoning_basis=reasoning_basis
+    )
+    stream_failure = response.context_diagnostics.get("diagnostic_code", "")
+    if (
+        not response.body
+        and isinstance(stream_failure, str)
+        and (
+            stream_failure.startswith(("invalid_sse_", "stream_", "conflicting_sse_"))
+            or stream_failure in {"provider_sse_error", "incomplete_sse", "invalid_final_sse_usage"}
+        )
+    ):
+        observation = replace(observation, diagnostic_code=stream_failure)
     try:
         payload = strict_context_json(response.body)
         payload = payload if isinstance(payload, dict) else None
@@ -930,6 +953,8 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
             diagnostics_value(response.context_diagnostics, "provider_request_id")
         ),
         response_id=response_id,
+        stream_bytes=diagnostics_value(response.context_diagnostics, "stream_bytes"),
+        stream_events=diagnostics_value(response.context_diagnostics, "stream_events"),
         sentinel_verification=_discovery_sentinel_verification(request, transient, payload),
     )
     if observation.outcome != "verified":
@@ -985,7 +1010,10 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
                 coordinate=usage["completion_tokens"],
                 count_basis="completion_including_reasoning",
                 verified=True,
-                **(values | {"diagnostic": "verified_repeated_output_fixture"}),
+                **(
+                    values
+                    | {"diagnostic": "verified_repeated_output_fixture", "response_preview": ""}
+                ),
             )
         values["diagnostic"] = "output_fixture_not_reached"
         return DiscoveryObservation(request, stamp, **values)
@@ -1017,6 +1045,9 @@ def diagnostics_value(diagnostics, name):
     if name == "response_media_type":
         allowed = {"unknown", "application/json", "text/event-stream", "other"}
         return value if value in allowed else "unknown"
+    if name in {"stream_bytes", "stream_events"}:
+        bound = 64 * 1024 * 1024 if name == "stream_bytes" else 1_000_000
+        return value if type(value) is int and 0 <= value <= bound else None
     if name == "response_bytes":
         return value if type(value) is int and 0 <= value <= 4 * 1024 * 1024 else None
     if name == "provider_request_id":
