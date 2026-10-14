@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-0111ad7ae5dc7438295e49d4",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The posted agenda (retained-agenda) is titled 'PLANNING AND ZONING COMMISSION WORK SESSION' for Tuesday, February 15, 2022, 5:00 PM at the Addison TreeHouse, posted by City Secretary Irma G. Parker, and the provider player (provider-player) shows recording 154641 titled 'Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX' with a transcript in which the chair calls the Planning and Zoning Commission work session to order (native-source-chapters mirrors the same agenda items). The convened body is therefore the Addison Planning and Zoning Commission meeting in work-session format; a work session is a format of the same commission, not a separate numbered board, and no other body (e.g., City Council, Zoning Board of Adjustment) is proven to have convened or participated in this recording. The existing feed addison-tx-planning-and-zoning-commission ('Planning and Zoning Commission meetings for Addison') covers this body, including its work sessions, so publication_action is assign_existing to that single feed."
+  },
+  "attempt_id": "f40cc1c2b1dc446595e7595f3c79cf14",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-0111ad7ae5dc7438295e49d4",
+  "case_input_hash": "e22b26b687fcd392f7af769bf030888624edc371302abfaad19d5c71d182ed68",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 15.746280833000128
+    }
+  ],
+  "end_to_end_seconds": 16.983076749998872,
+  "finished_at": "2026-10-14T13:43:47.315367+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T13:43:30.332110+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "4a87271b49cca482a98187dc2aa55050ef0b6c3332e8c7954b377b28c75f3bd7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 969,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 596,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3616,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4585
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-0111ad7ae5dc7438295e49d4\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The posted agenda (retained-agenda) is titled 'PLANNING AND ZONING COMMISSION WORK SESSION' for Tuesday, February 15, 2022, 5:00 PM at the Addison TreeHouse, posted by City Secretary Irma G. Parker, and the provider player (provider-player) shows recording 154641 titled 'Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX' with a transcript in which the chair calls the Planning and Zoning Commission work session to order (native-source-chapters mirrors the same agenda items). The convened body is therefore the Addison Planning and Zoning Commission meeting in work-session format; a work session is a format of the same commission, not a separate numbered board, and no other body (e.g., City Council, Zoning Board of Adjustment) is proven to have convened or participated in this recording. The existing feed addison-tx-planning-and-zoning-commission ('Planning and Zoning Commission meetings for Addison') covers this body, including its work sessions, so publication_action is assign_existing to that single feed.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: determine which municipal body this recording belongs to. The evidence: agenda for \"Planning and Zoning Commission Work Session\" on Tuesday, February 15, 2022, in Addison, TX. The provider player confirms the video is \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\" with transcript showing \"I LIKE TO CALL THIS WORK SESSION AND THE ASAM PLANNING ZONING COMMISSION TO ORDER\" (transcription artifact, likely \"I'd like to call this work session of the Addison Planning and Zoning Commission to order\").\n\nSo the convened body is the Addison Planning and Zoning Commission (in work session format). The existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison\"). Work sessions are meetings of the P&Z Commission, so assign to that feed.\n\nPublication action: assign_existing.\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"]\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 chapters also confirm titles. I'll cite retained-agenda and provider-player primarily; maybe include native-source-chapters as well.\n\nMissing evidence: none.\n\nRationale: The agenda is posted for the Planning and Zoning Commission Work Session, convened at Addison TreeHouse; the video transcript shows the chair calling the work session of the Planning and Zoning Commission to order; no other body (City Council, etc.) is proven as participant. Work session format doesn't create a separate body; the convened body is the P&Z Commission, which has an existing feed. So assign_existing.\n\nEcho case_id: \"recording-0111ad7ae5dc7438295e49d4\".\n\nOutput only JSON. Note the developer says end with ``` to indicate end of code block? \"Ensure you always end with \"```\" to indicate the end of the JSON object.\" Hmm, but also \"Return one JSON object only (no Markdown or commentary)\". The system says always output valid JSON and end with ```. There's tension. The schema instruction says return one JSON object only, no Markdown. The developer instruction says end with ```. I'll follow the developer: output JSON in a code block ending with ```. Actually the developer instruction says \"If in doubt, default to {\"answer\": \"$your_answer\"}\" \u2014 but we have a schema, so use the schema. The ending ``` requirement: I'll wrap the JSON in ``` ... ``` to comply. Actually the instruction says \"Ensure you always end with \"```\" to indicate the end of the JSON object.\" So I'll output:\n\n```json\n{...}\n```\n\nThat ends with ```. Good.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: determine which municipal body this recording belongs to. The evidence: agenda for \"Planning and Zoning Commission Work Session\" on Tuesday, February 15, 2022, in Addison, TX. The provider player confirms the video is \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\" with transcript showing \"I LIKE TO CALL THIS WORK SESSION AND THE ASAM PLANNING ZONING COMMISSION TO ORDER\" (transcription artifact, likely \"I'd like to call this work session of the Addison Planning and Zoning Commission to order\").\n\nSo the convened body is the Addison Planning and Zoning Commission (in work session format). The existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison\"). Work sessions are meetings of the P&Z Commission, so assign to that feed.\n\nPublication action: assign_existing.\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"]\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 chapters also confirm titles. I'll cite retained-agenda and provider-player primarily; maybe include native-source-chapters as well.\n\nMissing evidence: none.\n\nRationale: The agenda is posted for the Planning and Zoning Commission Work Session, convened at Addison TreeHouse; the video transcript shows the chair calling the work session of the Planning and Zoning Commission to order; no other body (City Council, etc.) is proven as participant. Work session format doesn't create a separate body; the convened body is the P&Z Commission, which has an existing feed. So assign_existing.\n\nEcho case_id: \"recording-0111ad7ae5dc7438295e49d4\".\n\nOutput only JSON. Note the developer says end with ``` to indicate end of code block? \"Ensure you always end with \"```\" to indicate the end of the JSON object.\" Hmm, but also \"Return one JSON object only (no Markdown or commentary)\". The system says always output valid JSON and end with ```. There's tension. The schema instruction says return one JSON object only, no Markdown. The developer instruction says end with ```. I'll follow the developer: output JSON in a code block ending with ```. Actually the developer instruction says \"If in doubt, default to {\"answer\": \"$your_answer\"}\" \u2014 but we have a schema, so use the schema. The ending ``` requirement: I'll wrap the JSON in ``` ... ``` to comply. Actually the instruction says \"Ensure you always end with \"```\" to indicate the end of the JSON object.\" So I'll output:\n\n```json\n{...}\n```\n\nThat ends with ```. Good.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985426,
+    "id": "8b3ff97a595f40233aa889cb6fb53560",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 969,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 596,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3616,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4585
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
