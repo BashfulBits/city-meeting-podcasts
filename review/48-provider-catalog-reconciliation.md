@@ -2924,3 +2924,14 @@ or unknown envelopes. Exact output-parameter refusals are labelled requested_out
 axes so they can reduce fixed counterparts without creating combined bounds. Provider names and
 model allowlists do not grant size proof. This retains discovery for unseen routes while failing
 closed on undocumented shapes and ambiguous counts.
+
+A maintainer-authorized next direct session resumed from those local diagnostic observations.
+It revalidated 50,688 completion tokens (734 reasoning, 2,485 prompt, `length`) in 557.930
+seconds, then verified 52,992 completion tokens (1,198 reasoning, 2,485 prompt, `length`) in
+525.385 seconds. Both repeated-output fixtures passed. It sent exactly two calls, charged
+4,970 input and 103,680 output tokens, and stopped before a third admission with
+`insufficient_output_probe_window`. The verified local output lower bound is now 52,992, with
+unknown numerical upper and partial status. The next retry-hint midpoint would be 54,144; that
+value is not measured evidence or an authorized automatic next call. No Worker interaction,
+production publication or GitHub-history authentication was introduced. Local evidence remains
+diagnostic only; the workflow must obtain its own authenticated observations.
