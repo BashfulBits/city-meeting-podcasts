@@ -1,0 +1,154 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Comprehensive Plan Advisory Committee"
+      }
+    ],
+    "case_id": "recording-461fd764c77be280ae5b37a2",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-comprehensive-plan-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda (retained-agenda) titles the recording as 'Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council' and its call-to-order item names a proven participant for each body: Mayor Bruce Arfsten (City Council), Chair Denise Fansler (Planning & Zoning Commission), and Chair Susan Halpern (Comprehensive Plan Advisory Committee). The provider-player transcript independently confirms all three bodies were called to order with a quorum announced for each, and the native-source-chapters mirror the joint convening and agenda. Under the joints policy, every proven participant shares the same recording in its configured feed, so this assignment covers addison-tx-city-council, addison-tx-planning-and-zoning-commission, and addison-tx-comprehensive-plan-advisory-committee. Venue (Addison Conference Center), topics (Advance Addison 2050, catalyst redevelopment), and the citizen comment segment do not change the convened-body identity, and the Public Input feed is not supported because this is a formal joint meeting of convened bodies rather than a town hall or open house; the public_comment policy also bars routine comment from adding Public Info membership. Other feeds (zoning adjustment, bond, TIF, UDC, community partnership, public briefings) match no proven participant. Evidence is recording-specific and complete, so no gaps are cited."
+  },
+  "attempt_id": "614ed6c7f4024549b97b74ee2d7d9b8e",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-461fd764c77be280ae5b37a2",
+  "case_input_hash": "19c5d7c43835941303b2a730df317609a11d9d2770481146541c2589143d092e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 23.26263199999812
+    }
+  ],
+  "end_to_end_seconds": 25.303295541998523,
+  "finished_at": "2026-10-14T18:31:59.210588+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:31:33.907114+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "980434087ec086a5674cf578624a00086b9289e1d4ceb793dd04a143003ea38c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1540,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 999,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3962,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5502
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Addison City Council\"\n    },\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Addison Planning and Zoning Commission\"\n    },\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Addison Comprehensive Plan Advisory Committee\"\n    }\n  ],\n  \"case_id\": \"recording-461fd764c77be280ae5b37a2\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"feed_slugs\": [\n    \"addison-tx-city-council\",\n    \"addison-tx-planning-and-zoning-commission\",\n    \"addison-tx-comprehensive-plan-advisory-committee\"\n  ],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The official agenda (retained-agenda) titles the recording as 'Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council' and its call-to-order item names a proven participant for each body: Mayor Bruce Arfsten (City Council), Chair Denise Fansler (Planning & Zoning Commission), and Chair Susan Halpern (Comprehensive Plan Advisory Committee). The provider-player transcript independently confirms all three bodies were called to order with a quorum announced for each, and the native-source-chapters mirror the joint convening and agenda. Under the joints policy, every proven participant shares the same recording in its configured feed, so this assignment covers addison-tx-city-council, addison-tx-planning-and-zoning-commission, and addison-tx-comprehensive-plan-advisory-committee. Venue (Addison Conference Center), topics (Advance Addison 2050, catalyst redevelopment), and the citizen comment segment do not change the convened-body identity, and the Public Input feed is not supported because this is a formal joint meeting of convened bodies rather than a town hall or open house; the public_comment policy also bars routine comment from adding Public Info membership. Other feeds (zoning adjustment, bond, TIF, UDC, community partnership, public briefings) match no proven participant. Evidence is recording-specific and complete, so no gaps are cited.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case carefully.\n\nThe recording: \"Joint CPAC, P&Z, and City Council Meeting #2\" from Addison, TX, dated July 11, 2024, recording ID 310072.\n\nEvidence:\n1. **retained-agenda**: The official agenda says \"JOINT MEETING #2 OF THE COMPREHENSIVE PLAN ADVISORY COMMITTEE (CPAC), PLANNING & ZONING COMMISSION (P&Z), AND CITY COUNCIL\" \u2014 Thursday, July 11, 2024, Addison Conference Center. The call to order lists:\n   - Mayor Bruce Arfsten - City Council\n   - Chair Denise Fansler - Planning & Zoning Commission\n   - Chair Susan Halpern - Comprehensive Plan Advisory Committee\n   \n   Quorum call: \"Call Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting to Order and Announce that a Quorum is Present\"\n\n2. **provider-player**: Swagit player page showing the video, transcript excerpt confirming the joint call to order with quorums of Council, P&Z, and CPAC (\"CAC\" in the transcript \u2014 voice-to-text).\n\n3. **native-source-chapters**: Chapter titles from the player matching the agenda items.\n\nSo three bodies convened jointly:\n1. Addison City Council\n2. Addison Planning and Zoning Commission\n3. Addison Comprehensive Plan Advisory Committee (CPAC)\n\nExisting feeds:\n- addison-tx-board-of-zoning-adjustment \u2014 Board of Zoning Adjustment; not relevant.\n- addison-tx-bond-committees \u2014 bond committees; not relevant.\n- addison-tx-city-council \u2014 \"City Council meetings for Addison.\" \u2713 matches City Council.\n- addison-tx-community-partnership-committee \u2014 not relevant.\n- addison-tx-comprehensive-plan-advisory-committee \u2014 \"Comprehensive Plan Advisory Committee meetings for Addison.\" \u2713 matches CPAC.\n- addison-tx-planning-and-zoning-commission \u2014 \"Planning and Zoning Commission meetings for Addison.\" \u2713 matches P&Z.\n- addison-tx-public-briefings \u2014 educational briefings; not relevant (this is a joint working meeting, not an educational briefing; and no proven body matches).\n- addison-tx-tif \u2014 not relevant.\n- addison-tx-town-meetings \u2014 \"Town halls, community meetings, open houses and historical citizen input.\" Hmm. This is a joint meeting of formal bodies, not a town hall. The \"public_comment\" policy says routine public comment does not add Public Info feed membership. The joint meeting is a formal convened meeting of three bodies, not a town hall/community meeting. So no.\n- addison-tx-unified-development-code-advisory-committee \u2014 not relevant.\n\nPolicy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So the recording should be assigned to all three feeds: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee.\n\nPublication action: assign_existing.\n\nBodies to name (every proven participant in the joint meeting):\n1. Addison City Council \u2014 evidence: retained-agenda (Mayor Bruce Arfsten - City Council; call to order), provider-player transcript.\n2. Addison Planning and Zoning Commission \u2014 evidence: retained-agenda (Chair Denise Fansler), provider-player.\n3. Addison Comprehensive Plan Advisory Committee \u2014 evidence: retained-agenda (Chair Susan Halpern), provider-player.\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters. The chapters confirm the agenda items and the joint call to order. I'll cite retained-agenda and provider-player primarily; native-source-chapters also supports.\n\nMissing evidence: none \u2014 completeness is \"recording-specific\", agenda and player transcript confirm quorums of all three bodies. No gaps.\n\nRationale: The official agenda and player transcript prove a joint meeting convened by all three bodies, each with a quorum announced (Mayor Arfsten for Council, Chair Fansler for P&Z, Chair Halpern for CPAC). Under the joints policy, each proven participant shares the recording in its configured feed. The topic (Advance Addison 2050) and venue (Addison Conference Center) do not substitute for identity. Public Input feed not applicable since this is a formal joint meeting of convened bodies, not a town hall; routine citizen comment section doesn't add membership per public_comment policy.\n\nFeed slugs:\n- addison-tx-city-council\n- addison-tx-planning-and-zoning-commission\n- addison-tx-comprehensive-plan-advisory-committee\n\nCase ID: recording-461fd764c77be280ae5b37a2\n\nOutput JSON only, matching the schema.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case carefully.\n\nThe recording: \"Joint CPAC, P&Z, and City Council Meeting #2\" from Addison, TX, dated July 11, 2024, recording ID 310072.\n\nEvidence:\n1. **retained-agenda**: The official agenda says \"JOINT MEETING #2 OF THE COMPREHENSIVE PLAN ADVISORY COMMITTEE (CPAC), PLANNING & ZONING COMMISSION (P&Z), AND CITY COUNCIL\" \u2014 Thursday, July 11, 2024, Addison Conference Center. The call to order lists:\n   - Mayor Bruce Arfsten - City Council\n   - Chair Denise Fansler - Planning & Zoning Commission\n   - Chair Susan Halpern - Comprehensive Plan Advisory Committee\n   \n   Quorum call: \"Call Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting to Order and Announce that a Quorum is Present\"\n\n2. **provider-player**: Swagit player page showing the video, transcript excerpt confirming the joint call to order with quorums of Council, P&Z, and CPAC (\"CAC\" in the transcript \u2014 voice-to-text).\n\n3. **native-source-chapters**: Chapter titles from the player matching the agenda items.\n\nSo three bodies convened jointly:\n1. Addison City Council\n2. Addison Planning and Zoning Commission\n3. Addison Comprehensive Plan Advisory Committee (CPAC)\n\nExisting feeds:\n- addison-tx-board-of-zoning-adjustment \u2014 Board of Zoning Adjustment; not relevant.\n- addison-tx-bond-committees \u2014 bond committees; not relevant.\n- addison-tx-city-council \u2014 \"City Council meetings for Addison.\" \u2713 matches City Council.\n- addison-tx-community-partnership-committee \u2014 not relevant.\n- addison-tx-comprehensive-plan-advisory-committee \u2014 \"Comprehensive Plan Advisory Committee meetings for Addison.\" \u2713 matches CPAC.\n- addison-tx-planning-and-zoning-commission \u2014 \"Planning and Zoning Commission meetings for Addison.\" \u2713 matches P&Z.\n- addison-tx-public-briefings \u2014 educational briefings; not relevant (this is a joint working meeting, not an educational briefing; and no proven body matches).\n- addison-tx-tif \u2014 not relevant.\n- addison-tx-town-meetings \u2014 \"Town halls, community meetings, open houses and historical citizen input.\" Hmm. This is a joint meeting of formal bodies, not a town hall. The \"public_comment\" policy says routine public comment does not add Public Info feed membership. The joint meeting is a formal convened meeting of three bodies, not a town hall/community meeting. So no.\n- addison-tx-unified-development-code-advisory-committee \u2014 not relevant.\n\nPolicy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So the recording should be assigned to all three feeds: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee.\n\nPublication action: assign_existing.\n\nBodies to name (every proven participant in the joint meeting):\n1. Addison City Council \u2014 evidence: retained-agenda (Mayor Bruce Arfsten - City Council; call to order), provider-player transcript.\n2. Addison Planning and Zoning Commission \u2014 evidence: retained-agenda (Chair Denise Fansler), provider-player.\n3. Addison Comprehensive Plan Advisory Committee \u2014 evidence: retained-agenda (Chair Susan Halpern), provider-player.\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters. The chapters confirm the agenda items and the joint call to order. I'll cite retained-agenda and provider-player primarily; native-source-chapters also supports.\n\nMissing evidence: none \u2014 completeness is \"recording-specific\", agenda and player transcript confirm quorums of all three bodies. No gaps.\n\nRationale: The official agenda and player transcript prove a joint meeting convened by all three bodies, each with a quorum announced (Mayor Arfsten for Council, Chair Fansler for P&Z, Chair Halpern for CPAC). Under the joints policy, each proven participant shares the recording in its configured feed. The topic (Advance Addison 2050) and venue (Addison Conference Center) do not substitute for identity. Public Input feed not applicable since this is a formal joint meeting of convened bodies, not a town hall; routine citizen comment section doesn't add membership per public_comment policy.\n\nFeed slugs:\n- addison-tx-city-council\n- addison-tx-planning-and-zoning-commission\n- addison-tx-comprehensive-plan-advisory-committee\n\nCase ID: recording-461fd764c77be280ae5b37a2\n\nOutput JSON only, matching the schema.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002718,
+    "id": "7a929ef63fef62c1a201926e8f6845e5",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1540,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 999,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3962,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5502
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
