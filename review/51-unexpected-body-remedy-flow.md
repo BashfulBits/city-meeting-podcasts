@@ -4129,3 +4129,48 @@ First-slot verification:169 targeted checks and6,157 offline tests passed
 (16 deselected), whole Ruff/format546 files and fragment checks clean. Release
 resumption prioritizes Qwen once; repeat resumption preserves normal queue position.
 All attempt counters, original horizon and real token waits remain unchanged.
+
+
+### P1 Groq provider-authoritative stop — L3, approved2026-10-13
+
+Maintainer explicitly directed Qwen and GPT-OSS to continue now until provider429,
+then pause them. This supersedes local daily-token reserve/ceiling gates only for
+these two models in the current body-selection experiment. Keep free physical
+routes, input/output limits, high/parsed controls, RPM/RPD/TPM/concurrency checks,
+shared CAS request accounting, one call lock, original horizon and12 attempts/pair.
+No production route/catalog/Worker/workflow changes. No calls after all60 answers.
+
+Scope: existing body-selection run.py/groq_routes.py/README,
+tests/test_remedy_body_selection.py and lifecycle docs. Add default-off
+--groq-until-429, requiring --coordination-bypass and the existing saved run.
+Bind a persisted groq_until_429 session to its fixed authorized_at/approval_ref;
+resumption never resets this timestamp or a429 pause. Historical429s before that
+authorization do not pause this new window. Record mode and provider-authoritative
+daily-limit policy in status, immutable intents/results and request-settings hashes.
+
+Evaluation-local Groq route copies set quota.tpd=None only in this explicit mode,
+so the shared backend's daily token bucket does not block or erase prior token debt.
+Preserve all other route limits. Actual prompt/completion/reasoning usage remains in
+immutable results; normal shared request/minute reservations and settlement remain.
+Daily token counters do not include new calls while this exception is active, so
+they must not be represented as complete provider usage or reconciled implicitly.
+Keep earlier counters intact; no production budget edits or paid fallback.
+
+Skip only these models' evaluation-local daily token headroom/reserve tests while
+the mode is active. Reevaluate their old daily-quota waits on first activation;
+retain real provider cooldowns and unknown outcomes. Give eligible Groq requests
+priority while this window remains active, alternating via the existing round-robin
+position; other models can use slots when Groq waits or finishes/pauses.
+
+From immutable observations since authorized_at, detect an actual submitted
+provider_error.http_status429 and persist that model's paused_after_429 state,
+attempt ID and reason. It is a durable evaluation pause, not a production route
+pause. Never automatically resume it after cooldown or daily reset. If all remaining
+work is complete/held/paused, stop explicitly with an incomplete provider-pause reason.
+No unrecognized errors count as429; preserve normal retry handling for other failures.
+
+Tests verify exact two-route scope, preserved non-daily limits, daily gates bypassed,
+actual usage/provenance retained, old429 exclusion, first new429 pause across resets
+and restarts, and priority without duplicated calls. Targeted/full offline, whole
+Ruff/format and fragments before push and safe controller handoff between requests.
+The older comparison remains stopped. Future calls after a429 require new direction.
