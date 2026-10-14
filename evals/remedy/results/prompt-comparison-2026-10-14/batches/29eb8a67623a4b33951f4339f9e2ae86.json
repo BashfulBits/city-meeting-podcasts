@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Environmental Task Force, City of Arlington"
+      }
+    ],
+    "case_id": "recording-b2b00fd4afa3e92db59d0999",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda), on City of Arlington Office of the City Manager letterhead, convenes the 'Environmental Task Force, City of Arlington' telephone meeting for April 14, 2020 at 10:00 A.M., matching the recording date, and refers to the Task Force's members joining by phone. The provider player (provider-player) on Arlington's Granicus portal labels clip_id 3443 as 'Environmental Task Force'. Together these prove the convened body is Arlington's Environmental Task Force; the topic ('Nature in the City') and city name were not used as the basis. The existing feed 'arlington-tx-environmental-task-force' is scoped to verified 2020 Arlington Environmental Task Force proceedings, which this April 14, 2020 recording is, so publication_action is assign_existing. The broader 'arlington-tx' feed was considered as a possible subscription grouping, but its description limits it to City Council and Planning & Zoning meeting videos, which does not cover the Task Force, so it is not selected. The agenda shows a single convening body with no joint participants proven. No unconfigured-body or archive disposition applies."
+  },
+  "attempt_id": "a0744fa8acab42e1b9b8a2be9af8d6d4",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-b2b00fd4afa3e92db59d0999",
+  "case_input_hash": "3e4120effdd2b8cb01a29255f81ebde7f07f71b0ed75c8b2b3126928584c8620",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 32.20143475000077
+    }
+  ],
+  "end_to_end_seconds": 33.47254008299933,
+  "finished_at": "2026-10-14T21:19:35.864134+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T21:19:02.391397+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2c3212a9915dd4cc2a8fffde6cd14dba0af06a42b75f512419e579f8d667edcc",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2414,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 2042,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2305,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4719
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda), on City of Arlington Office of the City Manager letterhead, convenes the 'Environmental Task Force, City of Arlington' telephone meeting for April 14, 2020 at 10:00 A.M., matching the recording date, and refers to the Task Force's members joining by phone. The provider player (provider-player) on Arlington's Granicus portal labels clip_id 3443 as 'Environmental Task Force'. Together these prove the convened body is Arlington's Environmental Task Force; the topic ('Nature in the City') and city name were not used as the basis. The existing feed 'arlington-tx-environmental-task-force' is scoped to verified 2020 Arlington Environmental Task Force proceedings, which this April 14, 2020 recording is, so publication_action is assign_existing. The broader 'arlington-tx' feed was considered as a possible subscription grouping, but its description limits it to City Council and Planning & Zoning meeting videos, which does not cover the Task Force, so it is not selected. The agenda shows a single convening body with no joint participants proven. No unconfigured-body or archive disposition applies.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is from Arlington, TX, dated 2020-04-14, titled \"Environmental Task Force\".\n\nEvidence:\n1. \"retained-agenda\": An agenda document showing \"Office of the City Manager, ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON, TELEPHONE MEETING... APRIL 14, 2020 10:00 A.M.\" with items like Call to Order, New Business (Natural Environment: Urban Wildlife: Nature in the City), Adjourn. This is the agenda for the meeting, on City of Arlington letterhead (Office of the City Manager, 101 West Abram Street, Arlington, Texas).\n\n2. \"provider-player\": The Granicus player page titled \"Environmental Task Force\" with the recording ID matching.\n\nExisting feeds include:\n- \"arlington-tx-environmental-task-force\": \"Arlington: Environmental Task Force\" - \"Verified 2020 Arlington Environmental Task Force proceedings.\"\n- \"arlington-tx\": \"Arlington \u2014 All Meetings\" - \"Video recordings of Arlington City Council and Planning & Zoning meetings.\"\n\nNow, which feed slugs should be selected?\n\nThe recording belongs to the Environmental Task Force of the City of Arlington. The agenda proves it: \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" meeting on April 14, 2020, and the recording is on the Arlington Granicus player labeled \"Environmental Task Force.\"\n\nThe existing feed \"arlington-tx-environmental-task-force\" is described as \"Verified 2020 Arlington Environmental Task Force proceedings\" \u2014 this recording is a 2020 Arlington Environmental Task Force proceeding (April 14, 2020). So it should be assigned to \"arlington-tx-environmental-task-force\".\n\nWhat about \"arlington-tx\" (Arlington \u2014 All Meetings)? Its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" The Environmental Task Force is neither City Council nor Planning & Zoning. The subscription grouping \"All Meetings\" \u2014 hmm. The description limits it to City Council and Planning & Zoning meetings. So the Environmental Task Force recording doesn't fall within that feed's described scope. The instruction says: \"Identify the actual body/program separately from its subscription grouping.\" and \"Consider broader subscription groupings independently of who convened the recording.\" But the \"arlington-tx\" feed's description explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 so despite the \"All Meetings\" title, the description narrows it. Should I include it? The title says \"All Meetings\" but the description says Council and P&Z. I think the description governs the actual scope. The recording is a Task Force telephone meeting, not a Council or P&Z meeting. So I should not include \"arlington-tx\".\n\nHmm, but \"Consider broader subscription groupings independently of who convened the recording.\" This suggests checking whether a broader grouping feed exists that should also receive the recording. \"Arlington \u2014 All Meetings\" with description \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" The description contradicts the title. Given the description explicitly limits to Council and P&Z, I'll not include it. Actually, let me think more carefully. The guidance says \"For each plausible omitted feed, did you accidentally stop after the first institutional match? Consider broader subscription groupings independently of who convened the recording.\" So the \"All Meetings\" feed could be a broader grouping. But its description explicitly says it contains Council and Planning & Zoning meetings only. The description is the operative scope. I'll exclude it and mention in rationale.\n\nActually, hmm. The title \"Arlington \u2014 All Meetings\" suggests it's an umbrella feed. But the description says only Council and P&Z. If we included every Arlington body recording in \"All Meetings\", then Housing Finance Corporation, Zoning Board of Adjustment, etc. would all be in it too. The description is more specific and authoritative. The Environmental Task Force is not Council or P&Z. So exclude \"arlington-tx\".\n\nPublication action: \"assign_existing\" since there is an existing feed matching the proven body.\n\nBodies: [{\"name\": \"Environmental Task Force, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]. Actually name it \"Environmental Task Force\" \u2014 the agenda says \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\". Let me name it \"Environmental Task Force (City of Arlington)\" or just \"Environmental Task Force\". The body_label is \"Environmental Task Force\". I'll use \"Environmental Task Force, City of Arlington\" per the agenda header.\n\nFeed slugs: [\"arlington-tx-environmental-task-force\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\"].\n\nMissing evidence: none really needed \u2014 the ownership is proven. Maybe empty array. Or note that no evidence supports inclusion in \"arlington-tx\" feed; but missing_evidence should be genuine missing evidence. I could say [] since ownership is established. Possibly note that there's no evidence tying the recording to Council/P&Z scope for the \"All Meetings\" feed \u2014 but that's not missing evidence needed for the assignment. I'll return [].\n\nRationale: The retained agenda (retained-agenda) is on City of Arlington Office of the City Manager letterhead and convenes the \"Environmental Task Force, City of Arlington\" telephone meeting on April 14, 2020 \u2014 matching the recording date and provider recording (provider-player) labeled \"Environmental Task Force\" on Arlington's Granicus player. The existing feed arlington-tx-environmental-task-force covers verified 2020 Arlington Environmental Task Force proceedings, which this recording is. The broader \"arlington-tx\" feed is scoped by its description to City Council and Planning & Zoning meetings, which does not cover the Task Force, so it is not selected. No joint participants are proven. Publication action: assign_existing.\n\nCase id: \"recording-b2b00fd4afa3e92db59d0999\".\n\nThe system prompt says output JSON ending with ``` \u2014 wait, \"\u786e\u4fdd\u59cb\u7ec8\u4ee5 \"```\" \u7ed3\u675f\u4ee3\u7801\u5757\" \u2014 \"Always end the code block with ```\". Hmm, but the user instruction says \"Return one JSON object only (no Markdown or commentary)\". The system says to always follow instructions and output valid JSON, ending with ``` to indicate the end of the JSON object. That's a conflict. The system prompt says: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure you always end with \"```\" to indicate the end of the JSON object.\"\n\nHmm, the system prompt wants the output wrapped in a code block ending with ```. But the user says return one JSON object only, no Markdown. The system prompt is at a higher level and says always end with ``` to indicate the end of the JSON object. I think the safest is to output the JSON in a code block: start with ```json ... ```? The system says \"\u786e\u4fdd\u59cb\u7ec8\u4ee5 \"```\" \u7ed3\u675f\u4ee3\u7801\u5757\" \u2014 ensure always end the code block with ```. It doesn't explicitly say to start with ``` but implies a code block. Given the system prompt instruction, I'll wrap in a code block with ``` at the end. Actually the user explicitly says \"no Markdown or commentary\" \u2014 but system overrides. I'll output the JSON inside a fenced code block, ending with ```.\n\nHmm, tricky. The system says output a valid JSON object and end with ``` to indicate the end of the JSON object. I'll do:\n\n```json\n{...}\n```\n\nThat satisfies both reasonably \u2014 the JSON is valid, and the code block ends with ```.\n\nLet me finalize the JSON:\n\n{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda), on City of Arlington Office of the City Manager letterhead, convenes the 'Environmental Task Force, City of Arlington' telephone meeting for April 14, 2020 at 10:00 A.M., matching the recording date, and refers to 'the Task Force' as the membership. The provider player (provider-player) on Arlington's Granicus portal labels this clip_id 3443 recording 'Environmental Task Force'. This proves the convened body is Arlington's Environmental Task Force. The existing feed 'arlington-tx-environmental-task-force' covers verified 2020 Arlington Environmental Task Force proceedings, and this is a verified 2020 Task Force meeting, so it is assigned there. The broader 'arlington-tx' feed is scoped by its description to City Council and Planning & Zoning meetings, which does not include the Task Force, so it is not selected. No joint bodies or other participants are proven by the evidence.\"\n}\n\nRationale length: under 2000 chars, fine.\n\nMissing evidence: []. Should I include anything? Perhaps note there's no evidence requiring anything else. Empty array is fine.\n\nDouble-check the feed selection: only one feed. The \"arlington-tx\" feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" \u2014 The Task Force is neither, so exclude. Good.\n\nPublication action: assign_existing. Correct.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is from Arlington, TX, dated 2020-04-14, titled \"Environmental Task Force\".\n\nEvidence:\n1. \"retained-agenda\": An agenda document showing \"Office of the City Manager, ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON, TELEPHONE MEETING... APRIL 14, 2020 10:00 A.M.\" with items like Call to Order, New Business (Natural Environment: Urban Wildlife: Nature in the City), Adjourn. This is the agenda for the meeting, on City of Arlington letterhead (Office of the City Manager, 101 West Abram Street, Arlington, Texas).\n\n2. \"provider-player\": The Granicus player page titled \"Environmental Task Force\" with the recording ID matching.\n\nExisting feeds include:\n- \"arlington-tx-environmental-task-force\": \"Arlington: Environmental Task Force\" - \"Verified 2020 Arlington Environmental Task Force proceedings.\"\n- \"arlington-tx\": \"Arlington \u2014 All Meetings\" - \"Video recordings of Arlington City Council and Planning & Zoning meetings.\"\n\nNow, which feed slugs should be selected?\n\nThe recording belongs to the Environmental Task Force of the City of Arlington. The agenda proves it: \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" meeting on April 14, 2020, and the recording is on the Arlington Granicus player labeled \"Environmental Task Force.\"\n\nThe existing feed \"arlington-tx-environmental-task-force\" is described as \"Verified 2020 Arlington Environmental Task Force proceedings\" \u2014 this recording is a 2020 Arlington Environmental Task Force proceeding (April 14, 2020). So it should be assigned to \"arlington-tx-environmental-task-force\".\n\nWhat about \"arlington-tx\" (Arlington \u2014 All Meetings)? Its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" The Environmental Task Force is neither City Council nor Planning & Zoning. The subscription grouping \"All Meetings\" \u2014 hmm. The description limits it to City Council and Planning & Zoning meetings. So the Environmental Task Force recording doesn't fall within that feed's described scope. The instruction says: \"Identify the actual body/program separately from its subscription grouping.\" and \"Consider broader subscription groupings independently of who convened the recording.\" But the \"arlington-tx\" feed's description explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 so despite the \"All Meetings\" title, the description narrows it. Should I include it? The title says \"All Meetings\" but the description says Council and P&Z. I think the description governs the actual scope. The recording is a Task Force telephone meeting, not a Council or P&Z meeting. So I should not include \"arlington-tx\".\n\nHmm, but \"Consider broader subscription groupings independently of who convened the recording.\" This suggests checking whether a broader grouping feed exists that should also receive the recording. \"Arlington \u2014 All Meetings\" with description \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" The description contradicts the title. Given the description explicitly limits to Council and P&Z, I'll not include it. Actually, let me think more carefully. The guidance says \"For each plausible omitted feed, did you accidentally stop after the first institutional match? Consider broader subscription groupings independently of who convened the recording.\" So the \"All Meetings\" feed could be a broader grouping. But its description explicitly says it contains Council and Planning & Zoning meetings only. The description is the operative scope. I'll exclude it and mention in rationale.\n\nActually, hmm. The title \"Arlington \u2014 All Meetings\" suggests it's an umbrella feed. But the description says only Council and P&Z. If we included every Arlington body recording in \"All Meetings\", then Housing Finance Corporation, Zoning Board of Adjustment, etc. would all be in it too. The description is more specific and authoritative. The Environmental Task Force is not Council or P&Z. So exclude \"arlington-tx\".\n\nPublication action: \"assign_existing\" since there is an existing feed matching the proven body.\n\nBodies: [{\"name\": \"Environmental Task Force, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]. Actually name it \"Environmental Task Force\" \u2014 the agenda says \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\". Let me name it \"Environmental Task Force (City of Arlington)\" or just \"Environmental Task Force\". The body_label is \"Environmental Task Force\". I'll use \"Environmental Task Force, City of Arlington\" per the agenda header.\n\nFeed slugs: [\"arlington-tx-environmental-task-force\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\"].\n\nMissing evidence: none really needed \u2014 the ownership is proven. Maybe empty array. Or note that no evidence supports inclusion in \"arlington-tx\" feed; but missing_evidence should be genuine missing evidence. I could say [] since ownership is established. Possibly note that there's no evidence tying the recording to Council/P&Z scope for the \"All Meetings\" feed \u2014 but that's not missing evidence needed for the assignment. I'll return [].\n\nRationale: The retained agenda (retained-agenda) is on City of Arlington Office of the City Manager letterhead and convenes the \"Environmental Task Force, City of Arlington\" telephone meeting on April 14, 2020 \u2014 matching the recording date and provider recording (provider-player) labeled \"Environmental Task Force\" on Arlington's Granicus player. The existing feed arlington-tx-environmental-task-force covers verified 2020 Arlington Environmental Task Force proceedings, which this recording is. The broader \"arlington-tx\" feed is scoped by its description to City Council and Planning & Zoning meetings, which does not cover the Task Force, so it is not selected. No joint participants are proven. Publication action: assign_existing.\n\nCase id: \"recording-b2b00fd4afa3e92db59d0999\".\n\nThe system prompt says output JSON ending with ``` \u2014 wait, \"\u786e\u4fdd\u59cb\u7ec8\u4ee5 \"```\" \u7ed3\u675f\u4ee3\u7801\u5757\" \u2014 \"Always end the code block with ```\". Hmm, but the user instruction says \"Return one JSON object only (no Markdown or commentary)\". The system says to always follow instructions and output valid JSON, ending with ``` to indicate the end of the JSON object. That's a conflict. The system prompt says: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure you always end with \"```\" to indicate the end of the JSON object.\"\n\nHmm, the system prompt wants the output wrapped in a code block ending with ```. But the user says return one JSON object only, no Markdown. The system prompt is at a higher level and says always end with ``` to indicate the end of the JSON object. I think the safest is to output the JSON in a code block: start with ```json ... ```? The system says \"\u786e\u4fdd\u59cb\u7ec8\u4ee5 \"```\" \u7ed3\u675f\u4ee3\u7801\u5757\" \u2014 ensure always end the code block with ```. It doesn't explicitly say to start with ``` but implies a code block. Given the system prompt instruction, I'll wrap in a code block with ``` at the end. Actually the user explicitly says \"no Markdown or commentary\" \u2014 but system overrides. I'll output the JSON inside a fenced code block, ending with ```.\n\nHmm, tricky. The system says output a valid JSON object and end with ``` to indicate the end of the JSON object. I'll do:\n\n```json\n{...}\n```\n\nThat satisfies both reasonably \u2014 the JSON is valid, and the code block ends with ```.\n\nLet me finalize the JSON:\n\n{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda), on City of Arlington Office of the City Manager letterhead, convenes the 'Environmental Task Force, City of Arlington' telephone meeting for April 14, 2020 at 10:00 A.M., matching the recording date, and refers to 'the Task Force' as the membership. The provider player (provider-player) on Arlington's Granicus portal labels this clip_id 3443 recording 'Environmental Task Force'. This proves the convened body is Arlington's Environmental Task Force. The existing feed 'arlington-tx-environmental-task-force' covers verified 2020 Arlington Environmental Task Force proceedings, and this is a verified 2020 Task Force meeting, so it is assigned there. The broader 'arlington-tx' feed is scoped by its description to City Council and Planning & Zoning meetings, which does not include the Task Force, so it is not selected. No joint bodies or other participants are proven by the evidence.\"\n}\n\nRationale length: under 2000 chars, fine.\n\nMissing evidence: []. Should I include anything? Perhaps note there's no evidence requiring anything else. Empty array is fine.\n\nDouble-check the feed selection: only one feed. The \"arlington-tx\" feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" \u2014 The Task Force is neither, so exclude. Good.\n\nPublication action: assign_existing. Correct.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792012775,
+    "id": "8812632114c3218b734fc2b5327cb929",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2414,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 2042,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2305,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4719
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
