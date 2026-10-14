@@ -1355,7 +1355,9 @@ def _discovery_history_summary(
         discovery_identity,
     )
     from citypods.provider_catalog.probe import chat_url
+    from citypods.provider_catalog.rules import general_discovery_rules
 
+    rules = general_discovery_rules(rules)
     accounts = provider_cfg.get("accounts") or []
     if not accounts:
         return None
@@ -1388,7 +1390,9 @@ def _discovery_history_summary(
     return {
         "retryable": bool(compatible)
         and any(
-            row["axis"] in rules.discovery_axes and row["status"] != "converged" for row in axes
+            row["axis"] in {"input", "output", "total_input_heavy", "total_output_heavy"}
+            and row["status"] != "converged"
+            for row in axes
         ),
         "reason": "partial",
         "detail": "Bounds are rebuilt from authenticated, compatible provider observations.",
@@ -1477,7 +1481,9 @@ def _discover_candidate_caps(
         chat_url,
         measure_discovery,
     )
+    from citypods.provider_catalog.rules import general_discovery_rules
 
+    rules = general_discovery_rules(rules)
     accounts = provider_cfg.get("accounts") or []
     if not accounts or not isinstance(accounts[0], Mapping):
         raise ValueError("candidate has no verified provider account")
@@ -1596,7 +1602,8 @@ def _discover_candidate_caps(
             and (
                 result is None
                 or any(
-                    row["axis"] in rules.discovery_axes and row["status"] != "converged"
+                    row["axis"] in {"input", "output", "total_input_heavy", "total_output_heavy"}
+                    and row["status"] != "converged"
                     for row in axes
                 )
             ),

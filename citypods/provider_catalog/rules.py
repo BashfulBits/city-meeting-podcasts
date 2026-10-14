@@ -1117,3 +1117,36 @@ def _safe_discovery_id(value):
         return None
     safe = re.sub(r"[^A-Za-z0-9._:-]", "", value[:128])
     return safe or None
+
+
+def general_discovery_observation(response, request, transient):
+    """Interpret common chat evidence for an unseen route, without model-specific opt-in.
+
+    Only explicit field arithmetic and refusal semantics supply proof. Unknown/native formats
+    remain diagnostic rather than inheriting a guessed capacity from their provider name.
+    """
+    return chat_discovery_observation(
+        response, request, transient, reasoning_basis="included", combined=True
+    )
+
+
+def general_discovery_rules(rules):
+    """Keep transport/auth capabilities; remove the need for a pre-registered size parser."""
+    from citypods.provider_catalog.discovery import AXES
+
+    if rules.discovery_parser_version.startswith("shared-chat-v1:"):
+        return rules
+
+    def interpret(response, request, transient):
+        shared = general_discovery_observation(response, request, transient)
+        if shared.verified or shared.outcome != "inconclusive":
+            return shared
+        extension = rules.discovery_observation(response, request, transient)
+        return extension if extension.verified or extension.outcome != "inconclusive" else shared
+
+    return replace(
+        rules,
+        discovery_axes=AXES,
+        discovery_observation=interpret,
+        discovery_parser_version="shared-chat-v1:" + rules.discovery_parser_version,
+    )

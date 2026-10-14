@@ -3143,3 +3143,36 @@ def test_resumed_input_revalidation_reuses_provider_count_conversion(tmp_path):
     execute(tmp_path, measure, supported_axes=("input",), history=history)
     assert calls[0].target == 9000
     assert calls[0].input_tokens == 6000
+
+
+@pytest.mark.parametrize("axis", AXES)
+def test_unregistered_route_uses_shared_interpretation_without_provider_parser(axis):
+    import json
+
+    from citypods.provider_catalog.rules import ProviderRules, Response, general_discovery_rules
+
+    rules = general_discovery_rules(ProviderRules(name="unseen"))
+    assert rules.discovery_axes == AXES
+    req = replace(
+        request(axis),
+        control=f"{axis}:reservation-v1" if axis.startswith("total") else request(axis).control,
+    )
+    payload = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 2048,
+            "completion_tokens": req.output_tokens,
+            "total_tokens": 2048 + req.output_tokens,
+        },
+        "choices": [
+            {"message": {"role": "assistant", "content": "1\n1\n1\n"}, "finish_reason": "length"}
+        ],
+    }
+    # The transient carrier supplies request metadata, not a registered response parser.
+    _, _, transient = _chat_discovery_fixture("nvidia", axis)
+    result = rules.discovery_observation(Response(200, body=json.dumps(payload)), req, transient)
+    assert result.outcome == "admitted" and result.verified
+    malformed = rules.discovery_observation(
+        Response(200, body='{"native_unknown": 8192}'), req, transient
+    )
+    assert not malformed.verified and malformed.coordinate is None
