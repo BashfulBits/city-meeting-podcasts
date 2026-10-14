@@ -1926,3 +1926,9 @@ Review/48 cancellation-safe discovery diagnostics are maintainer-approved: prese
 payload-free streamed child progress at the unchanged hard deadline. The repeated 55,296-token
 probe timed out locally and establishes no upper bound. Search budgets/admission and Deferred
 maintenance scope remain unchanged.
+
+Review/48 output diagnostic evidence: cancellation-safe progress showed ongoing streamed
+response processing near the 600-second stop. A separately approved 1,200-second direct
+diagnostic at the same 55,296 size then received a hosted-route SSE `Internal server error`
+at 600.298 seconds. This is not a size refusal; retain the verified 36,864 lower bound and
+unknown upper bound. No production timeout or search-policy change; see review/48's record.

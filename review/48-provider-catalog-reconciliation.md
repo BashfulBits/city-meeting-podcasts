@@ -2736,3 +2736,30 @@ are verified; ordinary configured-context paths emit no progress. Existing recei
 hard-cancellation, SSE validity, evidence projection and artifact/issue checks must still pass.
 No artifact schema, provider request, timeout/budget, Worker, production config or search-policy
 change. No new live request is included; repeat diagnostics require explicit authorization.
+
+
+#### Direct output-discovery evidence after cancellation-safe progress
+
+After merged #2422, the maintainer authorized one direct 55,296-output-token probe with the
+existing 600-second local deadline and no Worker reservation/pause. Its last progress snapshot
+showed HTTP 200, first data at 362ms, 16,532,085 decoded stream bytes and 50,440 events. The
+structural state was `phase=streaming eof=0 done=0 finish=missing usage=0 pending=0`, with
+49,512 retained content bytes. The parent cancelled at 600 seconds. This preserves evidence
+that streaming had been progressing; it supplies no provider token counts or size refusal.
+
+The maintainer then approved one same-size direct diagnostic with a 1,200-second local deadline.
+It received HTTP 200 with first data at 485ms, 17,778,319 streamed bytes and 54,246 events, then
+the provider sent an SSE error message, `Internal server error`, after 600.298 seconds. The
+local timeout did not cause this error: its deadline was 1,200 seconds. No finish, usage or
+verified output count returned. The journal retained an inconclusive `provider_sse_error`.
+The repeated approximately 600-second timing suggests an upstream execution time limit, but
+the generic message does not prove a particular timeout mechanism or an intrinsic model limit.
+Attribute the observed error to this hosted endpoint/route, not every NVIDIA model or provider.
+
+Do not increase production timeouts on this evidence, infer tokens from event/text counts, or
+insert 55,296 as a refused upper bound. The independently verified 36,864 output lower bound
+remains; the upper bound is unknown. A smaller future probe can seek another verified lower
+bound without converting this timing failure into a size bracket. True 0.5% cap convergence
+still requires an independently verified numerical size refusal; otherwise retain partial
+evidence and the existing escape/resumable discovery contract. No new live call, search-policy
+change, deployment or production timeout change is authorized by this evidence record.
