@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Allow longer bounded new-route discovery.** Candidate searches can run for one hour,
+  retaining original checkpoint elapsed time. Manually enabled discovery gets a three-hour
+  workflow wrapper for evidence and cleanup; ordinary reconciliation keeps two hours. Per-call
+  600-second deadlines and all call/token/retry ceilings remain unchanged.
+
 - **Make resumed output discovery progress on slow routes.** Recheck an admitted lower once
   and re-test a genuine refused upper instead of duplicating the lower baseline. Recent time
   failures guide smaller retry sizes without becoming token-limit evidence. A timing estimate
