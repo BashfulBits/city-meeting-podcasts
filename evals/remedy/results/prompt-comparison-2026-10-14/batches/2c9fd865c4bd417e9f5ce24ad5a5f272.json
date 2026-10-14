@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-ace5ee7ad06c0c01647b6539",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained official agenda (retained-agenda, recording_id 87440) is the posted Special Called Meeting notice of the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, for 2020-10-21 at 9:00 AM, certified by the City Secretary. The provider player page (provider-player) shows recording 87440 with the identical meeting title (Special Called, 2020-10-21 9:00 AM) and matching agenda items (TIF20-017A minutes, TXP study, meeting cancellation, staff activity reports), and the native chapter list (native-source-chapters) matches the same items, tying the recording to this convened body. TIRZ is the standard abbreviation for Tax Increment Reinvestment Zone, so this body maps to the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board'). This is a single convened body, not a joint meeting: although some TIF board members (e.g., Gerard Hudspeth, Paul Meltzer) may also serve on other municipal bodies, per the identity policy the convened body governs and shared membership does not add other feeds. The concluding TOMA inquiries/community-interest item is routine and does not add Public Info feed membership. No evidence gap exists; no other feed slugs apply."
+  },
+  "attempt_id": "8edd1a2a858b44b1834cfc84ad4217e3",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-ace5ee7ad06c0c01647b6539",
+  "case_input_hash": "7e6d35f46ecbc62d4f0ecea67c84f7eb395bd66ce23a706496de4249cada4603",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.875663833001454
+    }
+  ],
+  "end_to_end_seconds": 14.218837332999101,
+  "finished_at": "2026-10-14T18:59:43.450244+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:59:29.231285+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5569d5d3b957c4477beb9a65be9f9f02356cebc94fdc0946263aeb95bd216137",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1072,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 665,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4611,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5683
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-ace5ee7ad06c0c01647b6539\",\"bodies\":[{\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\"}],\"feed_slugs\":[\"denton-tx-tirz-1-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained official agenda (retained-agenda, recording_id 87440) is the posted Special Called Meeting notice of the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, for 2020-10-21 at 9:00 AM, certified by the City Secretary. The provider player page (provider-player) shows recording 87440 with the identical meeting title (Special Called, 2020-10-21 9:00 AM) and matching agenda items (TIF20-017A minutes, TXP study, meeting cancellation, staff activity reports), and the native chapter list (native-source-chapters) matches the same items, tying the recording to this convened body. TIRZ is the standard abbreviation for Tax Increment Reinvestment Zone, so this body maps to the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board'). This is a single convened body, not a joint meeting: although some TIF board members (e.g., Gerard Hudspeth, Paul Meltzer) may also serve on other municipal bodies, per the identity policy the convened body governs and shared membership does not add other feeds. The concluding TOMA inquiries/community-interest item is routine and does not add Public Info feed membership. No evidence gap exists; no other feed slugs apply.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify which municipal body the recording belongs to. Evidence: retained-agenda shows \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" / \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\" Special Called Meeting October 21, 2020, 9:00 AM. Provider player confirms recording_id 87440 with same title and agenda items.\n\nExisting feeds include \"denton-tx-tirz-1-board\" \u2014 \"Meetings of Denton TIRZ No. 1 Board.\" TIRZ = Tax Increment Reinvestment Zone. The body name in the agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". So this maps to the TIRZ No. 1 Board feed.\n\nIs this a joint meeting? Only one body convened. Members listed: Chair Melissa Lenaburg, Vice Chair Alex Payne, Members Ben Esely, Ken Gold, Gerard Hudspeth, John Lenz, Paul Meltzer \u2014 participating via video/teleconference. Note some members may also be City Council members (Gerard Hudspeth, John Lenz? Paul Meltzer were Denton council members at the time), but per policy \"identity\": use convened body, not common members. So only the TIRZ No. 1 Board.\n\nPublication action: assign_existing with feed slug \"denton-tx-tirz-1-board\".\n\nDo not add other feed slugs. Public comment rule: concluding items are TOMA inquiries, not public comment adding Public Info feed.\n\nBodies: name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" with evidence refs retained-agenda, provider-player, native-source-chapters? The native-source-chapters just shows chapters; the body name is in provider-player title too. I'll cite retained-agenda and provider-player.\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 maybe include native-source-chapters since it confirms the agenda items match. Fine to include all three, but the body name evidence is retained-agenda primarily. I'll include all three for assignment since they all tie recording 87440 to this agenda.\n\nmissing_evidence: none \u2014 no gaps. Perhaps note nothing missing. Empty array.\n\nRationale: The retained agenda is the official posted notice for a Special Called Meeting of the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board on 2020-10-21 9:00 AM at City Hall; provider player recording 87440 title and agenda items match exactly. This corresponds to existing feed \"denton-tx-tirz-1-board\" (TIRZ = Tax Increment Reinvestment Zone; \"Meetings of Denton TIRZ No. 1 Board\"). Single convened body; council members serving as TIF board members don't make it a City Council meeting per identity policy. No joint meeting.\n\nCase id: recording-ace5ee7ad06c0c01647b6539.\n\nFeed slugs: [\"denton-tx-tirz-1-board\"].\n\nPublication action: assign_existing.\n\nReturn JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify which municipal body the recording belongs to. Evidence: retained-agenda shows \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" / \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\" Special Called Meeting October 21, 2020, 9:00 AM. Provider player confirms recording_id 87440 with same title and agenda items.\n\nExisting feeds include \"denton-tx-tirz-1-board\" \u2014 \"Meetings of Denton TIRZ No. 1 Board.\" TIRZ = Tax Increment Reinvestment Zone. The body name in the agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". So this maps to the TIRZ No. 1 Board feed.\n\nIs this a joint meeting? Only one body convened. Members listed: Chair Melissa Lenaburg, Vice Chair Alex Payne, Members Ben Esely, Ken Gold, Gerard Hudspeth, John Lenz, Paul Meltzer \u2014 participating via video/teleconference. Note some members may also be City Council members (Gerard Hudspeth, John Lenz? Paul Meltzer were Denton council members at the time), but per policy \"identity\": use convened body, not common members. So only the TIRZ No. 1 Board.\n\nPublication action: assign_existing with feed slug \"denton-tx-tirz-1-board\".\n\nDo not add other feed slugs. Public comment rule: concluding items are TOMA inquiries, not public comment adding Public Info feed.\n\nBodies: name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" with evidence refs retained-agenda, provider-player, native-source-chapters? The native-source-chapters just shows chapters; the body name is in provider-player title too. I'll cite retained-agenda and provider-player.\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 maybe include native-source-chapters since it confirms the agenda items match. Fine to include all three, but the body name evidence is retained-agenda primarily. I'll include all three for assignment since they all tie recording 87440 to this agenda.\n\nmissing_evidence: none \u2014 no gaps. Perhaps note nothing missing. Empty array.\n\nRationale: The retained agenda is the official posted notice for a Special Called Meeting of the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board on 2020-10-21 9:00 AM at City Hall; provider player recording 87440 title and agenda items match exactly. This corresponds to existing feed \"denton-tx-tirz-1-board\" (TIRZ = Tax Increment Reinvestment Zone; \"Meetings of Denton TIRZ No. 1 Board\"). Single convened body; council members serving as TIF board members don't make it a City Council meeting per identity policy. No joint meeting.\n\nCase id: recording-ace5ee7ad06c0c01647b6539.\n\nFeed slugs: [\"denton-tx-tirz-1-board\"].\n\nPublication action: assign_existing.\n\nReturn JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792004314,
+    "id": "11a43cca569ba11029162bb0917861cc",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1072,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 665,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4611,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5683
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
