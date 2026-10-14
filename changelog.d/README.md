@@ -26,8 +26,11 @@ Examples:
 
 ## Content Format
 
-Each fragment must contain one or more Markdown list items following the
+Each fragment must contain one or more Markdown entries following the
 [Keep a Changelog](https://keepachangelog.com/) convention. Keep lines under 100 characters.
+
+Subheadings like `### Added`, `### Fixed`, or `### Changed` are optional; the compiler
+automatically normalizes them into clean list items under `## Unreleased`.
 
 Example:
 ```markdown
