@@ -617,12 +617,7 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
     if not isinstance(payload, dict):
         return None
     detail = payload.get("detail")
-    if (
-        reasoning_basis == "included"
-        and request.axis == "output"
-        and isinstance(detail, list)
-        and set(payload) == {"detail"}
-    ):
+    if reasoning_basis == "included" and isinstance(detail, list) and set(payload) == {"detail"}:
         # FastAPI/Pydantic numeric field validation is typed, not free-text token guessing.
         # https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal
         if len(detail) != 1 or not isinstance(detail[0], dict):
@@ -648,7 +643,9 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
             return None
         return {
             "coordinate": count,
-            "count_basis": "completion_including_reasoning",
+            "count_basis": (
+                "completion_including_reasoning" if request.axis == "output" else "requested_output"
+            ),
             "diagnostic": "verified_output_size_refusal",
         }
     if response.status != 400:
@@ -1117,3 +1114,53 @@ def _safe_discovery_id(value):
         return None
     safe = re.sub(r"[^A-Za-z0-9._:-]", "", value[:128])
     return safe or None
+
+
+def general_discovery_observation(response, request, transient):
+    """Interpret common chat evidence for an unseen route, without model-specific opt-in.
+
+    The recognized chat protocol defines completion_tokens as the completion allowance,
+    with reasoning details a breakdown where supplied. Only explicit field arithmetic and
+    refusal semantics supply proof; this is not a provider-name or model-name inference.
+    Unknown/native formats
+    remain diagnostic rather than inheriting a guessed capacity from their provider name.
+    """
+    # Some compatible gateways omit the optional discriminator but retain the complete
+    # choices/usage schema. Do not normalize envelopes with an explicit different type.
+    try:
+        payload = strict_context_json(response.body)
+    except (TypeError, ValueError):
+        payload = None
+    if (
+        isinstance(payload, dict)
+        and "object" not in payload
+        and not payload.get("error")
+        and isinstance(payload.get("usage"), dict)
+        and isinstance(payload.get("choices"), list)
+    ):
+        response = replace(response, body=json.dumps(payload | {"object": "chat.completion"}))
+    return chat_discovery_observation(
+        response, request, transient, reasoning_basis="included", combined=True
+    )
+
+
+def general_discovery_rules(rules):
+    """Keep transport/auth capabilities; remove the need for a pre-registered size parser."""
+    from citypods.provider_catalog.discovery import AXES
+
+    if rules.discovery_parser_version.startswith("shared-chat-v1:"):
+        return rules
+
+    def interpret(response, request, transient):
+        shared = general_discovery_observation(response, request, transient)
+        if shared.verified or shared.outcome != "inconclusive":
+            return shared
+        extension = rules.discovery_observation(response, request, transient)
+        return extension if extension.verified or extension.outcome != "inconclusive" else shared
+
+    return replace(
+        rules,
+        discovery_axes=AXES,
+        discovery_observation=interpret,
+        discovery_parser_version="shared-chat-v1:" + rules.discovery_parser_version,
+    )

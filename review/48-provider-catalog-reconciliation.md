@@ -2907,3 +2907,20 @@ ends of redacted errors within the same preview ceiling. Pause-control POST tran
 get at most one immediate retry; provider submissions/admission/reservations and HTTP failures
 do not retry. File plan extends existing discovery/rules/probe/pause client and corresponding
 tests. A second control failure still stops safely; no cap/Worker schema/production config change.
+
+New-route discovery uses a shared chat response interpreter before optional provider extensions,
+without requiring route-specific parser registration. All four axes are attempted; actual counts,
+consistent usage arithmetic and explicit summed refusals remain proof requirements. Unknown API
+formats stay inconclusive. Transport/auth formatting and minimum-output/streaming capabilities
+stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 fencing. Existing
+reconcile/rules modules and discovery tests implement this approved generalization; no runtime
+config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
+currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+CLI review raised a concern about generic reasoning/combined assumptions. The shared interpreter
+is deliberately restricted to the recognized chat protocol's prompt/completion/total fields,
+consistent arithmetic and actual filled output; it does not project these semantics onto native
+or unknown envelopes. Exact output-parameter refusals are labelled requested_output on other
+axes so they can reduce fixed counterparts without creating combined bounds. Provider names and
+model allowlists do not grant size proof. This retains discovery for unseen routes while failing
+closed on undocumented shapes and ambiguous counts.

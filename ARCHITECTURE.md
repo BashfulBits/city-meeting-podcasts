@@ -310,7 +310,12 @@ unknown size errors create no cap proof. NVIDIA combined discovery uses provider
 requested output, with filled repeated-output proof and exact summed-context refusal evidence.
 Short or empty length completions retain actual input/output counts and clipping diagnostics,
 without becoming numerical refusals. Both request mixes remain conditional brackets; other
-providers keep combined discovery disabled. Pause-control stops retain safe operation/status/
+providers use the shared chat interpreter during new-route discovery, with optional extensions.
+No route-specific parser registration is required for recognizable chat usage/error schemas;
+unknown native formats remain inconclusive. Missing chat discriminators can be normalized only
+when choices and usage are present; explicit alternate types are not reclassified. Transport/auth
+and minimum-output/streaming capabilities remain provider-owned. New parser identities fence
+prior observations when the interpretation contract changes. Pause-control stops retain safe operation/status/
 exception metadata rather than arbitrary response text. A request that receives no usable
 transport response may be sent up to five times, with approved output retry hints selecting smaller
 sizes when appropriate. Each send requires a fresh charged attempt. Five unanswered calls produce an uncertain result, never a size bound; when multiple
