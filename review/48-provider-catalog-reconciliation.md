@@ -2978,3 +2978,78 @@ Reachability failures now log bounded exception-class chains and awaiting-header
 phase, plus any received HTTP status. Logs exclude exception text, URLs, credentials and response
 bodies. Existing canary transport/timeouts and free-route eligibility remain unchanged. The
 shared probe module and reconciliation tests implement this authorized diagnostic extension.
+
+
+### Local convergence correction — approved 2026-10-14
+
+This contract supersedes the repeated-line content gate above for **new-route discovery only**.
+The maintainer confirmed that the goal is output token capacity, not exact text reproduction.
+Existing structured-output qualification and configured-route calibration proof are unchanged.
+
+- Shared chat parsing (`rules.py`) accepts output capacity from a completed successful response,
+  consistent positive usage (including reasoning where defined), valid response shape and length
+  termination. Text may differ from the repeated-line fixture or be empty when the provider
+  accounts for generation; refusal/tool calls, invalid usage, natural stops and partial streams
+  remain inconclusive. Successful text is not retained. Fixture mismatch is diagnostic only.
+- Combined reservation proof still requires actual output to fill the **entire requested** output
+  allowance. Both mixes remain conditional on the fixed opposite dimension. Clipping does not
+  establish a refused upper: output rechecks the generated size, then stops on repeated clipping;
+  combined input-heavy reduces its fixed output, while output-heavy rechecks the clipped amount
+  with a smaller fixed input when necessary. Changed counterparts fence history by control.
+- Approximate proxy counts and typed count-free size refusals guide halving/midpoint requests in
+  `discovery.py`; they never become exact provider-counted upper bounds. Resume may reuse those
+  compatible target hints. Reaching a 0.5% hint gap reports `size_refusal_unmeasured_upper`, still
+  partial with unknown numerical upper. A rejected minimum input can reduce its fixed output.
+- Explicit daily/monthly request/token exhaustion defers the session; it does not measure a cap
+  or change configured quotas. Other 429 handling remains bounded. No daily limit is exhausted
+  intentionally and no throughput/refill characterization is added.
+- Selected supported axes receive equal shares of remaining wall time, redistributing unused
+  time to later axes without extending the one-hour session or 720-second per-call ceiling.
+  Current output generation cost also gates combined admissions. Exhausting one axis's time
+  leaves its bracket partial and allows the next axis to run; five consecutive no-response
+  attempts across axes still terminate uncertain, with every retry group reported.
+
+File plan: existing `citypods/provider_catalog/discovery.py`, `rules.py`, discovery acceptance
+tests, this doc, review/11, ARCHITECTURE and a changelog fragment. No Worker, schema, endpoint,
+provider YAML, transport capability, workflow inputs, dependencies or production cap edits.
+Configured routes can be exercised by authorized direct local diagnostics using the same engine;
+the production reconciliation workflow remains focused on newly discovered routes. Acceptance
+covers clipped output/recheck escape, both combined mixes, text-independent proof, approximate
+refusal guidance, daily/monthly deferral, all-axis time fairness and shared no-response bounds.
+
+Local evidence (diagnostic only, not authenticated workflow history):
+
+| Route | Observed result | Interpretation |
+| --- | --- | --- |
+| OpenRouter Liquid LFM 2.5 2.6B free | 13 input calls; 46,759 native input admitted | Refusals say “about”; numerical upper unknown |
+| Same Liquid route | Requested 16,384; generated 8,192 with length finish | Output lower bound; fixture mismatch must not reject capacity |
+| Groq GPT-OSS-120B configured | Count-free size refusals, then explicit TPD exhaustion | Smaller-request guidance; no capacity boundary or TPM inference |
+| NVIDIA Riva Translate 4B v2 | Read timeout awaiting headers | No size evidence; no parser guess |
+| OpenRouter Gemma 4 26B configured | One fresh output call returned HTTP 429 | Quota deferred; no capacity evidence |
+
+The first configured Gemma harness attempt stopped before sending because a temporary diagnostic
+journal path belonged to another session. Unique session paths fixed the harness; the real journal
+correctly rejected the identity mismatch. No production journal behavior needed changing.
+
+The updated local Liquid output search completed three calls: requested 16,384/generated 8,192,
+requested/generated 8,192, and requested 12,288/generated 8,192. All ended with length and
+consistent usage, with fixture mismatch reported diagnostically and no successful text retained.
+It stopped `output_clipped_lower_bound`, admitted 8,192/refused unknown, rather than retrying
+unproductive text validation. Its reserved totals were 6,144 input and 36,864 output tokens.
+
+A subsequent three-call output-heavy combined search requested 16,384, 8,192 and 13,092 output
+tokens. The first clipped to 8,192; the second filled all 8,192 and reported 1,901 input tokens,
+proving a conditional combined lower bound of 10,093. The third clipped to 8,192 with 2,051 input.
+The planner stopped `combined_output_clipped_lower_bound` with no numerical refused upper.
+Those clipping replies do not establish the model's total context maximum. All returned length.
+The configured Gemma 429 was not retried; no further Groq calls followed daily exhaustion.
+
+CLI review found one valid ordering issue: an approximate-size hint could override a required
+fresh baseline or exact historical upper recheck. Explicit rechecks now take precedence; regression
+tests cover both cases. This correction applies to all providers through the shared planner.
+
+The three-call input-heavy combined check clipped the initial 16,384 output allowance to 8,192,
+then reduced the fixed output and fenced the control with `:opposite=8192`. Two subsequent filled
+replies reported 9,814 and 18,904 input tokens plus 8,192 output, proving conditional combined
+lower bounds of 18,006 and 27,096. It stopped at the deliberately smaller local three-call budget,
+with no refused upper. No normal workflow default seed, production cap or activation was changed.

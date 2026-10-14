@@ -516,6 +516,9 @@ def run_discovery(
         deadline if deadline is not None else float("inf"),
         clock() + max(0, MAX_SESSION_SECONDS - elapsed),
     )
+    session_deadline = deadline
+    shared_output_cost = None
+    no_response_calls = 0
     observations, brackets = [], []
     transport_retries = []
     reason = "complete"
@@ -541,7 +544,8 @@ def run_discovery(
         budget.settle(item)
         if shared_budget:
             shared_budget.settle(item)
-    for axis in AXES:
+    for axis_index, axis in enumerate(AXES):
+        deadline = session_deadline
         bracket = Bracket(axis, int(seeds.get(axis, default_discovery_seed(axis))))
         brackets.append(bracket)
         if selected_axes is not None and axis not in selected_axes:
@@ -550,6 +554,13 @@ def run_discovery(
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
             continue
+        remaining_axes = sum(
+            item in supported_axes and (selected_axes is None or item in selected_axes)
+            for item in AXES[axis_index:]
+        )
+        axis_started = clock()
+        if remaining_axes > 1 and axis_started < session_deadline:
+            deadline = axis_started + (session_deadline - axis_started) / remaining_axes
         compatible_history = [
             item
             for item in history
@@ -605,11 +616,31 @@ def run_discovery(
         fresh_successes, quota_retry = 0, False
         required_fresh = 1 if axis == "output" else 2
         upper_recheck = None
+        qualitative_upper = min(
+            (
+                item.request.target
+                for item in compatible_history
+                if item.request.control == control
+                and item.diagnostic == "size_refused_without_exact_counts"
+                and item.request.target > (pending.lower or 0)
+            ),
+            default=None,
+        )
         recent_output_cost = None
+        clipped_count = None
+        clipped_recheck = None
         pending_transport = []
         while not bracket.converged and bracket.nonprogress < 3:
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
-                reason = "deadline_or_reported_usage_overrun"
+                if (
+                    clock() >= deadline
+                    and deadline < session_deadline
+                    and not budget.overrun
+                    and not (shared_budget and shared_budget.overrun)
+                ):
+                    bracket.reason = "axis_time_budget_exhausted"
+                else:
+                    reason = "deadline_or_reported_usage_overrun"
                 break
             request_ceiling = (
                 MAX_INPUT if axis == "input" else MAX_OUTPUT if axis == "output" else None
@@ -644,6 +675,28 @@ def run_discovery(
                 if upper_recheck is not None
                 else bracket.target()
             )
+            if clipped_recheck is not None:
+                target = clipped_recheck
+            explicit_recheck = (
+                clipped_recheck is not None
+                or upper_recheck is not None
+                or bool(previous and fresh_successes < required_fresh and pending.lower)
+            )
+            if qualitative_upper is not None and not explicit_recheck:
+                if bracket.lower is not None:
+                    if qualitative_upper <= bracket.lower:
+                        qualitative_upper = None
+                    elif qualitative_upper - bracket.lower <= max(
+                        1, math.ceil(bracket.lower / 200)
+                    ):
+                        bracket.reason = "size_refusal_unmeasured_upper"
+                        break
+                    else:
+                        target = bracket.lower + (qualitative_upper - bracket.lower) // 2
+                else:
+                    target = max(1, qualitative_upper // 2)
+                if axis == "input":
+                    target = max(MIN_INPUT_PROBE, target)
             checking_upper = upper_recheck is not None and target == upper_recheck
             if (
                 axis == "output"
@@ -714,10 +767,17 @@ def run_discovery(
             if input_tokens > MAX_INPUT or output_tokens > MAX_OUTPUT:
                 bracket.reason = "per_call_ceiling"
                 break
-            if axis == "output" and recent_output_cost is not None:
-                expected = min(MAX_RESPONSE_TIMEOUT_SECONDS, math.ceil(target * recent_output_cost))
+            generation_cost = recent_output_cost or shared_output_cost
+            if axis != "input" and generation_cost is not None:
+                expected = min(
+                    MAX_RESPONSE_TIMEOUT_SECONDS, math.ceil(output_tokens * generation_cost)
+                )
                 if deadline - clock() < expected:
-                    bracket.reason = "insufficient_output_probe_window"
+                    bracket.reason = (
+                        "insufficient_output_probe_window"
+                        if axis == "output"
+                        else "insufficient_generation_probe_window"
+                    )
                     break
             ordinal = len(journal.data["attempts"]) + 1
             request = DiscoveryRequest(
@@ -733,7 +793,7 @@ def run_discovery(
             )
             charged = False
 
-            def before_call(request=request):
+            def before_call(request=request, deadline=deadline):
                 nonlocal charged
                 if charged or clock() >= deadline:
                     raise ValueError("discovery_admission_expired_or_replayed")
@@ -794,12 +854,22 @@ def run_discovery(
                 and clock() > call_started
             ):
                 recent_output_cost = (clock() - call_started) / observation.coordinate
+                shared_output_cost = recent_output_cost
+            if (
+                axis.startswith("total_")
+                and observation.verified
+                and observation.finish_reason == "length"
+                and positive(observation.reported_output)
+                and clock() > call_started
+            ):
+                shared_output_cost = (clock() - call_started) / observation.reported_output
             if checking_upper and observation.outcome != "quota":
                 upper_recheck = None
             budget.settle(observation)
             if shared_budget:
                 shared_budget.settle(observation)
             if observation.diagnostic in NO_RESPONSE_DIAGNOSTICS:
+                no_response_calls += 1
                 pending_transport.append(
                     {
                         "attempt_id": request.attempt_id,
@@ -812,12 +882,13 @@ def run_discovery(
                         "observed_at": observation.observed_at,
                     }
                 )
-                if len(pending_transport) < MAX_NO_RESPONSE_CALLS:
+                if no_response_calls < MAX_NO_RESPONSE_CALLS:
                     continue
                 transport_retries.append(tuple(pending_transport))
                 pending_transport = []
                 reason = bracket.reason = "uncertain_no_response_after_five_calls"
                 break
+            no_response_calls = 0
             if pending_transport:
                 pending_transport.append(
                     {
@@ -853,6 +924,76 @@ def run_discovery(
                     break
                 continue
             quota_retry = False
+            if (
+                axis == "output"
+                and observation.outcome == "admitted"
+                and observation.verified
+                and observation.finish_reason == "length"
+            ):
+                if clipped_recheck is not None and target == clipped_recheck:
+                    clipped_recheck = None
+                if observation.coordinate < request.output_tokens:
+                    bracket.observe(observation)
+                    previous = []
+                    upper_recheck = None
+                    if clipped_count == observation.coordinate:
+                        bracket.reason = "output_clipped_lower_bound"
+                        break
+                    clipped_count = observation.coordinate
+                    clipped_recheck = clipped_count
+                    continue
+            if (
+                axis.startswith("total_")
+                and observation.diagnostic.startswith("combined_output_clipped")
+                and positive(observation.reported_output)
+            ):
+                if axis == "total_input_heavy" and counterpart > observation.reported_output:
+                    counterpart = observation.reported_output
+                    control = f"{base_control}:opposite={counterpart}"
+                    bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
+                    brackets[-1] = bracket
+                    previous = []
+                    fresh_successes = 0
+                    qualitative_upper = None
+                elif axis == "total_output_heavy":
+                    if clipped_count == observation.reported_output:
+                        bracket.reason = "combined_output_clipped_lower_bound"
+                        break
+                    clipped_count = observation.reported_output
+                    if clipped_count < 3 * counterpart:
+                        counterpart = max(1, clipped_count // 3)
+                        control = f"{base_control}:opposite={counterpart}"
+                        bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
+                        brackets[-1] = bracket
+                        previous = []
+                        fresh_successes = 0
+                        qualitative_upper = None
+                    clipped_recheck = counterpart + clipped_count
+                else:
+                    bracket.reason = "combined_clipped_inconclusive"
+                    break
+                continue
+            if axis.startswith("total_") and target == clipped_recheck:
+                clipped_recheck = None
+            if observation.diagnostic == "size_refused_without_exact_counts":
+                if (
+                    axis in {"input", "total_input_heavy"}
+                    and (
+                        (axis == "input" and target <= MIN_INPUT_PROBE)
+                        or (axis == "total_input_heavy" and target <= counterpart)
+                    )
+                    and counterpart > 1
+                ):
+                    counterpart = max(1, counterpart // 2)
+                    control = f"{base_control}:opposite={counterpart}"
+                    bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
+                    brackets[-1] = bracket
+                    previous = []
+                    fresh_successes = 0
+                    qualitative_upper = None
+                else:
+                    qualitative_upper = min(qualitative_upper or target, target)
+                continue
             blocking = (
                 {"output", "requested_output"}
                 if axis in {"input", "total_input_heavy"}
