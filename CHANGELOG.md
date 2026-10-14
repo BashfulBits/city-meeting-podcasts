@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Preserve discovery diagnostics on hard cancellation.** Streamed discovery transports report
+  throttled, payload-free progress to the local parent. Timeout results retain the last request
+  phase, structural stream state and bounded counters; progress never supplies capacity proof
+  or extends deadlines. Configured-job paths, provider requests and budgets remain unchanged.
+
 - **Explain incomplete discovery output streams.** Failed streamed output probes retain a
   bounded structural preview identifying HTTP EOF, DONE, finish/usage presence and pending
   frame size. Provider error explanations take priority. Generated/reasoning text and successful
