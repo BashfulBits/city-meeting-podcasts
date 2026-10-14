@@ -739,7 +739,7 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
     return None
 
 
-def _chat_input_capacity(payload, response):
+def _chat_input_capacity(payload, response, *, require_content=True):
     """API input admission; text retrieval accuracy is deliberately a separate signal."""
     if response.status != 200 or response.timed_out or response.transport_error:
         return False
@@ -779,8 +779,11 @@ def _chat_input_capacity(payload, response):
         isinstance(message, dict)
         and not message.get("refusal")
         and not message.get("tool_calls")
-        and isinstance(message.get("content"), str)
-        and bool(message["content"])
+        and (
+            isinstance(message.get("content"), str) and bool(message["content"])
+            if require_content
+            else message.get("content") is None or isinstance(message.get("content"), str)
+        )
     )
 
 
@@ -978,6 +981,15 @@ def chat_discovery_observation(
     if type(retry) is int and retry > 0:
         values["retry_after_seconds"] = math.ceil(retry / 1000)
     if observation.outcome == "quota":
+        error = payload.get("error") if isinstance(payload, dict) else None
+        text = error.get("message") if isinstance(error, dict) else None
+        if isinstance(text, str) and re.search(
+            r"\b(?:tokens|requests) per (?:day|month)\s*(?:\([^)]{1,8}\))?:\s*Limit",
+            text[:8192],
+            re.IGNORECASE,
+        ):
+            values["diagnostic"] = "daily_or_monthly_quota_deferred"
+            return DiscoveryObservation(request, stamp, outcome="daily", **values)
         return DiscoveryObservation(request, stamp, outcome="quota", **values)
     if response.status is not None and response.status >= 500:
         return DiscoveryObservation(request, stamp, outcome="outage", **values)
@@ -988,6 +1000,25 @@ def chat_discovery_observation(
         return DiscoveryObservation(
             request, stamp, outcome="refused", verified=True, **(values | refusal)
         )
+    if response.status == 400 and isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            text = error["message"]
+            proxy_size = re.match(
+                r"This (?:model|endpoint)'s maximum context length is [0-9]+ tokens\. "
+                r"However, you requested about [0-9]+ tokens ",
+                text,
+            )
+            qualitative_size = (
+                error.get("type") == "invalid_request_error"
+                and error.get("param") in {"messages", "max_tokens", "max_completion_tokens"}
+                and text == "Please reduce the length of the messages or completion."
+            )
+            if proxy_size or qualitative_size:
+                # Approximate proxy counts and count-free refusals can guide a smaller request,
+                # but cannot manufacture an exact provider-counted boundary.
+                values["diagnostic"] = "size_refused_without_exact_counts"
+                return DiscoveryObservation(request, stamp, **values)
     if request.axis.startswith("total_"):
         if (
             response.status == 200
@@ -1001,19 +1032,13 @@ def chat_discovery_observation(
                 usage["total_tokens"]
             )
             return DiscoveryObservation(request, stamp, **values)
-        if _chat_input_capacity(payload, response):
+        if _chat_input_capacity(payload, response, require_content=False):
             actual = usage["prompt_tokens"] + usage["completion_tokens"]
             if finish == "length" and usage["completion_tokens"] < request.output_tokens:
                 values["diagnostic"] = f"combined_output_clipped:actual_total={actual}"
                 return DiscoveryObservation(request, stamp, **values)
             # A short answer proves consumed context, not reserved output capacity.
-            if (
-                finish == "length"
-                and usage["completion_tokens"] == request.output_tokens
-                and isinstance(content, str)
-                and len(content.splitlines()) >= 3
-                and all(line == "1" for line in content.splitlines())
-            ):
+            if finish == "length" and usage["completion_tokens"] == request.output_tokens:
                 return DiscoveryObservation(
                     request,
                     stamp,
@@ -1048,27 +1073,27 @@ def chat_discovery_observation(
         request.axis == "output"
         and request.control.split(":opposite=", 1)[0] in {"output:v3", "output:v3:min_tokens"}
         and reasoning_basis == "included"
-        and _chat_input_capacity(payload, response)
+        and _chat_input_capacity(payload, response, require_content=False)
         and finish == "length"
-        and values["reasoning_tokens"] != values["reported_output"]
     ):
-        content = choices[0]["message"]["content"]
-        lines = content.splitlines()
-        if len(lines) >= 3 and all(line == "1" for line in lines):
-            return DiscoveryObservation(
-                request,
-                stamp,
-                outcome="admitted",
-                coordinate=usage["completion_tokens"],
-                count_basis="completion_including_reasoning",
-                verified=True,
-                **(
-                    values
-                    | {"diagnostic": "verified_repeated_output_fixture", "response_preview": ""}
-                ),
-            )
-        values["diagnostic"] = "output_fixture_not_reached"
-        return DiscoveryObservation(request, stamp, **values)
+        lines = content.splitlines() if isinstance(content, str) else []
+        fixture_matches = len(lines) >= 3 and all(line == "1" for line in lines)
+        diagnostic = (
+            "verified_repeated_output_fixture"
+            if fixture_matches
+            else "api_output_admitted_no_visible_content"
+            if not content
+            else "api_output_admitted_fixture_mismatch"
+        )
+        return DiscoveryObservation(
+            request,
+            stamp,
+            outcome="admitted",
+            coordinate=usage["completion_tokens"],
+            count_basis="completion_including_reasoning",
+            verified=True,
+            **(values | {"diagnostic": diagnostic, "response_preview": ""}),
+        )
     if request.axis == "output" and request.control.startswith("output:v3"):
         return DiscoveryObservation(request, stamp, **values)
     if observation.outcome == "verified":

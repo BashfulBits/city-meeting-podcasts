@@ -283,7 +283,8 @@ output-only selection resumes compatible history in its own existing bounded ses
 Discovery output can opt into a documented minimum-generation parameter for a verified
 endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is the initial opt-in;
 other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum
-control identity, and actual counts plus length-terminated verified repeated lines establish proof.
+control identity. Consistent actual completion counts plus length termination establish output
+capacity; matching repeated lines is diagnostic, not a capacity requirement.
 Natural stops are explicitly inconclusive, with bounded response-ending failure diagnostics.
 The same verified hosted route supports discovery-only streaming with final usage.
 The local streamed transport sends payload-free progress snapshots after admission, with phase
@@ -307,12 +308,18 @@ unchanged; timing-limited results retain an admitted lower bound and unknown num
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors create no cap proof. NVIDIA combined discovery uses provider input plus
-requested output, with filled repeated-output proof and exact summed-context refusal evidence.
+requested output, with the entire requested output filled and exact summed-context refusal
+evidence. Output text need not match the prompt; valid usage, finish and response-shape checks
+still bind. Clipped output is rechecked at the actual generated size, never a numerical refusal.
 Short or empty length completions retain actual input/output counts and clipping diagnostics,
 without becoming numerical refusals. Both request mixes remain conditional brackets; other
 providers use the shared chat interpreter during new-route discovery, with optional extensions.
 No route-specific parser registration is required for recognizable chat usage/error schemas;
-unknown native formats remain inconclusive. Missing chat discriminators can be normalized only
+unknown native formats remain inconclusive. Approximate/count-free size refusals guide smaller
+requests without claiming an exact upper bound. Explicit daily/monthly exhaustion stops the
+session without becoming cap evidence. Selected axes share the remaining hour fairly; observed
+generation cost also prevents starting combined probes in an insufficient time window. The
+five-consecutive-no-response escape spans axes. Missing chat discriminators can be normalized only
 when choices and usage are present; explicit alternate types are not reclassified. Transport/auth
 and minimum-output/streaming capabilities remain provider-owned. New parser identities fence
 prior observations when the interpretation contract changes. Pause-control stops retain safe operation/status/

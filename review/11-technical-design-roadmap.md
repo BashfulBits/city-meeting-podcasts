@@ -2071,3 +2071,13 @@ retry receipt. Absent, ignored, configured or unverified-free selections make no
 artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
 and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
 38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
+
+
+Review/48 discovery convergence correction (2026-10-14, implementation in progress):
+the maintainer approved measuring generated-token capacity independently of prescribed output
+text. Shared chat interpretation retains consistent provider usage and length termination, with
+full requested-output completion still required for combined reservation proof. Approximate
+size refusals guide search but never supply exact upper bounds; clipping, daily exhaustion and
+finite per-axis time escapes remain explicit partial results. Local configured-route diagnostics
+exercise the same engine without adding recurring configured-route maintenance. See review/48's
+local convergence contract and evidence; broader characterization stays Deferred under #2264.
