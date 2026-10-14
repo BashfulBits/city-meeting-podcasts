@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-cc51e5260201801d13396511",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, and lists its board members. The provider-player and native-source chapters confirm the same recording title and agenda items for recording 73923. The existing feed slug denton-tx-tirz-1-board is the configured TIRZ No. 1 Board feed, so this recording should be assigned there. No joint meeting is proven; the Downtown Economic Development Committee is mentioned only as a recommending body for one agenda item, not as a convened participant. Ownership is established, so no unresolved or unconfigured-body action is needed."
+  },
+  "attempt_id": "e7d03f88f3864bd99583b7f74ef4cbb7",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-cc51e5260201801d13396511",
+  "case_input_hash": "3fde2da420915f05442ea1617408a4e02eb27d71584f510b9a1debf722e9e3ba",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.220842791997711
+    }
+  ],
+  "end_to_end_seconds": 37.422029624998686,
+  "finished_at": "2026-10-14T18:19:13.037460+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:18:35.615195+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "3c6718a3b159bab7f8a3fac125f724dd2bb4ff65c1d81cfdf822797c064cbaf7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 1486,
+    "completion_tokens": 1744,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1486,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 4888,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 5272,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 7016
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-cc51e5260201801d13396511\",\"bodies\":[{\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-tirz-1-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda expressly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, and lists its board members. The provider-player and native-source chapters confirm the same recording title and agenda items for recording 73923. The existing feed slug denton-tx-tirz-1-board is the configured TIRZ No. 1 Board feed, so this recording should be assigned there. No joint meeting is proven; the Downtown Economic Development Committee is mentioned only as a recommending body for one agenda item, not as a convened participant. Ownership is established, so no unresolved or unconfigured-body action is needed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. We have evidence. Body label: Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM. Evidence agenda says Downtown Denton Tax Increment Financing Zone No. 1 Board / Reinvestment Zone No.1 Board of City of Denton. Existing feeds include denton-tx-tirz-1-board \"Meetings of Denton TIRZ No. 1 Board.\" So assign existing feed slug denton-tx-tirz-1-board. Need maybe body name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need identify actual body/program separately from subscription grouping. Publication action assign_existing. Bodies array with identified body and evidence_ref_ids. Feed slugs: [\"denton-tx-tirz-1-board\"]. Evidence refs: retained-agenda, provider-player, native-source-chapters? Cite only supplied evidence IDs. Need include case_id. missing_evidence maybe none? But question: \"Which municipal body or bodies does this recording belong to? Determine convening institution... Name every proven participant in a joint meeting.\" There is no joint meeting. \"If real body has no existing feed return unconfigured_body...\" But existing feed exists. \"Identify actual body/program separately from subscription grouping.\" So body actual name. Maybe mention program? Body = Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board. Evidence refs: retained-agenda (source_span) and provider-player and native-source-chapters. Need maybe not include provider-player? It contains title. Evidence for body names and assignments. We can cite retained-agenda and provider-player. Native-source chapters also title. But feed slug assignment to TIRZ No.1 Board: evidence from retained agenda and provider-player. Feed description existing_feeds not evidence ID? It is supplied data, but schema evidence_ref_ids likely only evidence refs. We can cite evidence IDs from evidence_refs. The existing feed slug isn't evidence_ref_id. We can mention in rationale that existing feed \"denton-tx-tirz-1-board\" matches. But rationale can mention. The schema required evidence_ref_ids array. We can include all three. missing_evidence: maybe no missing evidence. But question says \"If ownership cannot be established...\". Here ownership established. Could missing_evidence be empty array. Rationale within 2000 chars.\n\nNeed ensure no Markdown. JSON object only. Let's craft.\n\nPotential nuance: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" vs \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Official title immutable? The body label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Agenda source_span: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" then \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". Existing feed title \"Denton: TIRZ No. 1 Board\". The actual body likely Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board. Need name exact from evidence. Could use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" citing retained-agenda. Or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" from title. The body label in recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". The agenda uses both. Which name to put? IdentifiedBody name max 300. To avoid mismatch, maybe use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" as official convening body, but also feed slug TIRZ No. 1 Board. The case body_label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board on...\" Could include both? Bodies array can have one body. Name can be \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". The question: \"Which municipal body or bodies does this recording belong to?\" It might expect \"Denton TIRZ No. 1 Board\" or official. Existing feed title. Need \"Identify actual body/program separately from subscription grouping.\" The subscription grouping is \"Denton: TIRZ No. 1 Board\" maybe. Actual body is \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". We'll put that.\n\nNeed \"Name every proven participant in a joint meeting.\" No joint. Could mention no joint meeting proven. The schema doesn't have a field for participants. Maybe bodies array only. Rationale can state no evidence of joint meeting; the Downtown Economic Development Committee only recommended an item but is not a convened participant? It says \"The Downtown Economic Development Committee recommends a grant...\" That's not a joint participant. Do not add as body. Good.\n\nNeed \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it.\" We have existing feed denton-tx-tirz-1-board. Should we also include denton-tx-economic-development-partnership-board? No, Downtown Economic Development Committee is not necessarily Economic Development Partnership Board. It's mentioned as recommender. Not convened. No.\n\nWhat about \"Downtown Reinvestment Grant Program\" as program? The prompt: \"Identify the actual body/program separately from its subscription grouping.\" Hmm maybe body/program means if the recording belongs to a program? The actual body is TIRZ board, subscription grouping TIRZ No.1. The program? \"Downtown Reinvestment Grant Program\" is a topic, not a governing body. We should not include as feed. Existing feed \"Economic Development Partnership Board\" not relevant.\n\nPublication action: assign_existing. Feed slugs: [\"denton-tx-tirz-1-board\"]. Evidence_ref_ids: maybe all three? The schema evidence_ref_ids is top-level. Could include [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies evidence_ref_ids similarly. Missing_evidence: []. Rationale: cite retained-agenda establishes convening body and official title; provider-player confirms recording title/agenda; native-source chapters match. Existing feed denton-tx-tirz-1-board describes \"Meetings of Denton TIRZ No. 1 Board,\" so assign. No evidence of joint meeting; Downtown Economic Development Committee only recommended item, not convened participant. No missing evidence. \n\nNeed maybe mention \"the recording ID 73923\" immutable. Not necessary.\n\nCheck schema: additionalProperties false. Required all. IdentifiedBody required name evidence_ref_ids. Top-level required case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Good.\n\nLet's final JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. We have evidence. Body label: Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM. Evidence agenda says Downtown Denton Tax Increment Financing Zone No. 1 Board / Reinvestment Zone No.1 Board of City of Denton. Existing feeds include denton-tx-tirz-1-board \"Meetings of Denton TIRZ No. 1 Board.\" So assign existing feed slug denton-tx-tirz-1-board. Need maybe body name \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need identify actual body/program separately from subscription grouping. Publication action assign_existing. Bodies array with identified body and evidence_ref_ids. Feed slugs: [\"denton-tx-tirz-1-board\"]. Evidence refs: retained-agenda, provider-player, native-source-chapters? Cite only supplied evidence IDs. Need include case_id. missing_evidence maybe none? But question: \"Which municipal body or bodies does this recording belong to? Determine convening institution... Name every proven participant in a joint meeting.\" There is no joint meeting. \"If real body has no existing feed return unconfigured_body...\" But existing feed exists. \"Identify actual body/program separately from subscription grouping.\" So body actual name. Maybe mention program? Body = Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board. Evidence refs: retained-agenda (source_span) and provider-player and native-source-chapters. Need maybe not include provider-player? It contains title. Evidence for body names and assignments. We can cite retained-agenda and provider-player. Native-source chapters also title. But feed slug assignment to TIRZ No.1 Board: evidence from retained agenda and provider-player. Feed description existing_feeds not evidence ID? It is supplied data, but schema evidence_ref_ids likely only evidence refs. We can cite evidence IDs from evidence_refs. The existing feed slug isn't evidence_ref_id. We can mention in rationale that existing feed \"denton-tx-tirz-1-board\" matches. But rationale can mention. The schema required evidence_ref_ids array. We can include all three. missing_evidence: maybe no missing evidence. But question says \"If ownership cannot be established...\". Here ownership established. Could missing_evidence be empty array. Rationale within 2000 chars.\n\nNeed ensure no Markdown. JSON object only. Let's craft.\n\nPotential nuance: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" vs \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Official title immutable? The body label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Agenda source_span: \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" then \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". Existing feed title \"Denton: TIRZ No. 1 Board\". The actual body likely Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board. Need name exact from evidence. Could use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" citing retained-agenda. Or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" from title. The body label in recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". The agenda uses both. Which name to put? IdentifiedBody name max 300. To avoid mismatch, maybe use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" as official convening body, but also feed slug TIRZ No. 1 Board. The case body_label says \"Downtown Denton Tax Increment Financing Zone No. 1 Board on...\" Could include both? Bodies array can have one body. Name can be \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". The question: \"Which municipal body or bodies does this recording belong to?\" It might expect \"Denton TIRZ No. 1 Board\" or official. Existing feed title. Need \"Identify actual body/program separately from subscription grouping.\" The subscription grouping is \"Denton: TIRZ No. 1 Board\" maybe. Actual body is \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". We'll put that.\n\nNeed \"Name every proven participant in a joint meeting.\" No joint. Could mention no joint meeting proven. The schema doesn't have a field for participants. Maybe bodies array only. Rationale can state no evidence of joint meeting; the Downtown Economic Development Committee only recommended an item but is not a convened participant? It says \"The Downtown Economic Development Committee recommends a grant...\" That's not a joint participant. Do not add as body. Good.\n\nNeed \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it.\" We have existing feed denton-tx-tirz-1-board. Should we also include denton-tx-economic-development-partnership-board? No, Downtown Economic Development Committee is not necessarily Economic Development Partnership Board. It's mentioned as recommender. Not convened. No.\n\nWhat about \"Downtown Reinvestment Grant Program\" as program? The prompt: \"Identify the actual body/program separately from its subscription grouping.\" Hmm maybe body/program means if the recording belongs to a program? The actual body is TIRZ board, subscription grouping TIRZ No.1. The program? \"Downtown Reinvestment Grant Program\" is a topic, not a governing body. We should not include as feed. Existing feed \"Economic Development Partnership Board\" not relevant.\n\nPublication action: assign_existing. Feed slugs: [\"denton-tx-tirz-1-board\"]. Evidence_ref_ids: maybe all three? The schema evidence_ref_ids is top-level. Could include [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies evidence_ref_ids similarly. Missing_evidence: []. Rationale: cite retained-agenda establishes convening body and official title; provider-player confirms recording title/agenda; native-source chapters match. Existing feed denton-tx-tirz-1-board describes \"Meetings of Denton TIRZ No. 1 Board,\" so assign. No evidence of joint meeting; Downtown Economic Development Committee only recommended item, not convened participant. No missing evidence. \n\nNeed maybe mention \"the recording ID 73923\" immutable. Not necessary.\n\nCheck schema: additionalProperties false. Required all. IdentifiedBody required name evidence_ref_ids. Top-level required case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Good.\n\nLet's final JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792001941,
+    "id": "2958424910dba088749d28a0d05d8328",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 1486,
+      "completion_tokens": 1744,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1486,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 4888,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 5272,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 7016
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
