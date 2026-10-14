@@ -1961,3 +1961,10 @@ Review/51 Qwen bypass hold removal — L3 approved2026-10-13: remove the explici
 Qwen outage hold from the active comparison. Apply the same local token cap/reserve
 and request controls as GPT-OSS, with production Worker usage unknown during bypass.
 Preserve original retries/horizon; no manual unblock at the next capacity window.
+
+
+Review/51 Groq provider-authoritative stop — L3 approved2026-10-13: the maintainer
+directed continued Qwen/GPT-OSS evaluation until each route's first new provider429,
+then a durable evaluation pause. Bypass only their local daily-token gates; retain
+all other controls, original call caps/horizon and immutable actual usage. No
+production changes. Contract and scope: review/51.
