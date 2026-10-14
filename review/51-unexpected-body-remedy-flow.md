@@ -4259,3 +4259,41 @@ and provider latency. Actual successful inputs5881–6221 tokens with policy and
 error, not general accuracy or independent qualification. Existing identity/serving
 family admission holds remain. Original60-recording study and its Groq pauses unchanged.
 Keep final common-question21-pair audit pending remaining main-study results.
+
+
+### P1 three-route prompt comparison — L3, approved2026-10-14
+
+Maintainer switches focus to prompt variants for Sol, GLM Flash and DeepSeek V4.1
+Flash, with their three pairs. New independent experiment reuses the preserved60
+recordings, frozen evidence/schema/gold from PR2413; no committee-specific mapping,
+examples, suggested assignments or evaluation answers in live inputs. Three recipes:
+original, evidence-first body/grouping separation, self-check inclusions/omissions.
+540logical jobs; initial plus at most three retries each (2160submitted maximum),
+no SDK retry,30-minute failure cooldown, seven-day saved horizon, valid answers stop
+retries regardless correctness; unmatched intents held. Do not restart old lost-state
+controllers or rearm old Groq pauses. Shift the existing hourly monitor to this study.
+
+Scope:new evals/remedy/results/prompt-comparison-2026-10-14/{variants.py,run.py,score.py,
+README.md}, tests/test_remedy_prompt_comparison.py and lifecycle docs. Reuse existing
+body-selection optional request_messages/experiment_mode adapter. Same exact routes,
+controls,900s/950s timeout,16384output cap. Normal shared CAS quotas and production
+coordination first; existing approved coordination bypass may be selected explicitly
+if Worker is unavailable. Never erase accounting or claim production usage is zero.
+No catalogs, production routes/quotas, feeds/records/audio, Worker or workflow changes.
+
+Use managed durable prompt-comparison worktree; immutable intents/results, hashed
+case/prompt/model-set binding, restart status. Git-commit and push newly completed
+batches at bounded checkpoints to preserve them remotely. Never commit runtime locks
+or credentials, activate models or merge. Artifact PR2413 stays draft.
+
+Offline scorer alone reads gold. Per prompt, all three pairs use the same common
+completed-question intersection with coverage shown. Report correct/shared-wrong
+agreements and disagreements. Separately report feed-level FP(extra selected feeds),
+FN(missing expected feeds), over-/under-inclusion and action-only mismatches. The
+five unknown-owner cases lack established feed truth: score unresolved/unsupported
+assignment guardrail separately, not invented institutional negatives. Keep40assignment,
+15policy and5guardrail categories separate, with latency/tokens and provenance.
+This reused optimization set is not independent qualification; identity holds and
+suspected truth/policy mismatches stay explicit; approved truth never changes silently.
+Test540jobs/payload isolation, bounded retries/unknown holds, restart binding, pair
+and feed metrics, checkpoint preservation; whole Ruff/format and full offline beforecalls.
