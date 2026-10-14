@@ -2096,7 +2096,7 @@ def test_incremental_stream_rejects_incomplete_or_conflicting_evidence(bad):
         raw = raw[:-1]
     elif bad == "duplicate_usage":
         frame = b'data: {"object":"chat.completion.chunk","choices":[],"usage":{}}\r\n\r\n'
-        raw = frame + raw
+        raw = raw.replace(b"data: [DONE]", frame + b"data: [DONE]")
     elif bad == "post_done":
         raw += b"data: {}\r\n\r\n"
     elif bad == "error":
@@ -2109,9 +2109,21 @@ def test_incremental_stream_rejects_incomplete_or_conflicting_evidence(bad):
             b'"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n' + raw
         )
     stream = DiscoverySSECollector()
-    with pytest.raises(ValueError):
+    from citypods.provider_catalog.probe import ContextEnvelopeError
+
+    expected = {
+        "missing_done": "incomplete_sse",
+        "unfinished": "incomplete_sse",
+        "duplicate_usage": "conflicting_sse_usage",
+        "post_done": "invalid_sse_envelope",
+        "error": "provider_sse_error",
+        "bad_object": "invalid_sse_object",
+        "conflicting_finish": "invalid_sse_envelope",
+    }
+    with pytest.raises(ContextEnvelopeError) as error:
         stream.feed(raw)
         stream.complete()
+    assert error.value.code == expected[bad]
 
 
 def test_stream_discards_large_metadata_but_keeps_small_answer():

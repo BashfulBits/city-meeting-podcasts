@@ -852,7 +852,7 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         and isinstance(stream_failure, str)
         and (
             stream_failure.startswith(("invalid_sse_", "stream_", "conflicting_sse_"))
-            or stream_failure in {"provider_sse_error", "incomplete_sse"}
+            or stream_failure in {"provider_sse_error", "incomplete_sse", "invalid_final_sse_usage"}
         )
     ):
         observation = replace(observation, diagnostic_code=stream_failure)

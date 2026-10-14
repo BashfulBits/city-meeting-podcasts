@@ -655,6 +655,7 @@ class ContextObservation:
             "invalid_sse_event_type",
             "invalid_sse_object",
             "provider_sse_error",
+            "invalid_final_sse_usage",
             "stream_media_type_mismatch",
             "stream_bytes_exceeded",
             "stream_frame_exceeded",

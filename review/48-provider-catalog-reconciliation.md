@@ -2659,3 +2659,9 @@ original discovery transport diagnostics keep their actual timings. Long failure
 journalable inconclusive observations, not collapse into a schema ValueError or invalid JSON.
 Regression acceptance includes provider errors, malformed shapes, preview exclusion/redaction,
 and failure projection beyond the configured-context deadline. No extra live call is implicit.
+
+The maintainer approved one repeat local diagnostic with these failure-detail fixes. It stopped
+before any provider submission: `v2/dispatch:pause` returned HTTP 500 with the explicit Durable
+Objects free-tier rows-read exhaustion message. Do not bypass the pause guard or infer a NVIDIA
+size result from this failure. Resume the approved single test only after pause admission works.
+This Worker quota failure is separate from the earlier 600-second SSE-envelope failure.
