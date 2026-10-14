@@ -3646,3 +3646,264 @@ def test_reasoning_only_natural_stop_can_guide_smaller_output_but_not_prove_capa
     assert result.diagnostic == "output_stopped_early"
     assert result.reported_output == 1000 and result.coordinate is None
     assert not result.verified
+
+
+def test_small_output_heavy_recovery_builds_real_fixture_within_reservation(tmp_path):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.registry import all_rules
+
+    cfg = {"api_base": "https://provider.test/v1", "accounts": [{"id": "a"}]}
+    route = {
+        "provider": "nvidia",
+        "account_id": "a",
+        "upstream_model": "new/model",
+        "route_id": "candidate",
+    }
+    identity = discovery_identity("nvidia", "a", "new/model", cfg["api_base"] + "/chat/completions")
+    seen = []
+
+    def measure(req, admit, timeout):
+        build_discovery_request(
+            replace(req, identity=identity), route, cfg, all_rules()["nvidia"], nonce="f" * 32
+        )
+        admit()
+        seen.append(req)
+        if len(seen) == 1:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                reported_input=1941,
+                reported_output=238,
+                finish_reason="stop",
+                diagnostic="combined_output_stopped_early:actual_total=2179",
+            )
+        return observation(req, req.input_tokens + req.output_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        selected_axes=("total_output_heavy",),
+        budget=DiscoveryBudget(max_calls=2),
+    )
+    assert seen[1].input_tokens == 256 and seen[1].output_tokens == 238
+    assert result.brackets[-1]["admitted"] == 494
+    assert result.brackets[-1]["refused"] is None
+
+
+@pytest.mark.parametrize("allowance", [256, 257, 280, 300, 350, 400, 512, 1024, 2048])
+def test_generation_fixture_handles_small_padding_reservations(allowance):
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.provider_catalog.probe import build_discovery_request
+
+    rules, req, _ = _chat_discovery_fixture("openrouter", "output")
+    cfg = {"api_base": "https://provider.test/v1", "accounts": [{"id": "a"}]}
+    route = {
+        "provider": "openrouter",
+        "account_id": "a",
+        "upstream_model": "org/model",
+        "route_id": "candidate",
+    }
+    shaped = build_discovery_request(
+        replace(req, input_tokens=allowance), route, cfg, rules, nonce="f" * 32
+    )
+    assert estimate_tokens(shaped.messages) <= allowance
+
+
+def test_computed_input_failure_stops_at_output_fixture_floor(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.input_tokens)
+        return DiscoveryObservation(req, STAMP, diagnostic="computed_input_budget_exhausted")
+
+    result = execute(tmp_path, measure, selected_axes=("output",))
+    assert seen == [2048, 1024, 512, 256]
+    assert result.brackets[1]["reason"] == "minimum_input_fixture_refused"
+
+
+@pytest.mark.parametrize("status", [401, 402, 403])
+def test_access_failure_stops_before_retry_or_other_axes(tmp_path, status):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(
+            req, STAMP, response_status=status, diagnostic="http_non_success"
+        )
+
+    result = execute(tmp_path, measure)
+    assert len(seen) == 1 and result.reason == "access_deferred"
+
+
+def test_typed_input_refusal_stops_at_fixture_floor_without_repeating(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.input_tokens)
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="refused",
+            coordinate=req.input_tokens,
+            count_basis="input",
+            verified=True,
+        )
+
+    result = execute(tmp_path, measure, selected_axes=("output",))
+    assert seen == [2048, 1024, 512, 256]
+    assert result.brackets[1]["reason"] == "minimum_fixed_counterpart_refused"
+
+
+def test_combined_input_heavy_keeps_fixture_floor_when_target_below_counterpart(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        assert req.input_tokens >= 256
+        if len(seen) == 1:
+            return DiscoveryObservation(req, STAMP, diagnostic="size_refused_without_exact_counts")
+        return observation(req, req.input_tokens + req.output_tokens)
+
+    execute(
+        tmp_path,
+        measure,
+        selected_axes=("total_input_heavy",),
+        seeds={"total_input_heavy": 16384},
+        budget=DiscoveryBudget(max_calls=2),
+    )
+    assert seen[0].input_tokens == 256
+    assert seen[1].output_tokens == 8192
+
+
+def test_provider_count_rescale_cannot_drop_combined_input_below_fixture_floor(tmp_path):
+    req = replace(
+        request("total_output_heavy", target=494),
+        input_tokens=256,
+        output_tokens=238,
+        control="total_output_heavy:reservation-v1:opposite=256",
+    )
+    old = DiscoveryObservation(
+        req,
+        STAMP,
+        outcome="admitted",
+        coordinate=1238,
+        reported_input=1000,
+        reported_output=238,
+        finish_reason="length",
+        count_basis="prompt_plus_requested_output",
+        verified=True,
+    )
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req)
+        return observation(req, req.input_tokens + req.output_tokens)
+
+    execute(
+        tmp_path,
+        measure,
+        selected_axes=("total_output_heavy",),
+        history=[old],
+        budget=DiscoveryBudget(max_calls=1),
+    )
+    assert seen[0].input_tokens == 256
+
+
+def test_generation_builder_rejects_below_floor_and_preserves_other_padding_errors(monkeypatch):
+    import citypods.provider_catalog.probe as module
+
+    rules, req, _ = _chat_discovery_fixture("openrouter", "output")
+    cfg = {"api_base": "https://provider.test/v1", "accounts": [{"id": "a"}]}
+    route = {
+        "provider": "openrouter",
+        "account_id": "a",
+        "upstream_model": "org/model",
+        "route_id": "candidate",
+    }
+    with pytest.raises(ValueError, match="below generation fixture floor"):
+        module.build_discovery_request(
+            replace(req, input_tokens=255), route, cfg, rules, nonce="f" * 32
+        )
+    original = module.build_context_request
+
+    def different_failure(*args, **kwargs):
+        if kwargs["dimension"] == "input":
+            raise ValueError("different padding failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "build_context_request", different_failure)
+    with pytest.raises(ValueError, match="different padding failure"):
+        module.build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
+
+
+@pytest.mark.parametrize("provider", ["orcarouter", "nvidia", "kilo"])
+def test_typed_free_prompt_cap_is_input_guidance_not_throughput_or_exact_cap(provider):
+    import json
+
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    rules, req, transient = _chat_discovery_fixture(provider)
+    error = {
+        "message": "This prompt is longer than the free tier allows for a single request. "
+        "Shorten it, or add credits.",
+        "type": "invalid_request_error",
+        "code": "free_rate_limited",
+        "metadata": {"reason": "err_free_prompt_cap"},
+    }
+    result = general_discovery_rules(rules).discovery_observation(
+        Response(400, body=json.dumps({"error": error})), req, transient
+    )
+    assert result.diagnostic == "input_size_refused_without_exact_counts"
+    assert result.coordinate is None and not result.verified and result.outcome == "inconclusive"
+    error["metadata"]["reason"] = "different_rate_limit"
+    other = general_discovery_rules(rules).discovery_observation(
+        Response(400, body=json.dumps({"error": error})), req, transient
+    )
+    assert other.diagnostic != "input_size_refused_without_exact_counts"
+
+
+def test_typed_prompt_cap_reduces_target_without_creating_refused_upper(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        if len(seen) == 1:
+            return DiscoveryObservation(
+                req, STAMP, diagnostic="input_size_refused_without_exact_counts"
+            )
+        return observation(req, req.input_tokens)
+
+    result = execute(
+        tmp_path, measure, selected_axes=("input",), budget=DiscoveryBudget(max_calls=2)
+    )
+    assert seen == [500000, 250000]
+    assert result.brackets[0]["refused"] is None
+
+
+def test_combined_overfilled_output_is_reported_honestly_without_changing_proof_contract():
+    import json
+
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    rules, req, transient = _chat_discovery_fixture("orcarouter", "total_output_heavy")
+    payload = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 1974,
+            "completion_tokens": 16783,
+            "total_tokens": 18757,
+            "completion_tokens_details": {"reasoning_tokens": 398},
+        },
+        "choices": [{"message": {"content": "1\n1\n1\n"}, "finish_reason": "length"}],
+    }
+    result = general_discovery_rules(rules).discovery_observation(
+        Response(200, body=json.dumps(payload)), req, transient
+    )
+    assert result.diagnostic == "combined_output_overfilled:actual_total=18757"
+    assert not result.verified and result.coordinate is None

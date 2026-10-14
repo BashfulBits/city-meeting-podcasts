@@ -1004,6 +1004,17 @@ def chat_discovery_observation(
         error = payload.get("error")
         if isinstance(error, dict) and isinstance(error.get("message"), str):
             text = error["message"]
+            metadata = error.get("metadata")
+            if (
+                error.get("type") == "invalid_request_error"
+                and isinstance(metadata, dict)
+                and metadata.get("reason") == "err_free_prompt_cap"
+                and text.startswith(
+                    "This prompt is longer than the free tier allows for a single request."
+                )
+            ):
+                values["diagnostic"] = "input_size_refused_without_exact_counts"
+                return DiscoveryObservation(request, stamp, **values)
             proxy_size = re.match(
                 r"This (?:model|endpoint)'s maximum context length is [0-9]+ tokens\. "
                 r"However, you requested about [0-9]+ tokens ",
@@ -1060,7 +1071,12 @@ def chat_discovery_observation(
                         | {"diagnostic": "verified_combined_output_filled", "response_preview": ""}
                     ),
                 )
-            values["diagnostic"] = f"combined_output_stopped_early:actual_total={actual}"
+            state = (
+                "overfilled"
+                if finish == "length" and usage["completion_tokens"] > request.output_tokens
+                else "stopped_early"
+            )
+            values["diagnostic"] = f"combined_output_{state}:actual_total={actual}"
         return DiscoveryObservation(request, stamp, **values)
     if request.axis == "input":
         if _chat_input_capacity(payload, response):
