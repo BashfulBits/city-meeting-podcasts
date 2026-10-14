@@ -700,7 +700,10 @@ def run_discovery(
                 and item.outcome in {"admitted", "refused"}
             ]
             if matching and axis != "output":
-                last = max(matching, key=lambda item: datetime.fromisoformat(item.observed_at))
+                last = max(
+                    enumerate(matching),
+                    key=lambda pair: (datetime.fromisoformat(pair[1].observed_at), pair[0]),
+                )[1]
                 input_tokens = max(
                     1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )
