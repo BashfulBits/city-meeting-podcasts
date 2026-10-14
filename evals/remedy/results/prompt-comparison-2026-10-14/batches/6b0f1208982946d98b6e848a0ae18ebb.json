@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Environmental Task Force, City of Arlington"
+      }
+    ],
+    "case_id": "recording-b2b00fd4afa3e92db59d0999",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda (retained-agenda) is issued on City of Arlington letterhead for the 'ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON' telephone meeting on April 14, 2020, with Task Force members convening by phone per social distancing guidelines; this establishes the convening institution, not merely a topic ('Nature in the City' is an agenda item) or venue. The provider player (provider-player) labels the same recording clip 3443 'Environmental Task Force,' matching body_label and the recording title. The existing feed arlington-tx-environmental-task-force ('Verified 2020 Arlington Environmental Task Force proceedings') directly covers this April 2020 Task Force meeting, so publication_action is assign_existing. No other supplied feed matches: the Arlington Tomorrow Foundation, Housing Finance Corporation, Term Limits Advisory Committee, Zoning Board of Adjustment, Planning and Zoning Commission, Council, Community and Neighborhood Development Committee, and Economic Development Committee feeds describe distinct bodies, and the 'arlington-tx' grouping is scoped to Council and Planning & Zoning recordings only, which excludes the Task Force. No joint meeting or additional proven participants appear in the evidence."
+  },
+  "attempt_id": "c17b378627e14fb2b1a24a18ae08598d",
+  "attempt_in_round": 2,
+  "candidate": "glm_flash",
+  "case_id": "recording-b2b00fd4afa3e92db59d0999",
+  "case_input_hash": "3e4120effdd2b8cb01a29255f81ebde7f07f71b0ed75c8b2b3126928584c8620",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.189956540998537
+    }
+  ],
+  "end_to_end_seconds": 11.400122000006377,
+  "finished_at": "2026-10-14T21:19:00.226534+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T21:18:48.826298+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "456cb46ef11d052ec4d975e7cd0c16ab0da6c357b55e25674001c1fd5b280ce7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1197,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 830,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2266,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3463
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific official agenda (retained-agenda) is issued on City of Arlington letterhead for the 'ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON' telephone meeting on April 14, 2020, with Task Force members convening by phone per social distancing guidelines; this establishes the convening institution, not merely a topic ('Nature in the City' is an agenda item) or venue. The provider player (provider-player) labels the same recording clip 3443 'Environmental Task Force,' matching body_label and the recording title. The existing feed arlington-tx-environmental-task-force ('Verified 2020 Arlington Environmental Task Force proceedings') directly covers this April 2020 Task Force meeting, so publication_action is assign_existing. No other supplied feed matches: the Arlington Tomorrow Foundation, Housing Finance Corporation, Term Limits Advisory Committee, Zoning Board of Adjustment, Planning and Zoning Commission, Council, Community and Neighborhood Development Committee, and Economic Development Committee feeds describe distinct bodies, and the 'arlington-tx' grouping is scoped to Council and Planning & Zoning recordings only, which excludes the Task Force. No joint meeting or additional proven participants appear in the evidence.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nCase ID: recording-b2b00fd4afa3e92db59d0999\nCity: arlington-tx\nRecording: \"Environmental Task Force\", dated 2020-04-14, Granicus clip 3443.\n\nEvidence:\n1. retained-agenda: An official agenda from the Office of the City Manager, City of Arlington, titled \"ENVIRONMENTAL TASK FORCE\", for a telephone meeting on April 14, 2020, 10:00 A.M. Items: Call to Order, New Business: \"Natural Environment: Urban Wildlife: Nature in the City\" 30 minutes, Adjourn. Notes all members of the Task Force join by phone per social distancing guidelines.\n2. provider-player: Granicus player page labeled \"Environmental Task Force\" for the same recording.\n\nSo the convening body is the Arlington Environmental Task Force (City of Arlington, TX). The recording-specific evidence (agenda) proves the convening institution: Environmental Task Force, City of Arlington. This matches the body_label.\n\nExisting feeds:\n- arlington-tx-environmental-task-force: \"Verified 2020 Arlington Environmental Task Force proceedings.\" \u2014 This directly matches. Title: \"Arlington: Environmental Task Force\". This is the dedicated feed.\n\nOther feeds (Arlington Tomorrow Foundation, Community and Neighborhood Development Committee, Council, Economic Development Committee, Housing Finance Corporation, Planning and Zoning Commission, Term Limits Advisory Committee, Zoning Board of Adjustment) \u2014 none match. The \"arlington-tx\" feed is described as \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 that grouping covers Council and Planning & Zoning, not the Task Force. The Task Force is neither Council nor Planning & Zoning, so per the description scope, it doesn't fit. Also the recording is a telephone meeting (audio), so \"video recordings of Council and P&Z\" doesn't apply.\n\nPublication action: assign_existing \u2014 the recording belongs to an existing feed (arlington-tx-environmental-task-force).\n\nBodies: Environmental Task Force, City of Arlington (name it as \"Environmental Task Force, City of Arlington\" or \"Arlington Environmental Task Force\"). Evidence refs: retained-agenda, provider-player.\n\nFeed slugs: [\"arlington-tx-environmental-task-force\"]\n\nMissing evidence: none significant. Maybe none. Could mention that no additional membership groupings apply. I'll leave missing_evidence empty or note nothing. Let me consider: any plausible gap? The body label matches the agenda title. The feed description says \"Verified 2020 Arlington Environmental Task Force proceedings\" \u2014 recording is 2020-04-14, matching. No joint meeting \u2014 single body. No proven participants beyond the Task Force itself.\n\nRationale: The official agenda (retained-agenda) identifies the convening body as the City of Arlington Environmental Task Force meeting on April 14, 2020 (telephone meeting due to social distancing), and the provider player (provider-player) confirms the recording. The dedicated feed arlington-tx-environmental-task-force covers 2020 Environmental Task Force proceedings, so assign_existing. Topic words like \"Nature in the City\" are agenda items, not other bodies; no joint participants proven. The \"Arlington \u2014 All Meetings\" feed covers Council and Planning & Zoning only, so not included.\n\nJSON output:\n{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\"name\": \"Environmental Task Force, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale under 2000 chars. Concise.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nCase ID: recording-b2b00fd4afa3e92db59d0999\nCity: arlington-tx\nRecording: \"Environmental Task Force\", dated 2020-04-14, Granicus clip 3443.\n\nEvidence:\n1. retained-agenda: An official agenda from the Office of the City Manager, City of Arlington, titled \"ENVIRONMENTAL TASK FORCE\", for a telephone meeting on April 14, 2020, 10:00 A.M. Items: Call to Order, New Business: \"Natural Environment: Urban Wildlife: Nature in the City\" 30 minutes, Adjourn. Notes all members of the Task Force join by phone per social distancing guidelines.\n2. provider-player: Granicus player page labeled \"Environmental Task Force\" for the same recording.\n\nSo the convening body is the Arlington Environmental Task Force (City of Arlington, TX). The recording-specific evidence (agenda) proves the convening institution: Environmental Task Force, City of Arlington. This matches the body_label.\n\nExisting feeds:\n- arlington-tx-environmental-task-force: \"Verified 2020 Arlington Environmental Task Force proceedings.\" \u2014 This directly matches. Title: \"Arlington: Environmental Task Force\". This is the dedicated feed.\n\nOther feeds (Arlington Tomorrow Foundation, Community and Neighborhood Development Committee, Council, Economic Development Committee, Housing Finance Corporation, Planning and Zoning Commission, Term Limits Advisory Committee, Zoning Board of Adjustment) \u2014 none match. The \"arlington-tx\" feed is described as \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 that grouping covers Council and Planning & Zoning, not the Task Force. The Task Force is neither Council nor Planning & Zoning, so per the description scope, it doesn't fit. Also the recording is a telephone meeting (audio), so \"video recordings of Council and P&Z\" doesn't apply.\n\nPublication action: assign_existing \u2014 the recording belongs to an existing feed (arlington-tx-environmental-task-force).\n\nBodies: Environmental Task Force, City of Arlington (name it as \"Environmental Task Force, City of Arlington\" or \"Arlington Environmental Task Force\"). Evidence refs: retained-agenda, provider-player.\n\nFeed slugs: [\"arlington-tx-environmental-task-force\"]\n\nMissing evidence: none significant. Maybe none. Could mention that no additional membership groupings apply. I'll leave missing_evidence empty or note nothing. Let me consider: any plausible gap? The body label matches the agenda title. The feed description says \"Verified 2020 Arlington Environmental Task Force proceedings\" \u2014 recording is 2020-04-14, matching. No joint meeting \u2014 single body. No proven participants beyond the Task Force itself.\n\nRationale: The official agenda (retained-agenda) identifies the convening body as the City of Arlington Environmental Task Force meeting on April 14, 2020 (telephone meeting due to social distancing), and the provider player (provider-player) confirms the recording. The dedicated feed arlington-tx-environmental-task-force covers 2020 Environmental Task Force proceedings, so assign_existing. Topic words like \"Nature in the City\" are agenda items, not other bodies; no joint participants proven. The \"Arlington \u2014 All Meetings\" feed covers Council and Planning & Zoning only, so not included.\n\nJSON output:\n{\n  \"case_id\": \"recording-b2b00fd4afa3e92db59d0999\",\n  \"bodies\": [\n    {\"name\": \"Environmental Task Force, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale under 2000 chars. Concise.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792012675,
+    "id": "a9450d7e315ab8d3ad351227acb6c18b",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1197,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 830,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2266,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3463
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
