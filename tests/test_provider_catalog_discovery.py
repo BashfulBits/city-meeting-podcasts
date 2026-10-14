@@ -2939,3 +2939,27 @@ def test_hour_deadline_preserves_checkpoint_elapsed_time_and_explicit_shorter_ce
     timeouts.clear()
     execute(tmp_path, measure, selected_axes=("output",), clock=lambda: 0, deadline=300)
     assert timeouts == [300]
+
+
+@pytest.mark.parametrize(
+    "message,suffix",
+    [
+        ("v2/dispatch:pause request failed: ConnectionError", "v2/dispatch:pause:ConnectionError"),
+        ("v2/dispatch:pause returned HTTP 503: secret body", "v2/dispatch:pause:HTTP_503"),
+        ("https://secret.invalid Bearer secret", ""),
+    ],
+)
+def test_pause_failure_reason_preserves_only_control_metadata(message, suffix):
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from citypods.provider_catalog.discovery import discovery_failure_reason
+
+    error = DispatchPauseError(message)
+    error.__cause__ = ConnectionError("secret credentials")
+    reason = discovery_failure_reason(error)
+    assert (
+        reason
+        == "measurement_stopped:DispatchPauseError"
+        + (":" + suffix if suffix else "")
+        + ":cause=ConnectionError"
+    )
+    assert "secret" not in reason

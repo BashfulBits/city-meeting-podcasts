@@ -1952,3 +1952,9 @@ Review/48 maintainer-approved timing extension: one-hour candidate discovery ses
 two hours of discovery work per run, and three-hour enclosing manual-discovery workflow timeout.
 Ordinary reconciliation remains two hours. Per-call 600 seconds and all numeric quota/token/call
 ceilings remain unchanged; checkpoint elapsed time still binds. See review/48.
+
+Discovery pause failures retain allowlisted control operation, HTTP status or transport class
+and chained exception class in the existing stop reason, excluding URLs and response bodies.
+This approved diagnostic change uses discovery.py and its tests only; no control retry or
+provider call is added. Combined-axis enabling remains gated on explicit consumption versus
+reservation semantics and an output-heavy fixture that actually generates the requested output.

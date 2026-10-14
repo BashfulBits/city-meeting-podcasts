@@ -2858,3 +2858,9 @@ docs/changelog. Acceptance proves more than two slow successful refinement calls
 hour, all existing numeric budgets bind, checkpoint elapsed time persists and explicit shorter
 deadlines remain effective. Update the expired-checkpoint golden test to use the new ceiling.
 No Worker, quota, production-config, parser or dependency changes; no live calls in acceptance.
+
+Discovery pause failures retain allowlisted control operation, HTTP status or transport class
+and chained exception class in the existing stop reason, excluding URLs and response bodies.
+This approved diagnostic change uses discovery.py and its tests only; no control retry or
+provider call is added. Combined-axis enabling remains gated on explicit consumption versus
+reservation semantics and an output-heavy fixture that actually generates the requested output.
