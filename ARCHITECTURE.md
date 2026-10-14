@@ -323,8 +323,8 @@ unchanged; timing-limited results retain an admitted lower bound and unknown num
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors create no cap proof. NVIDIA combined discovery uses provider input plus
-requested output, with the entire requested output filled and exact summed-context refusal
-evidence. Output text need not match the prompt; valid usage, finish and response-shape checks
+requested output, with at least the requested output generated on a length finish and exact
+summed-context refusal evidence. Output text need not match the prompt; valid usage, finish and response-shape checks
 still bind. Clipped output is rechecked at the actual generated size, never a numerical refusal.
 Short or empty length completions retain actual input/output counts and clipping diagnostics,
 without becoming numerical refusals. Both request mixes remain conditional brackets; other

@@ -2097,3 +2097,7 @@ an output-heavy 79-token prompt reservation. The maintainer approved preserving 
 generation-prompt floor, padding edge-case coverage and broader bounded local provider checks.
 This changes probe construction/recovery only; no production job margin or route cap changes.
 See review/48's reproduction, file plan and acceptance contract.
+
+Review/48 combined proof clarification (maintainer approved 2026-10-14): length replies with
+at least the requested output prove the requested combined reservation; actual usage remains
+separate, and clipped/naturally stopped replies do not establish that proof.

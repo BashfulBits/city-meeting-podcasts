@@ -2997,6 +2997,9 @@ def test_pause_failure_reason_preserves_only_control_metadata(message, suffix):
     "completion,finish,expected",
     [
         (16384, "length", "admitted"),
+        (18078, "length", "admitted"),
+        (18078, "stop", "inconclusive"),
+        (16383, "length", "inconclusive"),
         (21, "length", "inconclusive"),
         (21, "stop", "inconclusive"),
     ],
@@ -3899,7 +3902,7 @@ def test_typed_prompt_cap_reduces_target_without_creating_refused_upper(tmp_path
     assert result.brackets[0]["refused"] is None
 
 
-def test_combined_overfilled_output_is_reported_honestly_without_changing_proof_contract():
+def test_combined_overfilled_output_proves_requested_reservation_with_actual_counts():
     import json
 
     from citypods.provider_catalog.rules import Response, general_discovery_rules
@@ -3918,5 +3921,9 @@ def test_combined_overfilled_output_is_reported_honestly_without_changing_proof_
     result = general_discovery_rules(rules).discovery_observation(
         Response(200, body=json.dumps(payload)), req, transient
     )
-    assert result.diagnostic == "combined_output_overfilled:actual_total=18757"
-    assert not result.verified and result.coordinate is None
+    assert result.diagnostic == "verified_combined_output_filled"
+    assert result.verified and result.outcome == "admitted"
+    assert result.coordinate == 1974 + req.output_tokens
+    assert result.reported_output == 16783
+    assert result.reported_input == 1974
+    assert result.count_basis == "prompt_plus_requested_output"

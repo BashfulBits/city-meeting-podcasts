@@ -3182,8 +3182,8 @@ returned HTTP 401 (no cap evidence); Airforce returned HTTP 503 (no cap evidence
 batch began before the access-deferral guard was loaded, so it recorded two SambaNova denials;
 the new guard's regression requires stopping at the first denial. No credentials were changed.
 OrcaRouter reported completion counts above its requested output, including reasoning; those
-actual output counts prove generation but the existing combined exact-fill rule remains in
-force pending the maintainer's separate decision on overfilled combined replies. No numerical
+actual output counts prove generation. The maintainer approved accepting at least the requested
+output on a length finish as combined lower-bound proof, retaining actual counts separately. No numerical
 upper is inferred from these observations. Final per-axis results are recorded with the PR.
 
 A targeted extra OrcaRouter size-error capture (one call, still inside the aggregate call/token
@@ -3201,14 +3201,16 @@ The completed local batch used 19 calls (plus the one targeted OrcaRouter error 
 | Kilo Liquid free | output 8,192; output-heavy combined 10,086; input-heavy combined 31,889 |
 | SambaNova DeepSeek-V3.2 | chat HTTP 401; no capacity proof |
 | Airforce Gemma3-270M free | HTTP 503; no capacity proof |
-| OrcaRouter DeepSeek-V4-Flash free | output 27,278; free prompt cap lacks numerical counts; combined overfilled replies remain unverified |
+| OrcaRouter DeepSeek-V4-Flash free | output 27,278; free prompt cap lacks numerical counts; combined overfilled length replies prove the requested reservation |
 
 The batch charged/reserved 1,858,544 input/300,300 output tokens; the targeted capture reserved
 500,000/16,384 more, within the declared aggregate ceilings. No numerical upper was established.
 Raw error capture was private and bounded; no key or credential was printed or modified.
-Overfilled length replies are now labeled `combined_output_overfilled`, not early stopping,
-without changing equality-based proof pending the maintainer's decision. The local observations
-are diagnostics, not authenticated workflow history, and do not publish any production cap.
+Combined proof accepts provider-reported output at or above the requested allowance with a
+length finish and consistent usage. The coordinate remains input plus requested output; actual
+consumption is recorded separately. Clipped replies and natural stops remain inconclusive.
+This maintainer-approved change avoids discarding overfilled replies without inferring an upper.
+The local observations are diagnostics, not authenticated workflow history, and do not publish any production cap.
 
 The follow-up CLI review found a valid precedence issue: collector diagnostics may classify
 `free_rate_limited` broadly as quota before examining the explicit typed prompt-cap reason.

@@ -1062,7 +1062,7 @@ def chat_discovery_observation(
                 values["diagnostic"] = f"combined_output_clipped:actual_total={actual}"
                 return DiscoveryObservation(request, stamp, **values)
             # A short answer proves consumed context, not reserved output capacity.
-            if finish == "length" and usage["completion_tokens"] == request.output_tokens:
+            if finish == "length" and usage["completion_tokens"] >= request.output_tokens:
                 return DiscoveryObservation(
                     request,
                     stamp,
@@ -1075,12 +1075,7 @@ def chat_discovery_observation(
                         | {"diagnostic": "verified_combined_output_filled", "response_preview": ""}
                     ),
                 )
-            state = (
-                "overfilled"
-                if finish == "length" and usage["completion_tokens"] > request.output_tokens
-                else "stopped_early"
-            )
-            values["diagnostic"] = f"combined_output_{state}:actual_total={actual}"
+            values["diagnostic"] = f"combined_output_stopped_early:actual_total={actual}"
         return DiscoveryObservation(request, stamp, **values)
     if request.axis == "input":
         if _chat_input_capacity(payload, response):
