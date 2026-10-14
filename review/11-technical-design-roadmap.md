@@ -2045,3 +2045,9 @@ Review/51 feed-context diagnostic — L3 approved2026-10-14: separate14-call com
 of explicit membership policy vs existing-feed title examples for one Dallas Bond
 Streets recording; no production changes or rearming original Groq pauses. Retain
 and repeat the seven-model common-question/21-pair audit after final results.
+
+
+Review/51 prompt optimization — L3 approved2026-10-14: three general prompts,60
+recordings, Sol/GLM Flash/DeepSeek V4.1 Flash (540jobs); three pairs per prompt.
+Separate shared wrong agreements, extra/missing feeds and disagreements. Durable
+workspace and remote checkpoints; no activation or old-controller restarts.
