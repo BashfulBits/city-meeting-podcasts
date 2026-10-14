@@ -15,6 +15,62 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Discovery selection evidence.** Retain terminal skip reasons for explicit manual candidates,
+  including absent or unverified-free routes, without bypassing eligibility or making size calls.
+- **Reachability diagnostics.** Log request phase, received status and bounded transport-cause
+  classes for failed new-route canaries without exposing exception text or credentials.
+
+- Give the older unexpected-body evaluation two of three contested call slots until it
+  finishes, borrowing unused slots during cooldowns and retaining retry/deadline limits.
+  Persist allocation across resumes and expose scheduling reasons in evaluation status.
+
+- Add an explicit default-off coordination bypass for the existing review/51 evaluations
+  during the Worker database-read outage. Preserve local quota accounting, original
+  deadlines, retry limits and one shared call lock; hold Qwen without verified capacity.
+  Retain the loss of production-usage visibility in immutable attempt provenance.
+
+- Retain a reproducible seven-model pair-agreement audit and a separate fourteen-call
+  feed-context diagnostic comparing explicit membership policy with retrieved existing
+  meeting titles. Preserve frozen evidence/gold, original study pauses, exact routes and
+  shared call accounting. No production settings, feed rules, records or audio changes.
+
+- Add evaluation-only GPT-OSS 120B high and Qwen 3.8 27B high to the same frozen
+  60-recording body-selection comparison. Preserve existing answers, retry limits,
+  original deadline and older-run priority; retain daily-token production headroom.
+
+- Add an explicitly approved, evaluation-only Groq mode that continues GPT-OSS and Qwen
+  without local daily-token gates until each route's first new provider HTTP429 or completion.
+  Saved pauses survive restarts; request/minute limits, retry bounds and actual result usage
+  remain. Production routes, quotas, records and audio are unchanged.
+
+- Give patient models900 seconds per request in both local review/51 evaluations,
+  with950-second case deadlines and covering pause leases. Retain Flash-Lite limits,
+  original run horizons, retry allowances, all saved observations and production settings.
+
+- Add a durable general-prompt comparison for Sol, GLM Flash and DeepSeek V4.1 Flash
+  over the frozen sixty-recording set, with bounded retries and remote observation
+  checkpoints. Report shared wrong agreements, extra/missing feeds and disagreements
+  separately. Production models, quotas, feeds, records and audio are unchanged.
+
+- Remove the maintainer-released Qwen outage hold from the active review/51 evaluation.
+  Apply the same local token checks as GPT-OSS, preserve retries and the original horizon,
+  and clear only the obsolete hold wait on resume. Production limits remain unchanged.
+
+- Add the approved answer-free 60-recording body-selection comparison across six models.
+  Frozen official evidence, masked identifiers and multi-feed answers replace suggested
+  assignments. Separate feed-choice, publication-policy and insufficient-proof metrics.
+  Bounded three-round retries, immutable intents/results, shared evaluator locking and
+  existing quota/headroom controls preserve production settings and prior evaluation history.
+
+- The approved varied P1 comparison now includes six models (678 questions). Gemini 3.7/3.8
+  calls are discontinued because of low daily quotas; their observations and Astra history
+  remain immutable. The controller and scorer exclude these models. Existing daily attempt
+  caps, production headroom, timeouts and production route settings remain unchanged.
+- Evaluation scoring retains hashed provenance for results outside the executing checkout.
+- A separately approved one-off allowance permits five immediate additional attempts on
+  exactly two full GLM and three Sol questions, capped at 25 total. Immutable manifest/pair
+  binding and restart hash checks prevent broader retry expansion or refill after reset.
+
 - **General new-route discovery.** Interpret shared chat usage and explicit size errors before
   optional provider extensions; attempt all axes without route-specific parser registration.
   Unknown response formats remain inconclusive and histories use a new parser identity.
