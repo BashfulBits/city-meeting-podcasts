@@ -4228,3 +4228,22 @@ category coverage and partial-completion bias; never treat omitted answers as co
 Retain script, input hashes and per-case results under evals/remedy/. At final scoring
 repeat this audit, preserving interim artifacts and separately flagging suspected
 publication-policy inconsistencies rather than editing approved truth implicitly.
+
+
+Feed-context packet preparation: all70 public Dallas RSS feeds returned200. After
+excluding the target,5,372 RSS memberships and173 distinct-pattern samples are retained.
+Three samples for every feed estimate9,915 schema-shaped tokens, above GPT-OSS7,125.
+Use two patterns for six feeds selected by title-token Jaccard similarity, without
+gold consultation:6,414 estimated tokens vs6,030 baseline and6,175 explicit policy.
+All current RSS titles would cost81,020; that alternative is not sent. Public RSS
+caps mean inventories are not a complete historical catalog. Examples can inherit
+existing misassignments. This constrained retrieval design is chosen before calls;
+it preserves full official evidence and the frozen expected answer for the diagnostic.
+
+
+Feed-context implementation verification2026-10-14:215 targeted checks (including
+structured-shaping regressions) and6189 full offline tests passed,16deselected.
+Whole Ruff/format551 files, fragments and diff checks clean. Fixture isolation now
+restores all evaluation-local route dictionaries after tests. Fourteen mocked
+provider jobs verified exact variant messages, one submission, no SDK retry and
+pre-call intent provenance. Original default prompt/shape and Groq pauses remain.

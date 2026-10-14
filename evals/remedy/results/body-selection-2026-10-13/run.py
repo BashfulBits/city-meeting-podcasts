@@ -56,14 +56,22 @@ def route_for(candidate, groq_until_429=False):
     )
 
 
-def shaped_messages(case, route):
-    payload = messages(case)
+def shaped_messages(case, route, request_messages=None):
+    payload = messages(case) if request_messages is None else request_messages
     if getattr(route, "structured_output_include_schema_in_prompt", False):
         return _messages_with_schema(payload, BodySelectionAnswer)
     return payload
 
 
-def headroom(client, storage, route, case, coordination_bypass=False, groq_until_429=False):
+def headroom(
+    client,
+    storage,
+    route,
+    case,
+    coordination_bypass=False,
+    groq_until_429=False,
+    request_messages=None,
+):
     enough, capacity = (
         transport.headroom(client, storage, route, coordination_bypass=True)
         if coordination_bypass
@@ -77,7 +85,7 @@ def headroom(client, storage, route, case, coordination_bypass=False, groq_until
             worker_tokens_used=None,
         )
     elif enough and route.provider == "groq":
-        request_tokens = estimate_tokens(shaped_messages(case, route)) + 16384
+        request_tokens = estimate_tokens(shaped_messages(case, route, request_messages)) + 16384
         enough, token_capacity = (
             token_headroom(
                 transport, client, storage, route, request_tokens, coordination_bypass=True
@@ -110,6 +118,8 @@ def attempt(
     client,
     coordination_bypass=False,
     groq_until_429=False,
+    request_messages=None,
+    experiment_mode="blind_body_selection",
 ):
     route = (
         route_for(candidate, groq_until_429=True)
@@ -119,8 +129,8 @@ def attempt(
     timeout = 120 if route.provider == "gemini" else 900
     tokens = 4096 if route.provider == "gemini" else 16384
     effort = CANDIDATES[candidate][1]
-    payload = messages(case)
-    estimate = estimate_tokens(shaped_messages(case, route))
+    payload = messages(case) if request_messages is None else request_messages
+    estimate = estimate_tokens(shaped_messages(case, route, request_messages))
     if (
         estimate + tokens > route.input_context_limit
         or (route.hard_input_ceiling is not None and estimate > route.hard_input_ceiling)
@@ -130,9 +140,9 @@ def attempt(
     row = {
         "candidate": candidate,
         "case_id": case.case_id,
-        "mode": "blind_body_selection",
+        "mode": experiment_mode,
         "manifest_hash": manifest_hash,
-        "prompt_hash": canonical_hash(PROMPT),
+        "prompt_hash": canonical_hash(PROMPT if request_messages is None else request_messages),
         "schema_hash": canonical_hash(BodySelectionAnswer.model_json_schema()),
         "case_input_hash": canonical_hash(case.model_dump()),
         "catalog_hash": canonical_hash(

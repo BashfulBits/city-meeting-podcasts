@@ -1,0 +1,3814 @@
+{
+  "agreement_definition": "Identical publication action and unordered exact feed set.",
+  "answered_counts": {
+    "deepseek": 60,
+    "flashlite": 60,
+    "glm_flash": 60,
+    "glm_full": 47,
+    "gptoss": 50,
+    "kimi": 60,
+    "sol": 60
+  },
+  "common_case_ids": [
+    "recording-0111ad7ae5dc7438295e49d4",
+    "recording-02b681ca6a58bfb1b3195afd",
+    "recording-0312d144c749c190446edfe0",
+    "recording-05315b3b1cfb9d029ee8ed70",
+    "recording-161b45f0a9cde9b3077a0cdb",
+    "recording-25b112118800868be51c169e",
+    "recording-3ded66d5b721c153da629b82",
+    "recording-42a8b82dd5daf9d704055f7d",
+    "recording-437f59fb8fa29939ebe0e94d",
+    "recording-461fd764c77be280ae5b37a2",
+    "recording-47a2043e1aa311edf6349cd3",
+    "recording-5098d2f4fff48e6317e3d221",
+    "recording-56666be8fc4ca7665a4c57af",
+    "recording-5fae14c06e8ceb8379204fb7",
+    "recording-61dfe043572467ebf477acba",
+    "recording-64905d6e32cae3a0ec5a7070",
+    "recording-6711ef6cf459b6dc7add2175",
+    "recording-6dd6551430ef94bc37d87dea",
+    "recording-746f6b2f2c3ccc31bdc3c418",
+    "recording-8301b65c359ede99eb3dc3df",
+    "recording-8dd902e97939f88dfa43b299",
+    "recording-98b938d821e0d41caa8a48a6",
+    "recording-9bd0e85a0cb337726b421b81",
+    "recording-9bd6780e16f497eb919d9423",
+    "recording-a6fa645e613b3e5b90ed44ca",
+    "recording-a9772c53bc450243748eccff",
+    "recording-ad36bcef14d1a3ef3e4d7813",
+    "recording-b2b00fd4afa3e92db59d0999",
+    "recording-b8889e50555726dfbb7f1a00",
+    "recording-c2104a6abb6a7a51f3876825",
+    "recording-c3179aff49eb426e0d5ffd85",
+    "recording-cc51e5260201801d13396511",
+    "recording-dfc5556c32049fce49d38785",
+    "recording-e433f4350ee6f597cd0a81a3",
+    "recording-e477db971fbf392de8259408",
+    "recording-e85c0b9a114463b03d60a457",
+    "recording-e8d7b11f6fe27f95223b88f1",
+    "recording-f282f5df099ea90db279956b",
+    "recording-f61541eb16037ce8c08f7073",
+    "recording-ff5573e2e05ac6a223fa55a5"
+  ],
+  "common_categories": {
+    "existing_body_assignment": 32,
+    "publication_policy_control": 8
+  },
+  "common_count": 40,
+  "excluded_cases": {
+    "recording-0594e78d397ac107f267d354": [
+      "glm_full"
+    ],
+    "recording-0850ab9885c4b28efea3adfe": [
+      "glm_full"
+    ],
+    "recording-0f3acb8e63bc7affb3b03495": [
+      "glm_full"
+    ],
+    "recording-1bff12d20029e06645d2cd1c": [
+      "gptoss"
+    ],
+    "recording-1fd48da636e2445a9d8ecebb": [
+      "glm_full"
+    ],
+    "recording-431b21d07dbce916fbd90dbd": [
+      "gptoss"
+    ],
+    "recording-4cbdc0f5678a5408279ffae1": [
+      "gptoss"
+    ],
+    "recording-5dddfe1f523eeff020ce4343": [
+      "glm_full"
+    ],
+    "recording-66513bd9e1fc74fb642e2d73": [
+      "glm_full"
+    ],
+    "recording-70d1f38ec59da38a678b6c19": [
+      "glm_full"
+    ],
+    "recording-76b77357565cdc16153f2a97": [
+      "gptoss"
+    ],
+    "recording-799f0c547ee800a6268c4c67": [
+      "glm_full",
+      "gptoss"
+    ],
+    "recording-7ddb7aff43035845aecd75ef": [
+      "gptoss"
+    ],
+    "recording-7ff26ff432860aa1dd1e09fd": [
+      "glm_full"
+    ],
+    "recording-ace5ee7ad06c0c01647b6539": [
+      "glm_full"
+    ],
+    "recording-c128ed27ed345a9fbfb3b3dd": [
+      "glm_full",
+      "gptoss"
+    ],
+    "recording-cca86af01f5030c620cd25a7": [
+      "gptoss"
+    ],
+    "recording-da50fa846733d6c9a7c59363": [
+      "gptoss"
+    ],
+    "recording-eef10050e298d3758921b67a": [
+      "glm_full"
+    ],
+    "recording-f67233b1ddc3faf3e51bb9ff": [
+      "glm_full",
+      "gptoss"
+    ]
+  },
+  "excluded_models": [
+    "qwen38"
+  ],
+  "free_text_scored": false,
+  "gold_hash": "2a8da03b1427885341ccee740d945e22b9766f4812af15b28ecf4853a4a62836",
+  "manifest_hash": "6cdcb447eafa02d3fedbe6e018b6f5293d921f52156e1d45ba36f26d55a3c9a1",
+  "models": [
+    "flashlite",
+    "kimi",
+    "glm_full",
+    "glm_flash",
+    "sol",
+    "deepseek",
+    "gptoss"
+  ],
+  "pairs": [
+    {
+      "agreement_precision_percent": 97.05882352941177,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 6,
+        "true_positive": 33
+      },
+      "models": [
+        "flashlite",
+        "kimi"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 15.0,
+        "true_positive": 82.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.05882352941177,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 6,
+        "true_positive": 33
+      },
+      "models": [
+        "flashlite",
+        "glm_full"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 15.0,
+        "true_positive": 82.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.05882352941177,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 6,
+        "true_positive": 33
+      },
+      "models": [
+        "flashlite",
+        "glm_flash"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 15.0,
+        "true_positive": 82.5
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 7,
+        "true_positive": 33
+      },
+      "models": [
+        "flashlite",
+        "sol"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 17.5,
+        "true_positive": 82.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.05882352941177,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 6,
+        "true_positive": 33
+      },
+      "models": [
+        "flashlite",
+        "deepseek"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 15.0,
+        "true_positive": 82.5
+      }
+    },
+    {
+      "agreement_precision_percent": 96.96969696969697,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-25b112118800868be51c169e",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e8d7b11f6fe27f95223b88f1"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 7,
+        "true_positive": 32
+      },
+      "models": [
+        "flashlite",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 17.5,
+        "true_positive": 80.0
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "kimi",
+        "glm_full"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "kimi",
+        "glm_flash"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 1,
+        "true_positive": 39
+      },
+      "models": [
+        "kimi",
+        "sol"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 2.5,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "kimi",
+        "deepseek"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.43589743589743,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-25b112118800868be51c169e"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 1,
+        "true_positive": 38
+      },
+      "models": [
+        "kimi",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 2.5,
+        "true_positive": 95.0
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "glm_full",
+        "glm_flash"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 1,
+        "true_positive": 39
+      },
+      "models": [
+        "glm_full",
+        "sol"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 2.5,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "glm_full",
+        "deepseek"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.43589743589743,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-25b112118800868be51c169e"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 1,
+        "true_positive": 38
+      },
+      "models": [
+        "glm_full",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 2.5,
+        "true_positive": 95.0
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 1,
+        "true_positive": 39
+      },
+      "models": [
+        "glm_flash",
+        "sol"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 2.5,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.5,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 0,
+        "true_positive": 39
+      },
+      "models": [
+        "glm_flash",
+        "deepseek"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 0.0,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 97.43589743589743,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-25b112118800868be51c169e"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 1,
+        "true_positive": 38
+      },
+      "models": [
+        "glm_flash",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 2.5,
+        "true_positive": 95.0
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-25b112118800868be51c169e",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 1,
+        "true_positive": 39
+      },
+      "models": [
+        "sol",
+        "deepseek"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 2.5,
+        "true_positive": 97.5
+      }
+    },
+    {
+      "agreement_precision_percent": 100.0,
+      "case_ids": {
+        "false_positive": [],
+        "negative": [
+          "recording-0312d144c749c190446edfe0",
+          "recording-25b112118800868be51c169e"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 0,
+        "negative": 2,
+        "true_positive": 38
+      },
+      "models": [
+        "sol",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 0.0,
+        "negative": 5.0,
+        "true_positive": 95.0
+      }
+    },
+    {
+      "agreement_precision_percent": 97.43589743589743,
+      "case_ids": {
+        "false_positive": [
+          "recording-0312d144c749c190446edfe0"
+        ],
+        "negative": [
+          "recording-25b112118800868be51c169e"
+        ],
+        "true_positive": [
+          "recording-0111ad7ae5dc7438295e49d4",
+          "recording-02b681ca6a58bfb1b3195afd",
+          "recording-05315b3b1cfb9d029ee8ed70",
+          "recording-161b45f0a9cde9b3077a0cdb",
+          "recording-3ded66d5b721c153da629b82",
+          "recording-42a8b82dd5daf9d704055f7d",
+          "recording-437f59fb8fa29939ebe0e94d",
+          "recording-461fd764c77be280ae5b37a2",
+          "recording-47a2043e1aa311edf6349cd3",
+          "recording-5098d2f4fff48e6317e3d221",
+          "recording-56666be8fc4ca7665a4c57af",
+          "recording-5fae14c06e8ceb8379204fb7",
+          "recording-61dfe043572467ebf477acba",
+          "recording-64905d6e32cae3a0ec5a7070",
+          "recording-6711ef6cf459b6dc7add2175",
+          "recording-6dd6551430ef94bc37d87dea",
+          "recording-746f6b2f2c3ccc31bdc3c418",
+          "recording-8301b65c359ede99eb3dc3df",
+          "recording-8dd902e97939f88dfa43b299",
+          "recording-98b938d821e0d41caa8a48a6",
+          "recording-9bd0e85a0cb337726b421b81",
+          "recording-9bd6780e16f497eb919d9423",
+          "recording-a6fa645e613b3e5b90ed44ca",
+          "recording-a9772c53bc450243748eccff",
+          "recording-ad36bcef14d1a3ef3e4d7813",
+          "recording-b2b00fd4afa3e92db59d0999",
+          "recording-b8889e50555726dfbb7f1a00",
+          "recording-c2104a6abb6a7a51f3876825",
+          "recording-c3179aff49eb426e0d5ffd85",
+          "recording-cc51e5260201801d13396511",
+          "recording-dfc5556c32049fce49d38785",
+          "recording-e433f4350ee6f597cd0a81a3",
+          "recording-e477db971fbf392de8259408",
+          "recording-e85c0b9a114463b03d60a457",
+          "recording-e8d7b11f6fe27f95223b88f1",
+          "recording-f282f5df099ea90db279956b",
+          "recording-f61541eb16037ce8c08f7073",
+          "recording-ff5573e2e05ac6a223fa55a5"
+        ]
+      },
+      "counts": {
+        "false_positive": 1,
+        "negative": 1,
+        "true_positive": 38
+      },
+      "models": [
+        "deepseek",
+        "gptoss"
+      ],
+      "percent_of_common": {
+        "false_positive": 2.5,
+        "negative": 2.5,
+        "true_positive": 95.0
+      }
+    }
+  ],
+  "qualified": false,
+  "scored_at": "2026-10-14T08:59:56.225701+00:00",
+  "selected_attempt_ids": {
+    "deepseek": {
+      "recording-0111ad7ae5dc7438295e49d4": "70fc7f7e49a0434d836f534fcab37811",
+      "recording-02b681ca6a58bfb1b3195afd": "743be351704347089d4535a06bcc187b",
+      "recording-0312d144c749c190446edfe0": "79163f8596ce417394fea4bffb1c3854",
+      "recording-05315b3b1cfb9d029ee8ed70": "cd57d7a8e77e49cfaa084f090467d589",
+      "recording-161b45f0a9cde9b3077a0cdb": "5cb8a3d3dee149ca81833f9757c1b201",
+      "recording-25b112118800868be51c169e": "b5365357565c4f13b34e57fac1dccdc5",
+      "recording-3ded66d5b721c153da629b82": "08f1feac48344b9d9c7e4a5c74a250ec",
+      "recording-42a8b82dd5daf9d704055f7d": "ae8aca5da0fa486bb9dacdd98a7d1a80",
+      "recording-437f59fb8fa29939ebe0e94d": "fe3ea485b5444327a113010460f703f2",
+      "recording-461fd764c77be280ae5b37a2": "405d8f9a168e48b0b22829dffafd274d",
+      "recording-47a2043e1aa311edf6349cd3": "c350b9407b8946d09899888577e6502c",
+      "recording-5098d2f4fff48e6317e3d221": "fdf336e78d414d7e9b608db9dc3bc9f1",
+      "recording-56666be8fc4ca7665a4c57af": "b64cb6a43b794d449de4468f1b964fa2",
+      "recording-5fae14c06e8ceb8379204fb7": "c079853fd3434b11901989ca35cd7607",
+      "recording-61dfe043572467ebf477acba": "1d794ca130954d6c8c8f2281bb9b4895",
+      "recording-64905d6e32cae3a0ec5a7070": "971d1d3608aa42ba9324b7992b880227",
+      "recording-6711ef6cf459b6dc7add2175": "173a23173d884ce4b6ad7125b8e34be3",
+      "recording-6dd6551430ef94bc37d87dea": "0e7788ac0afe43ac80cff98f7ee8d495",
+      "recording-746f6b2f2c3ccc31bdc3c418": "d6563562705c4ce49178ac88c6c62167",
+      "recording-8301b65c359ede99eb3dc3df": "9cebb0f5658d4b0fa47784ccd99a7d51",
+      "recording-8dd902e97939f88dfa43b299": "61d937458b6b45548f37d321dcfb7935",
+      "recording-98b938d821e0d41caa8a48a6": "a8d6f4ecdbad4b5ba139a7af3975da48",
+      "recording-9bd0e85a0cb337726b421b81": "ee744abd8f734ce3b2edf21b79e467ae",
+      "recording-9bd6780e16f497eb919d9423": "f7faab3236ce4788834d46f718fa54b8",
+      "recording-a6fa645e613b3e5b90ed44ca": "20c13aa057e3498eb92a9a492e66dc00",
+      "recording-a9772c53bc450243748eccff": "0347ec63af254c8da1b61b35cbf9a4b0",
+      "recording-ad36bcef14d1a3ef3e4d7813": "b5525efd52c540afba2262bcf2255ccc",
+      "recording-b2b00fd4afa3e92db59d0999": "9ae07821d1ad4575b0e7bd4a3b2d3629",
+      "recording-b8889e50555726dfbb7f1a00": "be1451f735094e7187cb9b9de94be2b3",
+      "recording-c2104a6abb6a7a51f3876825": "214d483dd94d4d28a63f9319f9e1e338",
+      "recording-c3179aff49eb426e0d5ffd85": "531c79d795cf46998bf0e8647b1b1d6a",
+      "recording-cc51e5260201801d13396511": "4f629402ae67463aaa2b54566451cdb8",
+      "recording-dfc5556c32049fce49d38785": "dbc7ceba2a264e158e1ccc63978289bb",
+      "recording-e433f4350ee6f597cd0a81a3": "e830ea05d44641a0b25be4a4139fe8d0",
+      "recording-e477db971fbf392de8259408": "4f8514717efd4b7c807c6651607600c3",
+      "recording-e85c0b9a114463b03d60a457": "2079597a635e407f9499b6701faa680d",
+      "recording-e8d7b11f6fe27f95223b88f1": "6936555edd0d46b79bfc5318c41f0f02",
+      "recording-f282f5df099ea90db279956b": "31d57ee8c8fc4d0fb80b91139d826186",
+      "recording-f61541eb16037ce8c08f7073": "995d9f199d4a4e1c927aa431edf4de3b",
+      "recording-ff5573e2e05ac6a223fa55a5": "54410ce84b5c4e81a742c0499b316022"
+    },
+    "flashlite": {
+      "recording-0111ad7ae5dc7438295e49d4": "7a62cc77677f4dd2a6b687b255becf61",
+      "recording-02b681ca6a58bfb1b3195afd": "a27fbbb9efce47c9879fdcc45934b640",
+      "recording-0312d144c749c190446edfe0": "02a535df6c014dd38b2bd36b13403d25",
+      "recording-05315b3b1cfb9d029ee8ed70": "27203d8e591b486ca1d6d06a16d07946",
+      "recording-161b45f0a9cde9b3077a0cdb": "764e099b449447a08ea3e15fa16366fd",
+      "recording-25b112118800868be51c169e": "c27b22e0ef124027aaebfb76aa054993",
+      "recording-3ded66d5b721c153da629b82": "fb6b87807e6f40cca5fc069bff0bffbf",
+      "recording-42a8b82dd5daf9d704055f7d": "3900b01e344f437390289911c422a004",
+      "recording-437f59fb8fa29939ebe0e94d": "d06d703ad3a642aaa792949c7a74ce84",
+      "recording-461fd764c77be280ae5b37a2": "9998b61f2c244590a527f38db9a90775",
+      "recording-47a2043e1aa311edf6349cd3": "1baab73b6e5449cb8bdf5c6118b3cec9",
+      "recording-5098d2f4fff48e6317e3d221": "7bf38ce0d4524623a57cce6d85b84415",
+      "recording-56666be8fc4ca7665a4c57af": "09aac471624c4927b2209c9dfebfb2fe",
+      "recording-5fae14c06e8ceb8379204fb7": "070a861f0918480b8907e665fea77941",
+      "recording-61dfe043572467ebf477acba": "22dc3fb7177a4ef0a399693444331818",
+      "recording-64905d6e32cae3a0ec5a7070": "a55cb25eb9d248329def261dc035db24",
+      "recording-6711ef6cf459b6dc7add2175": "59e8d100b5494ec3b4ca1773b76bc770",
+      "recording-6dd6551430ef94bc37d87dea": "07a44a15d67c4975b2bdaf6ad9297417",
+      "recording-746f6b2f2c3ccc31bdc3c418": "b09bd575d81741fabcb48275df5e82ad",
+      "recording-8301b65c359ede99eb3dc3df": "465ed3e410b749719123e4551d2be817",
+      "recording-8dd902e97939f88dfa43b299": "a511d712dd8b4a2398fc15c213fb816b",
+      "recording-98b938d821e0d41caa8a48a6": "b003528b385f4f5381e858990616e137",
+      "recording-9bd0e85a0cb337726b421b81": "17ea33a062734001a213fc43f25b115a",
+      "recording-9bd6780e16f497eb919d9423": "8e0c70a088c840f9a89d3cd7b0ff6b3a",
+      "recording-a6fa645e613b3e5b90ed44ca": "8ee29064b5c24b47ba79880da89213ac",
+      "recording-a9772c53bc450243748eccff": "24c0d72b5dc54acfa3f2701eb7c4935c",
+      "recording-ad36bcef14d1a3ef3e4d7813": "9e039d2116754664be247b652df9d89e",
+      "recording-b2b00fd4afa3e92db59d0999": "eae44a40ec1d45a982a8954ec4901884",
+      "recording-b8889e50555726dfbb7f1a00": "e839756f94e9489d8e934c056133c1bc",
+      "recording-c2104a6abb6a7a51f3876825": "be90d1b9d61f4143bb82bbc0667ef81f",
+      "recording-c3179aff49eb426e0d5ffd85": "0137154f91a44583a4a36d89acb5ac83",
+      "recording-cc51e5260201801d13396511": "c8e0b41ae9884f82b4192637ef91ee75",
+      "recording-dfc5556c32049fce49d38785": "87e4cacbc98a495184b4b912fef7fd62",
+      "recording-e433f4350ee6f597cd0a81a3": "4689cd67d64d46c7b78241af06a89bac",
+      "recording-e477db971fbf392de8259408": "69b3de1c4c8d4485a9f0dce653d6b2be",
+      "recording-e85c0b9a114463b03d60a457": "6ce09d98e173419482cf7dfab9d96adb",
+      "recording-e8d7b11f6fe27f95223b88f1": "2b938336783944e1bc638506951bdfcf",
+      "recording-f282f5df099ea90db279956b": "ee8083ff31c5431bb5390fbcb10aa67a",
+      "recording-f61541eb16037ce8c08f7073": "c0b27516fd174ca0b9cfd3b123f8fecb",
+      "recording-ff5573e2e05ac6a223fa55a5": "37a554683e8644008c919649b89c247b"
+    },
+    "glm_flash": {
+      "recording-0111ad7ae5dc7438295e49d4": "693482b85b3c4c8d9dded0e28a809c52",
+      "recording-02b681ca6a58bfb1b3195afd": "8cf0e20e94f64790a505e9b240b78261",
+      "recording-0312d144c749c190446edfe0": "84b049817aac4a8287593190d830f72a",
+      "recording-05315b3b1cfb9d029ee8ed70": "41fa9001dd094ffc8d3fae016781c332",
+      "recording-161b45f0a9cde9b3077a0cdb": "4bce76c871db4a59bff6dd2edbeace29",
+      "recording-25b112118800868be51c169e": "9a7f76ddbf5f4a24b0962ec0478a822d",
+      "recording-3ded66d5b721c153da629b82": "0517a30a765a42aa8733f8eff5ec5e13",
+      "recording-42a8b82dd5daf9d704055f7d": "7ca455e26e304746be548cd0e33758a3",
+      "recording-437f59fb8fa29939ebe0e94d": "06a00ba26e6b4389beee1ab92ec5ae76",
+      "recording-461fd764c77be280ae5b37a2": "d9d63edd49e941f694e53dada05ecefe",
+      "recording-47a2043e1aa311edf6349cd3": "517e59584513462e94edefa585b6c496",
+      "recording-5098d2f4fff48e6317e3d221": "2917a6f992c441dea8614fab271eca03",
+      "recording-56666be8fc4ca7665a4c57af": "8ef6c2f37dcc4d54aec3918fb90e55cb",
+      "recording-5fae14c06e8ceb8379204fb7": "a785b738cfad4ddb8e1f721321dabba6",
+      "recording-61dfe043572467ebf477acba": "121d7445a0b7442b888cc2b136b0165f",
+      "recording-64905d6e32cae3a0ec5a7070": "60b1adfa16a34cdaa275847b0212b627",
+      "recording-6711ef6cf459b6dc7add2175": "ca770edf21f6480286b932d0523a2d91",
+      "recording-6dd6551430ef94bc37d87dea": "04654925973243d7bbfb2d289fcb93f0",
+      "recording-746f6b2f2c3ccc31bdc3c418": "805ac97f4d6e49868e67177e26db7cb2",
+      "recording-8301b65c359ede99eb3dc3df": "28c44c113c9443c5b4dda2436e3ac8c3",
+      "recording-8dd902e97939f88dfa43b299": "3623e1e244a5474b9a5594775cbb1a69",
+      "recording-98b938d821e0d41caa8a48a6": "2289297dc48e4694abfc063e3f296fa6",
+      "recording-9bd0e85a0cb337726b421b81": "5bb6adbcedbe4793aba548750206dfb3",
+      "recording-9bd6780e16f497eb919d9423": "eb75f130f4264efea2dfe96b8c6c7a1a",
+      "recording-a6fa645e613b3e5b90ed44ca": "430253810029443da890082be246cca7",
+      "recording-a9772c53bc450243748eccff": "cd262c15baf640909f219d36d24b0e50",
+      "recording-ad36bcef14d1a3ef3e4d7813": "065ad306a0d749aa91501635addeaf85",
+      "recording-b2b00fd4afa3e92db59d0999": "d6dfecb9fbd84eb4a5eed9b681181bbd",
+      "recording-b8889e50555726dfbb7f1a00": "ab3150e3b47c4c649a6b7a5705b36ac0",
+      "recording-c2104a6abb6a7a51f3876825": "71db3db2f5764ebb841ff0a9f3d1b086",
+      "recording-c3179aff49eb426e0d5ffd85": "3c3d7298210f4f07abd853c905d7d348",
+      "recording-cc51e5260201801d13396511": "5abd1dfb7add404fa34066386ac2969e",
+      "recording-dfc5556c32049fce49d38785": "465d14718aec447daabcc51e974368b6",
+      "recording-e433f4350ee6f597cd0a81a3": "3a63dcfef7af44d9b9526141a7a9073e",
+      "recording-e477db971fbf392de8259408": "0a8f06c1495e49f4aa75cd25d017b045",
+      "recording-e85c0b9a114463b03d60a457": "35f2de610fe4426d8bf626d376436fa8",
+      "recording-e8d7b11f6fe27f95223b88f1": "e50101dcee444b578f5a0859ef34d8fe",
+      "recording-f282f5df099ea90db279956b": "267b133a571b4e90832fc4d50e47be9d",
+      "recording-f61541eb16037ce8c08f7073": "aad08c92b28346c3a1455187e8ca7dae",
+      "recording-ff5573e2e05ac6a223fa55a5": "569c07e9610a4cb8b350b61945bfc8d7"
+    },
+    "glm_full": {
+      "recording-0111ad7ae5dc7438295e49d4": "347e9dff7b2b4e3aaa1c74971a5960f9",
+      "recording-02b681ca6a58bfb1b3195afd": "691c5e9670af4d8aa7428ffa3609125c",
+      "recording-0312d144c749c190446edfe0": "555707a400234a129d9a22f78b6fac7a",
+      "recording-05315b3b1cfb9d029ee8ed70": "6b10619e75bd4a5985cf87358090e48e",
+      "recording-161b45f0a9cde9b3077a0cdb": "25be4c3655e845fe9dccd261c45bb7cf",
+      "recording-25b112118800868be51c169e": "7bd4098c0e324c088dcbfb3de9f2f97a",
+      "recording-3ded66d5b721c153da629b82": "b7be485b734c490b8a25ff18519340ca",
+      "recording-42a8b82dd5daf9d704055f7d": "a4b8eefa2ed1486abee5538fac6705fe",
+      "recording-437f59fb8fa29939ebe0e94d": "cd7951189517483ea2d98b354aa3421e",
+      "recording-461fd764c77be280ae5b37a2": "1c72a3c2c619411bb0ce38f30e20b228",
+      "recording-47a2043e1aa311edf6349cd3": "1fdf8d576a85465ca715f44fcba9c38d",
+      "recording-5098d2f4fff48e6317e3d221": "9cab46dbb861409e9a55214bfb38b379",
+      "recording-56666be8fc4ca7665a4c57af": "c2e52f9861fd4710865dfe420059cd5e",
+      "recording-5fae14c06e8ceb8379204fb7": "b1b2641455d6407690e291b629eb59a9",
+      "recording-61dfe043572467ebf477acba": "df5727d314044e2980cf00f1a36baeb7",
+      "recording-64905d6e32cae3a0ec5a7070": "8deaf65826f54cccb2893996bed3bc8c",
+      "recording-6711ef6cf459b6dc7add2175": "10ec2770191b419eae06b582a23e3a30",
+      "recording-6dd6551430ef94bc37d87dea": "7f6daa739a474626881f2f285a4a95b1",
+      "recording-746f6b2f2c3ccc31bdc3c418": "174c20205027401caec9cd1a87d74050",
+      "recording-8301b65c359ede99eb3dc3df": "143a122e1f3c4b4483a70151defae55e",
+      "recording-8dd902e97939f88dfa43b299": "665a6a7a5b82408e989bf9d3c0b2e863",
+      "recording-98b938d821e0d41caa8a48a6": "028b698a2edd42f185e349a6a7f401ba",
+      "recording-9bd0e85a0cb337726b421b81": "aa885588ea76418c9684258f1ed01cd0",
+      "recording-9bd6780e16f497eb919d9423": "73c0be2298e64925b8e97e36f9361078",
+      "recording-a6fa645e613b3e5b90ed44ca": "3d2fe51322bc405c9d44d4b3e479a690",
+      "recording-a9772c53bc450243748eccff": "4b02bb0fe28f49c5b7cda61874ab290e",
+      "recording-ad36bcef14d1a3ef3e4d7813": "35ab2f63ca684018bcd5adbe5f975782",
+      "recording-b2b00fd4afa3e92db59d0999": "c1a80acc5405488b8a5676f1245cade1",
+      "recording-b8889e50555726dfbb7f1a00": "51a5ffcc091043c985b754b8c6df87c7",
+      "recording-c2104a6abb6a7a51f3876825": "e4c7bc5eb67247eab28d70000331aa43",
+      "recording-c3179aff49eb426e0d5ffd85": "a153238c8f914f5e967a7a8a01204850",
+      "recording-cc51e5260201801d13396511": "d63361c4ab15418e87a51b3350393a2d",
+      "recording-dfc5556c32049fce49d38785": "1275bdc8e39d479f9823a8e6579d998c",
+      "recording-e433f4350ee6f597cd0a81a3": "15287448abd248799778c715dfc82a5c",
+      "recording-e477db971fbf392de8259408": "c0073c3a41e045cda7b7139e62939689",
+      "recording-e85c0b9a114463b03d60a457": "2efbbd632e3c499581317df21c85f7f9",
+      "recording-e8d7b11f6fe27f95223b88f1": "a18b22e24882469783b1a375ab38cc94",
+      "recording-f282f5df099ea90db279956b": "e1fb1960c2b943329f41868376a191d4",
+      "recording-f61541eb16037ce8c08f7073": "107a2eb68a7447fcb8913dd04429b337",
+      "recording-ff5573e2e05ac6a223fa55a5": "9fd065b614c742578fc465a1e5873c5f"
+    },
+    "gptoss": {
+      "recording-0111ad7ae5dc7438295e49d4": "c35fe1c2d71c425fa796b131b85bbd06",
+      "recording-02b681ca6a58bfb1b3195afd": "89ae709d680b4822b1ae8ab6afd933ac",
+      "recording-0312d144c749c190446edfe0": "9ea0997f17364336aa1bca5bbb16aa58",
+      "recording-05315b3b1cfb9d029ee8ed70": "71d6063d90b5486db6ee359bbf7fd601",
+      "recording-161b45f0a9cde9b3077a0cdb": "53318b5f0b564f1aa4a99ef74e0e7e3c",
+      "recording-25b112118800868be51c169e": "f1aa9231433248fbbb909ae5486b5348",
+      "recording-3ded66d5b721c153da629b82": "d5559aa52bab4f59966b9f57bd97e04b",
+      "recording-42a8b82dd5daf9d704055f7d": "b0488869fac1408f8aeed89a99a3bf77",
+      "recording-437f59fb8fa29939ebe0e94d": "5e45909c67754f4fa07d55c0ba23ffa7",
+      "recording-461fd764c77be280ae5b37a2": "b83b85869abe48a4a2c0ae3dd01e232c",
+      "recording-47a2043e1aa311edf6349cd3": "0d2f4ae825dc44c89f7a3d5a10d65a12",
+      "recording-5098d2f4fff48e6317e3d221": "c4da377f462f467791d33a9115d3a151",
+      "recording-56666be8fc4ca7665a4c57af": "aa71bc7a051541618c28182d63211084",
+      "recording-5fae14c06e8ceb8379204fb7": "ca8921fc910544b4bf2804c4c54914ae",
+      "recording-61dfe043572467ebf477acba": "5ce93d82b6a74c4ba423411c5138c2e1",
+      "recording-64905d6e32cae3a0ec5a7070": "c4f7cb1a0969473493acdbd08f00368d",
+      "recording-6711ef6cf459b6dc7add2175": "ef1271a68f704586b6c8095c7388f229",
+      "recording-6dd6551430ef94bc37d87dea": "69a3c887432a41609157c09ec1f34e6a",
+      "recording-746f6b2f2c3ccc31bdc3c418": "d5be8cfbe487439aa8b88dbb7ab10e7b",
+      "recording-8301b65c359ede99eb3dc3df": "312836c549fe4d06aa2c04e968087087",
+      "recording-8dd902e97939f88dfa43b299": "aa6ba3e991ed49ff9667aa3e3a105a41",
+      "recording-98b938d821e0d41caa8a48a6": "c8803f617c074199a60b11b8a7942f37",
+      "recording-9bd0e85a0cb337726b421b81": "44a3360881f14cf4ab8eabcb3f998cc2",
+      "recording-9bd6780e16f497eb919d9423": "a27186d8eab647e8a14b0d47aef2e96b",
+      "recording-a6fa645e613b3e5b90ed44ca": "97395ddaee19433e9e13f71098faf112",
+      "recording-a9772c53bc450243748eccff": "22804ba45f174e46b4a6602cfb1a5e71",
+      "recording-ad36bcef14d1a3ef3e4d7813": "e4695824e2cf42b3bf4280804648aed2",
+      "recording-b2b00fd4afa3e92db59d0999": "7f34248f235f42a991cb7346d1ac1f21",
+      "recording-b8889e50555726dfbb7f1a00": "3d2598f27a6546358c9e7e364ef8bf45",
+      "recording-c2104a6abb6a7a51f3876825": "c4d2827638814e09801feb2b8138ba4d",
+      "recording-c3179aff49eb426e0d5ffd85": "208a5ed25cf94b4ca93b9cb4fcab2756",
+      "recording-cc51e5260201801d13396511": "e829e22afad24b7cac2508c5a93f771c",
+      "recording-dfc5556c32049fce49d38785": "48d0152499f3465ab43cc66505eb4ddb",
+      "recording-e433f4350ee6f597cd0a81a3": "04bd1aac628741f88691413c74752d38",
+      "recording-e477db971fbf392de8259408": "be7cdf333cac4d0080c1594eff090273",
+      "recording-e85c0b9a114463b03d60a457": "929afc12f8ec4c9eaba0491f401cad59",
+      "recording-e8d7b11f6fe27f95223b88f1": "c784fa48df8c43fd8a19672ad89115b7",
+      "recording-f282f5df099ea90db279956b": "ee35c0f06331417aa136cba8dbc51900",
+      "recording-f61541eb16037ce8c08f7073": "390d498f2532402186ee2d954fc9c75d",
+      "recording-ff5573e2e05ac6a223fa55a5": "3e6f62f1aa504126aeb6015477200410"
+    },
+    "kimi": {
+      "recording-0111ad7ae5dc7438295e49d4": "00fef08d8fbe4f65866470705a3bc5c4",
+      "recording-02b681ca6a58bfb1b3195afd": "ead76607b7ab4b3ba83fffa85b5bf90d",
+      "recording-0312d144c749c190446edfe0": "850a736c74b14400b920db2593d9f19a",
+      "recording-05315b3b1cfb9d029ee8ed70": "eab9c4d23d9544e287e67062208229fc",
+      "recording-161b45f0a9cde9b3077a0cdb": "8c0c082d5ddf4f18a2445cf3c7b9b033",
+      "recording-25b112118800868be51c169e": "782fc1c7ad6a4494893ba2e3d0c3036e",
+      "recording-3ded66d5b721c153da629b82": "5bf29a08dbf74b0b8dce50b3e58e8b84",
+      "recording-42a8b82dd5daf9d704055f7d": "c64dd532a0ff486ab22cdf6badade3cd",
+      "recording-437f59fb8fa29939ebe0e94d": "b1587383c36f47a6b3b77b616f1302ce",
+      "recording-461fd764c77be280ae5b37a2": "b4d8db64dab04c979aa4f5b391637380",
+      "recording-47a2043e1aa311edf6349cd3": "3a5f880bf8eb46aab78e3404772a5fe3",
+      "recording-5098d2f4fff48e6317e3d221": "e4c0a115a6034f86bd7c1e856e355f8d",
+      "recording-56666be8fc4ca7665a4c57af": "bbe1e66e31334d85960605954e166b54",
+      "recording-5fae14c06e8ceb8379204fb7": "47970ab0f8b6471491234286d0ba98a9",
+      "recording-61dfe043572467ebf477acba": "ffa6d3463a8a445782fdba4edd946413",
+      "recording-64905d6e32cae3a0ec5a7070": "fb77e04ec04b47a1932be809ffd6de3f",
+      "recording-6711ef6cf459b6dc7add2175": "35b52c7b10374e2d96b6c8a0c60d812b",
+      "recording-6dd6551430ef94bc37d87dea": "5cbb4db47ff14677b074211fee9e7c3f",
+      "recording-746f6b2f2c3ccc31bdc3c418": "2658a45c845e491b949c9ae7b975cad8",
+      "recording-8301b65c359ede99eb3dc3df": "7a9892d75db94291b575f70e42449c7d",
+      "recording-8dd902e97939f88dfa43b299": "8ef2be4b112849508ab8932e1979d70e",
+      "recording-98b938d821e0d41caa8a48a6": "8c12de9b4d7441419060a3f4049f59b0",
+      "recording-9bd0e85a0cb337726b421b81": "e0c0a3ba5dad4f99838c0b438a0c9293",
+      "recording-9bd6780e16f497eb919d9423": "366b12ea7c894b1dab06d6327d302046",
+      "recording-a6fa645e613b3e5b90ed44ca": "e98e6c990e1449589d6ad9db1c008cc7",
+      "recording-a9772c53bc450243748eccff": "d97f67b4df6e4ef4bea70f81a8d7fd85",
+      "recording-ad36bcef14d1a3ef3e4d7813": "3e2e32ab598c4900afeb0e79b23b4acf",
+      "recording-b2b00fd4afa3e92db59d0999": "74dfcd69179b4811849dbd4f92a00d5b",
+      "recording-b8889e50555726dfbb7f1a00": "0829d79618bd4de59753961ca11fded3",
+      "recording-c2104a6abb6a7a51f3876825": "4cc60732a08f497b9fd0c09dbe007c25",
+      "recording-c3179aff49eb426e0d5ffd85": "cc1dfefdf2b14114a3a7b90a25540dbb",
+      "recording-cc51e5260201801d13396511": "f9c7156235e84c58a59279741b2047d3",
+      "recording-dfc5556c32049fce49d38785": "6ffab9da7167401da44919cfa522d169",
+      "recording-e433f4350ee6f597cd0a81a3": "ca123411a312432c932bf6e55deb3887",
+      "recording-e477db971fbf392de8259408": "1eb376ea999248b5aae29ac8fc2c5d77",
+      "recording-e85c0b9a114463b03d60a457": "00dec7bfa2b24a3db8f063da93b898a9",
+      "recording-e8d7b11f6fe27f95223b88f1": "d65afe631a3f4f1bb9aab47b83ba559b",
+      "recording-f282f5df099ea90db279956b": "41d4f38d1b334538b1cb365ea9d529cf",
+      "recording-f61541eb16037ce8c08f7073": "19db32877a48476894415ea46fbce361",
+      "recording-ff5573e2e05ac6a223fa55a5": "743a2ab27528479184d61cde8da6a0e1"
+    },
+    "sol": {
+      "recording-0111ad7ae5dc7438295e49d4": "480e7606ecac49818dca9c2e5df615ec",
+      "recording-02b681ca6a58bfb1b3195afd": "7d8aecdf48e64de796286d83fb43452b",
+      "recording-0312d144c749c190446edfe0": "cc1ca7ada025470b895ca3714d2b90cd",
+      "recording-05315b3b1cfb9d029ee8ed70": "f3d28830ad5b45aea49139394e098abd",
+      "recording-161b45f0a9cde9b3077a0cdb": "b39645d98e0741bcaed2fcb5a373866b",
+      "recording-25b112118800868be51c169e": "a96d6cf2c5e346ebb2e0c78580de5b94",
+      "recording-3ded66d5b721c153da629b82": "dc724228e40c49a7990efe8b808d575e",
+      "recording-42a8b82dd5daf9d704055f7d": "f6c788c0b18c42be88e3d25ef8cd7078",
+      "recording-437f59fb8fa29939ebe0e94d": "aa4d1dcd69e34ad1953a972d38a9d024",
+      "recording-461fd764c77be280ae5b37a2": "24ae06b5059f4bcda20a74e71dc12d58",
+      "recording-47a2043e1aa311edf6349cd3": "a7862c5c35b241518c73f86775ff7ab3",
+      "recording-5098d2f4fff48e6317e3d221": "653f378085cd401f8bbca2c113f66073",
+      "recording-56666be8fc4ca7665a4c57af": "67fa121e13d04bfe9410adaff185873c",
+      "recording-5fae14c06e8ceb8379204fb7": "90a2d520c7e84468a308949038132a35",
+      "recording-61dfe043572467ebf477acba": "491dafab6c2848bcb4d8b47f07aa609b",
+      "recording-64905d6e32cae3a0ec5a7070": "69d10812a34f4d9c96d78b49a4f8a257",
+      "recording-6711ef6cf459b6dc7add2175": "3774f5e1b89a4fad92343ecba2f7197f",
+      "recording-6dd6551430ef94bc37d87dea": "746a5d0879f847e496389050f034eeb9",
+      "recording-746f6b2f2c3ccc31bdc3c418": "1b1d057e649d4ad5821cfacfa192f8b5",
+      "recording-8301b65c359ede99eb3dc3df": "51f5a93524404f16b67c9138a83fca68",
+      "recording-8dd902e97939f88dfa43b299": "d6ac4e93d1ac4fdd8f337b12d9470299",
+      "recording-98b938d821e0d41caa8a48a6": "d691a888530d4dcebaf0c25f9db23073",
+      "recording-9bd0e85a0cb337726b421b81": "50feea9e6fdb42d8b4e7907e3040553f",
+      "recording-9bd6780e16f497eb919d9423": "16b7f7d3adf54686a06e2a66387e7f93",
+      "recording-a6fa645e613b3e5b90ed44ca": "40dabcf4f87b48afa9b2dbe264402e1c",
+      "recording-a9772c53bc450243748eccff": "4aaf6e68ba034edda87f2d111f685bd8",
+      "recording-ad36bcef14d1a3ef3e4d7813": "ac52e330c04e4c5ab56aa62128bd3327",
+      "recording-b2b00fd4afa3e92db59d0999": "84f5c84e65b5460d8cd53d3b5515b996",
+      "recording-b8889e50555726dfbb7f1a00": "8aa7e656e57d455e8e8317e475fc53e6",
+      "recording-c2104a6abb6a7a51f3876825": "d068fd8b0fa2432fb6ce7d015e102dda",
+      "recording-c3179aff49eb426e0d5ffd85": "8036796bfb7c4ae79475ed5c5820ba65",
+      "recording-cc51e5260201801d13396511": "6fd849fa6344440fb8f03bf87777785c",
+      "recording-dfc5556c32049fce49d38785": "9d7ba3cabb324fc0bc7c080ff79ae4d5",
+      "recording-e433f4350ee6f597cd0a81a3": "faa8c43d7f67400c90990cb999b7f8d5",
+      "recording-e477db971fbf392de8259408": "524f594ce205456798256de88bbf579b",
+      "recording-e85c0b9a114463b03d60a457": "e115206bf4ca4272a0f8931a648d57e6",
+      "recording-e8d7b11f6fe27f95223b88f1": "9633a3d9ce09403cae7a948c6960dddb",
+      "recording-f282f5df099ea90db279956b": "068923e95a814bdd87b4a95fdbe1bdea",
+      "recording-f61541eb16037ce8c08f7073": "0f792f793710490faa98d9e341238033",
+      "recording-ff5573e2e05ac6a223fa55a5": "4abc73a065da4913b7a53654cccaf228"
+    }
+  },
+  "shared_wrong_cases": {
+    "recording-0312d144c749c190446edfe0": {
+      "audit": {
+        "body": "All seven identify the Bond Streets subcommittee correctly.",
+        "input_gap": "Generic family policy does not explicitly map this subcommittee to the separate Transportation and Infrastructure feed; body identity prohibits topic-only joins.",
+        "omissions": "Six select only its own feed; gold also requires two broader feeds.",
+        "resolution": "Keep frozen score; audit mapping policy separately before qualification.",
+        "sol": "Sol adds Bond Program but omits Transportation and Infrastructure.",
+        "verdict": "Shared under-inclusion, with ambiguous publication-policy input."
+      },
+      "city": "dallas-tx",
+      "pairs": [
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "flashlite",
+            "kimi"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "flashlite",
+            "glm_full"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "flashlite",
+            "glm_flash"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "flashlite",
+            "deepseek"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "flashlite",
+            "gptoss"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "kimi",
+            "glm_full"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "kimi",
+            "glm_flash"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "kimi",
+            "deepseek"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "kimi",
+            "gptoss"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "glm_full",
+            "glm_flash"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "glm_full",
+            "deepseek"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "glm_full",
+            "gptoss"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "glm_flash",
+            "deepseek"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "glm_flash",
+            "gptoss"
+          ]
+        },
+        {
+          "agreed_signature": [
+            "assign_existing",
+            [
+              "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+            ]
+          ],
+          "models": [
+            "deepseek",
+            "gptoss"
+          ]
+        }
+      ],
+      "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023",
+      "truth": {
+        "approval_ref": "Maintainer approved packet-v2 answers 2026-10-11; reuse 2026-10-13",
+        "category": "existing_body_assignment",
+        "evidence_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "expected_action": "assign_existing",
+        "expected_feeds": [
+          "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+          "dallas-tx-bond-program-meetings",
+          "dallas-tx-transportation-and-infrastructure"
+        ],
+        "reviewed_body_description": "Bond Streets subcommittee; wider feeds are publication policy"
+      }
+    }
+  },
+  "source_files": [
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/006a956c7cd44195b67e4401917e4fec.json",
+      "sha256": "cb9464319a19539bafd4e53747c4df67a3e009d1f1b6b3b7c4dda14fa76a3a86"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/01db6998291d40e5bfc7416a7941de06.json",
+      "sha256": "fade87fb11e2cac4c32fb4183f1d3eb37494f002c51197077851e93c713ca7c7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/022e4deddb49439a8212b5fbb4814849.json",
+      "sha256": "cf57dc827d09383e93f9a933de1cb89c6835dc1b29bbb4963e10a064bce319ae"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/026c7b0aa313409ea49ec24b24306c47.json",
+      "sha256": "5d3705a1359c0029a7cdaab4ff3c2ae7fdd65527ccb711321c6814d9a3a1aef0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/02b311932bef48dfa6c0dec107cd1d7c.json",
+      "sha256": "57e62849034fdcc2919073185d187031bd19fd24a7dd7180186f49b1db2ee018"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/03ab4d43fa3d4b47917f477a46ffcf77.json",
+      "sha256": "baa657b6c92dfdf80bb20753268cd3a6a1aae6a5b9f23da427380dd6a9c255e2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/03ef25e06f114ba5be21fc18a79e00fc.json",
+      "sha256": "b51200bfc736b731b11630029cc4ff1cb6c581a3b2caf16d2e7a8814db79618b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/04b2f2491a7e4e89b0b5ebebbad577ad.json",
+      "sha256": "ca0003dbb7a6aa1b1d0d161099220868151333d1a05aa1b466164555a4449471"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/050135517faa4feab286d120eb761384.json",
+      "sha256": "80789d0db26ff099216b2f443b5993e2a3c8ece05c4b842d98133c534048e39a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/05c4596706644e109b77c86b10eae46c.json",
+      "sha256": "77a231fda0a2d87b223d3f2b2e63aabba3b3ee71259f604c4a6a225d2d994d68"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/07158bf3e33a42ec919e3c8a33829617.json",
+      "sha256": "e1e6548e71cba8e91348d9104d933e50bfef664017d0330c84005b33e607f7c5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/088338947260461889bff563cde552fa.json",
+      "sha256": "20cfd957805d1e6a687913ddfccbb3a4fba99939c1e4d1f64576c840af6a8b74"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/089c27ca86154a32bda1fe5083b66857.json",
+      "sha256": "c82d3ca1cda596a058ebd78b5aa5a21f41756897d3b83b696e79ea8ebad800a1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/09054ab66de945f39f7bdecbc6a84ef5.json",
+      "sha256": "51632f97d5341b8e6bb06d0f80583c982a23e443e02ce4a7cef46cf925d626a3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/093571729fc840b78676fc2c34507225.json",
+      "sha256": "2acb0d3e19b15a91d560814e2ea3d5e63633b40be14a8bd5bed5d5c8ec26538a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/097f0c5a99d94af6a6bb0dbad4376b2a.json",
+      "sha256": "f0793a6e1d4f2e21f5d2ee2db4b8350df8f8294a6311e8a98f8ea0fde7fbd973"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/099c19bf84444a5da9df84c8967849fe.json",
+      "sha256": "11f51836ba8f43b1e26953c21707f3263e417e96e29a515c40b331b1aa4050c4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/09a3b6474eac49baa4a3dd0d255aaa17.json",
+      "sha256": "a57c733cb602161fe01f39c3a73d09877a3cd2545b4ecf2ab5eae2894ba04cfe"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0a7c584c93da43e18e40acd3ef1e6903.json",
+      "sha256": "b4dfa6aab9a7ff6dff0fd1717720f01172f2f71fdc8faf7729495d3a1df696f8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0ba22340a2614395b7d3f2b54358e662.json",
+      "sha256": "205c13a378a82ec564b9144da1560d1fab6b09bee154e2d34c5216e260797ca3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0c68534421be45a8829361e4132b9219.json",
+      "sha256": "fe8076f8626a02afb13b7f73c76e469da82f3addc08a418d2c5e2432b336e001"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0c6d3bec243d4062b19f134ed6a1ad9c.json",
+      "sha256": "2ba660046c99be5bca2384e2c562b7df7205fbc21648bf6680f84a91c2af852c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0c8b4913df34445ea743d545697efd7b.json",
+      "sha256": "7fd2e0f984cd36e437ed010e4b47f3a25ff6ad0e3f1414616e73298427613a3e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0ddfa6b7553241809441bce31eb07050.json",
+      "sha256": "5c8d3f14996c02cd0580a0018eef82cfa4a566c424f72323ab64bfb0496fd73d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0e0b7d01461a4561917fb477b4952ea0.json",
+      "sha256": "a8b52d7a2eaa096aa8403b4e20e5399738513a160d3e4a106c317a911defa300"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0e6687ce2f494c0aa37781f6ff715c9d.json",
+      "sha256": "424079d4edad37e478413f1dc922dec21dd112b5868497d86d1ce6d965d0eeef"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0f17b309c3ba4977851ee12d42da2374.json",
+      "sha256": "1cbde2feedd8193fca9d48549c09c0c89f385b5fbc15574ae7298cbf95a46074"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/0fbb632aa0bb4da491eb81b9569b4746.json",
+      "sha256": "5eb37eda95981292f1904320aeb592252d3482ccd54372b6e72d9927d58c421a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/100420ba44454b9588d4ed1236fb96d9.json",
+      "sha256": "fd2b0c22868ab46232498b215cd524efd9494e813db3bddfac969e62f4f8a8cc"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1113804757e245d79eb453c3c1194334.json",
+      "sha256": "92e222828671744967c1897652640f1a518afa9508013aa949efc5f52fb106f4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/111a2e3c734248b4b43ed3fdec85a7f6.json",
+      "sha256": "2f08c1225da4e71a7500f2b4e2240b3bd4188ce45608a5e8f1cb0e8d22ad4ee7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1137f2ecfb74485e9d72d488f991a063.json",
+      "sha256": "dd4c9ddfc7dc0a2e6a47e994983919aaec8b50cb96e48e213d0c784a38c82543"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/116203679d9b44029fba1c87a0d6f8a9.json",
+      "sha256": "4ccda411da502ec97b01f0215ec0ac2a96a23f33a113b49b656977deea599266"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/11ac090574924d3392bca6c07bd5d637.json",
+      "sha256": "fda321d7aba2265a029ca0694f4aec97420787f3f5757eaa57f36e4eda3a1fab"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/11c1c3dbf6ec4307aa5798cac3171a62.json",
+      "sha256": "376da24b507d729834e139c173f33818679338d2c31bc11ed703665a0baa2d0b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1200fb68012f47a09f470340fea938ec.json",
+      "sha256": "ff166d35e09b0d24fdbc0386b86bb354d8dbc0c3bcc5f707c502124cfead83e2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/122ec11bacbb41a8b03d46164a8acb1b.json",
+      "sha256": "d02419b14abdc8293b46164d6ace04a61bc3f5ca238e770ec28a617efa9ed048"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1246d3c7d9274b9fb9811fdc328ec7e1.json",
+      "sha256": "25ae62c9ad98467cd2529c3f0f8e2da84dbce41a10d910a8eed3f19f5a11454c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/128508686d4d476e947a6b9f9f855aa4.json",
+      "sha256": "3815286d4ef386e5b88898caf87a25a27bf37eca814237878787459a3ed48c33"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/12dbaa631e4c487eb4804f59400cd16a.json",
+      "sha256": "22ca0ff8186a2a527866ee98b406ea5ab883d52566122635a81b5fe2209ddc2e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/12f5f7163b204956a01ecb479ea760a0.json",
+      "sha256": "7c34f7d1fecb3b1f2a8e98becb4f395e573e193cef29a9ae889747d1018e7b16"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/14274354a7ca4c4ca2817ee3eacb80aa.json",
+      "sha256": "a1f7ab208224ea89ea9328c9dbd75d3b1c0ca35dcc3f721b564297c7754bd2d8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/16106ffa611047c59b240428009b815b.json",
+      "sha256": "309849961463b913a5fe76d5e6d546ba0321d74f4b3d789d88f16d74489e5058"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/165767ee3b7c4fdb804d1dcd7f3c5369.json",
+      "sha256": "aec3da3c6035b2daf32ad7ba4116bbd71b4618f1648b4e4881618ef81f5f427f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/17b5b226a4cb453dab4c571657c99d73.json",
+      "sha256": "5786b6381cf1cf27bca721db76ab80dc9fe553ff491cf1b0be2235c055f51a21"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/17e2764df7df468397d9bc5af7f7f5a3.json",
+      "sha256": "2d1d1613fe8ba478ace8828ef23fe4e95020af52b679e3e08dc1000453be1f55"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/17eb9a66f14d42b197c3110bb53d2c7a.json",
+      "sha256": "88a8e42cdfe934e005632e370cfb70737e4e65c9f65fd13e678e29a5d6db3e7f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/18190b1a6e164588a24a496b825b0e1f.json",
+      "sha256": "5d47baa68cd12a80aca351b3924585eaff01465d188aff6dac167fb4e54aaebb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/18c6cb6df42243ea8ac09a64f4ae2d77.json",
+      "sha256": "5aa1807d79a735a9d5d97850e3c53ab4ee112f38d84a9442c6250e6a46760e76"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/194168e13ba441f59402d0e9712bfe95.json",
+      "sha256": "0879ed2467138799e037a66a1d9cbea5553aab8ea5bb24840afcbca97acb71d0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/19ad3ce795e9469587340a6bbceefda3.json",
+      "sha256": "7f6dd76e1629df953d0b0cd4d6a34674508155a5b646dbf5336e50fe1b9cbf53"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/19fbed56ec2942599fbe413cfafe8f38.json",
+      "sha256": "0b3d2d228bb7986c0c68dbec43e4e7b675ac759b72fbee817c6adf046314394f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1b199c7d4fc44b608ab3cfa87823e9a9.json",
+      "sha256": "de2a26b75dc9ef87f901149b3003b05234bfbadd9e7d5d995f1941e7aa3fc3d9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1b5ad46e83ff4fb1bda8c43b50a6e0e4.json",
+      "sha256": "a8d59127ad8a0ac9b070d482fde2586d518e869d1a7f0fb90a3c69dfa15436e4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1e6613e2ff634d89859a2277d232ea11.json",
+      "sha256": "b5121f7d2adb7cc83a1929c8fcad51ccd79c7847ffda7db3cd46e18594e65f96"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/1e73f70ae7b14991b909728d3e6af1bd.json",
+      "sha256": "1e99291d3f18bda9f653749500fe6f0da05df7f9e3552140c8ca39d982511422"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/208a25f9c0694c288602562dc8bb0739.json",
+      "sha256": "b42879637f38a998ab7e118d32089d2b819044668e3e7310a923bfe3672c325b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2158a88a21ac4cf3a6dc0b500f23e6d8.json",
+      "sha256": "be2fdf6676295b8acdef20dae8d72fe07b573796fa089d2b17a495063bc0655e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2243c9e6cd5b4c5f8684d8eea319b2ed.json",
+      "sha256": "132c6d1798b287389c8828e985b9289fcbb932bd12d90aac6dc8f478c30597d3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/225a6b714e6e4325905d753ee86ba972.json",
+      "sha256": "5235e0bad9ab8e043585989d79189045760f0752e2a0e72842136652d825bf6d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/225c1a80d4734432a5ea269c0975f218.json",
+      "sha256": "ab91ae12ea6639c68780a0927f6460a8cf1fd07065d2d370331dc6e680a0068d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/22670b2c68294c65a7135123d550e07f.json",
+      "sha256": "fb7e7a74e82b8b3927fd6dddc10828109b24b1a50b88bab18daa3634708cbe21"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/22f4e47541bb4513b76d2a68d0c61bde.json",
+      "sha256": "9a01a29548f9332ff5b1648989e885304c4e32c4c425eae8edc083bd0004f7d7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/25068ca1accf44d081c1624306c00153.json",
+      "sha256": "d1a0e1db6b0f329d0a8ae2b64d1950c67582d4a38c90e56816238ec8dbbe59fe"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/253f07e30c3b4a2387bca1a5cc1a6972.json",
+      "sha256": "f9b8d5a6ae00467e034e0871a3fedfc3d346d8fdc36444728aca7b9b3c8b7d40"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2551eb6ddb1e4373aa483bf3e45a4329.json",
+      "sha256": "c340507af87bc7ed97f4edd05314b66a5757a1ad12a9dab0406121bdc9cb2b21"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/255b2c5a9d3e44018c618fddaf5845be.json",
+      "sha256": "d0d633b58b34a809bc6ec3c09761e32ef3a98a17d679b42ea3891ba4f37daea8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/25a53281a65942f39804313a4c0108d0.json",
+      "sha256": "07e03bd16cde4c1774389063a4cace961f54fe5fb7c79ee92d6b059b0e476377"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/25d15ee126e44ac8b75724803c9fc8f3.json",
+      "sha256": "f3756c12c02ea64d4558c231ebe26f896750e3ad7e4fe444e9302de0ce294cf7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2613571f3a6949e0b807651f3438bafb.json",
+      "sha256": "ac97dfefa555ca2cd026d685edf192fd4134a5da37b0bc8f62126b952421c4ea"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/26201265152d4a948172c8577127ab68.json",
+      "sha256": "b29b83aecdb9531f4b6e868acf5666f9656de371f264ec2af40d41c91c021a6f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/268d7b80ace04c339a910340340625c9.json",
+      "sha256": "0eed8d989980a17f209952304027f53fc8e1ff605489cefef4b412779f2a8358"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/27fe7d432ac843e0b387c8ce215606d4.json",
+      "sha256": "4f07cd48393eabb21cfb77e84cb6e3bd6feb9bc0d25aef85dff7bf70f7e8e29f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/286fcb93e656409ca5a4fb79335120a7.json",
+      "sha256": "c834dc283341df0388b88c90d7c5e5f5865ac369dbf0107f63ff86f1624db052"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2886d75fbe0f4989acd757f83affa2ab.json",
+      "sha256": "a4741756ab2a245482d6ba59996985a94097440d31a1c75247b812436d351c7b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/28a3899075bd40eda77b25f90cbda133.json",
+      "sha256": "0b6e74608dbe16e8c5cd2be7fe3c45c0abb7c6a544d22e46287afe871f6f4666"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/28c8740d1f184cc5bf2139fbfa705a5c.json",
+      "sha256": "497a245d36d1370b109dc684b8316440220ea31129530334e4e9c6f4d57b7da6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/28f2451f964846afa894dcc6ed71a4c5.json",
+      "sha256": "1e062f76367f50f0c0d4681c5db9531ca4a344d12955c9726596286e2a9a67d3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2928f708885e4e3792eb72613670b6ab.json",
+      "sha256": "b2b408f8fcb13b8a6e1e965b88196934cd7a2a59d8820622513990285d279ba3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2944370880e1467895707919dfc3f672.json",
+      "sha256": "ab886bdd81999ea640462415411c1244607b7bcb2db516429662c0e4ad9df37a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/29b7c9a4536f4c85bc5f394b4ef6c871.json",
+      "sha256": "caade076670154283090d519aff50b1a09caaf38fd0c99651e008e626c0ca775"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/29db1fdac18341feb2b569afeb3d3b66.json",
+      "sha256": "5f965d8b9cef8bb1058d72c64b8a5e14e77e708837f961b83440605576611bbd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2a17ffe25c124f8294ad388cc0a399a1.json",
+      "sha256": "422ee8712f3cb62c331977872e99eb976c68eae24f8157bdd77ceb63d99bf0ca"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2af58afb315a48c1ba903a3ddb82bc82.json",
+      "sha256": "0b155485c1a545feafc007796312dafeeec912ce479c2ebb477837a0a5fc64b2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2b5c4d87e1f44fe8a9bb1f4b20197985.json",
+      "sha256": "1f125af2bd513546bc3c87e7ac5cf32990c9d096de1f812963d637da70e945ab"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2b9a0003a5394195841865526f094546.json",
+      "sha256": "2cb2fe4e84f2f53417a07107873e2388d5549615f6de0741e5158721ab1414fb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2d7717611a1140769ea0ecbb7166efd5.json",
+      "sha256": "9feec67417e7ce5972e9bf9fd49875a3e833bdef16f7a9adb35d6fe351db75c7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2f147d2df1fa48b099c2bdadf3ba70e5.json",
+      "sha256": "692d10e837039ed3c84f6d2415da803d65a9c4ae7055c82c2a05d35ae18e66c1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2f79eb1044b148069d13db829215cb23.json",
+      "sha256": "5572e2a02dd0bd71a09e094837a3d2ad53d931beba5aa6fa2901255bed1d7bdd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/2fd326770d1c488eb48a84cf48cd14f5.json",
+      "sha256": "6707db858f55b3fb45fdc240588d14377a0748b6383454685bfb19b6dbe23148"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/302c2fb5826648b5905fbf7719b6a0b3.json",
+      "sha256": "704759a36205cfda04cf059717e77bbdaf1c63725328811b1bc14b060ef6ee58"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/30584c8e5d354799bd236f64ca2c00f8.json",
+      "sha256": "91133454b99f75f9badcac68ed4ba807fa48b7c6f9cdddff8598501f3e1c0503"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/30960c64e81d4f1e9e40f9166d1d21bd.json",
+      "sha256": "4f7880c3106ee4954cefaa68e4e8695d13022b52006d9f3e65dc1994699fea20"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/30da1df8e37346a198a12b17e4a0fd7d.json",
+      "sha256": "d1bd144fa8b532c5f1901ef857b18f5dc27500cf542a81bd14fb45b9fd3c6979"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/31c3802c010d4a7a8cd33c2f100f1ce3.json",
+      "sha256": "a6f9d60c610a55cab82b7f6993226282d17fc95ebc921d78aef4878c332784e0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/31fc8cdb4067481eb101cd7d0e4f9387.json",
+      "sha256": "ec6278ebe83bc44c1d79ff759d129cd14187e16ad388c7675ed2e840c22c20a4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3231c58f8d384957979d88252fad7879.json",
+      "sha256": "d4fb2f233ee7a8a5a3943a3e4106769f503f07182d141d3716c5855f87f06981"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/323e0847e4f24342962a4468c582d1b5.json",
+      "sha256": "b903eb5d3c227e1f983cd687165d1d45bdfdb28dd99effa681e0f1cbfe1f47a4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/327c268a005d4990bc7e25c8cfddd335.json",
+      "sha256": "39f0cd72bfa0acf67f8eeaff4e5fe06cb563aeb9eb8773059261323bd3813c46"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/32a08ce61bad435aacb4427f41a0133b.json",
+      "sha256": "d6e0f26dc92685c0c3836b6b4fb606aecb1151403a5ec6fae2fde2e8d2951316"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/33aefee1aae944f39f2d1602d1a314aa.json",
+      "sha256": "ca47c11320ecd768e51990e7a9a087b264e575f15ae516cceac368d04122b492"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/33c590ea568f409ebe964558a6d2f9ac.json",
+      "sha256": "ec12b1811da5629529b7d0d87d8e541633d529038c1a20cba32c150eceb970dc"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/344e0034a0104793abe0a6e8fde86357.json",
+      "sha256": "488ea164c9b151d4c1fa7ef525f649333be3a574092ea5f9281e0859f4d1f24f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3528e6ac02774b5bb5c63ddef76faf76.json",
+      "sha256": "ad2bdff85d3826d7f280a588670afee30aa6c5d79231195f55fa6a452e5fc301"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/354fadd94a0d43b093324c72ab556d39.json",
+      "sha256": "245ec870983b8713c0dda9926254a96c5c93617ff920b016b23a08ee260ba692"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3624e845203f40769da906a0dba601e9.json",
+      "sha256": "6cb5883dbbbd540ce6c63f8b355c8287c1f7757c657b753141d613f224ea77e1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/362a537e3e7a40dcb6e2f90b6dfdbd19.json",
+      "sha256": "11f26c2ccc9223ba0d08149108a8975f49368d549d0f50399275d78aac3e0a1b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/36dde7e017904cb7bd1c84b7dbe283c7.json",
+      "sha256": "a2f388444b674fc1672ddaa2a7afdba612500cb149599587b2f3de98a0e8742c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/37c2fc62e6f74094b368e3cd937d958f.json",
+      "sha256": "cf0b3eaab1445f9c045d40c91af22fcad7ec94ed560634788af1d1b14b4780fa"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/38ad0f3dd38b4af5a45acb1d591e573b.json",
+      "sha256": "ae3da106bf7b7891672bea3d6c2e9e80ddde3d8d37349a01971ec876cefda994"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/38b7bded1dab414abf2451c9daf847ec.json",
+      "sha256": "74d9d415c204f8d1001b8fed18d1df1b562cbd9ecc2cf83f02c48c90fae3c7c1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/38d4c1801fc54239b70179397242dee5.json",
+      "sha256": "446f335cbd890dcacbf50273fe83a6d9949a2d8097863fe9dc8d25adcddc542b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/38d69861bfb34fb9b73e45cde0229fb9.json",
+      "sha256": "510f847913924fc1026ec51485261b75b87a180a5e6b67fb55731110294d1066"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/395289199100467eb71df3d78380512f.json",
+      "sha256": "df6427c1f698ca6e941eb659bee1db7d26a05a28ca413e94daf74ccb76ba3452"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3a1b7b96e1af46a6b79601ad6be520f8.json",
+      "sha256": "083608c1cfc5c9a0ae3de68d0ec7251f3c8785db368a1b9c1737561dd6cf1af4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3a72e7ecffe34cf6857f224c5e878051.json",
+      "sha256": "b46abec424fa8dd70c8c0de1805723609f7c38a054483ac799795bd4a80835a6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3a8d44cb8ed64148bede844b9585e3bd.json",
+      "sha256": "2e53979c539188ef1ec539617cca7b3ddf6b210d57846b3e9d6c4174e3b0c809"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3b015d9ff8af4a66a0466cfea6bf1428.json",
+      "sha256": "b7acbf7f43e90491dc797a1311382bb1cbd3b4c361076693f73a2aedc28ac916"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3bf97878df41401480786c05dc48b9e5.json",
+      "sha256": "9a13b4175ef52f857eda1030229b3829bb7a7e5d405b0596798dd1296a988ca0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3c353801e4bc4d0d9eacae9d045e6b63.json",
+      "sha256": "b087ba235ba9d4b072166158acc2e81e7e0fd234efdebc60e2be5f6e4c2ae855"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3c66700f68514186804fed1db92149dd.json",
+      "sha256": "d0fe337c14638e9f36e5dafd50152e28253fe9f75885616efe3adb6e0b5e0899"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3cd97be1ea5a4e888cc65b15532e25ce.json",
+      "sha256": "c5d525aa51764447f07ff6392f9b4561079e3e384c10870dad6e2d4ab6f2d32d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3d6ee9bd9e154930b47b5eb561f002e2.json",
+      "sha256": "e22c313183e5460b01d6e664b465c896e08bb502d18ba92ee2107cc9dcdd6c7f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3d7cf07143a044f99931db0efa9f5d13.json",
+      "sha256": "70ab07f40c4713849218c361d7cbdbc325fbf233c6a451f89384ef9d0b2b8124"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3dbef747c4b84a08945b8cfc3764c9cc.json",
+      "sha256": "ce72bf44715360f8023c4f2a7fd059e75b6e0d4bf9dacfd8ae2851d69920bd8d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3e01d351fff24841b11a21b15649c976.json",
+      "sha256": "672a6d73583d8f9c7d3ad01728ec961e1690f30c3cdf2a8871651a8f8119d304"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3e214d2c6f404349a940c04e0ee80ac7.json",
+      "sha256": "3912911ca100f487fdef7310b5ba7d161706080039a083d703c795366e03538c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3f10e2f545f64292819fd0298f914fdc.json",
+      "sha256": "7f71ad0d606b3d3a7cd14cc0091cc606a70e3769335dfd40d6733575b8f833c8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3ff3e81976ca4b2aae70a996341397f8.json",
+      "sha256": "aded241caca19dc5f29e4d69063ef8883de2f9f0d2aa1f4da2652ce4dc93c15b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3ff80f3801304a4ca35f4eefbe84945d.json",
+      "sha256": "f8a1e8c7442873626369b662954da3541a4a09205516fabf36831fed99cee3ab"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/3ffaf371633847b19c56d2bab2b5f5cb.json",
+      "sha256": "54ade70fe2302163b64e82bcbca28ab41b0a7b7fdd78bd21f328d98f59308692"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4085991ae4804c719f21482e04982c4b.json",
+      "sha256": "0f09277d40634a9bd2c6131728124334870c00bfcc774ce2bee5dc4210b05e9c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/40a545ab5c444c5fa85a3ff6c8648f34.json",
+      "sha256": "750888290828eb7fafbdc3f507686c65cf17043655c2a783202555b7f71a4a2e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/40ecf6c55b9a48cf9e2193d688785292.json",
+      "sha256": "6ee0fd4a0750f69ed040fbf0b518ec9b5c77b5809b84337754c11f9c1503e31d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/420aa817b1ec4c13b352439ea79c5076.json",
+      "sha256": "5e21ec4796c03c230b9530677095a091f7378704384147dea42e3c960d34d64d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/43148a07983a40fba6a9fd004d849e2f.json",
+      "sha256": "eecf8f23427ae7374fe9c3d451a057698c0c8fe98397d17c497a4d984112649b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/44da0f2537244957aa8caa4f2f336b96.json",
+      "sha256": "9926c29400d99e4f0172b02f0366117e46a0857c0d42fee5c68b8b26febe18a1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/44e5d9fb305d4bc1b57192d556714bff.json",
+      "sha256": "24527f4ac4b42ed4b4dd30d65f76e2b3983536e87c6cd4cd5c270c8ba7c7faf3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/45dec437c0c0470c929a0acf7f698d62.json",
+      "sha256": "84e7481091d5b6d8302e4ce7c778aeb3c1ca5fffdd8d41ff087a180b78d08e1d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/45e9c5d354a44de694b3e9d107e2ef44.json",
+      "sha256": "ff0b58dc434b94f05ea545410fc278dc37d72af29cb64ff705d840d44ee03093"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/472c1927d1864d85b4d3e083f218d3c4.json",
+      "sha256": "998b89ddc422c58d367e24c324f9720f929815af18f5b7698e64c66b98426220"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/47c1fa4cdf8b465da117d32505617ad6.json",
+      "sha256": "34eacc7e6440757e37cb7bb0734995541d443359af8f5c606be5131f8338f3d2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4892aac278fe4b47be7523db8f12129d.json",
+      "sha256": "4701d982aa7b5f9181c06790735636cd414b199907d7ade5b250fb9561c8205f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4a2b1632be35447295dc9875a4532ace.json",
+      "sha256": "bdf4cb2f3fb1f428b65cd4a5fdd3125c59cbb7860dfbc4c5a1b167bc4e81bf5c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4a3bd5b4dc8447e98080c0e4ac096024.json",
+      "sha256": "2c21e7f5547c4728a86e851c758ed5ffbbef4d1d5265f967f3a0728e82d9e676"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4af5a987023240f1891acd90fba184b4.json",
+      "sha256": "2cac948506f90b34327ed12f3ac7eafd297beb397e1a1fb05480dee8324e090b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4b3d645dbbef4733a315ec284776e546.json",
+      "sha256": "6f90c53936d4f921a6c604d2ccbc94daf74760705e903f33783daed31c966293"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4b44ace6da124db8b1b791262950c1b9.json",
+      "sha256": "55c111b36a65b10504c477efa64eaebcae53f42e642e7ee37270b5eeeb0b1db1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4c431d087ec34493a3be0b6c46bccc05.json",
+      "sha256": "a9194bfc103048ac9c73f92b94d1194c9d982843293daceeb26f4cf1e9190240"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4c56c652252143b180d417b36135d09c.json",
+      "sha256": "b9d124239e77cc59c8040559e644619b63d0e69161d55a5bede8051c42cf6c09"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4ce22e27679a413a8d71f26e8111c92d.json",
+      "sha256": "49f9cb358a3b4e720e80916237038cd5014d8ff88c606911ec158b462917ff58"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4d55dfaf8da3487abb62f6b0f06c951e.json",
+      "sha256": "f42e1d6019fc7c334f174ec34bba7ba17cfab63ae00d8afd9223d4eae340eaa5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4e603e2d926b4cd7a4501497e0c28930.json",
+      "sha256": "4d7d8e34b041181b837f20011a71bbe2a5a7100c69fe1002a8bcd55464fd9adc"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4e63d96c9d6247609654436c51e177c9.json",
+      "sha256": "00636a5216dabb02fd093ab9f48e3edfa749b924bd49170fb8110640a204c937"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/4ea6412aa48240c18f59504fcf5a57f6.json",
+      "sha256": "2c3101af8249c8f65042db86a8127f3044a8a1fed0fbdedc4f04d8d8e7d27768"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5079321fdce24b68ab18343e124e845b.json",
+      "sha256": "eabd72046814c1ddbef5c810e0ba50895b0c4f9001d6c2e63b1264900883b601"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/50efeedbee894d529b5115734a636178.json",
+      "sha256": "b1824db0613ba2dc5683806707796d26c62563b3cdd1fe788b746cac1eb58d35"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/512058c2d77c4282b39714f9ff5d9960.json",
+      "sha256": "5e26d28b6d66af06e88b5665d3fe26663a549d31696f726cb3968f2441cf6e36"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/51f401a088a54d0480f8828838551570.json",
+      "sha256": "d56f05246066a1c4f422be636d6397e7a056e70356f94b747cd6e63495253fc6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/531772e59edd4233a5b32a83acb92330.json",
+      "sha256": "d01e11871120f091f6eca20efb6b94bb0eb9a63e1227859b50d462ee47d10bfb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/53918b5548394f1799278443905d1fec.json",
+      "sha256": "0677e8ade2c327248068df54dc9ccb116173cb707940ad8a9094550f97c18e94"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/53ef9c4645104e2ab8d757588ebdaedd.json",
+      "sha256": "e8a00d6822c7ffa447cb4b77db29afb964a37447cba5e5938b82cebacfdb055d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/54c1ab3085e04f3b879155e3ef45d5ab.json",
+      "sha256": "ede82142fc9603f3aba77c7ff4a3a6690f3cefa065394192c0f62fcc011859b1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/54c1cc6e8e1b4dacb74ec74490bb44b6.json",
+      "sha256": "815cb4ece7cf21c30c1c23ae97eb19f8d5d2dd8c3a5974693e10ac4340407188"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5567aa98a33749dbabc753f7b3fde8bb.json",
+      "sha256": "fa2ea4bbd97a20e8fe8155388369ac66389422851a48fe833ac9f0d72df9369e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5583ce56495143af85f3bf08908c778b.json",
+      "sha256": "c1437f570ae1c7dd800667d84ce5cb1edde3244eb2da21a5cdbad628da2db797"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/562c27df1d154ec08a380d9990c1fb54.json",
+      "sha256": "49a772d34d6fd3ab14a131d1f57b6b0daf9c767554d8cc34c66379805aec506b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/56968922e1664a7a9ab25505889c3b9e.json",
+      "sha256": "01d0b496528b27d9308db41b04bb00356338a94831ea93e9bb3dd82c9366395e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/56b37a038e31431ba3660dbe85da9577.json",
+      "sha256": "6d4c74c9dff6a9cc7a08f87b99adda02c2092d252d5a24e3d900197cebf71cec"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/571e39b2a38f460cadd4f189f4943c13.json",
+      "sha256": "9f7ec5b9bf6cf5d07a97183025ea20b67fe6ef8adf4f8e80e251afb30ac040a1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/57ea8c49af4748b9b1f344bcd171da93.json",
+      "sha256": "848c51fdebd569de2892a7d007de359b2a71f383cd9d00fe8201908a10c60d2c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/58605e16885943e6b2002b6e41c1f081.json",
+      "sha256": "4bdce78139b6971b03355dbcecfef22ca0b9fb775185d149a233044e59aa3e9a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/58743276ea7e4f639b51b8c6591ba0bc.json",
+      "sha256": "f7fd5b6cce7a1ae50db30f813403307a8127065aeb16889b6a19facb0b5c7670"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/596b0165d8274aef89b256cba68372b6.json",
+      "sha256": "7ed19b47b2b10bed80efdb42db4680fb979dd8c08c94b9207d9efc08b002448f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5ae34a43ef324bbe981106d66f57fbc8.json",
+      "sha256": "ea51d5e540b818a458735e7349c3aecf72ae8e5124c4e4f27e7078def55f62c7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5b36f70ce193460fa40c7d3027780d11.json",
+      "sha256": "cd02e66b48e55cfcab9055faa8668aae3337e98c552a78e98c576cf2e97766b2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5b602223b9dd4cb4b1308b9d96ead49a.json",
+      "sha256": "49da9cfef752b0c6952c4b00cf0811c51c647c8869055518d9454f9e43c9295b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5c299d9eec674a53a347b5d1cfed1524.json",
+      "sha256": "bb116f5207ba747e239eb867d9dc1e25d80a9e9b7557742f24b832e5fdea6210"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5c9a1686878c4eb2b19a7471a73f1c79.json",
+      "sha256": "2a2bc0a93e2083f6aa0b7980d8fd5933ffb909a03cf23a46514250a3cfab6da7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5cd2f99dde5240d1beb90313a0790173.json",
+      "sha256": "10636cc6386e8a5e044736953f0c33035a9735bcebe2ac2099398d48ee473128"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5d306f203b4d4a14a67ca53699623295.json",
+      "sha256": "1d7b339b10265127b1a7456c5b0a929295ce73cf6626068863dd3806a5f696c8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5dc873e15e4f45f1a819dfd1300ca520.json",
+      "sha256": "b8090a3555eee7c37922d3b0e70837803961e4f4a09c8e976654d5e0f681740c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5e04a616bcd74528acff1889c67e5d04.json",
+      "sha256": "f74c7d734fe15659568184628fdafea17672a8053423360901954f7aa72635b0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5f59a41050ff4e799d31679f2c2d888f.json",
+      "sha256": "ef19e181a75fc15cbeb8f5891790b2e338412ca0aa0aebe78444058e97b26a25"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/5faf1ca66ecf4db387607c51c8be426d.json",
+      "sha256": "3fb499e82ce3ad7b1028ec27625ca814ee5871b649b703456fb85d9e80f9ff88"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/602b04e72df34825920bc7bf6cc79a24.json",
+      "sha256": "065594a69acb02f03d7e6e096894202e714c70f53d1e9bfe9711bf962d438f16"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/60eb456b3867494298e78dea6cffdc63.json",
+      "sha256": "b2f994f609df8972957645f8e7a680dbb497604815f34338ab5d6fba799c1e7e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/61a536b8abf047a691f0bd4524fa4e22.json",
+      "sha256": "575294d893aac408cfa554271a4cc3ed58f7d89253768cfaa6b576195641575d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/61ab07d073de47a4913c921fc3a140fa.json",
+      "sha256": "69870d05e4ebb9a25002e4d59835a74a215035f48b69515f050fec50167229a2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/629c2b2895134842b08fcb2ba57610a3.json",
+      "sha256": "5312dd919dae5908d584db268146549fb5228055ba6048f10f3ee9ebf9af0e3e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/63220abbc2394d159682b728902f0af0.json",
+      "sha256": "344f5b9b4be0cd47a5edb271dd0fe38cdbab8f66975c86e8390482d7b54ff492"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/63363ed2a7df43828b75361a034b4e86.json",
+      "sha256": "62a492882ee02a96f86684c971de6afd4c8f1b5285ea7a0cb945d3f3f00b174e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/633a5f33a0954e9fb4b49ced7b06fa35.json",
+      "sha256": "69db91aaef141c7e24695733affec1c84a750dc52586747ab7ae378b37737ea6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6349e845f4e24c0588cab380156d6822.json",
+      "sha256": "ee14a52c4c2b86e5975c07b91b2cb7087007aeb42b106b036f97ea7900845900"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/63de84cff0fb41659e922ffad16f27e9.json",
+      "sha256": "1482dcd05e3e6475153821d52f6c945d51555f74db062a8539083f7181816c43"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/63ea315b786846efb9fef98c6c94b5cc.json",
+      "sha256": "71a50d6efa16d6a5b9498aa4f827361e13f7714251e4adc433781bacbe2e0bd8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/642ad75339d545bca001608dea53b7cc.json",
+      "sha256": "a63a7ef2011df7d23d688098e860ac104c5d6cf97f7c40959a2e5cbc118371cf"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/64b02b82972243c797c15500e472af1f.json",
+      "sha256": "a733bf8200d041bd0d5f445112f5da107aee2255b63f39fcda184bf29fa98126"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6545a5bc05e94f259f25a96447f69185.json",
+      "sha256": "efea325f8c91a6bc8d0454a7288beb95c2a06c2b1e0a664df96f3505c3cf22ec"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6648ad99cdb4424fb57966d1e94e8d5c.json",
+      "sha256": "fc8eb852f34b95cca8a5093edaa5f0eef2b7703a3fff6bfca5037c5cbed57787"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/68b2cb11bd014574b8f447b22a2f1da2.json",
+      "sha256": "000d198629c97113315bea6f98cd34d97fd750f0dea221efaa2fd495a3b83370"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6a26afa0639947dc9e95fb326df5eb91.json",
+      "sha256": "36a74c17561a33e9c95cec3f03495dbc10930b2818fa6601e89356c718ba92f8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6a5be949989c4071997e7d915d2f46e6.json",
+      "sha256": "dbf218ca4a11255425267851903a04cedec31174ebc959f39b3924c0ee53c869"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6b62ea6111cf494b9e501c79dfd0c1ca.json",
+      "sha256": "3fde26876ba68a38d0041fe2d7feec60bdac9921e86a54e5cd1a7a92ea08ed24"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6b9b082f095c4c74b6e2b8027ed50d9c.json",
+      "sha256": "d353498afdf65b811fca70e64d7c221419cb5550e42729d9c6fb867ea37275d7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6cbd24f569cd49b5b2062948fc0e8581.json",
+      "sha256": "14dab675b2e6cf9b938e3f086a277087c75aa00bf3b8509cc43edcaebf7e4091"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6cc8ca5c9b5a4fbf9760ea584a4508aa.json",
+      "sha256": "7ecaab17afb48b9ba2f0d6b87469708d83515f16ac948d6497f324b538b66d60"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6dce5b2d6b2b4a7a9b977f5d67dd9724.json",
+      "sha256": "41232aea2e42c51f64291afd7e1ca373c9f0091efc8a01c2613164d38f31e7d5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6e2332557f1848eeb74a4fc945dc1521.json",
+      "sha256": "75293cb7ddb2bb144639ebb2589d4a5f46f11e49970a6a8a2ec0304ff8de2447"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/6e42003c38a648b5a9e68142a991b269.json",
+      "sha256": "774c7d04a4983012bde20df8d4fccc1b0612ff1d59d18378ef5fa13cd6df5567"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/71765774deec4a1cae70cabfc63c436e.json",
+      "sha256": "64589ec65ca4fc96a7454806d388f1ba3762c52773e829a869d55e0cc8a86b7e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/718e5a293cbc47abba96f00270d0aa55.json",
+      "sha256": "92c10492e71da68b990240210e36ec9a16bc9fab9a6d7ce0ba3d31541b9bdc2d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/719e7a72b9ed4b09bc93f4bb2114d085.json",
+      "sha256": "34e45ed37ca96e7dd31fe85a63612062b28253624825cc78929d7a15e90a0def"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/720ceacc846d4de19255ade665957252.json",
+      "sha256": "0eafb4128fbd78e99c5d490710ec15c90a3d2a23ca87f9b9d721468df216c9c6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/725c2fc6aa5f48f8a227bf08bf05eb68.json",
+      "sha256": "971ff521f0575df3933b2da4ce73ae55156a30ce73c6daf5130b4a6b38226982"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7300a1ef64bc4691a5999c65afafc2f9.json",
+      "sha256": "8a7337afbfe9d568985adf9e4e432e07c5d19d5f6f9fbfa03cb147dfd16a5d16"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/73ef605e47d141baaebaded5bc339d77.json",
+      "sha256": "f8f584243722031ff56582aa9597e2761233b8a04df1a7dfc7a38f7c808bfc47"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/746142d8a7c747d99b38669662b3ebb8.json",
+      "sha256": "fb02d809e816e09a79afbbbffbf4813047fc1c49612fa1b3b4df15a22adabc93"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/756556a35dc349f093d6b573e480c21f.json",
+      "sha256": "89ccc1b5c99b0b549e0d5c5dca04294234f6d283f8968b3c541307597500db97"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7602d5fb3393493aaa9ee76ab39673e7.json",
+      "sha256": "e79e912a1b3daadc6cea702e41af3dfa093f9a910fb5eae49185b60d9b6d88d1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7797162596cc4829a8af7ec826cf80f2.json",
+      "sha256": "36c985c5eacd276eb00a30063fc02bad58b57f4975b73e9bccf33a1219636b5a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7937791761a44c779a086305d3b79fc9.json",
+      "sha256": "2714da6e4cdae26ff7934c4c81478cdb88aa7afeeb8486e6e5fd6366a84b7f76"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7cf19aac35094810ae0fe5f22dd8a806.json",
+      "sha256": "871f86ddfd6c67998c3e9c0e9fd6470b9b57547403f2590b658fafd0eec1154c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7d5fa3e7b52d4ee3bf313b1b59cd2f65.json",
+      "sha256": "0feb0fe6a408befce62b1c70ae5c69cccfdc1eca1970e8648ee52e5961baf8be"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7e75e695116d41d39f54b0ee4172ca11.json",
+      "sha256": "47055966f3fad6c5b08634f48c2c86b9eaccc4ceb440d68f7f93e58db26d8aa1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7fc9d8424e9f4d15a5b9f9d3745edd44.json",
+      "sha256": "57020aa496a919750c804deeb7f16d40719dc7564e61a7fa1f9900ba4b19b248"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/7ffc8c271798420389a6e8e3dcf20e24.json",
+      "sha256": "ea55fb60bc147b38ca59180f754daf3b42b115bdc4b27c4ce26e1951a9bba5da"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/806f15c9d6894547bfd7e0241fcb1a77.json",
+      "sha256": "9ef8dd915923bbc5d9f3ce4d56042076958072d00b4b52c1bed23e64fb1413cb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/80d47ab419c844c5b1ca676ee7741602.json",
+      "sha256": "b69eca32c015fc3b7313822ecfb729f1be3b073b1e5f4061c8152c08dcd01de4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/812e0f7bf1144b26a9ab73f497b0a799.json",
+      "sha256": "022483f3baa5716bffd94ff3b820b9cfa7c1826f6b7b75a79d43185d872698df"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/81f119af9fb747c8a67c2eadf92b1e93.json",
+      "sha256": "300212ca7f8315d07e889d38989c8dc9a55c1e254699c20914cbd82eb5cc84ea"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/821e97229600420ba4624fbca3a0cda9.json",
+      "sha256": "948608ef7ae27e7e7587a249b6bef89c5fecb08d983d20e28ca4a21eb602fc96"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8249bb58e7174ac48386ce52ef350e5d.json",
+      "sha256": "074291b583e5b05ff1dc8e3b10d67b9371823c73a496c0e5a462e2f61a836848"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/82847c57acdc4b31a3076d0e733434f7.json",
+      "sha256": "fa90278a2f4a578797ef66f70502874b1740b46f1a12cd0c74177342417f8ace"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/82883b14293d4e5f983d927953c1f35d.json",
+      "sha256": "3af64905ecdaeb03ae5a7c7a3243d27151048f506b0918e1767ef0259878ab97"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8292222370244c08a7d109ff365356c7.json",
+      "sha256": "2d6fe3de7e7740d416afacd39dce852a35f83996284b099df3450bbf49c607d1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8446353e3e274854a91caf98912bb78b.json",
+      "sha256": "6508c97451f72e897af5b42f33b10e49ab1adfab370b2d1eedd1c40976fb16d0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/847d6bb952774e82979c80c6f7359234.json",
+      "sha256": "44b5ad3dfa7552845a7f0c9eaf309fc8ad687e90aff1e48d33ad8e774b43c478"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8584329e961b431f8488281351ec0917.json",
+      "sha256": "ccbbffdcdd9c6695642d362eec0fdeb0635bf8059b17423f25d3776f32e12d54"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/859654cd64c0442fa69f3074bc0640cb.json",
+      "sha256": "5bc4a635a6673651d9291be495ede72e87cd427d36456f95c15082be2c755b1c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8619234207c94e1eb502e851d6f60951.json",
+      "sha256": "875f1a4b971b4ce85c1d1370326b189022ecf10a0df5906ed63f2d9abb818ffb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/86328a31e4d741afb3771994d35e5278.json",
+      "sha256": "f90d6a07a3cb5aa57e86d7b1d2f0c109b8e43a78331f70295bdfbc78ee8a35ee"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8649575dba0d408f90ea5d3dfe0666a1.json",
+      "sha256": "b30e656df737bcdac57a9253e94021d1a8ff22990d60abd4125ae71f57551a04"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/86589ce234f24677a8cb0261040b57b4.json",
+      "sha256": "ff8facc3820a4dbe0079ee0c9a4b55d2eb9fc2516fdeee5d6b267ef3d69614fb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/87acad7132e14106bc0041e6c919b3a4.json",
+      "sha256": "94df6a4d535843178e877456611b2ba22cd86481e9d1df1036df8f4fc63ce659"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/87b430cbc178453ba627b624417b95e7.json",
+      "sha256": "25c04bc3933858667571ca56d4a93dbd1ec69eeaaf2999872e2a8384c3ca75b2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/88f5221828764489af8f41da514fb742.json",
+      "sha256": "6842bcb1cf2602ac0e27c508072e0ae4d7baad40327ab6ebb2b971d263235512"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/89cff6dc61d542aea36584e43597fcff.json",
+      "sha256": "8efd3cb5b570306cf2536c3a4c4b217e7e54fdc6b072870035e2e94c40b7404f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8b289044442c4cc48dda232b198315b1.json",
+      "sha256": "11b022e0c376e10d20851121879fa78bb723aa9ca7938b6c6f9aa40ff28ea23f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8b666c3540a94b51b81bdd32daea77bc.json",
+      "sha256": "610fb6a435ea255ff2331a91a3fd3c322508ec36c9d5612ec842d4bd32dba562"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8be0ef38b59c4a6f98c841a892412c79.json",
+      "sha256": "5a6b4d20dd4fb54faa65ea2d7f973117ae6711756964b209708aef9f41a475db"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8debb9703a324a25a293c10df2a2bc8e.json",
+      "sha256": "e9c247d51b9aafd73cf864ede2a2a7477a00c3647d71e6412ddabd925d7a2724"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/8edad35367f948b4b6207aef4a82f854.json",
+      "sha256": "2464db8deeccb76a00f250e46aad74413d792b2e1bc94b10df162d04e7153899"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/909d2ae12f34497a84ca7127ea4e1429.json",
+      "sha256": "bf481e5e5f28af6f1101486bc7b13b512e633c3475f3da6121e9f7b51494b9c6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/90e3b584050a4571a079e4e23e392f47.json",
+      "sha256": "4eef534bf643fde9c1329a539851562a942b7d40ec24eb55bae71751cee048ac"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/91783ef4bc44411da50643775be588e2.json",
+      "sha256": "bbbb3a91e4c2b903cfe14ecfb8de5075f8791954afa031c617443e687711cca0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/91a8c5092a6244658c69a1edb81bd2fc.json",
+      "sha256": "6b5da21e22a89fe3d3db5cc9a0c102f9ca195703bc5a687da4e1222fe4518179"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/91e5d03086004ce09ef11362bd455f2d.json",
+      "sha256": "859ff6f79453291aefd32449a1862740f4156b2aad4398f62c83731822358ca9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/91ea542f961c40c1b358f397553db264.json",
+      "sha256": "8dc88569f9fbc7c40d0cfdb089f4bf1d701dab123fa2d80ca49b563622b308f5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/91f57576e2544e21bcca80c47d6b0869.json",
+      "sha256": "d3f7093d3fc47645f73ac951253640e26e3eb20986a6d5a05ceec1e4b616d7f7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/924006fcff5744c49802c63bdaffee86.json",
+      "sha256": "146c063b523e94f7170f94883b5771b65823045fdfeae48b4f471be6e8d9425c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/928f710f70954fc2bbd49a230f1b963b.json",
+      "sha256": "ae482a543050f52c74b7be02396a28a4a4a3b1fd457e768453a8cd4cd8c061b2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/93b05ddeb80d44b19130a74b6704d6dc.json",
+      "sha256": "53e3ba3f30b858d2a93518e0e4e2ef9e5d293f832fff719ba2940fe9aeec9805"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/93d9e87d1e494b0499b49b3c116054ba.json",
+      "sha256": "668156187271adf9fb338defba43ab5074a435bc6f1ba93cbac2dd3a3d91fa81"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/944a5ec89b7a49be92be8c3c812048d1.json",
+      "sha256": "9e7e51e86e58fbc6294fb5a0b7519823bee17d3986ff9e6df20a89770f14217d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/945d09ee82724d2a827e9fb7c1600e0a.json",
+      "sha256": "ac2a7d30a05eb7b04c43ab2e337b5d6a532ae84dec1d627ebcf7677fe165ea26"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/94778410a0c64482b40a466790d2532e.json",
+      "sha256": "e0f9b77d8995d80b55e987ffb131cb7a5ead53521342b29001eab3a2469a48b3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/94943441c1b74b2c9363e600734ef892.json",
+      "sha256": "a296c8f6104abba2b087a9af505f2a0c118683f55d49df3e96c80a1557ae2935"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/94b24067cfff4af69b0491568eef2079.json",
+      "sha256": "ea0ac17d07c89c0b38b2eb77b25b4fc9697bb26929b9c9f59364215b3bc2b0d4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/959fd686ea4d4b46b29ee9a9d914fa9e.json",
+      "sha256": "7d97dec746478a48ac50454cf15edd92eeb5d20d42ec7ffa14375381d7f9cc6b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/96d0fa1eae7a44dfb8f77ce83ae40e98.json",
+      "sha256": "2d6b1ffa386672add18455ba67c53bb5bf8d59504c41eb80504259f838699b96"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/97142ff4f3be41048d2f4a2f9a5df622.json",
+      "sha256": "4fe6a9ceb08463bd1408f3bc3178b796e912230718f8094c5086cdc194e85672"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9789c77c40f84d1f93508af2e1f3d366.json",
+      "sha256": "8dff0a3fbbe881e97ebe624d41f9939054a9a02eb4c79eac27d9b28013097fd1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9a5335f06ee549608b410322f506d055.json",
+      "sha256": "a7aad6fae9dbe57bab00ef2030661de4ccb5d9bd31fced6e2979be2a3068d797"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9a6d6d85dab846f790586dbd527e56f7.json",
+      "sha256": "c4433a47de3c3cf741a10263f8cf94681583e2782e2a72ede946b2c58f9e35b4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9afa45b20c0c4841b25f809d4d90a1c2.json",
+      "sha256": "c06a8f0ba0179c11bdeab55cab4ca82195ffbe36798eee6aa4a62cabcd5a07cf"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9b1fcfd59b7e4aa8a73e177a67684f7a.json",
+      "sha256": "ff600c15d85e991dc3636921383a5599f9aaf554ed84fa0b6f718806f79876af"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9b7bc522103346c7ad880930c712c080.json",
+      "sha256": "4578b310933d71a29bcc41409dc42261bdd4c90800a3fee39dea8d99db806e9f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9b81a5a11edd4cc1ab7f4b5bfc462e2d.json",
+      "sha256": "516bf345fe25b0b3481066a786815e1d2c6a57fdf4998057f445f4d586fc234d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9bd640ea8bf2477aa4c52e159a1b2bd3.json",
+      "sha256": "be7144242d6c2742fa80e5ff45b4091c10b94ca690cf73769150223ac70e41ce"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9c5846c645aa4b27a6beeac2a0ab02f4.json",
+      "sha256": "b11b1cb2268edd4da18c9aab5f96291f6b88daed26cd35ad4abf85f38574fcaa"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9c6a22550d654c8ea94679f03ca0b914.json",
+      "sha256": "6f444c73ef0ff12f144cc716e9ad5f4f54f2014d460f2bb999011c95de4d8e3c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9d4f4fe17a2c4b8da1bda63f4b71ea6e.json",
+      "sha256": "40d950848759fe6e1ff31893cd71a97d7ed549077bd2dd8fbe8a0fe2cf24c58b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9dc915fbe80e4e40ae70ddfda32cfd84.json",
+      "sha256": "9a417d82c2ed5c0fa99b73075cfeede9f9685429840d058b4603c0ec4a70aad0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9ed1a7fc27ca4a72beb05058dd8716fa.json",
+      "sha256": "750c91b5d0c97769087c68a0057f8b98394164e078310fe61c4b412c383489f1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/9f652dabfbdb4bf8869027d266780f3c.json",
+      "sha256": "1448fe1e5911ac37fb1eb219502317790177fc97426592ec1a99b8b461634304"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a072c9ee657d4075ae791076052083f2.json",
+      "sha256": "e7a554fe0c7571aff661de8b3b0de886e78eea57d338a19edf5b8f2fd24ba891"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a1c5c14b438f4e6ab3e72bf0983cd6d6.json",
+      "sha256": "ffdba060b8a70dd5bda10d99c2e79abe54c48c875d1874397a549a62982247ce"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a1f353258a3d4be3acd458acc0407cc5.json",
+      "sha256": "b93dd2c8cc11a0c02dc76417bc52c39cc4b759b8de342dea5bd3f87f3b907f22"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a2dc896d343245f6bee93610d95d5854.json",
+      "sha256": "18c85a955ccb73cefd222c2aba9a2646a83d640210936958572ef87aedab8621"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a30b78e1d4124e33836954c43711467d.json",
+      "sha256": "e4db90dcb05dfbb6873c677c711278319c43cc310f5c4172586a3b0c908b5494"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a44a2e345d95443d8a8bb1fed641fd0f.json",
+      "sha256": "ea7b702c855475486c188cb77609cf2e2253b8da721113a65579fb807e837347"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a527255b987f4e368d9e3c0fd317e990.json",
+      "sha256": "981ebff912b44da3f201fb210a904f766d51dda2afd69eb8480e2627ed3d2725"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a53b7a07cfc746e8871c3b3bdb08241a.json",
+      "sha256": "2fb4bcd7e7353d4d8118f80efdec0b9667fb7124ae00a97d4335a3cdd39ba7aa"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a577c5fcfa7e4ffb804ac0aa60f32581.json",
+      "sha256": "cd176c99084aeeae6099b6ca30ace41c625e95a6fff36e93d6d097249356bddb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a5cbd9ca5ce147b489dc62afafe15c9e.json",
+      "sha256": "796877b63d0453804f71d0915f158921b92518563d50e4e5c9e4ca87a4a865a6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a5fb6afac9e04c0d931ee96dfd684eba.json",
+      "sha256": "369cf74b375c1cb789630ef57d4b7f897e684329bdb432deaa01c5f358d6a54a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a649c9fecb9746d8aaa3365176bf01a8.json",
+      "sha256": "58c9a3f134fa88bb8bce4cadf1201365552cb6a17472ae28bdd3b797651def9a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a65b5b02a93c4263968882d870d420d2.json",
+      "sha256": "2e2c482074c402ad3bfa0943e5221cb992724c31107834d058f5c282bd441b8f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a65cf342b8024cc292050fb284032c16.json",
+      "sha256": "392b59c2634f97547c447568f910cdf2b74e4ce3348b45ac4cd02c1168336f2b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a68c0ef446224b80a34b69897c640869.json",
+      "sha256": "7d51f437de3cf9aa91ae9ac2e0b3b27bd55dd36e166c8e1820915c3562103dc9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a69e8c500ee0416e864fb9dc8e636a10.json",
+      "sha256": "f12827163733cacb55768c63ea4b144d86774cbe3e8e5163b2e5e8dc6682f627"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a72c8dfa846f438285f9fef4deb48a50.json",
+      "sha256": "688e0e003c6c1fa449fef7a1ae74a3f6737eb9465278997dfc94bc060cf93565"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a7a44ad396b34817bfc0795e6b1e62d7.json",
+      "sha256": "02bff18add5b96f691886768e3ee545aae82f9e154a21397e36df2667172b10f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a8188d624de04ceb9804939ead872fd6.json",
+      "sha256": "eedd39ac866d191b79665105a59243e95dc8642a40173470b7c01391cf03232c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a838aa170f154ae19cd33e9314d3bd87.json",
+      "sha256": "16be9701cbda3c7c36ada4f85e8796cf4e30b5d3699fa51379aadbd78a994a37"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a8e8b0dd86d54c21bc01b74beadebb19.json",
+      "sha256": "cbb2b989210de6b564789fdba9b8445ab8c336b53c95558e778ae4687ae1adc4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a907b09d980243468cf0bcdc29e3af95.json",
+      "sha256": "a5885843f1f62934d6a15db0e5e7a89c5df0650736d0ebf8b844ffa6a860a57b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/a9fc88b32cb94db78c5b4f0acd3c9191.json",
+      "sha256": "626feb9adc7c900669e53ca7000ae3b7c5b2b22ee83cfd64824d4f754de80b8f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/aa693468b85b46b595d53909b8f1c90d.json",
+      "sha256": "04b46ea56b389c8ff876fcbfb1f93eb7679430863282733f71b6651094733444"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ac1b550b10de4f638c1b67156553a8ae.json",
+      "sha256": "474733b18cfb03842085674d35748d552b6169c740d9739416024ac4a9c76df6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ac217040ee3b46ce8ce1d02c3ab98c0a.json",
+      "sha256": "639363b9517e15e3648437c8525ab6cf9b3203a043df821fbaac399d0d148f09"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/acf6558b14ba4443bbc0fb683e0e7451.json",
+      "sha256": "71d32c7a7e4cef30852889930c3a5f094f41a2b93de339c06cb0ac2ae200555e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ad5f1489c32f4ef3ae80d62df82d7823.json",
+      "sha256": "2831320ce2a9982d28a0aa53e9b58761d825da656b70837216c45cef48f94f74"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/afb6917eb383444090996fae83e6a2d7.json",
+      "sha256": "08ff8d7eda4be553b29f99630a7ada76504248b27bb68e1ce2f927cec6a1d498"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/afccfce6233848c89e067fa73abfec99.json",
+      "sha256": "35a26cd98f7c542a571ddd9f4bc876d634f9d1259b392792102e0b18795ae333"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/aff2901ef56c49f0a3848b18b7222be6.json",
+      "sha256": "29380ef1435bcf984d4eebed1a7db628a45875a0a8ec848eb6eba2519a85786d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b01dbde658854029b01cf4aff5125582.json",
+      "sha256": "6db31aa3eaf1242769a1af58ff4b5d9b09ea347ca923c4086bc63bffa37c80d7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b0a3fb03643f4eb496c6b1d8ae614c01.json",
+      "sha256": "ffb5d33cd14f695086a4ae0ec567556c37a58fa6929dc174d9ff5e18fcbcfac8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b0fcb630ca2748d8bccb2dc69d4af95a.json",
+      "sha256": "e419faba87b9885e473359d8295c0498c93a03ecef6c4252ed0a39fd2e920b71"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b1465a61413146c5b25ccaf6416aaaae.json",
+      "sha256": "b16278af4738871010e7b162eed8a5516095ed628f497940ab410dd4e24f298e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b3650d9e6b9f47e49e3623e6e87b802d.json",
+      "sha256": "36adf501db5a59485a280c4087cb6b8923287bf10ab83350bdfdf946b86798b4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b474ff0228f941c3a74f2a90455e2d9a.json",
+      "sha256": "818d242aac9c928b3c29f6eabaf83d50e24993c05b56b77cf4f52e3bfa0225cd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b48c876faf4f4945ac4bca12eda8a7d5.json",
+      "sha256": "1e786309373c3a51d562a59103fa225a86932ce36f5949ccd8b6863405531dff"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b628e3d085a5497fbcbfc6d71ff25891.json",
+      "sha256": "23f7620f0264b73f5882f5ab84a443e88e7e57ecd6898f9aa8d719e5541a4aa9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b63d9ca7a125475586675bb74f21b7ae.json",
+      "sha256": "5ff94baca7da113d6960f03b48769204ad42ea3723f5805fd865ee60e1576e8b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b6a79d4eba9d436fa274de91b9fe3223.json",
+      "sha256": "86fa7282e7c3a6afcbcc9a14c131fa24a74bb8ecbc525c852e01c368b4ee15fd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b7135ea3a5964c6a8825cd80345e2fb1.json",
+      "sha256": "b88786ebfb4cf8f406d7e5e62ef3fb3d9864d9051f44176d835f20916557db09"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b871eaca0f074bf4b0c3763293279e71.json",
+      "sha256": "29115759465a493d723f2e838999278b1fe50d058a23315c5cfd2dfde9685355"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b8ce30c807ba436a9bfb219413b4177e.json",
+      "sha256": "fa593eb857a6eab6c1d58b50040a1c083aca3adb5f2936d91227b45e0d48c12a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b8ced05bac644bf9ba5b430fe4501298.json",
+      "sha256": "edfb218137f3a1f29be973024484569914f459c876560ccc9de27cc1995fd959"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/b9a96ef6cad44c29a5d958d8362473dc.json",
+      "sha256": "2e2c7f9a00d69c4bd4a3adecfb10dfa5818bc76da798af047f4d2a2c3bb365f0"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ba7ebe6ebf404d42969cb0c53101bf71.json",
+      "sha256": "fb58b58c83fceb64478e6643a807c2d8c0449ff575b14cf7768933d034beb7e7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bbb0130b785b465d9cd8a084e6b6c1d7.json",
+      "sha256": "b3dad7dee9bc06777ec7278734e2f2bc21a6164bbaa9f9dfbc2cdf26d19826a5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bbd353e6c3204ce996542cec2885f7dd.json",
+      "sha256": "2f02d80d65eb73038e789b8319df6f7290a13f2bbeefbb11f2b842576ef07bb5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bbecf2cf408f43a786ff5ca6d83995e6.json",
+      "sha256": "982da67d713cf26e86b09de8a7732a69780f4e269a9ae4507b549f53a66a4b2c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bc5051f5831240ecbef341e57224b549.json",
+      "sha256": "afaff127c2e9dbb7061789d6b606ae8f5e253d59f53b311598a405a69399fa11"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bc5ddb162bd140da9c8888800bf65815.json",
+      "sha256": "2850bdfca48ff493c167bb4c488de1fe7af877892df8ed554d665c8f2b952c5c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bcd4382a46ad47379f3742e63faa443d.json",
+      "sha256": "121dba71554c5ea080eadb6f5e3f837078434ada1baea071aeb16dd289f3a70a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bd203a10649743ea8a9ce97645cab407.json",
+      "sha256": "27d975f3cf0d161479f621a99a99f0925f285dfe8d4d49c848f68a5741af5837"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bd35131cf9b34d5684ce04112348db52.json",
+      "sha256": "9ba1270a46557ba566952e0f59ad4b313331da9f47f1e9ca9f716dc48b19d3b6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bedf5e96e76c4590b8548e691456e412.json",
+      "sha256": "bfae6aebe293e909df44f9daa5942ed24d9e11341187dcdca0feff649cc0ea97"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/bf5d92297bd14b92925c038099b6c09a.json",
+      "sha256": "3642220d3407c3b0915bbbdd38a01518c0e99ad4a5bb4ad69b6fd323cac26e31"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c09b010539754c8da1a08ee090cea0b7.json",
+      "sha256": "b89db3cbee92bcb29c59e6c3da0b91f6dd30ad2988d4b99a2caf31bb1222f254"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c0df5a1b40a946d2b1fdae25844e63b1.json",
+      "sha256": "f0dce8abca0ea0c0e99ce0af820405d72077afb6a0b599bb24918cb68726d025"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c0e8c8a1e2ee4fd9b62ecba081be66d8.json",
+      "sha256": "96655f479aca481654b9155328590a92df4a60010bf083956f41c59a7b15441c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c17547f4cd8b487980e1aaa11550c8be.json",
+      "sha256": "c5365ed83b6c7947e63a17fdeef52b377dc5bf51b2f1b1fcc08e66d482406fe5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c18d599ca85347d1ad0fb9af392e4dd4.json",
+      "sha256": "ee7d28f84453fce084b8109e8d330948bb8e41852f6db23ae78fd2fb35b270c1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c256ee9315f34056a329bfa636b172a8.json",
+      "sha256": "6670d3d99cac4631af463822cd9cbfa3ad61d94bf8bdeec565cf01e1f754c061"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c444e9f68b7e47c6b65432c3deeac32a.json",
+      "sha256": "c36eeda78bc10681eb177d6849cf2f211110a648f19c7a5822eefba7c529bda4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c4486aa0f49a43328d7fa4343a764ed0.json",
+      "sha256": "6dc5f32ccbcce10ac6cf09e927d56f9c52b3df6282671da4d4eae3cdf4ca9b07"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c49c9af1f7ee4e9fb90dce08440db217.json",
+      "sha256": "7c547cb04b625ba81e9ae279d1b1b5f8b66d132e374680175300a4f0d4502d29"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c53d5c7b75d24946b3099b7d92f57e9b.json",
+      "sha256": "6d03ca959fe61276774b3388ec87c3e110b3ee70ae93df011c1c42d04e677341"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c5519054d14e440aac66e437968ba913.json",
+      "sha256": "90618b85108fb9007dba4f2a32552567f436c0730dfef9251deb5a2909f37b87"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c7b23a714b0f459aaaa141a57bda8dd6.json",
+      "sha256": "f472f46e79b402c0692a39e8a259675ce041c005398eb575130d8c4fd0cf2f7b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c8db56d892df4408b7d55735e4e1d7d1.json",
+      "sha256": "29bd3d81eca21e3fa1aed554e32a2dac54ed75a0b9d9c10b8020c6459963f710"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c962ec5a71a44e87a40cbe578583976d.json",
+      "sha256": "f6824fc6fd76bd8648940240f7e9dafde2c801e10827b7a77c290d4c886c205f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c9a3e9f9b54a4da5a61cff7e95d1f84e.json",
+      "sha256": "b4aae31f7cad9a9dcccdb53e6a4e7dc56531511e8165a3eae533d7aea00c1bf9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/c9c3857e5ffb428dabf706ad5152d8d5.json",
+      "sha256": "9505307cfea88f14a0d31be11411e34518dec7d802de9f50bd6760d780e6236b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/caea46b1111942a3af43056ef0d242c7.json",
+      "sha256": "51febe1f5e03aa84875d9a9486349dd3fb180f8d26ed187eca52e2c1dd9037db"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/cb1b7e22e0914f7fb4889f878df313ee.json",
+      "sha256": "e82f1c8e5135c4f17e20adee628e9e70d6959f78797d70bc9efae678c6270ef5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/cbd07fc72aae46dfaf5e65fe6529c658.json",
+      "sha256": "882957447f15a21b8113eeb941b554939df3dfaaabfabf1edfb158fc487a74ad"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ccb91a59db484a23a8473c3a6b0a5799.json",
+      "sha256": "8fc53894f3a21731c9067806d8d1285d25bc35cbd016c413cafce05aaa021a9b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ccbc45caa66c4e588707f99883af4b3d.json",
+      "sha256": "f598333e881304178e437682c6bbb14e2c2cf348f9695d90e0d8dff5bab3c979"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ce27f5449ef44812a539e3a31da3a18e.json",
+      "sha256": "7409e9421e97a5dcd7011f3774d06c9cc320ec49f1a255609b6522af9e5846d5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/cefadf2347b24d34a790af79c4852f7f.json",
+      "sha256": "401bd769c045d3ee65d6b5b96b8f0918a6959ae02594d0407edf7f640216c6ad"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/cf170efc49204ba2840a5a70288932b7.json",
+      "sha256": "d262553aa3aa08b64d003fbbb6ba0e98a9ba17708fa35eae0e020d5a1c4d13d2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/cf90b6b6d49f48ce96bea10e96754f62.json",
+      "sha256": "51dec1ae91c7d837afa74e555f5e2b93ff1c103ab37a12630cc12204dbcc5f1e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d06d38f615d74530a6c65880edf40065.json",
+      "sha256": "72d1497ada9a97f79fd89ff0a1aefe97cecf05a12d8a62a5b13b083bdade5804"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d0d264df93964abea66003fdb1aea6f8.json",
+      "sha256": "12b4f45b71c7647a45e923104405f0f35cc1364d08df06447469fe646e050aa9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d376d3ee92ac4813b719c2ad549c5b0f.json",
+      "sha256": "53d32c0e547c2e0e6fd88c06906977879ecfcca5bc429eea3aa179e0388517fc"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d39d57fd200d4f839b853439f55e8e0b.json",
+      "sha256": "2b6f88dc3b9e502f7987286315089a2bf388a940a2480c03845f42ee0beb59f9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d4d64fe9427746cc91052fd7c56e5c3e.json",
+      "sha256": "370e1878027bb14519e150398b9d6790cfb782569c083aa49f79891f5933569a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d4d8c7c4c7e24178a2a92af7c37f4055.json",
+      "sha256": "c1d827191eb63b6dd94262a5484cf628be57272b93056abe1b9ddd9b7752d39b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d557f17e725441a3be591a72d4e76592.json",
+      "sha256": "186582e6309bad3c1d862036d7aab0e6057a5d1d504fa4263eae65ced3bf6c5a"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d70ca6705e2c473594dd3afcbeacd26b.json",
+      "sha256": "0218377cd0f86155cd6939ea6f5bf11dc6e816e28f8db0cfe7da7308195317c1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d7c6da27c1b44b1abe378cc191796fe8.json",
+      "sha256": "0555f9a7d24eeec61cc2ebcf35324e049d262e9b937b7971f0e648af228611fb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d8e2e132214843b994567c951dcdb9df.json",
+      "sha256": "434962d4180e1f883266929400bed23b35e914e108495c6dae54f588de3d3502"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d8e3f7513ca74fb1b17bad354832f47a.json",
+      "sha256": "a96ea492f11fdf993af9f6b2393f62cdaf320be0132f2f306bb16a740dea46e8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d9597f94b22f44e2bf2d2d0cdcc7bdf5.json",
+      "sha256": "a31ff57166fb9a265b363983c2203a4099a82dca363ec7f51eabe19ef0ced73e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d971e26167064902a10ab6d174ab4ee6.json",
+      "sha256": "c019311f9204ee21273ce798bd46326ee468857b1d443dedcf9ccbe56bbe0599"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/d989e520838742e9a312e7065ef9280f.json",
+      "sha256": "2c9f0d033a4aa7aadef09f80e1caecb44c2eed47d2cf425f59ced700145ead42"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/da3e519f1c6c437d97ee98a0cf63d20e.json",
+      "sha256": "e01fdc0464f0bd1f6e2c791e7d3b70f9f4cb01eefcb6587621009eb8b8b759d5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/da55a9a64be34b5b86910d40cac30191.json",
+      "sha256": "e255bc73b79ed41924b0e44af9246dc3db3af3f7bc15cef8b5aedcb61490814c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/db3d0bbdb4cc4e8cbc36496699bf846f.json",
+      "sha256": "f812e227100480e5d9a9a3e3ca5e5124d484e3cf38ad1ae625a3f0c63dbd6710"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/db666d7cd77043ea89d0cd52e34a5fea.json",
+      "sha256": "83377cea8508153a0cb5f5ea6dc5d6b24bd3d5a6b3e05fc25d67e47f0d951720"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/db8062fbf8ba4e5bb4f32538fdac7f33.json",
+      "sha256": "3ce9dc0e26cde1c96ca64354f2fe9dabf1be5ff91095adaa51e21e4dc5ef2f31"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/dbc7c8e6eb39433fbe532d2315bf95fb.json",
+      "sha256": "36a752dcfbd3fbf08d0dd5f10800d6f077879a7ce38e2e2fcb3995ed462aa1e3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/dcb6277f71a74eaea8143ebba3b9094d.json",
+      "sha256": "1acbb21235402f0b978d2099481b69631da886a7ad1ee8889acd1b7f7713ef11"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/dd87cb175b3843f2ae2861ad327a6f82.json",
+      "sha256": "90b2f962ef3cbcb68547f0bd406392acadf8c0a97d0618cfa223f791c9441c9c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/de37f2a32c4643f8a5f80e6189948240.json",
+      "sha256": "ad80f5fc9e728b6fa4c122bb7af6b00ea323d317bff065266a6e27316c07bb0f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/de6b5b9909a8483589523e1ba6ab5501.json",
+      "sha256": "6a1ffd170ec9457a4da6f7ee90f429f0fc75ed2d3269de1679fe5a70d8566faa"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e193fd66c06a4c11b65c9ef91f20e8e8.json",
+      "sha256": "bc592b10830fb77fad41a249ca6fe9bbf43ab82eee2a2957947e292df9e79901"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e1f8d3e04e24483aa95dc5e7b82adb25.json",
+      "sha256": "9e7d5a9a2eaa8efc4e2c5de92474f2649cbbe574f810d96a23c0836f8b7a5291"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e2de0a3aed584a9ebc217042b0763c53.json",
+      "sha256": "d4b2887ee0a3f70af79fc0ad28cc62fc628c3a2c03c2378c507ae23c94248bfe"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e3881a5a83364f46a4a72328be958f0f.json",
+      "sha256": "1b73eca80367d9bc458272b141be9648e90676dccc671aa99c573628b9cf7792"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e3a99ce6811948558ede2e0960d14876.json",
+      "sha256": "c78bbc437f02e5a49597c7eb418981a5fa7449a8118ad89fe300ff3435013f25"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e3c2748d073c4f9f9309f6c832f08431.json",
+      "sha256": "5f66169ea870b0715da9e45150b08a07b6cce4c535894fcfebce45bedfb77cc5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e3f1e3b84cb84bda842f8cf4ff646152.json",
+      "sha256": "6478a82f96ebbb74970f21512d80857964e317abdf5fb341466a254676f1394b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e418308364754ab288d78e20c3d24712.json",
+      "sha256": "607c7b0cf9a0439b95f1d8fe02807e95b644394c7a5ebcbf5659bcfc8d16791f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e46f2cd4a5f241139fbbcf21e3c1d09d.json",
+      "sha256": "1b9dcbf900847773d8afcfa6b678590b61fdeac5812d7e3d0df5c43cbdd3920e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e4c7729be7914fddad5889b51a7cc993.json",
+      "sha256": "567375d626f0642c9352957b2296faf939e972ee1d729525b8adb3f3396c1738"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e54ebfc7a24b4c3dac484fe8ac1e1dc4.json",
+      "sha256": "cb569d7aa612d654ff5bbea05a9a65c836dd155832e8f36e2f7d0edae6d387a4"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e5855c65adb6432b926f490ef967ea5d.json",
+      "sha256": "9218e1a9e6b907b1b650a5318c6be1653b81e3d16665a2431a97d94e8b32d3bb"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e5d643fc759e41fca0196ce008aa9a35.json",
+      "sha256": "2fb70ef30ccd4e1eece8f6cf6478e7df72f025d84744fe4e6fd7b939d307cd25"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e5f98c9c8dbb42cc9f30bfbefff27600.json",
+      "sha256": "4e2d8f8b611dbdb251761b67ac53a9f5dfb989e0be562090ff0ecbddaab1ee22"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e65aabcc399c4062b899588c733981e1.json",
+      "sha256": "6e7e4b72982caf59ff8b140c77b7ff9774a4acf9e01c2531c704d0b0e9ec1778"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e667e719656b404fb99e72ab357c1bce.json",
+      "sha256": "e7192ce6780f0f07a85691af9a85ea2028b2ffbe027c208c9ce7907de51cb47d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e793dbf225c54db8a6d69804346d5c2f.json",
+      "sha256": "a0df30f0142d291feb7337a89831a8588ea5daf64d3c3367bdd09d542bccee6b"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e81085888a3146c4a2ce26cb12b97def.json",
+      "sha256": "498ac5735fde125c154910fc7ca926b36e6ac06ecd1d855cdd978fc008f751e9"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e8d8571cd2a7490ab4824c0e691adc3f.json",
+      "sha256": "39a7869dc3774dd581be4b1403e51cc7c38630a34ff17ab65edf77a978215248"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e8fafcc8b7f0472ca50ab5ba9fd653db.json",
+      "sha256": "84618fa20d0a6952f675abe4eabe2af37ec0c409999ca75b9de796fa54fe5acd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e9654dc763a74512a6e8a0c5407bda7a.json",
+      "sha256": "91dc40af9a246e0581bc4ad8fe8b927ea6b2a25f792f1fb308c8f1e49b1ee3b7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e97432f2321e415fa3ad8498caa4d5c0.json",
+      "sha256": "02010e8b8f74448d830789be0a6104bd68187e98ad5147443a35275cbe84c706"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/e97a721ea0114af2b2dd491eecf3bf0f.json",
+      "sha256": "a479cf4949984242b081b878694dd88932043d720a4772465583246793795211"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ea005b0b981448d9b5fc9be9d5d1c61c.json",
+      "sha256": "629b436996ea5773088dffb8c32865f249e01711de5939b4f18c4c6531b7fda7"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ea6606ae399d468d933f9ee392e73d3f.json",
+      "sha256": "4de585baf66b01e202918ea53af6741e5d32274f0d8acb834d1c7feb5895f2b6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/eb1bce19dbd942c58c459f554e39cec7.json",
+      "sha256": "6a8198a1d1241fea6273c3c8b70d41647089c0657749bb3a2df4aac611a5b47d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/eb2f2109fd0d41b0a51b24f7d3f95b7b.json",
+      "sha256": "c6bcd89af48e107ef9df7a5393224cdb1b28b84ad371b4be38aa196f08c1db61"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/eb3816844582488185a766711cf579d9.json",
+      "sha256": "c30b4c2ab1d0019d4fe4ff3e49681f453374fab4c3c449b0a029f309da021953"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ec57a1a343fc4c6c83acbb143ed9fb7e.json",
+      "sha256": "e4c76ffcfe04fdc1e1a46f6218224829871181cf5b7d4ae5a9047461e904b923"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ed8cbc588eb74bc98a3c302ba2af0f34.json",
+      "sha256": "b6bf1507861d3f40bf6e711f4470c243eeb471e97594f7837da8afd9ec81299c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/eda30a88d61342e8bd6d7ce6f39f01e4.json",
+      "sha256": "cf76266054447d3a6d5a7592e684ea0934914dba9beddd7c7416c1129997ece6"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ee817247df2b48648f81f0a3f14b7a7f.json",
+      "sha256": "68a05ba3b4460337c07543d7d3e2a6ac5ee94acce900b70d508dcc58e9d1b75c"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ee8cb053802045fab42faf069a734f00.json",
+      "sha256": "38ac2382d5334e9d17e15d7b2a3bc459dab01f6557613f479acf5712f2c59b71"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ef3913625d8745539c2a24d119f45313.json",
+      "sha256": "f35c12c86c658a5e1715712236373a999c1ce86faca40642b3fb50853935a665"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/ef5d22483d2f44128fbfc97185a9a85d.json",
+      "sha256": "7d2738cd36d9c5bb4f5e1493fb232bde0e1c3b2f3030ff57644f13f458c59f05"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/efd2b476021542d6a2bf3c246c929d10.json",
+      "sha256": "42ea70d71f9c9096b43569f820742f6e567a143677293dfffe027cd0527e6a36"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f0339a211271468a933a21f9241cef09.json",
+      "sha256": "6766bc0bbbe9593585beb98090706a493177507c32ce2e04aad67fdfe78d8576"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f100c44af68641aab25ae24a83732eed.json",
+      "sha256": "06d9da5fb5f2916137a51fe7a80421695dd475b83729a426fc26744439470da2"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f27cf690e860451aa4e55ec6506a3951.json",
+      "sha256": "fe82832e6314e2d8b21d1725d7e29a501f96cefd1ea2b503f2f0d0d186ecd097"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f352a16bc82246db9f6e9d7a7de33817.json",
+      "sha256": "89e7abd414f5adb3f93d6c0e0ec54117302578b9154babb2aeae528b1be6713f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f3c8e5f852b34afeb55c9821e893f8af.json",
+      "sha256": "f2c358f185502608b58151e710cff3a9ae74d9b89ec0a04bfbee274b4e83a6a5"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f520d265fdda459c99787aadc008e820.json",
+      "sha256": "f0d1ca118a98f143ce5df6ea9fea13b359e38e937c44e012af70cdfb99ddb0ec"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f533051e9c6b462292a8712e26df2ecd.json",
+      "sha256": "49bf4d587b8f3cd1e7972bfa168f39fa0a137172e8efe30a1b4aafcae23cdba1"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f6f59fdb56fe4ead974cc881075b35ee.json",
+      "sha256": "e0b52c2d18893055d47161eb56f41bf46147693c8ce2b7e9c0d32c501dbcf468"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f71f554caf5141f59db0229912dcfb71.json",
+      "sha256": "c9593939d95779621ad9665b755be6ad1058dac482bd47423ff2131b3421a8bd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f727de0c71b14b70bb516e11e01a44c9.json",
+      "sha256": "6382958cc6f5416558da64510492e330c3791b21e88bec104c1b4471f568b872"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f74c9fb497a1429d9338508982f27033.json",
+      "sha256": "22f8054efe1b4d68979f1864bf2dbfbd2a3668792a62503562e17bbcd9a893fd"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f767a7779cfd4466ac70c848608a3ee4.json",
+      "sha256": "5101f8204750879116412fefb207f26b4fdc8f5b7dee9d8fbd9f55ad8391cea8"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f8cfeee3ebe64ea4853f5be9be39b990.json",
+      "sha256": "5fcc872153e174ac227283e24e39e497838d736434e4e1c5d948d79601690273"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f911731f94ee4853972bb12916bb3008.json",
+      "sha256": "b4b2427ecdb102a46793bcfe177bde3bbd6e4a578774efdfb21dcb74a449a23e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f93bbd3625184d3ca49e1c7c675013b4.json",
+      "sha256": "9387d1e6ce2e1ae0328713e510032493cd437677216ca905a0810b8d53f1575f"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/f9e770796c4a4ff58369e646391e163f.json",
+      "sha256": "f9cd0cec5a4ab5227a434b402ea5bdf403217b745dc7675b33b707c49f874d64"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fa12ebbfba1f41ba842675aa092ff670.json",
+      "sha256": "a960412ba8c880e85851f60e55662bb2e40f6ab26eca0ce580bc7c3582cb09af"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fbf8481d4bfd4d9aae0f9281aa5667a1.json",
+      "sha256": "f3b597bb95fc409c488a8c34a632c1a9430a428d6a174039348d4b240b3cc0b3"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fd4e637712904a87ace832cca0401554.json",
+      "sha256": "ee732401172bfc37da7198376661f83abd696688af984bc88d011736b026477e"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fdfad5fbee52441abbb881498aa6d117.json",
+      "sha256": "f4cc64fb61aa14752da9f2a8e6f6327f5a092279b163d34beb463cd384244d6d"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fe265c14e4614fbd9a3d8c5dbaff249d.json",
+      "sha256": "de54c1738aa4f5249b6e24545d4f6527461ee050a9ef9bd21f92fb654a191421"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fe4c8f247c0e4c4d933d9d52cd248f07.json",
+      "sha256": "fc52b2ebe2a40c5917e6384e98862d2797e50e445391589f2a416ad50fda69af"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fe9a17119054499a85246ebebd504eed.json",
+      "sha256": "33a3d3eed44e706b9b08eb3528388ef665bcd9a3cb071a883e1a0082f217bf40"
+    },
+    {
+      "path": "/private/tmp/p1-body-selection-evaluation/evals/remedy/results/body-selection-2026-10-13/batches/fed326773c2f48edb7a2adc3cc2de24c.json",
+      "sha256": "dc57cb0b7834fe98c79c36baf82bae4c42d39094e13eb206381d333e94c7ada5"
+    }
+  ],
+  "truth_definition": "Existing frozen scorer; no changes to approved gold or policy."
+}
