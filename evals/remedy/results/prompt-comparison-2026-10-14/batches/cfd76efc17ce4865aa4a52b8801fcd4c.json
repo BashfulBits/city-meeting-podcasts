@@ -1,0 +1,135 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas)"
+      }
+    ],
+    "case_id": "recording-c2104a6abb6a7a51f3876825",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-2-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) explicitly states that 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', establishing the convened body directly from official evidence. The provider player (provider-player) shows recording 111521 hosted on the Denton, TX Swagit channel titled 'Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)', confirming the recording belongs to this body. An existing configured feed 'denton-tx-tirz-2-board' ('Meetings of Denton TIRZ No. 2 Board') matches this body, and per the families policy, configured TIF/TIRZ family feeds are used for their proven bodies, so the action is assign_existing. The numbered-board identity rule rules out 'denton-tx-tirz-1-board', since this is TIRZ No. 2, not No. 1. The agenda's mention of a recommendation to City Council is a topic/recipient only and does not make City Council a convening participant, so no joint-meeting feeds apply; agenda items B and C referencing the Westpark TIRZ annual report and industrial development are topic words consistent with this board's jurisdiction, not a different body. No additional proven participants appear in the evidence."
+  },
+  "attempt_id": "a9cb38f024fa43a5ad15fef2e913b133",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-c2104a6abb6a7a51f3876825",
+  "case_input_hash": "3fcaf9b983139e6bc11ef163a717b387b6daba1e278f211d10da8cad1b76dfab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.43979991699962
+    }
+  ],
+  "end_to_end_seconds": 19.81081904199891,
+  "finished_at": "2026-10-14T17:09:16.344234+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T17:08:56.533259+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "805cff12246c571dab624be13d7c0292cf703d0d29b70e8a534d15e897c0c6ed",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1160,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 691,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4328,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5488
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ],\n      \"name\": \"Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas)\"\n    }\n  ],\n  \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"feed_slugs\": [\n    \"denton-tx-tirz-2-board\"\n  ],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained agenda (retained-agenda) explicitly states that 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.', establishing the convened body directly from official evidence. The provider player (provider-player) shows recording 111521 hosted on the Denton, TX Swagit channel titled 'Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)', confirming the recording belongs to this body. An existing configured feed 'denton-tx-tirz-2-board' ('Meetings of Denton TIRZ No. 2 Board') matches this body, and per the families policy, configured TIF/TIRZ family feeds are used for their proven bodies, so the action is assign_existing. The numbered-board identity rule rules out 'denton-tx-tirz-1-board', since this is TIRZ No. 2, not No. 1. The agenda's mention of a recommendation to City Council is a topic/recipient only and does not make City Council a convening participant, so no joint-meeting feeds apply; agenda items B and C referencing the Westpark TIRZ annual report and industrial development are topic words consistent with this board's jurisdiction, not a different body. No additional proven participants appear in the evidence.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is of the \"Tax Increment Reinvestment Zone No. 2 Board\" in Denton, TX, meeting on 2021-01-13 at 11:00 AM (Special Called Meeting).\n\nEvidence:\n1. \"retained-agenda\": The agenda clearly states \"Tax Increment Reinvestment Zone No. 2 Board, City of Denton... After determining that a quorum is present, the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021...\"\n2. \"provider-player\": Swagit video player for Denton, TX, titled \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\"\n3. \"native-source-chapters\": Chapter titles matching agenda items.\n\nExisting feeds include \"denton-tx-tirz-2-board\" \u2014 \"Meetings of Denton TIRZ No. 2 Board.\" There's also \"denton-tx-tirz-1-board\" but that's a different numbered board (policy: \"numbered boards differ\").\n\nSo the body is the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, and the feed slug is \"denton-tx-tirz-2-board\".\n\nPublication action: assign_existing.\n\nThe policy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" TIRZ is a TIF (Tax Increment Financing) body, so the TIRZ No. 2 feed applies.\n\nIs there any joint meeting? The agenda mentions making a recommendation to City Council, but that's just a topic \u2014 the City Council is not a participant in the meeting. No joint meeting participants.\n\nMissing evidence: none needed really. The evidence is complete. I could note nothing missing, or mention no gaps. The missing_evidence array can be empty.\n\nRationale: The retained agenda (retained-agenda) explicitly convenes the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton in a Special Called Meeting on 2021-01-13, and the provider player (provider-player) shows the recording for Denton, TX of that body. The existing feed denton-tx-tirz-2-board matches \"Meetings of Denton TIRZ No. 2 Board.\" Do not assign TIRZ No. 1 feed (numbered boards differ). City Council mention is only as a recommendation recipient, not a convening participant.\n\nBody name: \"Tax Increment Reinvestment Zone No. 2 Board\" \u2014 evidence refs: retained-agenda, provider-player.\n\nFeed slugs: [\"denton-tx-tirz-2-board\"].\n\nPublication action: \"assign_existing\".\n\nEvidence ref IDs: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 well, native-source-chapters just confirm the agenda items; could include it. I'll include retained-agenda and provider-player as core, maybe native-source-chapters too. Keep it concise: retained-agenda, provider-player.\n\nMissing evidence: [] \u2014 none needed. Actually should I list anything? The evidence is sufficient for assignment. Empty array is fine.\n\nReturn JSON matching the schema exactly.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is of the \"Tax Increment Reinvestment Zone No. 2 Board\" in Denton, TX, meeting on 2021-01-13 at 11:00 AM (Special Called Meeting).\n\nEvidence:\n1. \"retained-agenda\": The agenda clearly states \"Tax Increment Reinvestment Zone No. 2 Board, City of Denton... After determining that a quorum is present, the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021...\"\n2. \"provider-player\": Swagit video player for Denton, TX, titled \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\"\n3. \"native-source-chapters\": Chapter titles matching agenda items.\n\nExisting feeds include \"denton-tx-tirz-2-board\" \u2014 \"Meetings of Denton TIRZ No. 2 Board.\" There's also \"denton-tx-tirz-1-board\" but that's a different numbered board (policy: \"numbered boards differ\").\n\nSo the body is the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, and the feed slug is \"denton-tx-tirz-2-board\".\n\nPublication action: assign_existing.\n\nThe policy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" TIRZ is a TIF (Tax Increment Financing) body, so the TIRZ No. 2 feed applies.\n\nIs there any joint meeting? The agenda mentions making a recommendation to City Council, but that's just a topic \u2014 the City Council is not a participant in the meeting. No joint meeting participants.\n\nMissing evidence: none needed really. The evidence is complete. I could note nothing missing, or mention no gaps. The missing_evidence array can be empty.\n\nRationale: The retained agenda (retained-agenda) explicitly convenes the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton in a Special Called Meeting on 2021-01-13, and the provider player (provider-player) shows the recording for Denton, TX of that body. The existing feed denton-tx-tirz-2-board matches \"Meetings of Denton TIRZ No. 2 Board.\" Do not assign TIRZ No. 1 feed (numbered boards differ). City Council mention is only as a recommendation recipient, not a convening participant.\n\nBody name: \"Tax Increment Reinvestment Zone No. 2 Board\" \u2014 evidence refs: retained-agenda, provider-player.\n\nFeed slugs: [\"denton-tx-tirz-2-board\"].\n\nPublication action: \"assign_existing\".\n\nEvidence ref IDs: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 well, native-source-chapters just confirm the agenda items; could include it. I'll include retained-agenda and provider-player as core, maybe native-source-chapters too. Keep it concise: retained-agenda, provider-player.\n\nMissing evidence: [] \u2014 none needed. Actually should I list anything? The evidence is sufficient for assignment. Empty array is fine.\n\nReturn JSON matching the schema exactly.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791997755,
+    "id": "972fb39ffd7200bff892d83596b636f6",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1160,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 691,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4328,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5488
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
