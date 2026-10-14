@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Discovery generation-prompt floor.** Output and combined recovery preserve enough charged
+  input for the probe prompt when shrinking output. Small reservations safely omit optional
+  padding that cannot fit, and fixed-input refusals stop at the floor. Access errors defer
+  without repeated probes. Typed free-tier prompt-size errors guide smaller input without
+  inventing a numerical cap. No production caps or runtime-job margins change.
+  Combined probes accept length replies generating at least the requested output, preserving
+  actual counts separately without inferring a maximum from overfilled responses.
+
 - **Discovery starting hints and recovery.** New-route size searches use exact provider-qualified
   LiteLLM input/output metadata as starting hints after provider API claims, reporting the package
   version and missing matches separately from measured bounds. Computed negative output budgets
