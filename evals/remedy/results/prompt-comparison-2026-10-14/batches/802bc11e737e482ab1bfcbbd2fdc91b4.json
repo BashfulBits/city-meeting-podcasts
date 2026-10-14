@@ -1,0 +1,180 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning & Zoning Commission"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Comprehensive Plan Advisory Committee"
+      }
+    ],
+    "case_id": "recording-161b45f0a9cde9b3077a0cdb",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-comprehensive-plan-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda explicitly identifies a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee and calls for each body's quorum and call to order. The player and native chapter heading corroborate all three conveners; the player's opening transcript also records their calls to order. Each participant has a configured feed whose description covers its meetings, so the joint-meeting policy supports assigning this recording to all three. Comprehensive-plan discussion and routine citizen comments do not establish additional conveners or public-briefing/public-input feed membership."
+  },
+  "attempt_id": "831e3d77d7814fbc862b0cd701b5b59d",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-161b45f0a9cde9b3077a0cdb",
+  "case_input_hash": "caa313d2c318a9e836bc7195689d7786b33df0e38f75ea6c28704ef7dc35a776",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.525236375000532
+    }
+  ],
+  "end_to_end_seconds": 52.20106920800026,
+  "finished_at": "2026-10-14T17:38:11.684434+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T17:37:19.483049+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "0beaa7f9740079344492549cd78170cc2768d9bd192bb79a25de74fe9b8b87d6",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3653,
+        "output_tokens": 301
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 301,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3653,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3653,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3954,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-161b45f0a9cde9b3077a0cdb\",\"bodies\":[{\"name\":\"Addison City Council\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Planning & Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Comprehensive Plan Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda explicitly identifies a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee and calls for each body's quorum and call to order. The player and native chapter heading corroborate all three conveners; the player's opening transcript also records their calls to order. Each participant has a configured feed whose description covers its meetings, so the joint-meeting policy supports assigning this recording to all three. Comprehensive-plan discussion and routine citizen comments do not establish additional conveners or public-briefing/public-input feed membership.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999490,
+    "id": "resp_01ab82f6efdc5e2a016acfbdf992a8819bb19e2fa0635425a3",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3653,
+          "output_tokens": 301
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 301,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3653,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3653,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3954,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
