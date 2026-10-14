@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "name": "2024 Capital Bond Streets & Transportation Subcommittee (officially listed as Streets and Transportation Subcommittee, Office of Bond & Construction Management)"
+      }
+    ],
+    "case_id": "recording-0312d144c749c190446edfe0",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "dallas-tx-bond-program-meetings",
+      "dallas-tx-transportation-and-infrastructure"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official Office of Bond & Construction Management archive page (dallas-streets-archive) lists the Tuesday, August 22, 2023 meeting as 'Streets and Transportation Meeting #6' under the Streets and Transportation Subcommittee of the 2024 Bond Program, matching the Swagit recording 270975 titled '2024 Capital Bond Streets & Transportation Subcommittee Meeting' (provider-player). The transcript confirms convening identity: participants state 'SO THIS IS THE STREETS COMMITTEE' and clarify that the separate 'BOND TASK FORCE' is meeting elsewhere (the Council Chamber), so the Community Bond Task Force did NOT jointly convene this recording and is not named as a participant. Per the supplied publication membership policy, recordings convened by the 2024 Bond Streets and Transportation Subcommittee are published to its dedicated feed plus the broader subscription feeds dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure; those two reflect subscription grouping only, not joint convening bodies. All three feed slugs exist in the supplied feed list, so action is assign_existing."
+  },
+  "attempt_id": "041afdcca95f455a86e08261b1de2de7",
+  "attempt_in_round": 1,
+  "candidate": "kimi",
+  "capacity": {
+    "kind": "available",
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 0
+    },
+    "provider_in_flight": null,
+    "usage_visibility": "local_only"
+  },
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": "review/51 temporary coordination bypass; maintainer chat2026-10-13",
+  "coordination_bypass": true,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 38.51689920807257
+    }
+  ],
+  "end_to_end_seconds": 39.52468162495643,
+  "finished_at": "2026-10-14T09:35:08.044800+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "675288951eb50ab812d87b5fb14c365bc5fcbb57ba80b9aa1d2f305adae909ea",
+  "mode": "feed_context/explicit_policy",
+  "observed_at": "2026-10-14T09:34:28.519751+00:00",
+  "output_token_cap": 16384,
+  "production_drained": false,
+  "prompt_hash": "42c6c363450dbd5c3f8e68056e57ca5a8458111e0ed0affb4a5e660b2a9d0053",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 879,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": null,
+      "reasoning_tokens": 504,
+      "rejected_prediction_tokens": null
+    },
+    "prompt_tokens": 6221,
+    "prompt_tokens_details": {
+      "audio_tokens": null,
+      "cached_tokens": 0
+    },
+    "total_tokens": 7100
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0312d144c749c190446edfe0\",\"bodies\":[{\"name\":\"2024 Capital Bond Streets & Transportation Subcommittee (officially listed as Streets and Transportation Subcommittee, Office of Bond & Construction Management)\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"]}],\"feed_slugs\":[\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\"dallas-tx-bond-program-meetings\",\"dallas-tx-transportation-and-infrastructure\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"],\"missing_evidence\":[],\"rationale\":\"The official Office of Bond & Construction Management archive page (dallas-streets-archive) lists the Tuesday, August 22, 2023 meeting as 'Streets and Transportation Meeting #6' under the Streets and Transportation Subcommittee of the 2024 Bond Program, matching the Swagit recording 270975 titled '2024 Capital Bond Streets & Transportation Subcommittee Meeting' (provider-player). The transcript confirms convening identity: participants state 'SO THIS IS THE STREETS COMMITTEE' and clarify that the separate 'BOND TASK FORCE' is meeting elsewhere (the Council Chamber), so the Community Bond Task Force did NOT jointly convene this recording and is not named as a participant. Per the supplied publication membership policy, recordings convened by the 2024 Bond Streets and Transportation Subcommittee are published to its dedicated feed plus the broader subscription feeds dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure; those two reflect subscription grouping only, not joint convening bodies. All three feed slugs exist in the supplied feed list, so action is assign_existing.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nRecording: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" on Aug 22, 2023, Dallas, TX, recording ID 270975.\n\nEvidence:\n1. \"provider-player\" \u2014 Swagit player page with the title, date, and transcript. Transcript mentions \"SO THIS IS THE STREETS COMMITTEE\" and mentions an overall committee called the \"Bond Task Force\" \u2014 a speaker was confused thinking the task force met here, but was told no, this is the Streets Committee, the task force is meeting elsewhere (council chamber). So this is NOT a joint meeting \u2014 just the Streets and Transportation Subcommittee.\n2. \"dallas-streets-archive\" \u2014 official Office of Bond & Construction Management page listing \"Streets and Transportation Subcommittee\" meetings, with Tuesday, August 22, 2023 \"Streets and Transportation Meeting #6 Video\". This confirms this recording is part of the 2024 Bond Program's Streets and Transportation Subcommittee.\n\nExisting feeds include:\n- dallas-tx-2024-bond-streets-and-transportation-subcommittee \u2014 exact match\n- dallas-tx-bond-program-meetings \u2014 broader family\n- dallas-tx-transportation-and-infrastructure \u2014 broader subscription\n\nPublication membership policy explicitly says: recordings convened by the 2024 Bond Streets and Transportation Subcommittee belong in all three feeds. The latter two are broader subscription memberships, not joint convening.\n\nSo:\n- bodies: one body \u2014 \"2024 Capital Bond Streets & Transportation Subcommittee\" (or \"Streets and Transportation Subcommittee\" per official archive). Name it as official evidence gives. The body_label given is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\"; the official archive calls it \"Streets and Transportation Subcommittee\" under Office of Bond & Construction Management. I'll name it combining: \"2024 Capital Bond Streets & Transportation Subcommittee\" (a.k.a. Streets and Transportation Subcommittee). Use evidence IDs.\n- feed_slugs: all three.\n- publication_action: assign_existing\n- evidence_ref_ids: provider-player, dallas-streets-archive\n- missing_evidence: none\n- rationale: cite evidence; transcript confirms this is the Streets Committee and the Bond Task Force is a separate body meeting elsewhere, so no joint participation.\n\nCase id: recording-0312d144c749c190446edfe0.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nRecording: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" on Aug 22, 2023, Dallas, TX, recording ID 270975.\n\nEvidence:\n1. \"provider-player\" \u2014 Swagit player page with the title, date, and transcript. Transcript mentions \"SO THIS IS THE STREETS COMMITTEE\" and mentions an overall committee called the \"Bond Task Force\" \u2014 a speaker was confused thinking the task force met here, but was told no, this is the Streets Committee, the task force is meeting elsewhere (council chamber). So this is NOT a joint meeting \u2014 just the Streets and Transportation Subcommittee.\n2. \"dallas-streets-archive\" \u2014 official Office of Bond & Construction Management page listing \"Streets and Transportation Subcommittee\" meetings, with Tuesday, August 22, 2023 \"Streets and Transportation Meeting #6 Video\". This confirms this recording is part of the 2024 Bond Program's Streets and Transportation Subcommittee.\n\nExisting feeds include:\n- dallas-tx-2024-bond-streets-and-transportation-subcommittee \u2014 exact match\n- dallas-tx-bond-program-meetings \u2014 broader family\n- dallas-tx-transportation-and-infrastructure \u2014 broader subscription\n\nPublication membership policy explicitly says: recordings convened by the 2024 Bond Streets and Transportation Subcommittee belong in all three feeds. The latter two are broader subscription memberships, not joint convening.\n\nSo:\n- bodies: one body \u2014 \"2024 Capital Bond Streets & Transportation Subcommittee\" (or \"Streets and Transportation Subcommittee\" per official archive). Name it as official evidence gives. The body_label given is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\"; the official archive calls it \"Streets and Transportation Subcommittee\" under Office of Bond & Construction Management. I'll name it combining: \"2024 Capital Bond Streets & Transportation Subcommittee\" (a.k.a. Streets and Transportation Subcommittee). Use evidence IDs.\n- feed_slugs: all three.\n- publication_action: assign_existing\n- evidence_ref_ids: provider-player, dallas-streets-archive\n- missing_evidence: none\n- rationale: cite evidence; transcript confirms this is the Streets Committee and the Bond Task Force is a separate body meeting elsewhere, so no joint participation.\n\nCase id: recording-0312d144c749c190446edfe0.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791970469,
+    "id": "chatcmpl-180d98b8-ddf1-4d8e-9f36-6bc7482ce540",
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 879,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 504,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens": 6221,
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      },
+      "total_tokens": 7100
+    }
+  },
+  "reasoning": "max",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "nvidia_kimi_k3_free",
+  "route_settings_hash": "3dde07a0aefd2441836af366c5fc70c6ee57d7560f54d3f542bdf3090baa9d99",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "moonshotai/kimi-k3",
+  "upstream_model_requested": "moonshotai/kimi-k3"
+}

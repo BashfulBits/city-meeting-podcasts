@@ -1,0 +1,35 @@
+{
+  "attempt_id": "349e29070047499896a9bc2098824f3c",
+  "attempt_in_round": 1,
+  "candidate": "glm_full",
+  "capacity": {
+    "kind": "available",
+    "observed_usage": {
+      "nvidia_glm_5_3_eval": 0
+    },
+    "provider_in_flight": null,
+    "usage_visibility": "local_only"
+  },
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": "review/51 temporary coordination bypass; maintainer chat2026-10-13",
+  "coordination_bypass": true,
+  "daily_token_limit_authority": "local_cas",
+  "groq_until_429": false,
+  "manifest_hash": "675288951eb50ab812d87b5fb14c365bc5fcbb57ba80b9aa1d2f305adae909ea",
+  "mode": "feed_context/explicit_policy",
+  "observed_at": "2026-10-14T09:35:08.494094+00:00",
+  "output_token_cap": 16384,
+  "production_drained": false,
+  "prompt_hash": "42c6c363450dbd5c3f8e68056e57ca5a8458111e0ed0affb4a5e660b2a9d0053",
+  "provider_attempts": 1,
+  "qualified": false,
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "nvidia_glm_5_3_eval",
+  "route_settings_hash": "f43fea6cd9692dd51d446d1bac09975b534767dd9c8fa400017a43a9f5dda974",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "upstream_model_requested": "z-ai/glm-5.3"
+}

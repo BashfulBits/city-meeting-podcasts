@@ -1,0 +1,152 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "name": "2024 Capital Bond Streets & Transportation Subcommittee"
+      }
+    ],
+    "case_id": "recording-0312d144c749c190446edfe0",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "dallas-tx-bond-program-meetings",
+      "dallas-tx-transportation-and-infrastructure"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The provider-player evidence identifies the convened body as the 2024 Capital Bond Streets & Transportation Subcommittee meeting on Aug 22, 2023. The Dallas archive evidence lists the Aug 22, 2023 Streets and Transportation Meeting #6 under the Office of Bond & Construction Management. Under the supplied publication membership policy, a recording convened by the 2024 Bond Streets and Transportation Subcommittee belongs in the three configured feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. The latter two are subscription groupings, not separate convened bodies. No joint meeting is proven; the transcript reference to the Bond Task Force does not establish that it convened with this subcommittee."
+  },
+  "attempt_id": "236f2a5dc5df48f18dd4035400967d05",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "capacity": {
+    "kind": "available",
+    "observed_usage": {
+      "beatapi_deepseek_v4_1_flash_free": 20
+    },
+    "provider_in_flight": null,
+    "usage_visibility": "local_only"
+  },
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": "review/51 temporary coordination bypass; maintainer chat2026-10-13",
+  "coordination_bypass": true,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.517357249744236
+    }
+  ],
+  "end_to_end_seconds": 24.43535124976188,
+  "finished_at": "2026-10-14T09:57:04.607852+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "675288951eb50ab812d87b5fb14c365bc5fcbb57ba80b9aa1d2f305adae909ea",
+  "mode": "feed_context/explicit_policy",
+  "observed_at": "2026-10-14T09:56:40.172374+00:00",
+  "output_token_cap": 16384,
+  "production_drained": false,
+  "prompt_hash": "42c6c363450dbd5c3f8e68056e57ca5a8458111e0ed0affb4a5e660b2a9d0053",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 2432,
+    "cached_tokens": 2432,
+    "completion_thinking_tokens": 2238,
+    "completion_tokens": 2531,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 2238,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 2432,
+    "prompt_cache_miss_tokens": 3755,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 6187,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 2432,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 8718
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0312d144c749c190446edfe0\",\"bodies\":[{\"name\":\"2024 Capital Bond Streets & Transportation Subcommittee\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"]}],\"feed_slugs\":[\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\"dallas-tx-bond-program-meetings\",\"dallas-tx-transportation-and-infrastructure\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"],\"missing_evidence\":[],\"rationale\":\"The provider-player evidence identifies the convened body as the 2024 Capital Bond Streets & Transportation Subcommittee meeting on Aug 22, 2023. The Dallas archive evidence lists the Aug 22, 2023 Streets and Transportation Meeting #6 under the Office of Bond & Construction Management. Under the supplied publication membership policy, a recording convened by the 2024 Bond Streets and Transportation Subcommittee belongs in the three configured feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. The latter two are subscription groupings, not separate convened bodies. No joint meeting is proven; the transcript reference to the Bond Task Force does not establish that it convened with this subcommittee.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine bodies/feed slugs. We have evidence. Need parse.\n\nWe need identify municipal body/bodies this recording belongs to. Recording title: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" date Aug 22 2023. Evidence provider-player source span includes title and transcript. Also dallas-streets-archive page lists Streets and Transportation Subcommittee meeting #6 Aug 22, 2023 under Office of Bond & Construction Management. Policy says publication membership: recordings convened by 2024 Bond Streets and Transportation Subcommittee belong in all three feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. Broader subscriptions not proof joint convened.\n\nQuestion asks \"Which municipal body or bodies does this recording belong to? Determine convening institution... Name every proven participant in a joint meeting. Identify actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs... If real body has no existing feed, return unconfigured_body... ownership cannot be established, return unresolved...\"\n\nNeed output schema: case_id, bodies array IdentifiedBody name/evidence_ref_ids, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale.\n\nNeed decide bodies. Is this a joint meeting? Title indicates subcommittee. Transcript mentions \"this is Streets Committee... overall committee called Bond Task Force...\" There is a speaker asking about task force, but staff says this is Streets Committee, task force maybe in council chamber. So not joint. The recording belongs to 2024 Capital Bond Streets & Transportation Subcommittee (or Streets and Transportation Subcommittee of 2024 Bond Program). The body label includes 2024 Capital Bond Streets & Transportation Subcommittee Meeting. Evidence: provider-player title, dallas-streets-archive \"Streets and Transportation Subcommittee\" and meeting #6 on Aug 22 2023. Also policy mentions \"2024 Bond Streets and Transportation Subcommittee\". Need name maybe \"2024 Bond Streets and Transportation Subcommittee\" or \"2024 Capital Bond Streets & Transportation Subcommittee\". Use official title? The recording title is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\"; archive says \"Streets and Transportation Subcommittee\". The feed slug is dallas-tx-2024-bond-streets-and-transportation-subcommittee. Body name likely \"2024 Bond Streets and Transportation Subcommittee\" from policy. But title uses Capital Bond. We can name \"2024 Capital Bond Streets & Transportation Subcommittee\" with evidence. Need body/program separately from subscription grouping: The actual body is subcommittee. Broader feed dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure are subscription groupings, not separate convened bodies. We might include only one body. If joint, would name all participants. Here no proven joint participants. Could mention Bond Task Force? Transcript says \"overall committee called Bond Task Force\" but not convened, and speaker confused. Not proven participant. So bodies: one.\n\nFeed slugs: Select ALL appropriate existing feed slugs under supplied publication rules. The publication_membership_policy explicitly: belong in all three: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, dallas-tx-transportation-and-infrastructure. Need check if dallas-tx-transportation-and-infrastructure is existing: yes. dallas-tx-bond-program-meetings yes. dallas-tx-2024-bond-streets-and-transportation-subcommittee yes. So feed_slugs include those three. Any other? Maybe \"dallas-tx-2024-community-bond-task-force\"? No, not convened; not this body. \"dallas-tx-bond-program-meetings\" is family. \"dallas-tx-transportation-and-infrastructure\" broad. We should not include 2017 etc. Could include \"dallas-tx-2024-bond-critical-facilities...\"? No.\n\nPublication_action: assign_existing? Since existing feed for subcommittee and broader feeds. Yes. Not unconfigured_body. Not archive_only etc. Evidence refs: We can use evidence_ref_ids [\"provider-player\", \"dallas-streets-archive\"] maybe. The feed slugs evidence? The policy not an evidence ref? The schema evidence_ref_ids top-level. Need cite supplied evidence IDs. We can include both evidence refs. For body name evidence_ref_ids: both. Feed slugs? Need evidence for feed slugs? The policy states mapping, but no evidence ID for policy. It's supplied publication rules. Could cite evidence IDs for body and title. The feed slugs are assigned under policy. In evidence_ref_ids top-level include provider-player and dallas-streets-archive. Missing evidence: maybe none. But if no proof of joint? The question asks if joint name every proven participant. We can state no joint meeting proven; transcript mentions Bond Task Force but evidence does not prove it convened with subcommittee. Is that a gap? Could put missing_evidence: [] or maybe \"No official notice/agenda evidence for any joint participant; transcript mention of Bond Task Force is not proof of joint convening.\" But missing_evidence array likely list strings. We can include that gap? The schema missing_evidence items strings. The prompt says if evidence insufficient for another suspected participant, explaining that gap. Since transcript mentions Bond Task Force as separate, we can mention in rationale and maybe missing_evidence. But if no suspected participant? The transcript has a public speaker asking about task force; staff says this is Streets Committee and Bond Task Force may be meeting in chamber. That indicates not joint. We can note no joint participant proven; Bond Task Force mention not evidence of participation. Maybe missing_evidence: [] because not needed. But maybe we should include \"No official agenda/notice evidence for any joint participant; transcript reference to Bond Task Force does not establish joint meeting.\" Hmm.\n\nNeed output valid JSON. Ensure max lengths. Body name max 300. Rationale max 2000. feed_slugs max 15. bodies max 10. Need no Markdown.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-0312d144c749c190446edfe0\",\n  \"bodies\": [\n    {\n      \"name\": \"2024 Capital Bond Streets & Transportation Subcommittee\",\n      \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\n    \"dallas-tx-bond-program-meetings\",\n    \"dallas-tx-transportation-and-infrastructure\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording title and provider-player evidence identify the convened body as the 2024 Capital Bond Streets & Transportation Subcommittee meeting on Aug 22, 2023. The Dallas archive evidence lists the Aug 22, 2023 Streets and Transportation Meeting #6 under the Office of Bond & Construction Management. Under the supplied publication membership policy, a recording convened by the 2024 Bond Streets and Transportation Subcommittee belongs in the three configured feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. The latter two are subscription groupings, not separate convened bodies. No joint meeting is proven; the transcript's reference to the Bond Task Force does not establish that it convened with this subcommittee.\"\n}\n\nNeed consider body name maybe exactly \"2024 Capital Bond Streets & Transportation Subcommittee\" vs \"2024 Bond Streets and Transportation Subcommittee\". The policy calls \"2024 Bond Streets and Transportation Subcommittee\". The feed title \"Dallas: 2024 Bond Streets and Transportation Subcommittee\". The recording title \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". The body is official title? The question: \"Official titles, dates and recording IDs are immutable.\" So maybe body name should be official title without \"Meeting\"? The body label in input is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". But body name should be body, not meeting. The official title includes \"Meeting\". The body is \"2024 Capital Bond Streets & Transportation Subcommittee\". Good.\n\nCould there be two bodies: \"Streets and Transportation Subcommittee\" and \"2024 Capital Bond Streets & Transportation Subcommittee\"? Same. Maybe \"Community Bond Task Force\" mentioned as overall committee, but not participant. The question: \"Which municipal body or bodies does this recording belong to? Determine the convening institution... Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping.\" This implies if not joint, just the one body. If joint, list all. We list one.\n\nFeed slugs: The policy says \"recordings convened by the 2024 Bond Streets and Transportation Subcommittee belong in all three subscription feeds\". So yes.\n\nEvidence refs: Could include only \"provider-player\" and \"dallas-streets-archive\". The provider-player evidence has title and transcript. dallas-streets-archive has meeting list. Good.\n\nMissing evidence: The schema requires array. We can leave empty. But the prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" We can mention in rationale. If missing_evidence array empty, okay. But maybe include \"Official agenda/notice for any joint participant; transcript mention of Bond Task Force is not proof of joint convening.\" That is not missing evidence for this body. Hmm.\n\nLet's ensure no invalid characters? JSON can have ampersand. Use double quotes. Need no trailing commas.\n\nOne nuance: The policy says \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" Not applicable. assign_existing.\n\nCould there be feed slug \"dallas-tx-2024-bond-community-bond-task-force\"? No. The transcript says \"overall committee called the Bond Task Force\". But the policy says \"Families: Use configured bond/TIF/public-information family feeds for their proven bodies.\" The Bond Task Force has feed \"dallas-tx-2024-community-bond-task-force\". But is it a proven participant? No. It's mentioned as separate meeting maybe in council chamber. So not include.\n\nCould the recording belong to \"Office of Bond & Construction Management\"? That's a department, not a body. The archive page is under that office. Not a body. The actual body is subcommittee.\n\nLet's final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine bodies/feed slugs. We have evidence. Need parse.\n\nWe need identify municipal body/bodies this recording belongs to. Recording title: \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" date Aug 22 2023. Evidence provider-player source span includes title and transcript. Also dallas-streets-archive page lists Streets and Transportation Subcommittee meeting #6 Aug 22, 2023 under Office of Bond & Construction Management. Policy says publication membership: recordings convened by 2024 Bond Streets and Transportation Subcommittee belong in all three feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. Broader subscriptions not proof joint convened.\n\nQuestion asks \"Which municipal body or bodies does this recording belong to? Determine convening institution... Name every proven participant in a joint meeting. Identify actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs... If real body has no existing feed, return unconfigured_body... ownership cannot be established, return unresolved...\"\n\nNeed output schema: case_id, bodies array IdentifiedBody name/evidence_ref_ids, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale.\n\nNeed decide bodies. Is this a joint meeting? Title indicates subcommittee. Transcript mentions \"this is Streets Committee... overall committee called Bond Task Force...\" There is a speaker asking about task force, but staff says this is Streets Committee, task force maybe in council chamber. So not joint. The recording belongs to 2024 Capital Bond Streets & Transportation Subcommittee (or Streets and Transportation Subcommittee of 2024 Bond Program). The body label includes 2024 Capital Bond Streets & Transportation Subcommittee Meeting. Evidence: provider-player title, dallas-streets-archive \"Streets and Transportation Subcommittee\" and meeting #6 on Aug 22 2023. Also policy mentions \"2024 Bond Streets and Transportation Subcommittee\". Need name maybe \"2024 Bond Streets and Transportation Subcommittee\" or \"2024 Capital Bond Streets & Transportation Subcommittee\". Use official title? The recording title is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\"; archive says \"Streets and Transportation Subcommittee\". The feed slug is dallas-tx-2024-bond-streets-and-transportation-subcommittee. Body name likely \"2024 Bond Streets and Transportation Subcommittee\" from policy. But title uses Capital Bond. We can name \"2024 Capital Bond Streets & Transportation Subcommittee\" with evidence. Need body/program separately from subscription grouping: The actual body is subcommittee. Broader feed dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure are subscription groupings, not separate convened bodies. We might include only one body. If joint, would name all participants. Here no proven joint participants. Could mention Bond Task Force? Transcript says \"overall committee called Bond Task Force\" but not convened, and speaker confused. Not proven participant. So bodies: one.\n\nFeed slugs: Select ALL appropriate existing feed slugs under supplied publication rules. The publication_membership_policy explicitly: belong in all three: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, dallas-tx-transportation-and-infrastructure. Need check if dallas-tx-transportation-and-infrastructure is existing: yes. dallas-tx-bond-program-meetings yes. dallas-tx-2024-bond-streets-and-transportation-subcommittee yes. So feed_slugs include those three. Any other? Maybe \"dallas-tx-2024-community-bond-task-force\"? No, not convened; not this body. \"dallas-tx-bond-program-meetings\" is family. \"dallas-tx-transportation-and-infrastructure\" broad. We should not include 2017 etc. Could include \"dallas-tx-2024-bond-critical-facilities...\"? No.\n\nPublication_action: assign_existing? Since existing feed for subcommittee and broader feeds. Yes. Not unconfigured_body. Not archive_only etc. Evidence refs: We can use evidence_ref_ids [\"provider-player\", \"dallas-streets-archive\"] maybe. The feed slugs evidence? The policy not an evidence ref? The schema evidence_ref_ids top-level. Need cite supplied evidence IDs. We can include both evidence refs. For body name evidence_ref_ids: both. Feed slugs? Need evidence for feed slugs? The policy states mapping, but no evidence ID for policy. It's supplied publication rules. Could cite evidence IDs for body and title. The feed slugs are assigned under policy. In evidence_ref_ids top-level include provider-player and dallas-streets-archive. Missing evidence: maybe none. But if no proof of joint? The question asks if joint name every proven participant. We can state no joint meeting proven; transcript mentions Bond Task Force but evidence does not prove it convened with subcommittee. Is that a gap? Could put missing_evidence: [] or maybe \"No official notice/agenda evidence for any joint participant; transcript mention of Bond Task Force is not proof of joint convening.\" But missing_evidence array likely list strings. We can include that gap? The schema missing_evidence items strings. The prompt says if evidence insufficient for another suspected participant, explaining that gap. Since transcript mentions Bond Task Force as separate, we can mention in rationale and maybe missing_evidence. But if no suspected participant? The transcript has a public speaker asking about task force; staff says this is Streets Committee and Bond Task Force may be meeting in chamber. That indicates not joint. We can note no joint participant proven; Bond Task Force mention not evidence of participation. Maybe missing_evidence: [] because not needed. But maybe we should include \"No official agenda/notice evidence for any joint participant; transcript reference to Bond Task Force does not establish joint meeting.\" Hmm.\n\nNeed output valid JSON. Ensure max lengths. Body name max 300. Rationale max 2000. feed_slugs max 15. bodies max 10. Need no Markdown.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-0312d144c749c190446edfe0\",\n  \"bodies\": [\n    {\n      \"name\": \"2024 Capital Bond Streets & Transportation Subcommittee\",\n      \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\n    \"dallas-tx-bond-program-meetings\",\n    \"dallas-tx-transportation-and-infrastructure\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording title and provider-player evidence identify the convened body as the 2024 Capital Bond Streets & Transportation Subcommittee meeting on Aug 22, 2023. The Dallas archive evidence lists the Aug 22, 2023 Streets and Transportation Meeting #6 under the Office of Bond & Construction Management. Under the supplied publication membership policy, a recording convened by the 2024 Bond Streets and Transportation Subcommittee belongs in the three configured feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. The latter two are subscription groupings, not separate convened bodies. No joint meeting is proven; the transcript's reference to the Bond Task Force does not establish that it convened with this subcommittee.\"\n}\n\nNeed consider body name maybe exactly \"2024 Capital Bond Streets & Transportation Subcommittee\" vs \"2024 Bond Streets and Transportation Subcommittee\". The policy calls \"2024 Bond Streets and Transportation Subcommittee\". The feed title \"Dallas: 2024 Bond Streets and Transportation Subcommittee\". The recording title \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". The body is official title? The question: \"Official titles, dates and recording IDs are immutable.\" So maybe body name should be official title without \"Meeting\"? The body label in input is \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". But body name should be body, not meeting. The official title includes \"Meeting\". The body is \"2024 Capital Bond Streets & Transportation Subcommittee\". Good.\n\nCould there be two bodies: \"Streets and Transportation Subcommittee\" and \"2024 Capital Bond Streets & Transportation Subcommittee\"? Same. Maybe \"Community Bond Task Force\" mentioned as overall committee, but not participant. The question: \"Which municipal body or bodies does this recording belong to? Determine the convening institution... Name every proven participant in a joint meeting. Identify the actual body/program separately from its subscription grouping.\" This implies if not joint, just the one body. If joint, list all. We list one.\n\nFeed slugs: The policy says \"recordings convened by the 2024 Bond Streets and Transportation Subcommittee belong in all three subscription feeds\". So yes.\n\nEvidence refs: Could include only \"provider-player\" and \"dallas-streets-archive\". The provider-player evidence has title and transcript. dallas-streets-archive has meeting list. Good.\n\nMissing evidence: The schema requires array. We can leave empty. But the prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" We can mention in rationale. If missing_evidence array empty, okay. But maybe include \"Official agenda/notice for any joint participant; transcript mention of Bond Task Force is not proof of joint convening.\" That is not missing evidence for this body. Hmm.\n\nLet's ensure no invalid characters? JSON can have ampersand. Use double quotes. Need no trailing commas.\n\nOne nuance: The policy says \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" Not applicable. assign_existing.\n\nCould there be feed slug \"dallas-tx-2024-bond-community-bond-task-force\"? No. The transcript says \"overall committee called the Bond Task Force\". But the policy says \"Families: Use configured bond/TIF/public-information family feeds for their proven bodies.\" The Bond Task Force has feed \"dallas-tx-2024-community-bond-task-force\". But is it a proven participant? No. It's mentioned as separate meeting maybe in council chamber. So not include.\n\nCould the recording belong to \"Office of Bond & Construction Management\"? That's a department, not a body. The archive page is under that office. Not a body. The actual body is subcommittee.\n\nLet's final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791971809,
+    "id": "7fa978672bdf7d6869a7e6a45617e1fe",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2432,
+      "cached_tokens": 2432,
+      "completion_thinking_tokens": 2238,
+      "completion_tokens": 2531,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 2238,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 2432,
+      "prompt_cache_miss_tokens": 3755,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 6187,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 2432,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 8718
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "2df9c376c1330178bd6c89f8d28a9cececbb189e5fb3ff487f8ac0267825a493",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
