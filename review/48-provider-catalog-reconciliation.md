@@ -2683,3 +2683,28 @@ This success fits the existing 600-second workflow deadline, so it does not just
 that deadline or attribute the earlier stream failure to the Worker. The prior provider call
 also used direct HTTP; its Worker interaction was pause coordination. Next GitHub verification
 follows merge, and further boundary search requires its separately authorized bounded run.
+
+
+#### Follow-up: incomplete output-stream terminal evidence
+
+The maintainer approved one direct 55,296-output-token diagnostic, with no Worker reservation or
+pause and the existing 600-second deadline. HTTP 200 began sending data after 44.529 seconds,
+then the stream ended after 250.581 seconds, with 720,244 bytes and 2,168 events but no complete
+terminal evidence. The observation/journal correctly retained `incomplete_sse`, not a size
+refusal. The independently verified 36,864 lower bound remains; no refused upper bound exists.
+Do not increase the timeout to address a stream that already ended before its local deadline.
+
+The approved diagnostic follow-up modifies the existing `probe.py` collector and discovery tests
+only, plus lifecycle docs and a changelog fragment. For incomplete/error streams without a
+provider error explanation, retain a compact terminal-state summary in the existing bounded
+response preview: natural HTTP EOF, DONE seen, finish category, usage presence, pending-frame
+bytes, assembled-content bytes and last event category. Never retain generated or reasoning
+text. A provider error explanation takes priority over that structural summary. Successful
+verified output keeps the existing preview suppression. Normal termination at DONE does not
+claim HTTP EOF. Parent hard cancellation still cannot supply a child's lost terminal state.
+
+Acceptance covers missing DONE/usage/finish, partial frames, strict existing preview size,
+provider-error precedence and no generated-text retention; all evidence remains inconclusive.
+No new artifact schema, request parameters, Worker path, production config, search algorithm,
+budget or timeout changes. Any new live call requires explicit authorization. This diagnostic
+will identify the missing terminal component before further boundary-search changes are chosen.

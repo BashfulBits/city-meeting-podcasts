@@ -1914,3 +1914,10 @@ Preserve existing results, shared quota accounting, production headroom and all 
 Implement as a dependent PR on #2277; human merge and later operational handoff are separate.
 Implementation prepared in [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410).
 The parent changelog conflict is resolved; both entries use current main's fragment convention.
+
+
+Review/48 output-discovery diagnostic follow-up: a direct 55,296-token probe ended its HTTP
+stream at 250.581 seconds without complete SSE terminal evidence. Retain bounded terminal
+state in the existing failed preview to distinguish missing DONE, finish, usage and a partial
+frame; no algorithm, timeout, production admission or maintenance-scope change. The verified
+NVIDIA-hosted Lightning output lower bound is 36,864, with no refused upper bound.
