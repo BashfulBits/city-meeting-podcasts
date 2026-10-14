@@ -2648,3 +2648,14 @@ recovery. Run full offline Python tests, whole-repository Ruff lint/format and b
 No live canary is part of offline acceptance. Implement discovery/report/retry first, then integrate
 reviewed addition values after the separate configuration contract, then propose a finite reviewed
 activation and GitHub canary with evidence/rollback before recurring discovery is enabled.
+
+
+Streaming failure diagnostics distinguish provider error events from invalid event types and
+unexpected object tags. Retain only a bounded/redacted provider error in the existing failed
+response preview, never sibling generated content or reasoning. These events supply no capacity
+proof. Discovery capacity-parser reuse omits transport duration/first-byte fields from the
+configured-context evidence projection: that schema retains its 120-second contract, while
+original discovery transport diagnostics keep their actual timings. Long failures must remain
+journalable inconclusive observations, not collapse into a schema ValueError or invalid JSON.
+Regression acceptance includes provider errors, malformed shapes, preview exclusion/redaction,
+and failure projection beyond the configured-context deadline. No extra live call is implicit.

@@ -2337,3 +2337,85 @@ def test_stream_timings_use_the_authorized_deadline_not_a_two_minute_clip():
     )
     assert observed.context_diagnostics["duration_ms"] == 200_000
     assert observed.context_diagnostics["first_byte_ms"] == 200_000
+
+
+@pytest.mark.parametrize(
+    ("event", "code"),
+    [([], "invalid_sse_event_type"), ({"object": "other"}, "invalid_sse_object")],
+)
+def test_stream_identifies_invalid_event_shape(event, code):
+    import json
+
+    from citypods.provider_catalog.probe import ContextEnvelopeError, DiscoverySSECollector
+
+    collector = DiscoverySSECollector()
+    with pytest.raises(ContextEnvelopeError) as error:
+        collector.feed(("data: " + json.dumps(event) + "\n\n").encode())
+    assert error.value.code == code
+    assert collector.error_preview == b""
+
+
+def test_stream_provider_error_is_diagnostic_only_and_excludes_generated_siblings():
+    import json
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    event = {
+        "error": {"message": "upstream timed out", "code": 504},
+        "reasoning": "private reasoning",
+        "content": "generated text",
+    }
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield ("data: " + json.dumps(event) + "\n\n").encode()
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    captured = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: response),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+        retain_response_preview=True,
+    )
+    assert captured.context_diagnostics["diagnostic_code"] == "provider_sse_error"
+    assert "upstream timed out" in captured.context_diagnostics["response_preview"]
+    assert "private reasoning" not in captured.context_diagnostics["response_preview"]
+    assert "generated text" not in captured.context_diagnostics["response_preview"]
+    assert captured.body == ""
+    assert response.closed
+
+
+@pytest.mark.parametrize("code", ["provider_sse_error", "stream_bytes_exceeded"])
+def test_long_discovery_failure_survives_configured_context_evidence_validation(code):
+    from citypods.provider_catalog.rules import Response, chat_discovery_observation
+
+    request, transient = minimum_generation_fixture()
+    response = Response(
+        200,
+        context_diagnostics={
+            "diagnostic_code": code,
+            "duration_ms": 600216,
+            "first_byte_ms": 359,
+            "response_preview": "upstream timeout",
+            "stream_bytes": 7537360,
+            "stream_events": 22977,
+        },
+    )
+    observed = chat_discovery_observation(response, request, transient, reasoning_basis="included")
+    assert not observed.verified
+    assert observed.diagnostic == code
+    assert observed.response_preview == "upstream timeout"
+    assert observed.stream_events == 22977

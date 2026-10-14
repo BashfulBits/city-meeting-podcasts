@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -833,7 +833,29 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
     stamp = datetime.now(UTC).isoformat()
     if request.axis.startswith("total_"):
         return DiscoveryObservation(request, stamp, diagnostic="combined_semantics_unverified")
-    observation = chat_context_observation(response, transient, reasoning_basis=reasoning_basis)
+    # Reuse capacity parsing without projecting discovery transport timings into the
+    # configured-context evidence schema, whose deadline remains 120 seconds.
+    capacity_response = replace(
+        response,
+        context_diagnostics={
+            key: value
+            for key, value in response.context_diagnostics.items()
+            if key not in {"duration_ms", "first_byte_ms"}
+        },
+    )
+    observation = chat_context_observation(
+        capacity_response, transient, reasoning_basis=reasoning_basis
+    )
+    stream_failure = response.context_diagnostics.get("diagnostic_code", "")
+    if (
+        not response.body
+        and isinstance(stream_failure, str)
+        and (
+            stream_failure.startswith(("invalid_sse_", "stream_", "conflicting_sse_"))
+            or stream_failure in {"provider_sse_error", "incomplete_sse"}
+        )
+    ):
+        observation = replace(observation, diagnostic_code=stream_failure)
     try:
         payload = strict_context_json(response.body)
         payload = payload if isinstance(payload, dict) else None

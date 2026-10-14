@@ -4,3 +4,5 @@
   complete terminal evidence, and reports bounded stream metrics. Other models/hosts, configured
   calibration, production dispatch and token/time budgets remain unchanged. Partial and error
   streams never establish size refusals; verified output retains no response preview.
+  Provider stream errors retain bounded/redacted error previews and distinct failure reasons;
+  long discovery failures remain journalable without changing configured-context timing bounds.

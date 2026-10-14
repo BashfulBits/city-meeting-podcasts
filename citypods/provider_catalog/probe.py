@@ -975,6 +975,7 @@ class DiscoverySSECollector:
         self.response_id = None
         self.finish = None
         self.done = False
+        self.error_preview = b""
 
     def feed(self, chunk):
         self.wire_bytes += len(chunk)
@@ -1008,12 +1009,14 @@ class DiscoverySSECollector:
             event = strict_context_json(value)
         except (TypeError, ValueError) as exc:
             raise ContextEnvelopeError("invalid_sse_json") from exc
-        if (
-            not isinstance(event, dict)
-            or event.get("object") != "chat.completion.chunk"
-            or event.get("error")
-        ):
-            raise ContextEnvelopeError("invalid_sse_envelope")
+        if not isinstance(event, dict):
+            raise ContextEnvelopeError("invalid_sse_event_type")
+        if event.get("error"):
+            # Retain only the provider error, never sibling generated/reasoning fields.
+            self.error_preview = json.dumps({"error": event["error"]}).encode("utf-8")
+            raise ContextEnvelopeError("provider_sse_error")
+        if event.get("object") != "chat.completion.chunk":
+            raise ContextEnvelopeError("invalid_sse_object")
         response_id = event.get("id")
         if response_id is not None:
             if (
@@ -1134,9 +1137,9 @@ def _collect_context(
             diagnostics["stream_events"] = min(sse.events, sse.MAX_EVENTS)
         if request_id := _context_provider_request_id(response_headers):
             diagnostics["provider_request_id"] = request_id
-        if retain_response_preview and sse is not None and body:
+        if retain_response_preview and sse is not None and (body or sse.error_preview):
             diagnostics["response_preview"] = _discovery_response_excerpt(
-                body.encode("utf-8"), request, headers
+                sse.error_preview or body.encode("utf-8"), request, headers
             )
         if retain_response_preview and raw:
             diagnostics["response_preview"] = _discovery_response_excerpt(raw, request, headers)
