@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Environmental Task Force of the City of Arlington"
+      }
+    ],
+    "case_id": "recording-61dfe043572467ebf477acba",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained official notice names the Environmental Task Force of the City of Arlington, Texas, as the convened body for the March 24, 2020 telephone meeting, and the provider player title matches that body. The agenda items are business topics, not separate convening institutions, and no joint participants are proven. The existing feed arlington-tx-environmental-task-force is described as verified 2020 Arlington Environmental Task Force proceedings, so it is the appropriate configured feed. The arlington-tx feed is limited to Council and Planning & Zoning meetings and does not fit this recording."
+  },
+  "attempt_id": "66f0aa51b1b148bbb8a5a79b014555c6",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-61dfe043572467ebf477acba",
+  "case_input_hash": "03079fead48d558c1b67cba6dc56df1c8946223a494ad62c6228f64bda4839d3",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.327101292001316
+    }
+  ],
+  "end_to_end_seconds": 56.55813333400147,
+  "finished_at": "2026-10-14T20:15:16.609081+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T20:14:20.050621+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "7fa05fa2e885caec6c3400a727ac928fb0407e5079e9ae7f2a1bf7cc78bcc106",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 786,
+    "completion_tokens": 1001,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 786,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 1800,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 2440,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 3441
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-61dfe043572467ebf477acba\",\"bodies\":[{\"name\":\"Environmental Task Force of the City of Arlington\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-environmental-task-force\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The retained official notice names the Environmental Task Force of the City of Arlington, Texas, as the convened body for the March 24, 2020 telephone meeting, and the provider player title matches that body. The agenda items are business topics, not separate convening institutions, and no joint participants are proven. The existing feed arlington-tx-environmental-task-force is described as verified 2020 Arlington Environmental Task Force proceedings, so it is the appropriate configured feed. The arlington-tx feed is limited to Council and Planning & Zoning meetings and does not fit this recording.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine body/feed. We have case. Evidence: retained-agenda says notice of public meeting of Environmental Task Force of City of Arlington, March 24 2020, agenda. Provider-player title Environmental Task Force Meeting. Existing feeds includes arlington-tx-environmental-task-force \"Verified 2020 Arlington Environmental Task Force proceedings.\" So body is Environmental Task Force of City of Arlington, feed slug arlington-tx-environmental-task-force. Need decide if also broader arlington-tx? Policy: Select all appropriate existing feed slugs under supplied publication rules. The feed \"Arlington \u2014 All Meetings\" is broad subscription grouping? The instruction: \"A feed can be a broader subscription grouping rather than an institution. A grouping assignment does not assert that its named committee jointly convened the recording.\" Need select all appropriate existing feed slugs. Usually if there is dedicated feed, use it. Does \"arlington-tx\" all meetings also appropriate? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Description limits to City Council and P&Z, not all city meetings. So not appropriate for Environmental Task Force. Dedicated feed exists. Publication action assign_existing. Bodies array should include body name. Evidence refs for body name: retained-agenda, provider-player maybe. Evidence ref ids overall: both? We need cite only supplied evidence IDs. For body names and assignments. Body name from retained-agenda and provider-player. Feed assignment based on existing feed description. We can include evidence_ref_ids all relevant: retained-agenda, provider-player. missing_evidence empty. Rationale concise. Need JSON exactly schema. No markdown.\n\nNeed consider \"Name every proven participant in a joint meeting.\" Not joint. No other participants. Body label \"Environmental Task Force Meeting\" vs formal body \"Environmental Task Force of the City of Arlington\". Use official title. Maybe body: \"Environmental Task Force of the City of Arlington\" or \"Arlington Environmental Task Force\". Evidence says \"Environmental Task Force of the City of Arlington, Texas\" and agenda header \"ARLINGTON ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON\". Existing feed title \"Arlington: Environmental Task Force\". Need body name likely \"Environmental Task Force of the City of Arlington\" or \"Arlington Environmental Task Force\". The body_label provided is \"Environmental Task Force Meeting\"; official agenda says \"Environmental Task Force of the City of Arlington\". I'd use \"Environmental Task Force of the City of Arlington\" maybe. Evidence refs: retained-agenda and provider-player.\n\nFeed slug: \"arlington-tx-environmental-task-force\". Do we include \"arlington-tx\"? Need decide. Existing feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So not for Environmental Task Force. The dedicated feed exists. So only one slug.\n\nPublication_action: assign_existing. Case_id: \"recording-61dfe043572467ebf477acba\". Evidence_ref_ids array: all evidence used: [\"retained-agenda\", \"provider-player\"]. Missing evidence: [].\n\nRationale within max 2000. Need mention no joint participants. \"Official notice names the Environmental Task Force of the City of Arlington as the convened body; agenda topics are business items, not separate conveners. Player title matches. Existing feed arlington-tx-environmental-task-force explicitly covers verified 2020 Arlington Environmental Task Force proceedings, so assign. arlington-tx is limited to Council and P&Z, so not used.\" Good.\n\nEnsure JSON valid. No extra keys. Bodies array max 10. Feed slugs max 15.\n\nPotential nuance: \"Identify actual body/program separately from its subscription grouping.\" The body is Environmental Task Force; subscription grouping is feed. Good.\n\nCould publication_action maybe assign_existing. Yes.\n\nLet's final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine body/feed. We have case. Evidence: retained-agenda says notice of public meeting of Environmental Task Force of City of Arlington, March 24 2020, agenda. Provider-player title Environmental Task Force Meeting. Existing feeds includes arlington-tx-environmental-task-force \"Verified 2020 Arlington Environmental Task Force proceedings.\" So body is Environmental Task Force of City of Arlington, feed slug arlington-tx-environmental-task-force. Need decide if also broader arlington-tx? Policy: Select all appropriate existing feed slugs under supplied publication rules. The feed \"Arlington \u2014 All Meetings\" is broad subscription grouping? The instruction: \"A feed can be a broader subscription grouping rather than an institution. A grouping assignment does not assert that its named committee jointly convened the recording.\" Need select all appropriate existing feed slugs. Usually if there is dedicated feed, use it. Does \"arlington-tx\" all meetings also appropriate? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Description limits to City Council and P&Z, not all city meetings. So not appropriate for Environmental Task Force. Dedicated feed exists. Publication action assign_existing. Bodies array should include body name. Evidence refs for body name: retained-agenda, provider-player maybe. Evidence ref ids overall: both? We need cite only supplied evidence IDs. For body names and assignments. Body name from retained-agenda and provider-player. Feed assignment based on existing feed description. We can include evidence_ref_ids all relevant: retained-agenda, provider-player. missing_evidence empty. Rationale concise. Need JSON exactly schema. No markdown.\n\nNeed consider \"Name every proven participant in a joint meeting.\" Not joint. No other participants. Body label \"Environmental Task Force Meeting\" vs formal body \"Environmental Task Force of the City of Arlington\". Use official title. Maybe body: \"Environmental Task Force of the City of Arlington\" or \"Arlington Environmental Task Force\". Evidence says \"Environmental Task Force of the City of Arlington, Texas\" and agenda header \"ARLINGTON ENVIRONMENTAL TASK FORCE CITY OF ARLINGTON\". Existing feed title \"Arlington: Environmental Task Force\". Need body name likely \"Environmental Task Force of the City of Arlington\" or \"Arlington Environmental Task Force\". The body_label provided is \"Environmental Task Force Meeting\"; official agenda says \"Environmental Task Force of the City of Arlington\". I'd use \"Environmental Task Force of the City of Arlington\" maybe. Evidence refs: retained-agenda and provider-player.\n\nFeed slug: \"arlington-tx-environmental-task-force\". Do we include \"arlington-tx\"? Need decide. Existing feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So not for Environmental Task Force. The dedicated feed exists. So only one slug.\n\nPublication_action: assign_existing. Case_id: \"recording-61dfe043572467ebf477acba\". Evidence_ref_ids array: all evidence used: [\"retained-agenda\", \"provider-player\"]. Missing evidence: [].\n\nRationale within max 2000. Need mention no joint participants. \"Official notice names the Environmental Task Force of the City of Arlington as the convened body; agenda topics are business items, not separate conveners. Player title matches. Existing feed arlington-tx-environmental-task-force explicitly covers verified 2020 Arlington Environmental Task Force proceedings, so assign. arlington-tx is limited to Council and P&Z, so not used.\" Good.\n\nEnsure JSON valid. No extra keys. Bodies array max 10. Feed slugs max 15.\n\nPotential nuance: \"Identify actual body/program separately from its subscription grouping.\" The body is Environmental Task Force; subscription grouping is feed. Good.\n\nCould publication_action maybe assign_existing. Yes.\n\nLet's final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792008910,
+    "id": "63d258ac7e803505a6b072966eaf9091",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 786,
+      "completion_tokens": 1001,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 786,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 1800,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 2440,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 3441
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
