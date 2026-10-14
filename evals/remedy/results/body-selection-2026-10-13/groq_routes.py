@@ -16,7 +16,7 @@ CONTROLS_SOURCE = "https://console.groq.com/docs/api-reference"
 LIMITS_SOURCE = "https://console.groq.com/docs/rate-limits"
 
 
-def route_for(candidate):
+def route_for(candidate, until_429=False):
     original = ROUTE_REGISTRY[CANDIDATES[candidate][0]]
     params = json.loads(original.request_params_json or "{}")
     params["reasoning_format"] = "parsed"
@@ -24,7 +24,9 @@ def route_for(candidate):
     controls["high"] = {"reasoning_effort": "high"}
     route = replace(
         original,
-        quota=replace(original.quota, tpd=min(original.quota.tpd or 180000, 180000)),
+        quota=replace(
+            original.quota, tpd=None if until_429 else min(original.quota.tpd or 180000, 180000)
+        ),
         output_context_limit=min(original.output_context_limit, 16384),
         request_params_json=json.dumps(params, sort_keys=True),
         reasoning_controls_json=json.dumps(controls, sort_keys=True),

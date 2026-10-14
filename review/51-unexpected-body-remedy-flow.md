@@ -4174,3 +4174,11 @@ actual usage/provenance retained, old429 exclusion, first new429 pause across re
 and restarts, and priority without duplicated calls. Targeted/full offline, whole
 Ruff/format and fragments before push and safe controller handoff between requests.
 The older comparison remains stopped. Future calls after a429 require new direction.
+
+
+Groq until429 implementation verification2026-10-13:180 targeted and6168 offline
+tests passed (16deselected); whole Ruff/format546 files and fragment/diff checks clean.
+Coverage includes preserved minute/request settlement and pre-existing daily debt,
+exact two-route scope, immutable actual usage, old429 exclusion and durable new429
+pauses across restarts. Controller handoff occurs under the shared call lock only
+after every intent has a final result. No production route/catalog changes.
