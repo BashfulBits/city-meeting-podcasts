@@ -976,6 +976,8 @@ class DiscoverySSECollector:
         self.finish = None
         self.done = False
         self.error_preview = b""
+        self.http_eof = False
+        self.last_event = "none"
 
     def feed(self, chunk):
         self.wire_bytes += len(chunk)
@@ -998,11 +1000,14 @@ class DiscoverySSECollector:
             raise ContextEnvelopeError("stream_events_exceeded")
         lines = [line[5:].strip() for line in frame.split("\n") if line.startswith("data:")]
         if not lines:
+            self.last_event = "comment"
             return
+        self.last_event = "data"
         if self.done:
             raise ContextEnvelopeError("invalid_sse_envelope")
         value = "\n".join(lines)
         if value == "[DONE]":
+            self.last_event = "done"
             self.done = True
             return
         try:
@@ -1065,6 +1070,22 @@ class DiscoverySSECollector:
         if self.finish is None or not isinstance(value, dict):
             raise ContextEnvelopeError("invalid_final_sse_usage")
         self.usage = value
+
+    def terminal_state(self):
+        """Compact structural evidence within the existing 128-character preview bound."""
+        finish = (
+            self.finish
+            if isinstance(self.finish, str) and self.finish in {"length", "stop"}
+            else "missing"
+            if self.finish is None
+            else "other"
+        )
+        return (
+            f"eof={int(self.http_eof)} done={int(self.done)} finish={finish} "
+            f"usage={int(self.usage is not None)} "
+            f"pending={min(len(self.pending), self.MAX_FRAME + 1)} "
+            f"content={min(self.content_bytes, _CONTEXT_BYTES + 1)} event={self.last_event}"
+        )
 
     def complete(self):
         if self.pending.strip() or not self.done or self.usage is None or self.finish is None:
@@ -1141,6 +1162,17 @@ def _collect_context(
             diagnostics["response_preview"] = _discovery_response_excerpt(
                 sse.error_preview or body.encode("utf-8"), request, headers
             )
+        if (
+            retain_response_preview
+            and sse is not None
+            and code != "response_received"
+            and not diagnostics.get("response_preview")
+        ):
+            # Prefer a provider error explanation when present; otherwise preserve the
+            # structural terminal state, without generated or reasoning text.
+            diagnostics["response_preview"] = _discovery_response_excerpt(
+                sse.terminal_state().encode(), request, headers
+            )
         if retain_response_preview and raw:
             diagnostics["response_preview"] = _discovery_response_excerpt(raw, request, headers)
         if retain_error_body and status is not None and status >= 400:
@@ -1196,6 +1228,9 @@ def _collect_context(
                 )
             raw.extend(chunk)
             raw_size = len(raw)
+        else:
+            if sse is not None:
+                sse.http_eof = True
         if clock() - started >= timeout:
             return result(response.status_code, timed_out=True, code="transport_timeout")
         if sse is not None:

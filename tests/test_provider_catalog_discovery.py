@@ -2431,3 +2431,87 @@ def test_long_discovery_failure_survives_configured_context_evidence_validation(
     assert observed.diagnostic == code
     assert observed.response_preview == "upstream timeout"
     assert observed.stream_events == 22977
+
+
+@pytest.mark.parametrize(
+    ("drop", "expected"),
+    [
+        ("done", "done=0"),
+        ("usage", "usage=0"),
+        ("finish", "finish=missing"),
+        ("partial", "pending=11"),
+    ],
+)
+def test_incomplete_stream_preserves_terminal_state_without_response_text(drop, expected):
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    raw = stream_fixture(content="private generated text")
+    if drop == "done":
+        raw = raw.replace(b"data: [DONE]\r\n\r\n", b"")
+    elif drop == "usage":
+        raw = stream_fixture(content="private generated text", usage={})
+        # No usage event: leave valid finish and DONE intact.
+        frames = raw.replace(b"\r\n", b"\n").split(b"\n\n")
+        raw = b"\n\n".join(f for f in frames if b'"choices": []' not in f)
+    elif drop == "finish":
+        raw = b'data: {"object":"chat.completion.chunk","choices":[]}\n\ndata: [DONE]\n\n'
+    else:
+        raw += b"data: cutof"
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield raw
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    captured = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: response),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+        retain_response_preview=True,
+    )
+    preview = captured.context_diagnostics["response_preview"]
+    assert captured.context_diagnostics["diagnostic_code"] == "incomplete_sse"
+    assert expected in preview
+    assert ("eof=1" if drop == "done" else "eof=0") in preview
+    assert "private generated text" not in preview
+    assert "eof=" in preview and "event=" in preview
+    assert len(preview) <= 128
+    assert response.closed
+
+
+def test_terminal_state_fits_preview_at_maximum_structural_sizes():
+    from citypods.provider_catalog.probe import DiscoverySSECollector, _safe_structured_preview
+
+    stream = DiscoverySSECollector()
+    stream.pending = bytearray(stream.MAX_FRAME + 1)
+    stream.content_bytes = 4 * 1024 * 1024 + 1
+    stream.last_event = "comment"
+    preview = _safe_structured_preview(stream.terminal_state())
+    assert "pending=131073" in preview
+    assert "content=4194305" in preview
+    assert "event=comment" in preview
+    assert len(preview) <= 128
+
+
+@pytest.mark.parametrize("finish", [{}, [], {"unexpected": "private"}])
+def test_terminal_state_handles_untrusted_finish_types(finish):
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    stream = DiscoverySSECollector()
+    stream.finish = finish
+    assert "finish=other" in stream.terminal_state()
+    assert "private" not in stream.terminal_state()
