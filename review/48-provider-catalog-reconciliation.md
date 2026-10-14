@@ -2935,3 +2935,12 @@ unknown numerical upper and partial status. The next retry-hint midpoint would b
 value is not measured evidence or an authorized automatic next call. No Worker interaction,
 production publication or GitHub-history authentication was introduced. Local evidence remains
 diagnostic only; the workflow must obtain its own authenticated observations.
+
+
+The next maintainer-authorized direct session revalidated 52,992 output tokens (1,272 reasoning,
+2,484 prompt, `length`) in 550.353 seconds, then verified 54,144 output tokens (1,104 reasoning,
+2,484 prompt, `length`) in 551.162 seconds. Both fixtures passed; the two calls charged 4,968
+input and 107,136 output tokens. Again, `insufficient_output_probe_window` stopped the runner
+before a third admission. The verified local lower bound is now 54,144, with no numerical
+refused upper or true-cap convergence. The next unmeasured hint target would be 54,720. This
+continues the same reviewed diagnostic exception and changes no production limits or authority.

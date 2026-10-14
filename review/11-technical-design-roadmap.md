@@ -2056,3 +2056,7 @@ A further approved review/48 direct output session revalidated 50,688 and verifi
 then deferred another call before admission. The local lower bound is now 52,992; upper bound
 and true-cap convergence remain unknown. No production changes or authenticated workflow
 history claims; see review/48's execution record.
+
+The subsequent bounded local output session verified 54,144 after one 52,992 revalidation,
+then deferred further admission. This is the current local lower bound; numerical upper and
+true-cap convergence remain unknown. No production publication or GitHub-history authority.
