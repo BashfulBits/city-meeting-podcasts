@@ -1932,3 +1932,7 @@ response processing near the 600-second stop. A separately approved 1,200-second
 diagnostic at the same 55,296 size then received a hosted-route SSE `Internal server error`
 at 600.298 seconds. This is not a size refusal; retain the verified 36,864 lower bound and
 unknown upper bound. No production timeout or search-policy change; see review/48's record.
+
+A subsequently approved direct 46,080-output-token probe completed in 530.423 seconds with
+provider usage, length finish and fixture verification. Review/48's verified hosted-route output
+lower bound is now 46,080; numerical upper bound and 0.5% convergence remain unknown.

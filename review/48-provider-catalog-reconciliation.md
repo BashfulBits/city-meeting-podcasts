@@ -2763,3 +2763,15 @@ bound without converting this timing failure into a size bracket. True 0.5% cap 
 still requires an independently verified numerical size refusal; otherwise retain partial
 evidence and the existing escape/resumable discovery contract. No new live call, search-policy
 change, deployment or production timeout change is authorized by this evidence record.
+
+
+The maintainer then authorized a smaller direct 46,080-output-token probe at the unchanged
+600-second deadline. It completed successfully: HTTP 200, 2,474 prompt tokens, 46,080 completion
+tokens including 1,138 reasoning, 48,554 total, `length`, and a verified repeated-output fixture
+with 22,471 lines. First data arrived at 356ms; total duration was 530.423 seconds. The stream
+had 15,080,780 bytes and 46,007 events, normalized to a 67,870-byte response. The local
+observation/journal records an admitted coordinate of 46,080 with completion-including-
+reasoning semantics; successful output retained no preview. This raises the verified lower bound
+to 46,080 but supplies no refused upper bound or 0.5% convergence. Transport time failures at
+55,296 remain incomparable to numerical size refusals. Do not publish a true maximum from them.
+The one-call diagnostic budget stopped normally; no automatic retry or production change.
