@@ -1952,3 +1952,7 @@ Review/48 maintainer-approved timing extension: one-hour candidate discovery ses
 two hours of discovery work per run, and three-hour enclosing manual-discovery workflow timeout.
 Ordinary reconciliation remains two hours. Per-call 600 seconds and all numeric quota/token/call
 ceilings remain unchanged; checkpoint elapsed time still binds. See review/48.
+
+Review/48 discovery per-call deadline now aligns with v2's 720-second default; manual
+`discovery_axis=all` covers input/output and both combined searches within existing budgets.
+Operational timeouts remain separate from verified numerical size refusals.

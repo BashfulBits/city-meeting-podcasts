@@ -2858,3 +2858,18 @@ docs/changelog. Acceptance proves more than two slow successful refinement calls
 hour, all existing numeric budgets bind, checkpoint elapsed time persists and explicit shorter
 deadlines remain effective. Update the expired-checkpoint golden test to use the new ceiling.
 No Worker, quota, production-config, parser or dependency changes; no live calls in acceptance.
+
+
+#### Worker-aligned discovery deadline and full-axis continuation
+
+The maintainer approved a 720-second discovery per-call ceiling, matching the v2 dispatch
+executor's default `MAX_RESPONSE_SECONDS=720`. This supersedes earlier 600-second discovery
+ceiling references; historical measurements above retain their actual deadlines. The one-hour
+session, shorter explicit deadlines, admission guards and call/token budgets still bind.
+Timeouts remain operational failures, not numerical size refusals or published model caps.
+The existing manual `discovery_axis=all` default selects input, output, total-input-heavy and
+total-output-heavy searches for supported route parsers. The next full-axis run must select
+`all`, rather than repeat the previous output-only selection; unsupported axes remain explicit.
+No Worker configuration changes or live workflow dispatch are part of this change. File plan:
+existing discovery runner, discovery tests, workflow input help and lifecycle docs/changelog.
+Acceptance checks the 720-second cap, shorter deadline clipping and all-axis selection wiring.
