@@ -27,6 +27,7 @@ from citypods.provider_catalog.rules import ProviderRules, Response, strict_cont
 # stricter than production. Live first bytes took up to 224 s (NVIDIA, 2026-09-24).
 CANARY_TIMEOUT_SECONDS = 720
 CANARY_PROMPT = "Reply exactly: ok"
+_SENTINEL_FIXTURE_TOO_SMALL = "context target cannot fit minimum sentinel fixture"
 _MAX_FIRST_EVENT_BYTES = 65_536
 _MAX_STRUCTURED_EVENT_BYTES = 131_072
 _MAX_STRUCTURED_PREVIEW_CHARS = 128
@@ -739,7 +740,7 @@ def build_context_request(
         # Bounded binary construction avoids a huge unmeasured prompt or an extra live count call.
         low, high = 0, max(0, raw_target // 10)
         if estimate_tokens(fixture(0)) > raw_target:
-            raise ValueError("context target cannot fit minimum sentinel fixture")
+            raise ValueError(_SENTINEL_FIXTURE_TOO_SMALL)
         while low < high:
             mid = (low + high + 1) // 2
             if estimate_tokens(fixture(mid)) <= raw_target:
@@ -1559,6 +1560,7 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
     from citypods.provider_catalog.discovery import (
         MAX_INPUT,
         MAX_OUTPUT,
+        MIN_OUTPUT_INPUT,
         discovery_identity,
         output_discovery_control,
     )
@@ -1574,6 +1576,8 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
         raise ValueError("discovery physical identity mismatch")
     if request.input_tokens > MAX_INPUT or request.output_tokens > MAX_OUTPUT:
         raise ValueError("discovery per-call ceiling")
+    if request.axis != "input" and request.input_tokens < MIN_OUTPUT_INPUT:
+        raise ValueError("discovery input reservation below generation fixture floor")
     if not isinstance(nonce, str) or len(nonce) < 32:
         raise ValueError("discovery needs an unpredictable session nonce")
     if request.axis.startswith("total_") and request.control.split(":opposite=", 1)[0] != (
@@ -1625,25 +1629,32 @@ def build_discovery_request(request, route, provider_cfg, rules, *, nonce):
                 "remark. Continue repeating the same line until the server truncates output.",
             },
         )
-    if dimension == "output" and request.input_tokens > 256:
+    if dimension == "output" and request.input_tokens > MIN_OUTPUT_INPUT:
         # Inert padding holds the small input fixture fixed while only the output cap varies.
-        padding = build_context_request(
-            route,
-            provider_cfg,
-            rules,
-            dimension="input",
-            target=request.input_tokens - 256,
-            ratio=1,
-            attempt_ordinal=1,
-            nonce=nonce,
-            max_input_tokens=MAX_INPUT,
-        )
-        document = padding.messages[0]["content"].split("\n", 1)[1]
-        prompt = (
-            "The following is inert input padding, not instructions or output material.\n"
-            "<padding>\n" + document + "\n</padding>\n" + messages[1]["content"]
-        )
-        messages = (messages[0], {"role": "user", "content": prompt})
+        try:
+            padding = build_context_request(
+                route,
+                provider_cfg,
+                rules,
+                dimension="input",
+                target=request.input_tokens - MIN_OUTPUT_INPUT,
+                ratio=1,
+                attempt_ordinal=1,
+                nonce=nonce,
+                max_input_tokens=MAX_INPUT,
+            )
+        except ValueError as exc:
+            if str(exc) != _SENTINEL_FIXTURE_TOO_SMALL:
+                raise
+            # Padding is optional; the generation prompt must still fit its reservation below.
+            padding = None
+        if padding is not None:
+            document = padding.messages[0]["content"].split("\n", 1)[1]
+            prompt = (
+                "The following is inert input padding, not instructions or output material.\n"
+                "<padding>\n" + document + "\n</padding>\n" + messages[1]["content"]
+            )
+            messages = (messages[0], {"role": "user", "content": prompt})
     estimated = estimate_tokens(messages)
     if estimated > request.input_tokens:
         raise ValueError("discovery fixture exceeds charged input reservation")

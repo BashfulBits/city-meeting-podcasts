@@ -2089,3 +2089,15 @@ errors and natural output stopping, reproduced locally. The maintainer authorize
 smaller-input/output recovery and exact-match LiteLLM published input/output starting hints,
 reported separately with package version. No hint, early stop or computed negative budget
 establishes a numerical refused bound. Scope and acceptance are recorded in review/48.
+
+
+Review/48 generation-fixture floor correction (2026-10-14, implementation in progress): the
+post-#2437 NVIDIA workflow found input/output/input-heavy combined lower bounds but exposed
+an output-heavy 79-token prompt reservation. The maintainer approved preserving the existing
+generation-prompt floor, padding edge-case coverage and broader bounded local provider checks.
+This changes probe construction/recovery only; no production job margin or route cap changes.
+See review/48's reproduction, file plan and acceptance contract.
+
+Review/48 combined proof clarification (maintainer approved 2026-10-14): length replies with
+at least the requested output prove the requested combined reservation; actual usage remains
+separate, and clipped/naturally stopped replies do not establish that proof.

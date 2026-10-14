@@ -296,6 +296,13 @@ SSE parsing discards framing/reasoning and caps decoded stream data at 64 MiB, p
 128 KiB and assembled responses at 4 MiB. Streams require final usage, consistent finish and DONE;
 partial/error streams remain inconclusive. Optional stream byte/event metrics accompany compact
 response size.
+Generation probes retain at least the existing 256-token prompt headroom in their input
+reservation, even when early-stop/clipping recovery reduces output below that count. Both combined
+shapers and fixed-input reductions preserve the floor; unusable older counterpart controls are
+not restored. Small reservations omit optional padding when its own sentinel cannot fit, while
+still validating the unchanged generation task against the charged input. Persistent floor
+refusals stop with a partial result, and access errors defer without more axes. This is probe construction,
+not an added production-job safety margin or a provider-limit inference.
 Discovery initial targets use provider API claims first, then exact provider-qualified input/output
 metadata from the installed LiteLLM package's bundled map. Lookup performs no SDK import or remote
 map fetch, ignores ambiguous legacy `max_tokens`, and does not borrow other providers' limits.
@@ -316,8 +323,8 @@ unchanged; timing-limited results retain an admitted lower bound and unknown num
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors create no cap proof. NVIDIA combined discovery uses provider input plus
-requested output, with the entire requested output filled and exact summed-context refusal
-evidence. Output text need not match the prompt; valid usage, finish and response-shape checks
+requested output, with at least the requested output generated on a length finish and exact
+summed-context refusal evidence. Output text need not match the prompt; valid usage, finish and response-shape checks
 still bind. Clipped output is rechecked at the actual generated size, never a numerical refusal.
 Short or empty length completions retain actual input/output counts and clipping diagnostics,
 without becoming numerical refusals. Both request mixes remain conditional brackets; other

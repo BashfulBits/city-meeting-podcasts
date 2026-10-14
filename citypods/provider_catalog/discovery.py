@@ -21,6 +21,7 @@ INPUT_OUTPUT_COUNTERPART = 16_384
 DEFAULT_INPUT_SEED = 500_000
 DEFAULT_OUTPUT_SEED = INPUT_OUTPUT_COUNTERPART
 DEFAULT_COMBINED_SEED = INPUT_OUTPUT_COUNTERPART + 2_048
+MIN_OUTPUT_INPUT = 256
 MIN_INPUT_PROBE = 2_000
 MAX_SESSION_INPUT = 8_388_608
 MAX_RUN_INPUT = 16_777_216
@@ -66,6 +67,7 @@ def discovery_failure_reason(exc: Exception) -> str:
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
+INPUT_SIZE_GUIDANCE = {"computed_input_budget_exhausted", "input_size_refused_without_exact_counts"}
 MAX_RESPONSE_TIMEOUT_SECONDS = 720
 MAX_SESSION_SECONDS = 3_600
 NO_RESPONSE_DIAGNOSTICS = {
@@ -588,7 +590,11 @@ def run_discovery(
             else f"{axis}:{control_version}"
         )
         hinted_counterpart = (counterparts or {}).get(axis, counterpart)
-        if not positive(hinted_counterpart) or hinted_counterpart > counterpart:
+        if (
+            not positive(hinted_counterpart)
+            or hinted_counterpart > counterpart
+            or (axis in {"output", "total_output_heavy"} and hinted_counterpart < MIN_OUTPUT_INPUT)
+        ):
             raise ValueError("invalid discovery fixed-counterpart hint")
         if hinted_counterpart != counterpart:
             counterpart = hinted_counterpart
@@ -611,7 +617,8 @@ def run_discovery(
             prefix = base_control + ":opposite="
             if latest.request.control.startswith(prefix):
                 value = latest.request.control.removeprefix(prefix)
-                if value.isascii() and value.isdigit() and 0 < int(value) <= counterpart:
+                minimum = MIN_OUTPUT_INPUT if axis in {"output", "total_output_heavy"} else 1
+                if value.isascii() and value.isdigit() and minimum <= int(value) <= counterpart:
                     counterpart = int(value)
                     control = latest.request.control
         previous = [item for item in previous if item.request.control == control]
@@ -629,8 +636,7 @@ def run_discovery(
                 item.request.target
                 for item in compatible_history
                 if item.request.control == control
-                and item.diagnostic
-                in {"size_refused_without_exact_counts", "computed_input_budget_exhausted"}
+                and item.diagnostic in INPUT_SIZE_GUIDANCE | {"size_refused_without_exact_counts"}
                 and item.request.target > (pending.lower or 0)
             ),
             default=None,
@@ -749,9 +755,12 @@ def run_discovery(
             elif axis == "output":
                 input_tokens, output_tokens = counterpart, target
             elif axis == "total_input_heavy":
-                input_tokens, output_tokens = max(1, target - counterpart), counterpart
+                input_tokens, output_tokens = (
+                    max(MIN_OUTPUT_INPUT, target - counterpart),
+                    counterpart,
+                )
             else:
-                input_tokens = min(counterpart, max(1, target // 4))
+                input_tokens = min(counterpart, max(MIN_OUTPUT_INPUT, target // 4))
                 output_tokens = max(1, target - input_tokens)
             matching = [
                 item
@@ -767,8 +776,9 @@ def run_discovery(
                     enumerate(matching),
                     key=lambda pair: (datetime.fromisoformat(pair[1].observed_at), pair[0]),
                 )[1]
+                floor = 1 if axis == "input" else MIN_OUTPUT_INPUT
                 input_tokens = max(
-                    1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
+                    floor, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )
             if axis == "input":
                 # MAX_INPUT caps the reservation; it must not erase provider-count mapping
@@ -914,6 +924,9 @@ def run_discovery(
                 )
                 transport_retries.append(tuple(pending_transport))
                 pending_transport = []
+            if observation.response_status in {401, 402, 403}:
+                reason = bracket.reason = "access_deferred"
+                break
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
                 bracket.reason = reason
@@ -968,8 +981,9 @@ def run_discovery(
                     fresh_successes = 0
                     qualitative_upper = None
                 else:
-                    if smaller < 3 * counterpart:
-                        counterpart = max(1, smaller // 3)
+                    next_counterpart = max(MIN_OUTPUT_INPUT, min(counterpart, smaller // 3))
+                    if next_counterpart != counterpart:
+                        counterpart = next_counterpart
                         control = f"{base_control}:opposite={counterpart}"
                         bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
                         brackets[-1] = bracket
@@ -1014,8 +1028,9 @@ def run_discovery(
                         bracket.reason = "combined_output_clipped_lower_bound"
                         break
                     clipped_count = observation.reported_output
-                    if clipped_count < 3 * counterpart:
-                        counterpart = max(1, clipped_count // 3)
+                    next_counterpart = max(MIN_OUTPUT_INPUT, min(counterpart, clipped_count // 3))
+                    if next_counterpart != counterpart:
+                        counterpart = next_counterpart
                         control = f"{base_control}:opposite={counterpart}"
                         bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
                         brackets[-1] = bracket
@@ -1030,11 +1045,11 @@ def run_discovery(
             if axis.startswith("total_") and target == clipped_recheck:
                 clipped_recheck = None
             if (
-                observation.diagnostic == "computed_input_budget_exhausted"
+                observation.diagnostic in INPUT_SIZE_GUIDANCE
                 and axis in {"output", "total_output_heavy"}
-                and counterpart > 1
+                and counterpart > MIN_OUTPUT_INPUT
             ):
-                counterpart = max(1, counterpart // 2)
+                counterpart = max(MIN_OUTPUT_INPUT, counterpart // 2)
                 control = f"{base_control}:opposite={counterpart}"
                 bracket = Bracket(axis, target, reason="fixed_counterpart_reduced")
                 brackets[-1] = bracket
@@ -1043,9 +1058,14 @@ def run_discovery(
                 upper_recheck = None
                 qualitative_upper = None
                 continue
-            if observation.diagnostic in {
-                "size_refused_without_exact_counts",
-                "computed_input_budget_exhausted",
+            if observation.diagnostic in INPUT_SIZE_GUIDANCE and axis in {
+                "output",
+                "total_output_heavy",
+            }:
+                bracket.reason = "minimum_input_fixture_refused"
+                break
+            if observation.diagnostic in INPUT_SIZE_GUIDANCE | {
+                "size_refused_without_exact_counts"
             }:
                 if (
                     axis in {"input", "total_input_heavy"}
@@ -1070,14 +1090,14 @@ def run_discovery(
                 if axis in {"input", "total_input_heavy"}
                 else {"input", "prompt_tokens"}
             )
-            if (
-                observation.outcome == "refused"
-                and observation.count_basis in blocking
-                and counterpart > 1
-            ):
+            if observation.outcome == "refused" and observation.count_basis in blocking:
+                floor = MIN_OUTPUT_INPUT if axis in {"output", "total_output_heavy"} else 1
+                if counterpart <= floor:
+                    bracket.reason = "minimum_fixed_counterpart_refused"
+                    break
                 # A typed failure of the fixed counterpart supplies no boundary for this axis.
                 # Reduce that counterpart and establish a new, independent control identity.
-                counterpart = max(1, counterpart // 2)
+                counterpart = max(floor, counterpart // 2)
                 control = f"{base_control}:opposite={counterpart}"
                 bracket = Bracket(axis, bracket.seed, reason="fixed_counterpart_reduced")
                 brackets[-1] = bracket

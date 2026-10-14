@@ -3124,3 +3124,96 @@ A four-call local input-heavy combined check also recovered: natural stops at 1,
 selected smaller allowances, then two fresh length replies filled 774 requested output tokens.
 They reported 1,937 and 3,317 input, giving conditional combined lower bounds 2,711 and 4,091
 under `:opposite=774`. The local four-call budget stopped further stretching; upper unknown.
+
+
+### Generation-fixture floor and cross-provider diagnostics — approved 2026-10-14
+
+Workflow 38630477016 progressed after #2437: NVIDIA GPT-OSS-20B admitted input 130,607, output
+2,420, and input-heavy combined 8,630 with fixed output 524; all numerical uppers remain unknown.
+The output-heavy early stop at 238 selected a 79-input reservation. Building its next request
+failed locally, without provider work, because the generation prompt exceeded that reservation.
+The workflow completed with retained partial evidence and `measurement_stopped:ValueError`;
+31 calls included 26 size/five qualification, reserving 2,096,237 input/250,389 output tokens.
+LiteLLM 1.105.0 correctly showed no exact NVIDIA entry. Merged #2437 CI and final 6,388 local
+tests were green. The maintainer requested the fix plus bounded local checks on other providers.
+
+Implementation contract in existing `discovery.py`, `probe.py` and discovery acceptance tests:
+
+- Centralize the existing 256-token generation-prompt headroom as a minimum **probe input
+  reservation**, not a provider cap, runtime-job margin or extra charge. Output and both
+  combined request shapers, counterpart reductions, restored history and hints must preserve
+  it. Actual generated-prompt estimation still must fit the charged reservation.
+- Output-heavy recovery can reduce requested output below 256 without shrinking input below
+  the generation fixture floor. Counterpart changes still fence history; unchanged counterparts
+  do not discard comparable proof. Input-heavy combined requests also keep the floor when a
+  halved total target falls below the output counterpart. Pure input-search rules are unchanged.
+- Optional inert padding may not fit its own sentinel minimum in small reservations above 256.
+  Omit only that optional padding for the exact known construction failure, retain the unchanged
+  generation task, and validate the final prompt against its reservation. Other errors propagate.
+  Default 2,048-input fixtures retain their existing padding/content and history compatibility.
+- If typed/computed fixed-input refusal persists at the floor, report a bounded partial stop;
+  never shrink into an invalid prompt. HTTP 401/402/403 defers access without repeated targets
+  or later-axis calls, and supplies no size/retirement evidence.
+
+Acceptance builds the real failed request's successor (256 input plus 238 output), covers small
+reservations from 256 through 2,048, both combined directions, fixed-input refusal floor escapes
+and immediate access deferral. No new provider/model-specific response parser, Worker, schema,
+endpoint, dependency, workflow input, provider YAML or production-cap change is introduced.
+Lifecycle updates use this doc, review/11, ARCHITECTURE and a changelog fragment.
+
+Cross-provider local diagnostics select only current API/plugin-verified free chat routes, reuse
+the shared request builder/interpreter/search and published starting hints, and keep separate
+private journals (not authenticated workflow history). The local batch allows at most two calls
+per axis, 32 calls/16 Mi input/1 Mi output reserved across providers, 90-second local call limits,
+known provider pacing and stop-on-access/quota/outage deferrals. These small budgets test shapes
+and recovery, not complete 0.5% maximum brackets. No Worker reservations or production edits occur,
+consistent with the maintainer's approved direct local testing direction.
+
+The same generation floor also applies **after** provider-count calibration; a native-token
+rescale must not undo initial reservation shaping. CLI review identified that missing clamp;
+the regression uses a prior input-count ratio that would otherwise shrink 256 to fewer tokens.
+The three advisory findings were also addressed: shared sentinel-error constant, explicit
+below-floor builder rejection/other-error propagation tests, and clearer architecture wording.
+
+The local batch selected current free records for Kilo Liquid, SambaNova DeepSeek-V3.2, Airforce
+Gemma3-270M and OrcaRouter DeepSeek-V4-Flash. Kilo returned 8,192 output and filled combined
+requests; approximate size errors remain hints. SambaNova catalog listing succeeded but chat
+returned HTTP 401 (no cap evidence); Airforce returned HTTP 503 (no cap evidence). The initial
+batch began before the access-deferral guard was loaded, so it recorded two SambaNova denials;
+the new guard's regression requires stopping at the first denial. No credentials were changed.
+OrcaRouter reported completion counts above its requested output, including reasoning; those
+actual output counts prove generation. The maintainer approved accepting at least the requested
+output on a length finish as combined lower-bound proof, retaining actual counts separately. No numerical
+upper is inferred from these observations. Final per-axis results are recorded with the PR.
+
+A targeted extra OrcaRouter size-error capture (one call, still inside the aggregate call/token
+allowance) identified typed `metadata.reason=err_free_prompt_cap` with explicit text that the
+prompt exceeds the free tier's single-request size. Existing shared `rules.py` now emits
+input-size guidance without a numerical bound; the planner reduces input or its fixed input
+counterpart and applies the same fixture-floor escape. It does not reinterpret this as TPM/RPD
+exhaustion, buy credits, follow the response URL, or alter free-route eligibility. Tests cover
+matching typed evidence, a different reason that must remain unknown, and target reduction.
+
+The completed local batch used 19 calls (plus the one targeted OrcaRouter error capture):
+
+| Provider/model | Measured lower bounds or stop |
+| --- | --- |
+| Kilo Liquid free | output 8,192; output-heavy combined 10,086; input-heavy combined 31,889 |
+| SambaNova DeepSeek-V3.2 | chat HTTP 401; no capacity proof |
+| Airforce Gemma3-270M free | HTTP 503; no capacity proof |
+| OrcaRouter DeepSeek-V4-Flash free | output 27,278; free prompt cap lacks numerical counts; combined overfilled length replies prove the requested reservation |
+
+The batch charged/reserved 1,858,544 input/300,300 output tokens; the targeted capture reserved
+500,000/16,384 more, within the declared aggregate ceilings. No numerical upper was established.
+Raw error capture was private and bounded; no key or credential was printed or modified.
+Combined proof accepts provider-reported output at or above the requested allowance with a
+length finish and consistent usage. The coordinate remains input plus requested output; actual
+consumption is recorded separately. Clipped replies and natural stops remain inconclusive.
+This maintainer-approved change avoids discarding overfilled replies without inferring an upper.
+The local observations are diagnostics, not authenticated workflow history, and do not publish any production cap.
+
+The follow-up CLI review found a valid precedence issue: collector diagnostics may classify
+`free_rate_limited` broadly as quota before examining the explicit typed prompt-cap reason.
+That narrowly recognized HTTP 400 input-size evidence is now checked first. Regression cases
+include `provider_error_class=rate_limited`; a different typed reason still remains quota,
+so true throughput/daily errors are not reclassified as context proof.

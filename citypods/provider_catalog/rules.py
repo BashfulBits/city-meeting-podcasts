@@ -980,8 +980,23 @@ def chat_discovery_observation(
     retry = diagnostics.get("retry_after_ms")
     if type(retry) is int and retry > 0:
         values["retry_after_seconds"] = math.ceil(retry / 1000)
+    error = payload.get("error") if isinstance(payload, dict) else None
+    metadata = error.get("metadata") if isinstance(error, dict) else None
+    if (
+        response.status == 400
+        and isinstance(error, dict)
+        and error.get("type") == "invalid_request_error"
+        and isinstance(metadata, dict)
+        and metadata.get("reason") == "err_free_prompt_cap"
+        and isinstance(error.get("message"), str)
+        and error["message"].startswith(
+            "This prompt is longer than the free tier allows for a single request."
+        )
+    ):
+        # Explicit input-size semantics take precedence over a broad rate-limited code.
+        values["diagnostic"] = "input_size_refused_without_exact_counts"
+        return DiscoveryObservation(request, stamp, **values)
     if observation.outcome == "quota":
-        error = payload.get("error") if isinstance(payload, dict) else None
         text = error.get("message") if isinstance(error, dict) else None
         if isinstance(text, str) and re.search(
             r"\b(?:tokens|requests) per (?:day|month)\s*(?:\([^)]{1,8}\))?:\s*Limit",
@@ -1047,7 +1062,7 @@ def chat_discovery_observation(
                 values["diagnostic"] = f"combined_output_clipped:actual_total={actual}"
                 return DiscoveryObservation(request, stamp, **values)
             # A short answer proves consumed context, not reserved output capacity.
-            if finish == "length" and usage["completion_tokens"] == request.output_tokens:
+            if finish == "length" and usage["completion_tokens"] >= request.output_tokens:
                 return DiscoveryObservation(
                     request,
                     stamp,
