@@ -1926,3 +1926,8 @@ Review/48 cancellation-safe discovery diagnostics are maintainer-approved: prese
 payload-free streamed child progress at the unchanged hard deadline. The repeated 55,296-token
 probe timed out locally and establishes no upper bound. Search budgets/admission and Deferred
 maintenance scope remain unchanged.
+
+Review/48 approved L3 output-search refinement: one fresh lower check plus re-test of any
+genuine refused upper, replacing two identical output baselines. Recent time failures guide
+smaller retry targets without becoming cap evidence; insufficient remaining session time stops
+before admission. Input/combined contracts and all budgets stay unchanged. See review/48.

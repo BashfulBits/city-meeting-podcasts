@@ -289,16 +289,22 @@ The same verified hosted route supports discovery-only streaming with final usag
 The local streamed transport sends payload-free progress snapshots after admission, with phase
 changes and at most one repeated snapshot per five seconds. The parent retains only the latest
 snapshot when enforcing its unchanged hard deadline; progress never becomes capacity proof or
-extends the deadline. Generated/reasoning text and credentials never enter progress messages. Incremental
+extends the deadline. Generated/reasoning text and credentials never enter progress messages.
+Incremental
 SSE parsing discards framing/reasoning and caps decoded stream data at 64 MiB, pending frames at
 128 KiB and assembled responses at 4 MiB. Streams require final usage, consistent finish and DONE;
 partial/error streams remain inconclusive. Optional stream byte/event metrics accompany compact
-response size. Existing comparable usage boundaries retain their normal fresh revalidation.
+response size.
+New-route output discovery resumes with one fresh admitted-size check and a fresh check of any
+historical refused upper. Recent authenticated time failures guide smaller retry targets but
+never supply cap evidence. A current-run timing estimate can defer a probe before admission
+when it will not fit the remaining session. Input/combined baseline rules and budgets remain
+unchanged; timing-limited results retain an admitted lower bound and unknown numerical maximum.
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
 unknown size errors and combined semantics create no cap proof. A request that receives no usable
-transport response may be sent up to five times at the same size, with a fresh charged attempt for
-each send. Five unanswered calls produce an uncertain result, never a size bound; when multiple
+transport response may be sent up to five times, with approved output retry hints selecting smaller
+sizes when appropriate. Each send requires a fresh charged attempt. Five unanswered calls produce an uncertain result, never a size bound; when multiple
 sends were needed, the issue includes per-attempt diagnostics: response status/media type/size,
 bounded message/finish/usage shape states, actual reported token counts and safe provider request
 IDs. Failed attempts may also retain a 128-character escaped provider error or returned model-text
