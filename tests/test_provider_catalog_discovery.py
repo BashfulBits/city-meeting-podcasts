@@ -841,7 +841,10 @@ def test_unsupported_current_provider_endpoints_are_explicit():
                 == "inconclusive"
             )
     assert not any(
-        axis.startswith("total") for rules in all_rules().values() for axis in rules.discovery_axes
+        axis.startswith("total")
+        for name, rules in all_rules().items()
+        if name != "nvidia"
+        for axis in rules.discovery_axes
     )
 
 
@@ -1314,7 +1317,13 @@ def _chat_discovery_fixture(provider, axis="input"):
     )
     req = replace(
         request(axis),
-        control="output:v3" if axis == "output" else request(axis).control,
+        control=(
+            "output:v3"
+            if axis == "output"
+            else f"{axis}:reservation-v1"
+            if axis.startswith("total_")
+            else request(axis).control
+        ),
         identity=discovery_identity(
             provider, "a", "org/model", cfg["api_base"] + "/chat/completions"
         ),
@@ -2939,3 +2948,166 @@ def test_hour_deadline_preserves_checkpoint_elapsed_time_and_explicit_shorter_ce
     timeouts.clear()
     execute(tmp_path, measure, selected_axes=("output",), clock=lambda: 0, deadline=300)
     assert timeouts == [300]
+
+
+@pytest.mark.parametrize(
+    "message,suffix",
+    [
+        ("v2/dispatch:pause request failed: ConnectionError", "v2/dispatch:pause:ConnectionError"),
+        ("v2/dispatch:pause returned HTTP 503: secret body", "v2/dispatch:pause:HTTP_503"),
+        ("https://secret.invalid Bearer secret", ""),
+    ],
+)
+def test_pause_failure_reason_preserves_only_control_metadata(message, suffix):
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from citypods.provider_catalog.discovery import discovery_failure_reason
+
+    error = DispatchPauseError(message)
+    error.__cause__ = ConnectionError("secret credentials")
+    reason = discovery_failure_reason(error)
+    assert (
+        reason
+        == "measurement_stopped:DispatchPauseError"
+        + (":" + suffix if suffix else "")
+        + ":cause=ConnectionError"
+    )
+    assert "secret" not in reason
+
+
+@pytest.mark.parametrize("axis", ["total_input_heavy", "total_output_heavy"])
+@pytest.mark.parametrize(
+    "completion,finish,expected",
+    [
+        (16384, "length", "admitted"),
+        (21, "length", "inconclusive"),
+        (21, "stop", "inconclusive"),
+    ],
+)
+def test_combined_proof_requires_filled_output_allowance(axis, completion, finish, expected):
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", axis)
+    req = replace(req, output_tokens=16384)
+    payload = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 5000,
+            "completion_tokens": completion,
+            "total_tokens": 5000 + completion,
+        },
+        "choices": [
+            {"message": {"role": "assistant", "content": "1\n1\n1\n"}, "finish_reason": finish}
+        ],
+    }
+    result = rules.discovery_observation(Response(200, body=json.dumps(payload)), req, transient)
+    assert result.outcome == expected
+    if expected == "admitted":
+        assert result.coordinate == 21384
+        bracket = Bracket(axis, 21384)
+        bracket.observe(result)
+        assert bracket.lower == 21384
+        assert result.count_basis == "prompt_plus_requested_output"
+    else:
+        assert result.coordinate is None
+        assert "combined_output_" in result.diagnostic
+
+
+def test_combined_refusal_requires_explicit_sum_not_output_field_limit():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "total_input_heavy")
+    payload = {
+        "error": {
+            "type": "invalid_request_error",
+            "message": "This model's maximum context length is 10000 tokens. However, "
+            f"you requested {req.output_tokens} output tokens and your prompt "
+            f"contains 5000 input tokens, for a total of {5000 + req.output_tokens} tokens.",
+        }
+    }
+    result = rules.discovery_observation(Response(400, body=json.dumps(payload)), req, transient)
+    assert result.outcome == "refused"
+    assert result.coordinate == 5000 + req.output_tokens
+    bracket = Bracket(req.axis, req.target)
+    bracket.observe(result)
+    assert bracket.upper == result.coordinate
+    assert result.count_basis == "prompt_plus_requested_output"
+    payload["error"]["message"] = payload["error"]["message"].replace("21384", "21385")
+    assert (
+        rules.discovery_observation(Response(400, body=json.dumps(payload)), req, transient).outcome
+        == "inconclusive"
+    )
+
+
+def test_combined_empty_length_response_reports_clipping_without_size_refusal():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "total_input_heavy")
+    body = {
+        "object": "chat.completion",
+        "usage": {
+            "prompt_tokens": 999979,
+            "completion_tokens": 21,
+            "total_tokens": 1000000,
+            "completion_tokens_details": {"reasoning_tokens": 21},
+        },
+        "choices": [{"message": {"role": "assistant", "content": None}, "finish_reason": "length"}],
+    }
+    result = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert result.outcome == "inconclusive" and not result.verified
+    assert result.coordinate is None
+    assert result.reported_input == 999979 and result.reported_output == 21
+    assert result.diagnostic == "combined_output_clipped:actual_total=1000000"
+
+
+def test_combined_output_parameter_rejection_is_not_a_context_boundary():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("nvidia", "total_output_heavy")
+    body = {
+        "detail": [
+            {
+                "type": "less_than_equal",
+                "loc": ["body", "max_tokens"],
+                "ctx": {"le": 1024},
+                "input": req.output_tokens,
+            }
+        ]
+    }
+    result = rules.discovery_observation(Response(422, body=json.dumps(body)), req, transient)
+    assert result.outcome == "inconclusive" and result.coordinate is None
+
+
+@pytest.mark.parametrize("axis", ["total_input_heavy", "total_output_heavy"])
+def test_combined_nvidia_fixture_requests_full_streamed_output(axis):
+    from citypods.provider_catalog.probe import build_discovery_request
+    from citypods.provider_catalog.providers.nvidia import RULES
+
+    model = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    cfg = {
+        "api_base": "https://integrate.api.nvidia.com/v1",
+        "accounts": [{"id": "a", "api_key_env": "KEY"}],
+    }
+    route = {
+        "route_id": "candidate",
+        "provider": "nvidia",
+        "account_id": "a",
+        "upstream_model": model,
+    }
+    req = replace(
+        request(axis),
+        control=f"{axis}:reservation-v1",
+        identity=discovery_identity("nvidia", "a", model, cfg["api_base"] + "/chat/completions"),
+    )
+    transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
+    body = transient.shaped_body["body"]
+    assert body["min_tokens"] == body["max_tokens"] == req.output_tokens
+    assert body["stream"] is True and body["stream_options"]["include_usage"] is True
+    assert "Repeat the line 1" in transient.messages[1]["content"]

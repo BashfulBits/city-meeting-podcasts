@@ -716,6 +716,13 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
                 return None
         elif input_count <= limit:
             return None
+        if request.axis.startswith("total_") and "output" in counts:
+            return {
+                "coordinate": counts["total"],
+                "reported_input": input_count,
+                "count_basis": "prompt_plus_requested_output",
+                "diagnostic": "verified_combined_reservation_refusal",
+            }
         # A combined overflow with fixed output bounds the conditional input search only.
         # It is not an independent output cap or a proven combined-count contract.
         if request.axis == "input":
@@ -819,7 +826,9 @@ def _discovery_sentinel_verification(request, transient, payload):
     return "passed" if actual == expected else "failed"
 
 
-def chat_discovery_observation(response, request, transient, *, reasoning_basis="unknown"):
+def chat_discovery_observation(
+    response, request, transient, *, reasoning_basis="unknown", combined=False
+):
     """Opt-in actual chat counts; undocumented size-error numbers supply no upper boundary.
 
     Combined reservation semantics are not implied by usage.total_tokens. Until an adapter proves
@@ -831,7 +840,7 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
     from citypods.provider_catalog.discovery import DiscoveryObservation
 
     stamp = datetime.now(UTC).isoformat()
-    if request.axis.startswith("total_"):
+    if request.axis.startswith("total_") and not combined:
         return DiscoveryObservation(request, stamp, diagnostic="combined_semantics_unverified")
     # Reuse capacity parsing without projecting discovery transport timings into the
     # configured-context evidence schema, whose deadline remains 120 seconds.
@@ -976,6 +985,46 @@ def chat_discovery_observation(response, request, transient, *, reasoning_basis=
         return DiscoveryObservation(
             request, stamp, outcome="refused", verified=True, **(values | refusal)
         )
+    if request.axis.startswith("total_"):
+        if (
+            response.status == 200
+            and not response.timed_out
+            and not response.transport_error
+            and usage_state == "valid"
+            and finish == "length"
+            and usage["completion_tokens"] < request.output_tokens
+        ):
+            values["diagnostic"] = "combined_output_clipped:actual_total=" + str(
+                usage["total_tokens"]
+            )
+            return DiscoveryObservation(request, stamp, **values)
+        if _chat_input_capacity(payload, response):
+            actual = usage["prompt_tokens"] + usage["completion_tokens"]
+            if finish == "length" and usage["completion_tokens"] < request.output_tokens:
+                values["diagnostic"] = f"combined_output_clipped:actual_total={actual}"
+                return DiscoveryObservation(request, stamp, **values)
+            # A short answer proves consumed context, not reserved output capacity.
+            if (
+                finish == "length"
+                and usage["completion_tokens"] == request.output_tokens
+                and isinstance(content, str)
+                and len(content.splitlines()) >= 3
+                and all(line == "1" for line in content.splitlines())
+            ):
+                return DiscoveryObservation(
+                    request,
+                    stamp,
+                    outcome="admitted",
+                    verified=True,
+                    coordinate=usage["prompt_tokens"] + request.output_tokens,
+                    count_basis="prompt_plus_requested_output",
+                    **(
+                        values
+                        | {"diagnostic": "verified_combined_output_filled", "response_preview": ""}
+                    ),
+                )
+            values["diagnostic"] = f"combined_output_stopped_early:actual_total={actual}"
+        return DiscoveryObservation(request, stamp, **values)
     if request.axis == "input":
         if _chat_input_capacity(payload, response):
             return DiscoveryObservation(

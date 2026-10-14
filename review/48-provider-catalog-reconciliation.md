@@ -2873,3 +2873,30 @@ total-output-heavy searches for supported route parsers. The next full-axis run 
 No Worker configuration changes or live workflow dispatch are part of this change. File plan:
 existing discovery runner, discovery tests, workflow input help and lifecycle docs/changelog.
 Acceptance checks the 720-second cap, shorter deadline clipping and all-axis selection wiring.
+
+Discovery pause failures retain allowlisted control operation, HTTP status or transport class
+and chained exception class in the existing stop reason, excluding URLs and response bodies.
+This approved diagnostic change uses discovery.py and its tests only; no control retry or
+provider call is added. The approved combined-axis contract below resolves the earlier
+consumption-versus-reservation question and requires filled-output generation proof.
+
+
+#### Approved combined request-cap eligibility evidence
+
+For queue eligibility, enforce input <= input cap, requested output <= output cap, and
+input estimate + requested output <= total cap whenever each corresponding cap is configured.
+Reuse existing tokenizer calibration; add no blanket margin. Provider completion allowances
+include reasoning where counted. Discovery's combined coordinate is provider-counted input
+plus requested output, not an early-stopped usage total. NVIDIA enables both combined mixes
+with `reservation-v1` controls and the repeated-output fixture. A passing proof requires final
+consistent usage, a length finish, output exactly filling its allowance and valid repeated lines.
+An explicit context overflow must name input/output/total counts whose sum matches the request;
+output-field validation or input-only rejection cannot establish a combined upper bound.
+Short/empty length completions report `combined_output_clipped` and their actual total as a
+diagnostic only. Ordinary early stopping remains inconclusive. No clipped completion alone
+becomes a numerical refusal. Both mixes remain independent, conditional brackets; reaching
+the output ceiling may leave the output-heavy upper unknown. Other adapters stay unsupported.
+File plan: existing discovery runner/control, probe fixture builder, shared chat parser, NVIDIA
+adapter and discovery tests, plus lifecycle docs/changelog. Existing workflow `all` selects these
+axes; deadlines, budgets, pauses, history authentication and production caps remain unchanged.
+The configured Worker/direct eligibility changes are outside this discovery-only implementation.

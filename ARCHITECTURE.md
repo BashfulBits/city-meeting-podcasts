@@ -297,8 +297,8 @@ partial/error streams remain inconclusive. Optional stream byte/event metrics ac
 response size.
 New-route discovery sessions have a one-hour elapsed-time ceiling; at most two candidates
 permit two hours of discovery work. Manual discovery gets a three-hour workflow wrapper for
-evidence/cleanup, while ordinary reconciliation keeps its two-hour timeout. The 600-second
-per-call deadline and all call/token budgets are unchanged; checkpoint age consumes the hour.
+evidence/cleanup, while ordinary reconciliation keeps its two-hour timeout. The 720-second
+per-call deadline matches v2 dispatch; all call/token budgets are unchanged; checkpoint age consumes the hour.
 New-route output discovery resumes with one fresh admitted-size check and a fresh check of any
 historical refused upper. Recent authenticated time failures guide smaller retry targets but
 never supply cap evidence. A current-run timing estimate can defer a probe before admission
@@ -306,7 +306,12 @@ when it will not fit the remaining session. Input/combined baseline rules and bu
 unchanged; timing-limited results retain an admitted lower bound and unknown numerical maximum.
 An authorized `/apply` can queue a next-UTC-day retry receipt without making provider calls; the daily reconciliation authenticates it
 and resumes compatible history. Provider plugins explicitly declare usage/parser capabilities;
-unknown size errors and combined semantics create no cap proof. A request that receives no usable
+unknown size errors create no cap proof. NVIDIA combined discovery uses provider input plus
+requested output, with filled repeated-output proof and exact summed-context refusal evidence.
+Short or empty length completions retain actual input/output counts and clipping diagnostics,
+without becoming numerical refusals. Both request mixes remain conditional brackets; other
+providers keep combined discovery disabled. Pause-control stops retain safe operation/status/
+exception metadata rather than arbitrary response text. A request that receives no usable
 transport response may be sent up to five times, with approved output retry hints selecting smaller
 sizes when appropriate. Each send requires a fresh charged attempt. Five unanswered calls produce an uncertain result, never a size bound; when multiple
 sends were needed, the issue includes per-attempt diagnostics: response status/media type/size,

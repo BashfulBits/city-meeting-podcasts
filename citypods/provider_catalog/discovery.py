@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
 import time
 from collections.abc import Mapping
@@ -40,6 +41,26 @@ def default_discovery_seed(axis: str) -> int:
     if axis in {"total_input_heavy", "total_output_heavy"}:
         return DEFAULT_COMBINED_SEED
     raise ValueError(f"unsupported discovery axis: {axis}")
+
+
+def discovery_failure_reason(exc: Exception) -> str:
+    """Retain control failure category without URLs, credentials or response bodies."""
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+
+    reason = f"measurement_stopped:{type(exc).__name__}"
+    if not isinstance(exc, DispatchPauseError):
+        return reason
+    match = re.match(
+        r"(v2/dispatch:(?:pause|resume|status)) (?:request failed: "
+        r"([A-Za-z][A-Za-z0-9_]{0,63})|returned HTTP ([0-9]{3})(?::|$))",
+        str(exc),
+    )
+    if match:
+        reason += f":{match[1]}:{match[2] or 'HTTP_' + match[3]}"
+    cause = exc.__cause__
+    if cause is not None:
+        reason += f":cause={type(cause).__name__}"
+    return reason
 
 
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
@@ -547,7 +568,13 @@ def run_discovery(
         control_version = (
             "v3" if axis == "output" else "v2" if axis in {"input", "total_input_heavy"} else "v1"
         )
-        base_control = output_control if axis == "output" else f"{axis}:{control_version}"
+        base_control = (
+            output_control
+            if axis == "output"
+            else f"{axis}:reservation-v1"
+            if axis.startswith("total_")
+            else f"{axis}:{control_version}"
+        )
         control = base_control
         compatible = [
             item
@@ -736,7 +763,7 @@ def run_discovery(
                 if isinstance(exc, ValueError) and str(exc) == "discovery_budget_exhausted":
                     reason = bracket.reason = "budget_exhausted"
                     break
-                reason = f"measurement_stopped:{type(exc).__name__}"
+                reason = discovery_failure_reason(exc)
                 bracket.reason = reason
                 journal.data["reason"] = reason
                 journal.save()
