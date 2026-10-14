@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Environmental Task Force, City of Arlington"
+      }
+    ],
+    "case_id": "recording-5098d2f4fff48e6317e3d221",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is headed 'ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON' from the Office of the City Manager and announces a telephone meeting on June 9, 2020, matching the recording's 2020-06-09 date and 'Environmental Task Force Meeting' title. The provider player page (provider-player) for the same Granicus clip_id=3494 is titled 'Environmental Task Force Meeting'. Together these prove the convened body is the City of Arlington Environmental Task Force. An existing configured feed, arlington-tx-environmental-task-force ('Verified 2020 Arlington Environmental Task Force proceedings'), matches this body and year, so publication_action is assign_existing. The agenda's 'Council Environmental Task Force' footer indicates council affiliation but does not make this a City Council meeting; per the identity policy, assignment follows the convened body, not topic or sponsor, so arlington-tx-council is not selected. The 'Arlington \u2014 All Meetings' feed (arlington-tx) is scoped to Council and Planning & Zoning meetings only and does not cover this body. No archive/exclusion disposition applies; no ownership gap remains."
+  },
+  "attempt_id": "fa0ef78995024a7e825fcd0576e35b45",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-5098d2f4fff48e6317e3d221",
+  "case_input_hash": "1bfc4d86aac86774a4ea19cc7316852a60121414552aa83ab85d069462ec12f3",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.19816966700091
+    }
+  ],
+  "end_to_end_seconds": 19.817069375003484,
+  "finished_at": "2026-10-14T18:36:03.459366+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T18:35:43.642142+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "4f1d8de257f6da042eb0a482e9f107763696ceb4392825e9c822c691e717d65c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1466,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1080,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2337,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3803
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-5098d2f4fff48e6317e3d221\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [\n    \"arlington-tx-environmental-task-force\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda) is headed 'ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON' from the Office of the City Manager and announces a telephone meeting on June 9, 2020, matching the recording's 2020-06-09 date and 'Environmental Task Force Meeting' title. The provider player page (provider-player) for the same Granicus clip_id=3494 is titled 'Environmental Task Force Meeting'. Together these prove the convened body is the City of Arlington Environmental Task Force. An existing configured feed, arlington-tx-environmental-task-force ('Verified 2020 Arlington Environmental Task Force proceedings'), matches this body and year, so publication_action is assign_existing. The agenda's 'Council Environmental Task Force' footer indicates council affiliation but does not make this a City Council meeting; per the identity policy, assignment follows the convened body, not topic or sponsor, so arlington-tx-council is not selected. The 'Arlington \u2014 All Meetings' feed (arlington-tx) is scoped to Council and Planning & Zoning meetings only and does not cover this body. No archive/exclusion disposition applies; no ownership gap remains.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nCase: recording-5098d2f4fff48e6317e3d221, city arlington-tx.\n\nRecording: \"Environmental Task Force Meeting\" dated 2020-06-09, Granicus clip_id=3494.\n\nEvidence:\n1. \"retained-agenda\": An agenda document from the Office of the City Manager, \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\", telephone meeting, June 9, 2020, 10:15 a.m. Agenda items: Call to Order, New Business (Review of Webpage), Adjourn. Also \"Council Environmental Task Force, June 9, 2020\" footer \u2014 interesting, suggests the Environmental Task Force may be a council task force. The agenda header ties the meeting to the City of Arlington Environmental Task Force.\n2. \"provider-player\": Granicus player page titled \"Environmental Task Force Meeting\" with the same recording ID.\n\nExisting feeds: There's \"arlington-tx-environmental-task-force\" \u2014 \"Verified 2020 Arlington Environmental Task Force proceedings.\" So a configured feed exists for the Environmental Task Force.\n\nThe convened body: The agenda explicitly names \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" with a meeting on June 9, 2020, matching the recording date and title. So the body is the Environmental Task Force of the City of Arlington.\n\nFeed slug: \"arlington-tx-environmental-task-force\".\n\nPublication action: assign_existing.\n\nBodies: [{name: \"Environmental Task Force, City of Arlington\", evidence_ref_ids: [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda, provider-player.\n\nMissing evidence: Possibly note the \"Council Environmental Task Force\" label suggests it's a council-created task force, but the body name per agenda is Environmental Task Force. No gaps really. Maybe note that no membership roster is needed. Could note nothing significant, or note that the agenda proves the body name and date but the feed description \"Verified 2020\" matches. I'll include a minimal missing evidence array \u2014 perhaps empty or note that the agenda doesn't specify whether the Task Force is a formal board, but the feed exists so it's fine. The instruction says \"genuine missing evidence\" \u2014 I can leave it empty or state that no ownership gap exists. Actually, the rationale should cite evidence for body names and assignments. Missing evidence could be empty array.\n\nLet me double-check the \"Council Environmental Task Force June 9, 2020\" line in the agenda \u2014 this is a footer on the second page, probably a header/footer from the agenda document. Does this imply the recording belongs to the \"Council\" feed too? No \u2014 identity rule: \"Use the convened body, not venue, topic or common members; numbered boards differ.\" The Environmental Task Force is a distinct body from the City Council, even if it's a council task force. The Council feed is for \"Council meetings for Arlington.\" This is not a council meeting; it's an Environmental Task Force meeting. So only the environmental-task-force feed applies.\n\nShould the \"arlington-tx\" (Arlington \u2014 All Meetings) feed also be selected? Its description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That's a subscription grouping covering Council and P&Z \u2014 not this body. So no.\n\nPublication action: assign_existing. Feed slugs: [\"arlington-tx-environmental-task-force\"].\n\nRationale: The retained agenda (retained-agenda) headed \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" with a June 9, 2020 telephone meeting matches the recording date/title and the provider player (provider-player) titled \"Environmental Task Force Meeting\" for the same Granicus clip. The convened body is the City of Arlington Environmental Task Force, which has a configured feed \"arlington-tx-environmental-task-force\" (verified 2020 proceedings). The \"Council Environmental Task Force\" footer line indicates council affiliation but doesn't make this a City Council meeting; per identity policy, assign to the convened body only, not the Council feed. The \"All Meetings\" feed covers Council and P&Z only, so it does not apply.\n\nMissing evidence: I could state none. Or note: no roster needed. I'll include an empty array or a note like \"None; agenda and player establish body, date, and recording identity.\" The schema requires missing_evidence as array of strings; empty array is acceptable.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-5098d2f4fff48e6317e3d221\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale concise, under 2000 chars. Good.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nCase: recording-5098d2f4fff48e6317e3d221, city arlington-tx.\n\nRecording: \"Environmental Task Force Meeting\" dated 2020-06-09, Granicus clip_id=3494.\n\nEvidence:\n1. \"retained-agenda\": An agenda document from the Office of the City Manager, \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\", telephone meeting, June 9, 2020, 10:15 a.m. Agenda items: Call to Order, New Business (Review of Webpage), Adjourn. Also \"Council Environmental Task Force, June 9, 2020\" footer \u2014 interesting, suggests the Environmental Task Force may be a council task force. The agenda header ties the meeting to the City of Arlington Environmental Task Force.\n2. \"provider-player\": Granicus player page titled \"Environmental Task Force Meeting\" with the same recording ID.\n\nExisting feeds: There's \"arlington-tx-environmental-task-force\" \u2014 \"Verified 2020 Arlington Environmental Task Force proceedings.\" So a configured feed exists for the Environmental Task Force.\n\nThe convened body: The agenda explicitly names \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" with a meeting on June 9, 2020, matching the recording date and title. So the body is the Environmental Task Force of the City of Arlington.\n\nFeed slug: \"arlington-tx-environmental-task-force\".\n\nPublication action: assign_existing.\n\nBodies: [{name: \"Environmental Task Force, City of Arlington\", evidence_ref_ids: [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda, provider-player.\n\nMissing evidence: Possibly note the \"Council Environmental Task Force\" label suggests it's a council-created task force, but the body name per agenda is Environmental Task Force. No gaps really. Maybe note that no membership roster is needed. Could note nothing significant, or note that the agenda proves the body name and date but the feed description \"Verified 2020\" matches. I'll include a minimal missing evidence array \u2014 perhaps empty or note that the agenda doesn't specify whether the Task Force is a formal board, but the feed exists so it's fine. The instruction says \"genuine missing evidence\" \u2014 I can leave it empty or state that no ownership gap exists. Actually, the rationale should cite evidence for body names and assignments. Missing evidence could be empty array.\n\nLet me double-check the \"Council Environmental Task Force June 9, 2020\" line in the agenda \u2014 this is a footer on the second page, probably a header/footer from the agenda document. Does this imply the recording belongs to the \"Council\" feed too? No \u2014 identity rule: \"Use the convened body, not venue, topic or common members; numbered boards differ.\" The Environmental Task Force is a distinct body from the City Council, even if it's a council task force. The Council feed is for \"Council meetings for Arlington.\" This is not a council meeting; it's an Environmental Task Force meeting. So only the environmental-task-force feed applies.\n\nShould the \"arlington-tx\" (Arlington \u2014 All Meetings) feed also be selected? Its description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That's a subscription grouping covering Council and P&Z \u2014 not this body. So no.\n\nPublication action: assign_existing. Feed slugs: [\"arlington-tx-environmental-task-force\"].\n\nRationale: The retained agenda (retained-agenda) headed \"ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON\" with a June 9, 2020 telephone meeting matches the recording date/title and the provider player (provider-player) titled \"Environmental Task Force Meeting\" for the same Granicus clip. The convened body is the City of Arlington Environmental Task Force, which has a configured feed \"arlington-tx-environmental-task-force\" (verified 2020 proceedings). The \"Council Environmental Task Force\" footer line indicates council affiliation but doesn't make this a City Council meeting; per identity policy, assign to the convened body only, not the Council feed. The \"All Meetings\" feed covers Council and P&Z only, so it does not apply.\n\nMissing evidence: I could state none. Or note: no roster needed. I'll include an empty array or a note like \"None; agenda and player establish body, date, and recording identity.\" The schema requires missing_evidence as array of strings; empty array is acceptable.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-5098d2f4fff48e6317e3d221\",\n  \"bodies\": [\n    {\n      \"name\": \"Environmental Task Force, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-environmental-task-force\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale concise, under 2000 chars. Good.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002889,
+    "id": "9967c6779b7cf26ca84efca72b376823",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1466,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1080,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2337,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3803
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
