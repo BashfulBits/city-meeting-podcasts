@@ -4368,3 +4368,22 @@ offline tests passed,16deselected;whole Ruff/format559 files clean. Eight frozen
 packets use38 retrieval URLs,one explicit5MB-cap failure. JEV largest estimated
 state-plus-question18274tokens,fits28000. Normal DeepSeek/JEV capacity and existing
 judge:anchor ingress verified read-only before provider submissions.
+
+Maintainer approved existing local JEV pilot fallback2026-10-14 after B2 payload
+staging failed. Scope additionally includes results/disagreement-2026-10-14/
+local_jev.py and its tests. Reuse scripts/eval_judge.py JevClient._http_post once
+per packet (not its retrying judge loop),same state/questions/model,size checks.
+Wait for original controller lock;skip completed JEV receipts. Only staging failures
+whose payload-URL exception occurred before enqueue are eligible;other unknown
+outcomes stay held. Keep old records immutable. Direct local requests retain
+provider pause/drain and Worker reserve,atomic shared CAS available/reserve/settle,
+normal headroom,zero-cost free route,300s existing pilot timeout,no retries,
+new intent/raw/latency evidence and remote backups. This is an explicit experiment-
+only exception to the dispatch-only gate;no production behavior or credentials change.
+
+Local JEV fallback verification:58 targeted checks and6211 full offline tests
+passed,16deselected;whole Ruff/format560 files clean. Existing DeepSeek run
+completed8of8. Eight JEV Worker submissions failed at B2 payload staging before
+enqueue;no receipt/provider result. The isolated upload diagnostic exposed
+AccessDenied after removing Expect;credentials/production configuration unchanged.
+Local fallback is explicitly authorized;only these8packets use the existing pilot.

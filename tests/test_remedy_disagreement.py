@@ -116,3 +116,67 @@ def test_neither_candidate_is_not_forced_to_match_a_judge(runner):
         == "C"
     )
     assert runner.choice_for({"publication_action": "unresolved", "feed_slugs": []}, entry) == "D"
+
+
+@pytest.fixture
+def local_jev(runner, monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "run", runner)
+    return module(RESULTS / "local_jev.py", "local_jev_test")
+
+
+def test_staging_failure_is_distinct_from_unknown_provider_outcome(local_jev):
+    assert local_jev.staging_only(
+        {
+            "status": "unknown_submission",
+            "reason": "Connection was closed https://storage/payloads/uuid/request.json",
+        }
+    )
+    assert not local_jev.staging_only(
+        {"status": "unknown_submission", "reason": "Connection was closed during provider response"}
+    )
+    assert not local_jev.staging_only({"status": "queued", "reason": "", "handle": {"ref": "x"}})
+
+
+def test_local_jev_does_not_retry_provider_failure(local_jev, tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    entry = json.loads((PREP / "packet.json").read_text())["cases"][0]
+    monkeypatch.setattr(local_jev.run, "CALLS", tmp_path)
+    (tmp_path / "intents").mkdir()
+    (tmp_path / "batches").mkdir()
+    monkeypatch.setattr(
+        local_jev.run.adapter.transport,
+        "paused",
+        lambda *a, **kw: nullcontext(SimpleNamespace(drained=True)),
+    )
+    monkeypatch.setattr(local_jev, "reserve_one", lambda *a: None)
+    settled, calls = [], []
+    monkeypatch.setattr(local_jev, "settle_route_reservation", lambda *a, **kw: settled.append(kw))
+    response = SimpleNamespace(status_code=503, json=lambda: {"error": {"code": "busy"}})
+    jev = SimpleNamespace(_http_post=lambda body: calls.append(body) or response)
+    client = SimpleNamespace(reserve=lambda *a: None)
+    route = local_jev.run.ROUTE_REGISTRY["beatapi_jev_1_13_free"]
+    row = local_jev.one(entry, "b", object(), client, route, jev)
+    assert len(calls) == 1 and row["provider_attempts"] == 1
+    assert row["status"] == "failed" and row["http_status"] == 503
+    assert settled[0]["actual_requests"] == 1
+    assert len(list((tmp_path / "intents").glob("*.json"))) == 1
+
+
+def test_atomic_quota_rejection_blocks_local_jev(local_jev, monkeypatch):
+    from types import SimpleNamespace
+
+    reserve_calls = []
+    budget = SimpleNamespace(
+        available=lambda *a, **kw: False, reserve=lambda *a, **kw: reserve_calls.append(kw)
+    )
+    monkeypatch.setattr(
+        local_jev, "mutate_llm_budget", lambda storage, change: change(budget, local_jev.run.now())
+    )
+    route = local_jev.run.ROUTE_REGISTRY["beatapi_jev_1_13_free"]
+    with pytest.raises(local_jev.CapacityWait):
+        local_jev.reserve_one(object(), route, "owner", 1000)
+    assert reserve_calls == []

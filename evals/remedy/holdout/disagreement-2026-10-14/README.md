@@ -66,3 +66,16 @@ objects are written; no episode judgments or production decisions are applied.
   12 evidence references; 5 feeds sampled.
   A: assign_existing; dallas-tx-2024-community-bond-task-force.
   B: assign_existing; dallas-tx-2024-community-bond-task-force, dallas-tx-bond-program-meetings.
+
+## Approved local JEV fallback
+
+All eight DeepSeek packets completed. The Worker attempts could not stage their
+B2 payloads with this local credential. A diagnostic exposed AccessDenied after
+removing the SDK Expect header. No Worker job receipts were received. The
+maintainer explicitly approved reusing the existing `scripts/eval_judge.py` pilot
+locally for these same eight packets. `local_jev.py` uses its single HTTP-call
+method, not its automatic retry loop. It retains provider pause/drain, Worker
+route quota reservation, shared CAS availability/reserve/settle and input limits.
+It waits on the original controller lock, never duplicates an actual queued or
+unknown provider outcome, and preserves all original staging-failure records.
+This is a diagnostic-only exception; production remains unchanged.
