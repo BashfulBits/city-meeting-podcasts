@@ -48,9 +48,9 @@ recovery = sys.modules["recovery"]
 CANDIDATES = transport.CANDIDATES | GROQ_CANDIDATES
 
 
-def route_for(candidate):
+def route_for(candidate, groq_until_429=False):
     return (
-        groq_route_for(candidate)
+        groq_route_for(candidate, until_429=groq_until_429)
         if candidate in GROQ_CANDIDATES
         else transport.route_for(candidate)
     )
@@ -63,13 +63,20 @@ def shaped_messages(case, route):
     return payload
 
 
-def headroom(client, storage, route, case, coordination_bypass=False):
+def headroom(client, storage, route, case, coordination_bypass=False, groq_until_429=False):
     enough, capacity = (
         transport.headroom(client, storage, route, coordination_bypass=True)
         if coordination_bypass
         else transport.headroom(client, storage, route)
     )
-    if enough and route.provider == "groq":
+    if enough and route.provider == "groq" and groq_until_429:
+        capacity.update(
+            daily_token_limit_authority="provider_429",
+            local_daily_token_gate=False,
+            production_token_reserve=0,
+            worker_tokens_used=None,
+        )
+    elif enough and route.provider == "groq":
         request_tokens = estimate_tokens(shaped_messages(case, route)) + 16384
         enough, token_capacity = (
             token_headroom(
@@ -94,9 +101,21 @@ def snapshot(rows, cases, now):
 
 
 def attempt(
-    directory, candidate, case, previous, manifest_hash, storage, client, coordination_bypass=False
+    directory,
+    candidate,
+    case,
+    previous,
+    manifest_hash,
+    storage,
+    client,
+    coordination_bypass=False,
+    groq_until_429=False,
 ):
-    route = route_for(candidate)
+    route = (
+        route_for(candidate, groq_until_429=True)
+        if groq_until_429 and candidate in GROQ_CANDIDATES
+        else route_for(candidate)
+    )
     timeout = 120 if route.provider == "gemini" else 900
     tokens = 4096 if route.provider == "gemini" else 16384
     effort = CANDIDATES[candidate][1]
@@ -127,6 +146,10 @@ def attempt(
         "provider_attempts": 0,
         "observed_at": datetime.now(UTC).isoformat(),
         "qualified": False,
+        "groq_until_429": groq_until_429 and candidate in GROQ_CANDIDATES,
+        "daily_token_limit_authority": (
+            "provider_429" if groq_until_429 and candidate in GROQ_CANDIDATES else "local_cas"
+        ),
         "coordination_bypass": coordination_bypass,
         "production_drained": False,
         "coordination_approval_ref": (
@@ -150,6 +173,8 @@ def attempt(
             "effort": effort,
             "controls": route.reasoning_controls_json,
             "params": route.request_params_json,
+            "groq_until_429": groq_until_429 and candidate in GROQ_CANDIDATES,
+            "daily_token_limit": getattr(getattr(route, "quota", None), "tpd", None),
             "coordination_bypass": coordination_bypass,
             "timeout": timeout,
             "tokens": tokens,
@@ -230,7 +255,7 @@ def attempt(
                 )
                 if not enough:
                     raise RuntimeError("Local quota headroom unavailable; no call submitted")
-            if candidate in GROQ_CANDIDATES:
+            if candidate in GROQ_CANDIDATES and not groq_until_429:
                 enough, row["capacity"] = token_headroom(
                     transport,
                     client,
@@ -274,6 +299,69 @@ def attempt(
     return row
 
 
+def activate_groq_window(state, now):
+    if "groq_until_429" in state:
+        window = state["groq_until_429"]
+        if instant(window["authorized_at"]) > now or not isinstance(window["paused"], dict):
+            raise ValueError("invalid saved Groq authorization window")
+        return
+    state["groq_until_429"] = {
+        "authorized_at": now.isoformat(),
+        "approval_ref": "review/51 Groq until429; maintainer chat2026-10-13",
+        "paused": {},
+    }
+    for name in GROQ_CANDIDATES:
+        current = state.get("models", {}).get(name, {})
+        if current.get("state") == "daily_quota":
+            current["next_eligible_at"] = None
+    state["next_candidate_index"] = MODELS.index("gptoss")
+
+
+def apply_groq_429_pauses(state, rows):
+    window = state["groq_until_429"]
+    for name in GROQ_CANDIDATES:
+        rejected = sorted(
+            (
+                r
+                for r in rows
+                if r["candidate"] == name
+                and r.get("provider_attempts", 0)
+                and instant(r["observed_at"]) >= instant(window["authorized_at"])
+                and (r.get("provider_error") or {}).get("http_status") == 429
+            ),
+            key=lambda r: instant(r["observed_at"]),
+        )
+        if name not in window["paused"] and rejected:
+            row = rejected[0]
+            window["paused"][name] = {
+                "attempt_id": row["attempt_id"],
+                "case_id": row["case_id"],
+                "observed_at": row["observed_at"],
+                "reason": (row.get("provider_error") or {}).get("message", "provider429"),
+            }
+        if name in window["paused"] and state["models"][name]["state"] != "complete":
+            state["models"][name].update(
+                state="paused_after_429",
+                eligible_case_ids=[],
+                next_eligible_at=None,
+                pause=window["paused"][name],
+            )
+
+
+def candidate_order(state, groq_until_429=False):
+    order = [
+        (state["next_candidate_index"] + offset) % len(MODELS) for offset in range(len(MODELS))
+    ]
+    if groq_until_429:
+        preferred = [
+            i
+            for i in order
+            if MODELS[i] in GROQ_CANDIDATES and state["models"][MODELS[i]]["state"] == "ready"
+        ]
+        order = preferred + [i for i in order if i not in preferred]
+    return order
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true")
@@ -281,7 +369,10 @@ def main():
     parser.add_argument("--shared-lock", type=Path)
     parser.add_argument("--priority-results-dir", type=Path)
     parser.add_argument("--coordination-bypass", action="store_true")
+    parser.add_argument("--groq-until-429", action="store_true")
     args = parser.parse_args()
+    if args.groq_until_429 and not args.coordination_bypass:
+        parser.error("Groq until429 mode requires the approved coordination bypass")
     frozen, cases = load_manifest()
     mh = canonical_hash(frozen)
     ids = {c.case_id for c in cases}
@@ -357,6 +448,10 @@ def main():
             state["qwen_bypass_approval_ref"] = (
                 "review/51 Qwen hold removal; maintainer chat2026-10-13"
             )
+        if state.get("groq_until_429") and not args.groq_until_429:
+            parser.error("resume requires saved --groq-until-429 mode")
+        if args.groq_until_429:
+            activate_groq_window(state, datetime.now(UTC))
         recovery.atomic_status(status_file, state)
         site = transport.load_site_config(ROOT / "config/site_config.yml")
         storage = transport.make_storage(site, site.get("base_url", ""), ROOT / "docs")
@@ -381,6 +476,8 @@ def main():
                             and instant(older["next_eligible_at"]) > now
                         ):
                             state["models"][name] = older
+                    if args.groq_until_429:
+                        apply_groq_429_pauses(state, rows)
                     reason = None
                     if state["answered"] == state["target"]:
                         reason = "complete"
@@ -389,10 +486,17 @@ def main():
                     elif state["provider_attempts"] >= state["max_provider_attempts"]:
                         reason = "attempt_budget_exhausted"
                     elif all(
-                        p["state"] in {"complete", "held_or_exhausted", "access_error"}
+                        p["state"]
+                        in {"complete", "held_or_exhausted", "access_error", "paused_after_429"}
                         for p in state["models"].values()
                     ):
-                        reason = "incomplete_held_or_exhausted"
+                        reason = (
+                            "incomplete_paused_after_provider_429"
+                            if any(
+                                p["state"] == "paused_after_429" for p in state["models"].values()
+                            )
+                            else "incomplete_held_or_exhausted"
+                        )
                     state["stop_reason"] = reason
                     state["next_action_at"] = None
                     recovery.atomic_status(status_file, state)
@@ -407,8 +511,8 @@ def main():
                             time.sleep(10)
                             continue
                     selected = None
-                    for offset in range(len(MODELS)):
-                        index = (state["next_candidate_index"] + offset) % len(MODELS)
+                    order = candidate_order(state, args.groq_until_429)
+                    for index in order:
                         name = MODELS[index]
                         current = state["models"][name]
                         if current["state"] != "ready":
@@ -416,9 +520,16 @@ def main():
                         try:
                             case_id = current["eligible_case_ids"][0]
                             case = next(c for c in cases if c.case_id == case_id)
-                            route = route_for(name)
+                            route = (
+                                route_for(name, groq_until_429=True)
+                                if args.groq_until_429 and name in GROQ_CANDIDATES
+                                else route_for(name)
+                            )
+                            mode = {"groq_until_429": True} if args.groq_until_429 else {}
                             enough, capacity = (
-                                headroom(client, storage, route, case, coordination_bypass=True)
+                                headroom(
+                                    client, storage, route, case, coordination_bypass=True, **mode
+                                )
                                 if args.coordination_bypass
                                 else headroom(client, storage, route, case)
                             )
@@ -487,6 +598,7 @@ def main():
                             storage,
                             client,
                             **({"coordination_bypass": True} if args.coordination_bypass else {}),
+                            **({"groq_until_429": True} if args.groq_until_429 else {}),
                         )
                         if priority_slot and not row["provider_attempts"]:
                             state["call_priority"]["new_contested_slots"].remove(priority_slot)

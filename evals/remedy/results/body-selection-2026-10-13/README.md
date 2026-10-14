@@ -110,3 +110,19 @@ Only the obsolete explicit-hold wait is cleared on resume; real quota/cooldown w
 On the first Qwen release resume, Qwen gets the first eligible round-robin slot after
 the current call finishes. Later resumes preserve the normal queue position. Token
 waits still take precedence; the release does not reserve a provider capacity window.
+
+
+## Provider-authoritative Groq stop approved October13
+
+For this existing experiment only, `--groq-until-429 --coordination-bypass` removes
+the local daily-token ceiling and reserve for GPT-OSS and Qwen. It preserves request
+and per-minute limits, one-call locking, frozen inputs, retry allowances and deadline.
+Eligible Groq requests take priority; other models use slots while Groq waits or stops.
+Each route stops at its first new submitted provider HTTP429, or after all60 answers.
+The saved authorization timestamp excludes earlier errors. Pauses persist across
+cooldowns, date changes and resumes; this command never changes production pauses.
+
+Actual provider token usage remains in immutable results. The direct backend stops
+adding daily-token debt when the evaluation route has no daily ceiling, so the old
+CAS daily counter is incomplete in this mode. Request/minute accounting remains;
+Worker production usage remains unknown. No claim of unused production capacity.

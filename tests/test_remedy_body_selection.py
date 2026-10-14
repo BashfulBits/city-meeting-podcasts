@@ -204,10 +204,17 @@ def test_dry_run_never_reads_gold_or_credentials(runner, monkeypatch, tmp_path, 
     assert report["target"] == 480
 
 
-@pytest.mark.parametrize("bypass", [False, True])
-@pytest.mark.parametrize("candidate", ["flashlite", "glm_full", "sol", "gptoss", "qwen38"])
+@pytest.mark.parametrize(
+    "candidate,bypass,until",
+    [
+        (candidate, bypass, until)
+        for candidate in ["flashlite", "glm_full", "sol", "gptoss", "qwen38"]
+        for bypass in [False, True]
+        for until in ([False, True] if bypass and candidate in {"gptoss", "qwen38"} else [False])
+    ],
+)
 def test_provider_call_intent_and_actual_answer_contract(
-    runner, monkeypatch, tmp_path, candidate, bypass
+    runner, monkeypatch, tmp_path, candidate, bypass, until
 ):
     _, cases = runner.load_manifest()
     case = cases[0]
@@ -215,6 +222,7 @@ def test_provider_call_intent_and_actual_answer_contract(
     output = {
         "model": "model",
         "choices": [{"message": {"content": json.dumps(expected)}}],
+        "usage": {"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25},
     }
     route = SimpleNamespace(
         route_id="beatapi_gpt_6_1_sol_free",
@@ -268,7 +276,11 @@ def test_provider_call_intent_and_actual_answer_contract(
         yield SimpleNamespace(drained=True)
 
     monkeypatch.setattr(runner.transport, "route_for", lambda _: route)
-    monkeypatch.setattr(runner, "route_for", lambda _: route)
+    monkeypatch.setattr(runner, "route_for", lambda *_a, **_k: route)
+    if until:
+        monkeypatch.setattr(
+            runner, "token_headroom", lambda *_a, **_k: pytest.fail("daily token gate used")
+        )
     monkeypatch.setattr(runner.transport, "LiteLLMBackend", Backend)
     monkeypatch.setattr(
         runner.transport, "headroom", lambda *_a, **_k: (True, {"kind": "available"})
@@ -280,7 +292,15 @@ def test_provider_call_intent_and_actual_answer_contract(
 
     client = SimpleNamespace(reserve=reserve)
     row = runner.attempt(
-        tmp_path, candidate, case, 0, "manifest", object(), client, coordination_bypass=bypass
+        tmp_path,
+        candidate,
+        case,
+        0,
+        "manifest",
+        object(),
+        client,
+        coordination_bypass=bypass,
+        groq_until_429=until,
     )
     assert row["status"] == "completed"
     assert row["answer"]["feed_slugs"] == expected["feed_slugs"]
@@ -294,6 +314,10 @@ def test_provider_call_intent_and_actual_answer_contract(
     budget = (seen[0]["llm_policy"].deadline_at - start).total_seconds()
     assert deadline <= budget < deadline + 5
     assert row["coordination_bypass"] == bypass
+    assert row["groq_until_429"] == until
+    assert row["provider_usage"]["total_tokens"] == 25
+    if until:
+        assert row["daily_token_limit_authority"] == "provider_429"
     assert row["production_drained"] == (not bypass)
     intent = json.loads(next((tmp_path / "intents").glob("*.json")).read_text())
     assert intent["coordination_bypass"] == bypass
@@ -745,3 +769,125 @@ def test_qwen_resume_clears_only_obsolete_hold(
     )
     for key in ("started_at", "deadline_at", "max_provider_attempts"):
         assert saved[key] == status[key]
+
+
+@pytest.mark.parametrize("candidate", ["gptoss", "qwen38"])
+def test_until429_disables_only_daily_token_limit(groq, candidate):
+    from dataclasses import replace
+
+    normal = groq.route_for(candidate)
+    bounded = groq.route_for(candidate, until_429=True)
+    assert bounded.quota == replace(normal.quota, tpd=None)
+    for key in (
+        "provider_rpm",
+        "provider_tpm",
+        "provider_concurrency",
+        "hard_input_ceiling",
+        "input_context_limit",
+        "output_context_limit",
+        "model",
+        "route_id",
+        "free",
+    ):
+        assert getattr(bounded, key) == getattr(normal, key)
+    assert bounded.quota.tpd is None
+
+
+def test_until429_skips_daily_gate_but_keeps_request_headroom(runner, monkeypatch):
+    _, cases = runner.load_manifest()
+    route = runner.route_for("qwen38", groq_until_429=True)
+    monkeypatch.setattr(
+        runner.transport,
+        "headroom",
+        lambda *_a, **kw: (kw["coordination_bypass"], {"kind": "available"}),
+    )
+    monkeypatch.setattr(
+        runner, "token_headroom", lambda *_a, **_k: pytest.fail("daily gate called")
+    )
+    permitted, capacity = runner.headroom(None, object(), route, cases[0], True, True)
+    assert permitted
+    assert capacity["daily_token_limit_authority"] == "provider_429"
+    assert capacity["production_token_reserve"] == 0
+    assert capacity["worker_tokens_used"] is None
+    assert route.quota.tpd is None
+
+
+def groq_window_state(runner):
+    return {
+        "next_candidate_index": 2,
+        "models": {
+            name: {"state": "ready", "eligible_case_ids": ["one"], "answered": 0}
+            for name in runner.MODELS
+        },
+    }
+
+
+def test_until429_window_resume_never_refills(runner):
+    state = groq_window_state(runner)
+    state["models"]["gptoss"].update(state="daily_quota", next_eligible_at=NOW.isoformat())
+    runner.activate_groq_window(state, NOW)
+    assert state["models"]["gptoss"]["next_eligible_at"] is None
+    original = json.loads(json.dumps(state["groq_until_429"]))
+    state["next_candidate_index"] = 3
+    runner.activate_groq_window(state, NOW + timedelta(days=1))
+    assert state["groq_until_429"] == original
+    assert state["next_candidate_index"] == 3
+
+
+@pytest.mark.parametrize("candidate", ["gptoss", "qwen38"])
+def test_until429_pauses_only_new_submitted_429_across_resets(runner, candidate):
+    state = groq_window_state(runner)
+    runner.activate_groq_window(state, NOW)
+    base = {
+        "candidate": candidate,
+        "case_id": "one",
+        "provider_attempts": 1,
+        "attempt_id": "old",
+        "observed_at": (NOW - timedelta(seconds=1)).isoformat(),
+        "provider_error": {"http_status": 429, "message": "old rejection"},
+    }
+    runner.apply_groq_429_pauses(state, [base])
+    assert state["models"][candidate]["state"] == "ready"
+    runner.apply_groq_429_pauses(
+        state, [base | {"observed_at": NOW.isoformat(), "provider_attempts": 0}]
+    )
+    assert state["models"][candidate]["state"] == "ready"
+    failure = base | {"attempt_id": "new", "observed_at": NOW.isoformat()}
+    runner.apply_groq_429_pauses(state, [base, failure])
+    assert state["models"][candidate]["state"] == "paused_after_429"
+    assert not state["models"][candidate]["eligible_case_ids"]
+    assert state["groq_until_429"]["paused"][candidate]["attempt_id"] == "new"
+    resumed = json.loads(json.dumps(state))
+    resumed["models"][candidate]["state"] = "ready"
+    runner.activate_groq_window(resumed, NOW + timedelta(days=1))
+    runner.apply_groq_429_pauses(resumed, [])
+    assert resumed["models"][candidate]["state"] == "paused_after_429"
+
+
+def test_until429_prioritizes_only_eligible_groq_without_losing_other_work(runner):
+    state = groq_window_state(runner)
+    order = runner.candidate_order(state, True)
+    assert [runner.MODELS[i] for i in order[:2]] == ["gptoss", "qwen38"]
+    assert len(set(order)) == len(runner.MODELS)
+    state["models"]["gptoss"]["state"] = "paused_after_429"
+    state["models"]["qwen38"]["state"] = "cooldown"
+    assert runner.candidate_order(state, True) == runner.candidate_order(state, False)
+
+
+@pytest.mark.parametrize("candidate", ["gptoss", "qwen38"])
+def test_until429_retains_minute_accounting_and_existing_daily_debt(groq, candidate):
+    from citypods.compute.llm_budget import LLMBudget, RouteLedger
+
+    route = groq.route_for(candidate, until_429=True)
+    ledger = RouteLedger(tokens_day=190000, tokens_day_updated_at=NOW.isoformat())
+    budget = LLMBudget(routes={route.route_id: ledger})
+    budget.reserve("owner", route.route_id, route=route, requests=1, tokens=100, cost=0, now=NOW)
+    assert ledger.tokens_day == 190000
+    assert ledger.requests_minute == 1
+    assert ledger.tokens_minute == 100
+    budget.settle(
+        "owner", route.route_id, route=route, now=NOW, actual_requests=1, actual_tokens=40
+    )
+    assert ledger.tokens_day == 190000
+    assert ledger.tokens_minute == 40
+    assert not ledger.inflight
