@@ -1966,3 +1966,10 @@ consumption-versus-reservation question and requires filled-output generation pr
 NVIDIA new-route discovery enables both combined-token request mixes using provider input
 plus requested output, filled-output proof and explicit summed-context refusals. Clipped/early
 output remains diagnostic; no automatic runtime cap changes. See review/48 approved contract.
+
+Approved discovery recovery fixes preserve compatible provider-count calibration across resumed
+searches, recognize exact token refusals with harmless request-shortening advice, and keep both
+ends of redacted errors within the same preview ceiling. Pause-control POST transport failures
+get at most one immediate retry; provider submissions/admission/reservations and HTTP failures
+do not retry. File plan extends existing discovery/rules/probe/pause client and corresponding
+tests. A second control failure still stops safely; no cap/Worker schema/production config change.

@@ -692,14 +692,20 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
                 return None
         # An appended approximation qualifier invalidates the exact-count claim. Permit
         # only the empty suffix or standard request-shortening advice, not extra prose.
-        if message[match.end() :] not in {
+        suffix = message[match.end() :]
+        if suffix not in {
             "",
             " Please reduce the length of the messages.",
             " Please reduce the length of your messages.",
             " Please reduce the length of the messages or completion.",
             " Please reduce the length of the input prompt or the number of requested output "
             "tokens.",
-        }:
+        } and not re.fullmatch(
+            r" Please reduce (?:the length of )?(?:the |your )?"
+            r"(?:messages|input prompt|prompt|input)(?: or (?:the |your )?"
+            r"(?:completion|output|requested output tokens))?\.",
+            suffix,
+        ):
             return None
         if any(len(value) > 16 for value in match.groupdict().values()):
             return None

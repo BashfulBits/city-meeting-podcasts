@@ -830,7 +830,7 @@ def _discovery_response_excerpt(raw, request, request_headers):
     if excerpt is None:
         excerpt = text
     redacted, _ = _manual_error_body_excerpt(excerpt.encode("utf-8"), request, request_headers)
-    if model_text and request.dimension == "output" and len(redacted) > 128:
+    if len(redacted) > 128 and (not model_text or request.dimension == "output"):
         # The prefix alone cannot reveal deliberate abbreviation or a closing remark. Keep
         # both ends within the same redacted/escaped 128-character diagnostic allowance.
         redacted = redacted[:56] + " ... [tail] ... " + redacted[-56:]

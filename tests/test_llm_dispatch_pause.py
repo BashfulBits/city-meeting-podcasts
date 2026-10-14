@@ -309,3 +309,36 @@ def test_context_client_accepts_exact_new_attempt_and_does_not_retry_transport_f
     with pytest.raises(DispatchPauseError):
         client.reserve_context(**args)
     assert len(session.calls) == 2
+
+
+def test_pause_transport_retry_is_bounded_and_excludes_admission():
+    import requests
+
+    class TimeoutSession(FakeSession):
+        def request(self, *args, **kwargs):
+            self.calls.append(args)
+            raise requests.ReadTimeout("network stalled")
+
+    session = TimeoutSession([0])
+    client = _client(session)
+    for path, count in [("v2/dispatch:pause", 2), ("v2/dispatch:reserve", 1)]:
+        session.calls.clear()
+        with pytest.raises(DispatchPauseError, match="ReadTimeout"):
+            client._request("POST", path, {})
+        assert len(session.calls) == count
+
+
+def test_pause_transport_retry_can_recover_without_repeating_other_operations(caplog):
+    import requests
+
+    class RecoverSession(FakeSession):
+        def request(self, *args, **kwargs):
+            if not self.calls:
+                self.calls.append(args)
+                raise requests.ConnectionError("private network details")
+            return FakeResponse(200, {"ok": True})
+
+    client = _client(RecoverSession([0]))
+    assert client.pause(Selection("provider", "groq"), 600)["ok"] is True
+    assert "pause_control_transport_retry" in caplog.text
+    assert "ConnectionError" in caplog.text and "private network" not in caplog.text

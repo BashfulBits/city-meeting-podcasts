@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -157,12 +158,26 @@ class DispatchPauseClient:
     def _request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> dict:
         headers = {"authorization": f"Bearer {self.token}"} if self.token else {}
         url = urljoin(self.url.rstrip("/") + "/", path)
-        try:
-            response = self.session.request(
-                method, url, headers=headers, json=body, timeout=self.timeout
-            )
-        except requests.RequestException as exc:
-            raise DispatchPauseError(f"{path} request failed: {type(exc).__name__}") from exc
+        # Re-arming a pause is idempotent; admission/reservation calls must never retry.
+        attempts = 2 if method == "POST" and path == "v2/dispatch:pause" else 1
+        for attempt in range(attempts):
+            try:
+                response = self.session.request(
+                    method, url, headers=headers, json=body, timeout=self.timeout
+                )
+                break
+            except requests.RequestException as exc:
+                if attempt + 1 < attempts and isinstance(
+                    exc, (requests.Timeout, requests.ConnectionError)
+                ):
+                    logging.getLogger(__name__).warning(
+                        "pause_control_transport_retry operation=%s error=%s attempt=%d",
+                        path,
+                        type(exc).__name__,
+                        attempt + 1,
+                    )
+                    continue
+                raise DispatchPauseError(f"{path} request failed: {type(exc).__name__}") from exc
         try:
             data = response.json()
         except ValueError:
