@@ -2900,3 +2900,10 @@ File plan: existing discovery runner/control, probe fixture builder, shared chat
 adapter and discovery tests, plus lifecycle docs/changelog. Existing workflow `all` selects these
 axes; deadlines, budgets, pauses, history authentication and production caps remain unchanged.
 The configured Worker/direct eligibility changes are outside this discovery-only implementation.
+
+Approved discovery recovery fixes preserve compatible provider-count calibration across resumed
+searches, recognize exact token refusals with harmless request-shortening advice, and keep both
+ends of redacted errors within the same preview ceiling. Pause-control POST transport failures
+get at most one immediate retry; provider submissions/admission/reservations and HTTP failures
+do not retry. File plan extends existing discovery/rules/probe/pause client and corresponding
+tests. A second control failure still stops safely; no cap/Worker schema/production config change.

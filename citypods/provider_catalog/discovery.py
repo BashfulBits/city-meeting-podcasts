@@ -691,10 +691,16 @@ def run_discovery(
                 input_tokens = min(counterpart, max(1, target // 4))
                 output_tokens = max(1, target - input_tokens)
             matching = [
-                item for item in observations if item.request.axis == axis and item.reported_input
+                item
+                for item in compatible_history + observations
+                if item.request.axis == axis
+                and item.reported_input
+                and item.request.control == control
+                and item.verified
+                and item.outcome in {"admitted", "refused"}
             ]
             if matching and axis != "output":
-                last = matching[-1]
+                last = max(matching, key=lambda item: datetime.fromisoformat(item.observed_at))
                 input_tokens = max(
                     1, math.ceil(input_tokens * last.request.input_tokens / last.reported_input)
                 )

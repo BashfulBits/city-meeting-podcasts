@@ -1530,7 +1530,14 @@ def test_typed_output_refusals_require_unambiguous_matching_field_authority(bad)
 @pytest.mark.parametrize("provider", ["groq", "openrouter", "nvidia"])
 @pytest.mark.parametrize("typed", [True, False])
 @pytest.mark.parametrize("nested", [True, False])
-@pytest.mark.parametrize("suffix", ["", " Please reduce the length of the messages."])
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "",
+        " Please reduce the length of the messages.",
+        " Please reduce your input prompt or requested output tokens.",
+    ],
+)
 def test_recorded_messages_resulted_token_error_supplies_comparable_input_refusal(
     provider, typed, nested, suffix
 ):
@@ -3111,3 +3118,28 @@ def test_combined_nvidia_fixture_requests_full_streamed_output(axis):
     assert body["min_tokens"] == body["max_tokens"] == req.output_tokens
     assert body["stream"] is True and body["stream_options"]["include_usage"] is True
     assert "Repeat the line 1" in transient.messages[1]["content"]
+
+
+def test_resumed_input_revalidation_reuses_provider_count_conversion(tmp_path):
+    old = request("input", target=6000)
+    history = [
+        DiscoveryObservation(
+            old,
+            STAMP,
+            outcome="admitted",
+            coordinate=9000,
+            reported_input=9000,
+            count_basis="input",
+            verified=True,
+        )
+    ]
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req)
+        return DiscoveryObservation(req, STAMP, outcome="outage", diagnostic="http_503")
+
+    execute(tmp_path, measure, supported_axes=("input",), history=history)
+    assert calls[0].target == 9000
+    assert calls[0].input_tokens == 6000
