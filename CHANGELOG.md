@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Bounded streaming for new-route output discovery.** The verified NVIDIA-hosted Lightning
+  route requests streamed final usage so longer generations can send data before completion.
+  Incremental parsing caps stream data at 64 MiB and assembled responses at 4 MiB, requires
+  complete terminal evidence, and reports bounded stream metrics. Other models/hosts, configured
+  calibration, production dispatch and token/time budgets remain unchanged. Partial and error
+  streams never establish size refusals; verified output retains no response preview.
+  Provider stream errors retain bounded/redacted error previews and distinct failure reasons;
+  long discovery failures remain journalable without changing configured-context timing bounds.
+
 - **Review/51 P1 comparison evidence.** Retain the approved varied 60-recording challenge and
   candidate-specific pilot reports under `evals/remedy/`. The first pilot batches expose one
   repeated Dallas multi-feed miss and an unresolved GLM Flash response-name hold. These are
