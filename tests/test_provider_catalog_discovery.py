@@ -3089,7 +3089,10 @@ def test_combined_output_parameter_rejection_is_not_a_context_boundary():
         ]
     }
     result = rules.discovery_observation(Response(422, body=json.dumps(body)), req, transient)
-    assert result.outcome == "inconclusive" and result.coordinate is None
+    assert result.outcome == "refused" and result.count_basis == "requested_output"
+    bracket = Bracket(req.axis, req.target)
+    bracket.observe(result)
+    assert bracket.upper is None
 
 
 @pytest.mark.parametrize("axis", ["total_input_heavy", "total_output_heavy"])
@@ -3146,7 +3149,8 @@ def test_resumed_input_revalidation_reuses_provider_count_conversion(tmp_path):
 
 
 @pytest.mark.parametrize("axis", AXES)
-def test_unregistered_route_uses_shared_interpretation_without_provider_parser(axis):
+@pytest.mark.parametrize("with_object", [True, False])
+def test_unregistered_route_uses_shared_interpretation_without_provider_parser(axis, with_object):
     import json
 
     from citypods.provider_catalog.rules import ProviderRules, Response, general_discovery_rules
@@ -3168,6 +3172,8 @@ def test_unregistered_route_uses_shared_interpretation_without_provider_parser(a
             {"message": {"role": "assistant", "content": "1\n1\n1\n"}, "finish_reason": "length"}
         ],
     }
+    if not with_object:
+        payload.pop("object")
     # The transient carrier supplies request metadata, not a registered response parser.
     _, _, transient = _chat_discovery_fixture("nvidia", axis)
     result = rules.discovery_observation(Response(200, body=json.dumps(payload)), req, transient)

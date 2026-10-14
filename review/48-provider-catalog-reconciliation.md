@@ -2916,3 +2916,11 @@ stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 
 reconcile/rules modules and discovery tests implement this approved generalization; no runtime
 config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
 currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+CLI review raised a concern about generic reasoning/combined assumptions. The shared interpreter
+is deliberately restricted to the recognized chat protocol's prompt/completion/total fields,
+consistent arithmetic and actual filled output; it does not project these semantics onto native
+or unknown envelopes. Exact output-parameter refusals are labelled requested_output on other
+axes so they can reduce fixed counterparts without creating combined bounds. Provider names and
+model allowlists do not grant size proof. This retains discovery for unseen routes while failing
+closed on undocumented shapes and ambiguous counts.
