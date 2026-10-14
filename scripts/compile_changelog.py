@@ -29,8 +29,37 @@ def get_fragment_files(fragments_dir: Path) -> list[Path]:
     return sorted(fragments, key=lambda p: p.name.lower())
 
 
+_CATEGORY_HEADINGS = {
+    "added",
+    "changed",
+    "deprecated",
+    "removed",
+    "fixed",
+    "security",
+}
+
+
+def normalize_fragment(text: str) -> str:
+    """Normalize fragment text by stripping standard Keep a Changelog category headings.
+
+    Headings such as '### Added', '### Fixed', '## Changed' are stripped so that
+    compiled entries blend cleanly as list items under '## Unreleased'.
+    """
+    lines = text.strip().splitlines()
+    cleaned_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            heading_title = stripped.lstrip("#").strip().lower()
+            if heading_title in _CATEGORY_HEADINGS:
+                continue
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
 def validate_fragment(path: Path) -> list[str]:
-    """Validate that a fragment file is non-empty and formatted as a Markdown list item.
+    """Validate that a fragment file is non-empty and formatted cleanly.
 
     Returns a list of error messages (empty if valid).
     """
@@ -41,9 +70,10 @@ def validate_fragment(path: Path) -> list[str]:
         errors.append(f"{path.name}: fragment file is empty")
         return errors
 
-    first_line = text.splitlines()[0].strip()
-    if not (first_line.startswith("- ") or first_line.startswith("* ")):
-        errors.append(f"{path.name}: fragment must begin with a Markdown list item ('- ' or '* ')")
+    normalized = normalize_fragment(text)
+    if not normalized:
+        errors.append(f"{path.name}: fragment contains only category headings with no entries")
+        return errors
 
     for i, line in enumerate(text.splitlines(), start=1):
         if len(line) > 100:
@@ -116,7 +146,7 @@ def compile_fragments(
         prefix = content[:insert_idx]
         suffix = content[insert_idx:]
 
-    entries = [f.read_text(encoding="utf-8").strip() for f in fragment_files]
+    entries = [normalize_fragment(f.read_text(encoding="utf-8")) for f in fragment_files]
     compiled_block = "\n\n".join(entries) + "\n\n"
 
     new_content = prefix + compiled_block + suffix
