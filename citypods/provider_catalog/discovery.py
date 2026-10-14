@@ -627,6 +627,7 @@ def run_discovery(
                     item.request.target
                     for item in compatible_history + observations
                     if item.request.axis == axis
+                    and item.outcome in {"inconclusive", "outage"}
                     and item.request.control == control
                     and item.request.target > bracket.lower
                     and timedelta(0)
@@ -755,7 +756,7 @@ def run_discovery(
                 and clock() > call_started
             ):
                 recent_output_cost = (clock() - call_started) / observation.coordinate
-            if checking_upper:
+            if checking_upper and observation.outcome != "quota":
                 upper_recheck = None
             budget.settle(observation)
             if shared_budget:

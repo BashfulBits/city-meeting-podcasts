@@ -2860,3 +2860,33 @@ def test_stale_upper_requires_new_refusal_even_when_old_bracket_was_converged(tm
     assert result.brackets[1]["refused"] is None
     assert result.brackets[1]["status"] == "partial"
     assert result.brackets[1]["reason"] == "output_time_limited_lower_bound"
+
+
+def test_output_upper_recheck_repeats_same_size_after_quota_delay(tmp_path):
+    history = [_output_history(4000), _output_history(4500, False)]
+    now, seen = [0.0], []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.output_tokens)
+        if seen == [4000, 4500]:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                outcome="quota",
+                diagnostic="provider_rate_limited",
+                retry_after_seconds=1,
+            )
+        return observation(req, req.output_tokens, req.output_tokens <= 4200)
+
+    result = execute(
+        tmp_path,
+        measure,
+        selected_axes=("output",),
+        history=history,
+        clock=lambda: now[0],
+        sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+    assert seen[:3] == [4000, 4500, 4500]
+    assert result.brackets[1]["status"] == "converged"
+    assert result.brackets[1]["admitted"] <= 4200 < result.brackets[1]["refused"]
