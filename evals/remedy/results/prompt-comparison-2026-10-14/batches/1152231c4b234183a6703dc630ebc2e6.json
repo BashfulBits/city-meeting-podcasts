@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-42a8b82dd5daf9d704055f7d",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific retained agenda (recording_id 116732) states that 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting' on Wednesday, March 24, 2021, at 12:00 p.m. in the Council Work Session Room at City Hall, proving the sole convening body. The provider player title and the native chapter list for the same recording corroborate that body and its agenda items (minutes approval, 2021 meeting schedule, TIF study, capital projects, Comprehensive Plan Update, Reinvestment Grant Program). 'Tax Increment Financing Reinvestment Zone No. 1' corresponds to TIRZ No. 1, matching the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board') under the approved families and identity rules. The feed 'denton-tx-tirz-2-board' is a different numbered board and is not assigned; per policy, numbered boards differ, and venue, topics, and staff presentations do not confer additional body identity. No joint meeting is evidenced, so no other participant bodies are named. Ownership is fully established, so no unresolved or unconfigured action is needed."
+  },
+  "attempt_id": "0d683bce489f49c1bdb6066ffd03937e",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-42a8b82dd5daf9d704055f7d",
+  "case_input_hash": "ea7760293b8261a888f5a223896615b6134ceff3d8a5cc293da778267ab3a534",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 27.565986749999865
+    }
+  ],
+  "end_to_end_seconds": 28.977208791999146,
+  "finished_at": "2026-10-14T17:11:57.470974+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T17:11:28.493580+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "e192a9199599fda45d5c95d6244232f1d605800234698f167d140aa073a2fdfa",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1841,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1403,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4821,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 6662
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-42a8b82dd5daf9d704055f7d\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\",\n        \"native-source-chapters\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [\n    \"denton-tx-tirz-1-board\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific retained agenda (recording_id 116732) states that 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting' on Wednesday, March 24, 2021, at 12:00 p.m. in the Council Work Session Room at City Hall, proving the sole convening body. The provider player title and the native chapter list for the same recording corroborate that body and its agenda items (minutes approval, 2021 meeting schedule, TIF study, capital projects, Comprehensive Plan Update, Reinvestment Grant Program). 'Tax Increment Financing Reinvestment Zone No. 1' corresponds to TIRZ No. 1, matching the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board') under the approved families and identity rules. The feed 'denton-tx-tirz-2-board' is a different numbered board and is not assigned; per policy, numbered boards differ, and venue, topics, and staff presentations do not confer additional body identity. No joint meeting is evidenced, so no other participant bodies are named. Ownership is fully established, so no unresolved or unconfigured action is needed.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\" in Denton, TX.\n\nEvidence:\n1. \"retained-agenda\": The official agenda states \"Downtown Denton Tax Increment Financing Zone No. 1 Board, City of Denton\" convening a Regular Meeting on March 24, 2021 at 12:00 PM in the Council Work Session Room at City Hall. It explicitly says \"the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting\". This is recording-specific official evidence proving the convening body: Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (TIF Zone No. 1 Board / TIRZ No. 1 Board).\n\n2. \"provider-player\": Swagit player title matches the body label.\n\n3. \"native-source-chapters\": Chapter titles match agenda items.\n\nExisting feeds:\n- \"denton-tx-tirz-1-board\": \"Meetings of Denton TIRZ No. 1 Board.\" \u2014 This is the match. TIRZ = Tax Increment Reinvestment Zone. The Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board is TIRZ No. 1 Board.\n- \"denton-tx-tirz-2-board\": TIRZ No. 2 Board \u2014 different numbered board, not this one.\n\nPer the policy: \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" So TIRZ No. 1 is correct, not No. 2.\n\nNo joint meeting \u2014 only one body convened.\n\nPublication action: assign_existing.\n\nFeed slug: denton-tx-tirz-1-board.\n\nBodies: [{\"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none \u2014 ownership is established by the agenda.\n\nRationale: The retained agenda for recording 116732 explicitly states the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, convened in a Regular Meeting on March 24, 2021, at 12:00 PM. That's the convening body. The existing feed \"denton-tx-tirz-1-board\" (Meetings of Denton TIRZ No. 1 Board) matches this body; TIRZ = Tax Increment Reinvestment Zone, matching \"Tax Increment Financing Reinvestment Zone No. 1\". TIRZ No. 2 feed is a different numbered board and is not supported. No joint participants. The Comprehensive Plan Update and Downtown capital projects topics reference City staff presentations but do not establish other convening bodies.\n\nOutput JSON only, no markdown. Wait \u2014 the system prompt says \"You should always follow the instructions and output a valid JSON object... Always end code blocks with ```\". But the task says \"Return one JSON object only (no Markdown or commentary)\". Hmm, there's a conflict. The system prompt mentions code blocks ending with ```. But the user instruction says no Markdown. Actually the system prompt says to always end code blocks with ``` to indicate the end of the JSON object. Since the user says \"Return one JSON object only (no Markdown or commentary)\" \u2014 I think the safest is to output the JSON, possibly in a code block per system instructions. The system prompt says \"Always end code blocks with ```\". This suggests outputting in a code block. Let me output a code block with JSON and close it with ```.\n\nActually, the system prompt is a bit contradictory: \"If in doubt, default to {\"answer\": \"$your_answer\"}. Always end code blocks with ``` to indicate the end of the JSON object.\" Given the schema is specified, I should return the schema-matching JSON. I'll wrap it in a code block and close with ```.\n\nLet me construct the JSON:\n\n{\n  \"case_id\": \"recording-42a8b82dd5daf9d704055f7d\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-1-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale (max 2000 chars): \"The retained agenda (recording-specific, recording_id 116732) certifies that 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting' on Wednesday, March 24, 2021, at 12:00 p.m., establishing the sole convening body. The provider player title and native chapters for the same recording confirm the same body and agenda items. 'Tax Increment Financing Reinvestment Zone No. 1' is TIRZ No. 1, matching the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board') under the approved families/identity rules. The 'denton-tx-tirz-2-board' feed is a different numbered board and is not assigned; per policy, numbered boards differ and venue (Council Work Session Room), topics (Comprehensive Plan Update, Downtown capital projects), and staff presentations do not create additional body memberships. No joint meeting participants are proven, so only one body is listed.\"\n\nThat's good. Missing evidence: empty array.\n\nThe bodies name \u2014 should I use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\"? The agenda uses both: header says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" and body text says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". The full formal name with \"Reinvestment\" appears in the convening sentence. I'll use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" as it's the formal name in the convening clause. Either is fine.\n\nFinal JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM\" in Denton, TX.\n\nEvidence:\n1. \"retained-agenda\": The official agenda states \"Downtown Denton Tax Increment Financing Zone No. 1 Board, City of Denton\" convening a Regular Meeting on March 24, 2021 at 12:00 PM in the Council Work Session Room at City Hall. It explicitly says \"the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting\". This is recording-specific official evidence proving the convening body: Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (TIF Zone No. 1 Board / TIRZ No. 1 Board).\n\n2. \"provider-player\": Swagit player title matches the body label.\n\n3. \"native-source-chapters\": Chapter titles match agenda items.\n\nExisting feeds:\n- \"denton-tx-tirz-1-board\": \"Meetings of Denton TIRZ No. 1 Board.\" \u2014 This is the match. TIRZ = Tax Increment Reinvestment Zone. The Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board is TIRZ No. 1 Board.\n- \"denton-tx-tirz-2-board\": TIRZ No. 2 Board \u2014 different numbered board, not this one.\n\nPer the policy: \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" So TIRZ No. 1 is correct, not No. 2.\n\nNo joint meeting \u2014 only one body convened.\n\nPublication action: assign_existing.\n\nFeed slug: denton-tx-tirz-1-board.\n\nBodies: [{\"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none \u2014 ownership is established by the agenda.\n\nRationale: The retained agenda for recording 116732 explicitly states the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, convened in a Regular Meeting on March 24, 2021, at 12:00 PM. That's the convening body. The existing feed \"denton-tx-tirz-1-board\" (Meetings of Denton TIRZ No. 1 Board) matches this body; TIRZ = Tax Increment Reinvestment Zone, matching \"Tax Increment Financing Reinvestment Zone No. 1\". TIRZ No. 2 feed is a different numbered board and is not supported. No joint participants. The Comprehensive Plan Update and Downtown capital projects topics reference City staff presentations but do not establish other convening bodies.\n\nOutput JSON only, no markdown. Wait \u2014 the system prompt says \"You should always follow the instructions and output a valid JSON object... Always end code blocks with ```\". But the task says \"Return one JSON object only (no Markdown or commentary)\". Hmm, there's a conflict. The system prompt mentions code blocks ending with ```. But the user instruction says no Markdown. Actually the system prompt says to always end code blocks with ``` to indicate the end of the JSON object. Since the user says \"Return one JSON object only (no Markdown or commentary)\" \u2014 I think the safest is to output the JSON, possibly in a code block per system instructions. The system prompt says \"Always end code blocks with ```\". This suggests outputting in a code block. Let me output a code block with JSON and close it with ```.\n\nActually, the system prompt is a bit contradictory: \"If in doubt, default to {\"answer\": \"$your_answer\"}. Always end code blocks with ``` to indicate the end of the JSON object.\" Given the schema is specified, I should return the schema-matching JSON. I'll wrap it in a code block and close with ```.\n\nLet me construct the JSON:\n\n{\n  \"case_id\": \"recording-42a8b82dd5daf9d704055f7d\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-tirz-1-board\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale (max 2000 chars): \"The retained agenda (recording-specific, recording_id 116732) certifies that 'the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting' on Wednesday, March 24, 2021, at 12:00 p.m., establishing the sole convening body. The provider player title and native chapters for the same recording confirm the same body and agenda items. 'Tax Increment Financing Reinvestment Zone No. 1' is TIRZ No. 1, matching the existing feed 'denton-tx-tirz-1-board' ('Meetings of Denton TIRZ No. 1 Board') under the approved families/identity rules. The 'denton-tx-tirz-2-board' feed is a different numbered board and is not assigned; per policy, numbered boards differ and venue (Council Work Session Room), topics (Comprehensive Plan Update, Downtown capital projects), and staff presentations do not create additional body memberships. No joint meeting participants are proven, so only one body is listed.\"\n\nThat's good. Missing evidence: empty array.\n\nThe bodies name \u2014 should I use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\"? The agenda uses both: header says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" and body text says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\". The full formal name with \"Reinvestment\" appears in the convening sentence. I'll use \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" as it's the formal name in the convening clause. Either is fine.\n\nFinal JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791997916,
+    "id": "0b95ae2f5e280a5cd953494b0eeb3136",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1841,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1403,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4821,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 6662
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
