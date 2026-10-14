@@ -80,7 +80,7 @@ def test_each_axis_converges_without_more_than_64_calls(tmp_path, axis, seed):
 
     def measure(req, admit, timeout):
         receipt = admit()
-        assert receipt.matches(req) and 0 < timeout <= 600
+        assert receipt.matches(req) and 0 < timeout <= 720
         actual_input = req.input_tokens
         count = (
             actual_input
@@ -140,8 +140,8 @@ def test_default_output_and_combined_probes_leave_reasoning_headroom(
     assert calls[0].output_tokens == expected_output
 
 
-@pytest.mark.parametrize("remaining, expected", [(1000, 600), (300, 300)])
-def test_discovery_timeout_uses_600_second_cap_and_session_deadline(tmp_path, remaining, expected):
+@pytest.mark.parametrize("remaining, expected", [(1000, 720), (300, 300)])
+def test_discovery_timeout_uses_720_second_cap_and_session_deadline(tmp_path, remaining, expected):
     timeouts = []
 
     def measure(req, admit, timeout):
@@ -179,7 +179,7 @@ def test_slow_no_response_attempts_stop_at_session_deadline_with_partial_evidenc
         deadline=1200,
     )
 
-    assert timeouts == pytest.approx([600, 600])
+    assert timeouts == pytest.approx([720, 480])
     assert result.reason == "uncertain_no_response_before_session_deadline"
     assert result.brackets[0]["admitted"] is None
     assert result.brackets[0]["refused"] is None
@@ -1031,7 +1031,7 @@ def test_transport_requires_distinct_matching_receipt(monkeypatch, receipt_kind)
         receipt = replace(receipt, identity="different")
     if receipt_kind == "wrong_type":
         receipt = object()
-    timeout = 601 if receipt_kind == "too_long" else 600 if receipt_kind == "new" else 5
+    timeout = 721 if receipt_kind == "too_long" else 600 if receipt_kind == "new" else 5
 
     def measure():
         return measure_discovery(
@@ -2905,7 +2905,7 @@ def test_default_hour_session_allows_slow_refinement_without_expanding_other_bud
     now, seen = [0.0], []
 
     def measure(req, admit, timeout):
-        assert timeout <= 600
+        assert timeout <= 720
         admit()
         seen.append(req.output_tokens)
         now[0] += 500
@@ -2944,7 +2944,7 @@ def test_hour_deadline_preserves_checkpoint_elapsed_time_and_explicit_shorter_ce
         journal=journal,
         clock=lambda: 0,
     )
-    assert 590 <= timeouts[0] <= 600
+    assert 590 <= timeouts[0] <= 720
     timeouts.clear()
     execute(tmp_path, measure, selected_axes=("output",), clock=lambda: 0, deadline=300)
     assert timeouts == [300]

@@ -1953,11 +1953,15 @@ two hours of discovery work per run, and three-hour enclosing manual-discovery w
 Ordinary reconciliation remains two hours. Per-call 600 seconds and all numeric quota/token/call
 ceilings remain unchanged; checkpoint elapsed time still binds. See review/48.
 
+Review/48 discovery per-call deadline now aligns with v2's 720-second default; manual
+`discovery_axis=all` covers input/output and both combined searches within existing budgets.
+Operational timeouts remain separate from verified numerical size refusals.
+
 Discovery pause failures retain allowlisted control operation, HTTP status or transport class
 and chained exception class in the existing stop reason, excluding URLs and response bodies.
 This approved diagnostic change uses discovery.py and its tests only; no control retry or
-provider call is added. Combined-axis enabling remains gated on explicit consumption versus
-reservation semantics and an output-heavy fixture that actually generates the requested output.
+provider call is added. The approved combined-axis contract below resolves the earlier
+consumption-versus-reservation question and requires filled-output generation proof.
 
 NVIDIA new-route discovery enables both combined-token request mixes using provider input
 plus requested output, filled-output proof and explicit summed-context refusals. Clipped/early

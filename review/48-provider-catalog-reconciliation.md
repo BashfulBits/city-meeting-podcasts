@@ -2859,11 +2859,26 @@ hour, all existing numeric budgets bind, checkpoint elapsed time persists and ex
 deadlines remain effective. Update the expired-checkpoint golden test to use the new ceiling.
 No Worker, quota, production-config, parser or dependency changes; no live calls in acceptance.
 
+
+#### Worker-aligned discovery deadline and full-axis continuation
+
+The maintainer approved a 720-second discovery per-call ceiling, matching the v2 dispatch
+executor's default `MAX_RESPONSE_SECONDS=720`. This supersedes earlier 600-second discovery
+ceiling references; historical measurements above retain their actual deadlines. The one-hour
+session, shorter explicit deadlines, admission guards and call/token budgets still bind.
+Timeouts remain operational failures, not numerical size refusals or published model caps.
+The existing manual `discovery_axis=all` default selects input, output, total-input-heavy and
+total-output-heavy searches for supported route parsers. The next full-axis run must select
+`all`, rather than repeat the previous output-only selection; unsupported axes remain explicit.
+No Worker configuration changes or live workflow dispatch are part of this change. File plan:
+existing discovery runner, discovery tests, workflow input help and lifecycle docs/changelog.
+Acceptance checks the 720-second cap, shorter deadline clipping and all-axis selection wiring.
+
 Discovery pause failures retain allowlisted control operation, HTTP status or transport class
 and chained exception class in the existing stop reason, excluding URLs and response bodies.
 This approved diagnostic change uses discovery.py and its tests only; no control retry or
-provider call is added. Combined-axis enabling remains gated on explicit consumption versus
-reservation semantics and an output-heavy fixture that actually generates the requested output.
+provider call is added. The approved combined-axis contract below resolves the earlier
+consumption-versus-reservation question and requires filled-output generation proof.
 
 
 #### Approved combined request-cap eligibility evidence
