@@ -1118,6 +1118,7 @@ def _collect_context(
     retain_error_body=False,
     retain_response_preview=False,
     discovery_stream=False,
+    progress=None,
 ):
     """Byte/deadline collector inside the cancellable child; never reads response.text."""
     from citypods.provider_catalog.registry import rules_for
@@ -1130,6 +1131,43 @@ def _collect_context(
     raw = bytearray()
     raw_size = 0
     first_byte_ms = None
+    last_progress_at = None
+    last_progress_phase = None
+
+    def report_progress(phase):
+        nonlocal last_progress_at, last_progress_phase
+        now = clock()
+        if (
+            not discovery_stream
+            or progress is None
+            or (
+                phase == last_progress_phase
+                and last_progress_at is not None
+                and now - last_progress_at < 5
+            )
+        ):
+            return
+        last_progress_at = now
+        last_progress_phase = phase
+        state = f"phase={phase}" + (" " + sse.terminal_state() if sse is not None else "")
+        diagnostics = {
+            "response_preview": _safe_structured_preview(state),
+            "response_media_type": _response_media_type(response.headers)
+            if response
+            else "unknown",
+            "duration_ms": min(round(timeout * 1000), max(0, round((now - started) * 1000))),
+            "first_byte_ms": first_byte_ms,
+        }
+        if sse is not None:
+            diagnostics["stream_bytes"] = min(sse.wire_bytes, sse.MAX_WIRE)
+            diagnostics["stream_events"] = min(sse.events, sse.MAX_EVENTS)
+        progress(
+            Response(
+                response.status_code if response is not None else None,
+                timed_out=True,
+                context_diagnostics=diagnostics,
+            )
+        )
 
     def result(
         status,
@@ -1194,6 +1232,7 @@ def _collect_context(
         )
 
     try:
+        report_progress("requesting")
         response = session.post(
             request.shaped_body["url"],
             headers=headers,
@@ -1206,6 +1245,7 @@ def _collect_context(
             if _response_media_type(response.headers) != "text/event-stream":
                 return result(response.status_code, code="stream_media_type_mismatch")
             sse = DiscoverySSECollector()
+        report_progress("headers")
         for chunk in response.iter_content(chunk_size=16384):
             if first_byte_ms is None:
                 first_byte_ms = min(
@@ -1216,6 +1256,7 @@ def _collect_context(
                 return result(response.status_code, timed_out=True, code="transport_timeout")
             if sse is not None:
                 sse.feed(chunk)
+                report_progress("streaming")
                 if sse.done:
                     break
                 continue
@@ -1329,6 +1370,11 @@ def _context_http_worker(
                 retain_error_body=retain_error_body,
                 retain_response_preview=retain_response_preview,
                 discovery_stream=discovery_stream,
+                **(
+                    {"progress": lambda snapshot: pipe.send(("progress", snapshot))}
+                    if discovery_stream
+                    else {}
+                ),
             )
         )
     except (OSError, ValueError, KeyError, EOFError):
@@ -1380,6 +1426,7 @@ def _measure_response(
         context_diagnostics={"diagnostic_code": "worker_response_timeout"},
     )
     admitted_at_ms = None
+    last_progress = None
     try:
         process.start()
         child.close()
@@ -1400,25 +1447,41 @@ def _measure_response(
                 received_response = False
                 if remaining > 0:
                     parent.send("new")
-                    if parent.poll(remaining):
+                    while remaining > 0 and parent.poll(remaining):
                         received = parent.recv()
-                        if isinstance(received, Response):
+                        if (
+                            discovery_stream
+                            and isinstance(received, tuple)
+                            and len(received) == 2
+                            and received[0] == "progress"
+                            and isinstance(received[1], Response)
+                            and not received[1].body
+                        ):
+                            last_progress = received[1]
+                        elif isinstance(received, Response):
                             observation = replace(
                                 received,
-                                context_diagnostics=(
-                                    received.context_diagnostics
-                                    | {
-                                        "admitted_at_ms": admitted_at_ms,
-                                    }
-                                ),
+                                context_diagnostics=received.context_diagnostics
+                                | {"admitted_at_ms": admitted_at_ms},
                             )
                             received_response = True
+                            break
+                        else:
+                            raise ValueError("invalid transport IPC message")
+                        remaining = timeout - (clock() - started)
                 if not received_response:
                     observation = replace(
-                        observation,
-                        context_diagnostics={
+                        last_progress or observation,
+                        timed_out=True,
+                        context_diagnostics=(
+                            last_progress.context_diagnostics if last_progress else {}
+                        )
+                        | {
                             "diagnostic_code": "worker_response_timeout",
                             "admitted_at_ms": admitted_at_ms,
+                            "duration_ms": min(
+                                round(timeout * 1000), max(0, round((clock() - started) * 1000))
+                            ),
                         },
                     )
     except (OSError, EOFError):

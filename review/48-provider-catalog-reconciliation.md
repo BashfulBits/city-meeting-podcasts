@@ -2708,3 +2708,31 @@ provider-error precedence and no generated-text retention; all evidence remains 
 No new artifact schema, request parameters, Worker path, production config, search algorithm,
 budget or timeout changes. Any new live call requires explicit authorization. This diagnostic
 will identify the missing terminal component before further boundary-search changes are chosen.
+
+
+#### Approved follow-up: cancellation-safe streamed discovery progress
+
+After merged #2421, another direct 55,296-token probe reached the existing 600-second local
+subprocess deadline. It saved `worker_response_timeout`; that name identifies the local child,
+not a Cloudflare Worker. No terminal snapshot returned, so it established no size boundary.
+The maintainer explicitly approved payload-free child-to-parent progress on 2026-10-13.
+
+File plan: existing `probe.py`, discovery transport tests, ARCHITECTURE, review/11, review/48
+and one changelog fragment. Streamed discovery only sends typed progress envelopes after
+admission, before requesting headers, after headers and during stream reads. Phase changes
+report immediately; repeated stream-phase reports are throttled to one per five seconds.
+Only bounded structural previews, media/status, elapsed/first-byte timing and capped byte/event
+counts cross this channel. No credentials, URLs, generated text, reasoning, provider bodies or
+usage/cap claims. A snapshot is never a final response or an admission. The parent retains only
+the newest snapshot and recomputes the original remaining deadline after every progress message.
+On hard cancellation it preserves that snapshot with the existing timeout reason and admission
+timestamp, then terminates/joins/kills the child as before. Fields describe the last observed
+state, not guaranteed state at cancellation. Successful final responses replace progress and
+retain existing proof and preview-suppression rules.
+
+Acceptance: a real isolated offline child reports progress then stalls; the parent cancels on
+time and retains payload-free diagnostics. Streaming phase changes and five-second throttling
+are verified; ordinary configured-context paths emit no progress. Existing receipt-before-send,
+hard-cancellation, SSE validity, evidence projection and artifact/issue checks must still pass.
+No artifact schema, provider request, timeout/budget, Worker, production config or search-policy
+change. No new live request is included; repeat diagnostics require explicit authorization.

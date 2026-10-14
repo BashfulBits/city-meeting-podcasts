@@ -285,7 +285,11 @@ endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is t
 other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum
 control identity, and actual counts plus length-terminated verified repeated lines establish proof.
 Natural stops are explicitly inconclusive, with bounded response-ending failure diagnostics.
-The same verified hosted route supports discovery-only streaming with final usage. Incremental
+The same verified hosted route supports discovery-only streaming with final usage.
+The local streamed transport sends payload-free progress snapshots after admission, with phase
+changes and at most one repeated snapshot per five seconds. The parent retains only the latest
+snapshot when enforcing its unchanged hard deadline; progress never becomes capacity proof or
+extends the deadline. Generated/reasoning text and credentials never enter progress messages. Incremental
 SSE parsing discards framing/reasoning and caps decoded stream data at 64 MiB, pending frames at
 128 KiB and assembled responses at 4 MiB. Streams require final usage, consistent finish and DONE;
 partial/error streams remain inconclusive. Optional stream byte/event metrics accompany compact

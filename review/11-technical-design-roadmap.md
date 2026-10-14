@@ -1921,3 +1921,8 @@ stream at 250.581 seconds without complete SSE terminal evidence. Retain bounded
 state in the existing failed preview to distinguish missing DONE, finish, usage and a partial
 frame; no algorithm, timeout, production admission or maintenance-scope change. The verified
 NVIDIA-hosted Lightning output lower bound is 36,864, with no refused upper bound.
+
+Review/48 cancellation-safe discovery diagnostics are maintainer-approved: preserve bounded,
+payload-free streamed child progress at the unchanged hard deadline. The repeated 55,296-token
+probe timed out locally and establishes no upper bound. Search budgets/admission and Deferred
+maintenance scope remain unchanged.
