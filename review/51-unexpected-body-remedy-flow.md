@@ -4297,3 +4297,15 @@ This reused optimization set is not independent qualification; identity holds an
 suspected truth/policy mismatches stay explicit; approved truth never changes silently.
 Test540jobs/payload isolation, bounded retries/unknown holds, restart binding, pair
 and feed metrics, checkpoint preservation; whole Ruff/format and full offline beforecalls.
+
+
+Prompt-comparison checkpoint detail:push each immutable observation to the dedicated
+chore/2413-prompt-observations branch without a PR. This protects completed calls
+without triggering repeated PR CI; carry final observations into artifactPR2413 in
+a batch. Source is verified before calls; data-only pushes skip optional hooks.
+
+
+Prompt-comparison verification2026-10-14:125 targeted checks and6201 full offline
+tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks clean.
+Read-only Worker and shared-quota preflight confirms all three routes available;
+launch uses normal coordination. No provider requests occurred during preflight.
