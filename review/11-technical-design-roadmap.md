@@ -1982,3 +1982,92 @@ stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 
 reconcile/rules modules and discovery tests implement this approved generalization; no runtime
 config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
 currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+### Review/51 P1 six-model completion — L3
+
+Maintainer discontinued Gemini 3.7/3.8 evaluation on 2026-10-13 because daily quotas are too low.
+Keep historical observations; complete only the other six models (678 questions), with existing
+attempt limits and production headroom. Contract: review/51, P1 six-model completion.
+
+The maintainer subsequently authorized five immediate additional retries on each of the
+five remaining GLM/Sol pairs (25 attempts total). The one-off manifest/pair-bound allowance
+supersedes the daily evaluator cap only for those pairs and does not refill at midnight.
+Contract: review/51, P1 immediate five-pair retry allowance. Production quotas remain intact.
+
+### Review/51 full body-selection comparison — L3
+
+Maintainer approved the corrected 60-recording ownership prompt for six models on2026-10-13,
+with three retry rounds. Use the L3 body-selection contract in review/51, reuse official
+evidence and approved dispositions, and keep gold/proposals out of model input. No production
+activation;360 first answers, bounded retries, shared quota accounting and retained history.
+
+
+Review/51 evaluation call priority — L3 approved2026-10-13: reserve two of three
+contested call slots for the older comparison until it finishes, borrowing unused slots
+while it waits on provider cooldown/capacity. Persist allocation across resumes and
+retain all approved retry/deadline limits; see the scoped contract in review/51.
+
+
+Review/51 Groq evaluation expansion — L3 approved2026-10-13: add GPT-OSS120B high
+and Qwen3.8-27B high to the frozen60-recording independent body-selection comparison,
+480 total answers. Preserve the older run's priority and existing deadlines/limits;
+local capability overrides and daily-token headroom only, no production activation.
+
+
+Review/51 patient evaluation timeout extension — L3 approved2026-10-13: raise only
+the existing600-second patient evaluation requests to900 seconds,950-second case
+deadlines and covering provider leases/horizon guards in both active experiments.
+Preserve original run deadlines, inputs, answers, quotas and retry allowances.
+Resume between provider calls from tested code; see review/51's timeout extension.
+
+
+Review/51 temporary coordination bypass — L3 approved2026-10-13: allow the existing
+bounded evaluations to use local CAS accounting while the Worker capacity/pause service
+is unavailable. Retain retry caps, original horizons and one shared call lock. Qwen
+remains held without verified token capacity. Explicit default-off evaluation flag only;
+production usage visibility is unavailable and must be disclosed. See review/51.
+
+
+Review/51 Qwen bypass hold removal — L3 approved2026-10-13: remove the explicit
+Qwen outage hold from the active comparison. Apply the same local token cap/reserve
+and request controls as GPT-OSS, with production Worker usage unknown during bypass.
+Preserve original retries/horizon; no manual unblock at the next capacity window.
+
+
+Review/51 Groq provider-authoritative stop — L3 approved2026-10-13: the maintainer
+directed continued Qwen/GPT-OSS evaluation until each route's first new provider429,
+then a durable evaluation pause. Bypass only their local daily-token gates; retain
+all other controls, original call caps/horizon and immutable actual usage. No
+production changes. Contract and scope: review/51.
+
+
+Review/51 feed-context diagnostic — L3 approved2026-10-14: separate14-call comparison
+of explicit membership policy vs existing-feed title examples for one Dallas Bond
+Streets recording; no production changes or rearming original Groq pauses. Retain
+and repeat the seven-model common-question/21-pair audit after final results.
+
+
+Review/51 prompt optimization — L3 approved2026-10-14: three general prompts,60
+recordings, Sol/GLM Flash/DeepSeek V4.1 Flash (540jobs); three pairs per prompt.
+Separate shared wrong agreements, extra/missing feeds and disagreements. Durable
+workspace and remote checkpoints; no activation or old-controller restarts.
+
+A further approved review/48 direct output session revalidated 50,688 and verified 52,992,
+then deferred another call before admission. The local lower bound is now 52,992; upper bound
+and true-cap convergence remain unknown. No production changes or authenticated workflow
+history claims; see review/48's execution record.
+
+The subsequent bounded local output session verified 54,144 after one 52,992 revalidation,
+then deferred further admission. This is the current local lower bound; numerical upper and
+true-cap convergence remain unknown. No production publication or GitHub-history authority.
+
+
+Local one-hour output search after #2426 verified 54,720 completion tokens, then preserved
+two streaming deadline failures as inconclusive. Four calls completed within the session;
+`output_time_limited_lower_bound` leaves the numerical upper unknown. See review/48 evidence.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.

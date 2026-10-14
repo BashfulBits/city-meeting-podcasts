@@ -1,0 +1,132 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "name": "2024 Capital Bond Streets & Transportation Subcommittee"
+      }
+    ],
+    "case_id": "recording-0312d144c749c190446edfe0",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "dallas-tx-bond-program-meetings",
+      "dallas-tx-transportation-and-infrastructure"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The Swagit video (evidence ID provider-player) shows the meeting titled '2024 Capital Bond Streets & Transportation Subcommittee Meeting' and includes transcript references to the Streets and Transportation Subcommittee. The Dallas City Hall page (evidence ID dallas-streets-archive) lists the same meeting under the Streets and Transportation Subcommittee meeting list. These two sources directly confirm that the convening body is the 2024 Capital Bond Streets & Transportation Subcommittee. According to the publication_membership_policy, recordings of this subcommittee must be placed in three existing feeds: the specific subcommittee feed (dallas-tx-2024-bond-streets-and-transportation-subcommittee) and the broader Bond Program Meetings (dallas-tx-bond-program-meetings) and Transportation and Infrastructure (dallas-tx-transportation-and-infrastructure) feeds. No additional bodies are proven to have jointly convened this recording, so only the subcommittee is listed as the identified body. All required evidence is present; no missing evidence."
+  },
+  "attempt_id": "eca5c543e8344333a7ce832740a53c31",
+  "attempt_in_round": 1,
+  "candidate": "gptoss",
+  "capacity": {
+    "conservative_tokens_used": 73575.11630416667,
+    "kind": "available",
+    "local_tokens_used": 73575.11630416667,
+    "production_token_reserve": 36000,
+    "remaining_tokens": 106424.88369583333,
+    "request_token_reservation": 22559,
+    "usage_visibility": "local_only",
+    "worker_tokens_used": null
+  },
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "controls_source": "https://console.groq.com/docs/api-reference",
+  "controls_verified_on": "2026-10-13",
+  "coordination_approval_ref": "review/51 temporary coordination bypass; maintainer chat2026-10-13",
+  "coordination_bypass": true,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 4.462241374887526
+    }
+  ],
+  "end_to_end_seconds": 5.35079012485221,
+  "estimated_shaped_input_tokens": 6175,
+  "finished_at": "2026-10-14T09:57:10.268717+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "limits_source": "https://console.groq.com/docs/rate-limits",
+  "manifest_hash": "675288951eb50ab812d87b5fb14c365bc5fcbb57ba80b9aa1d2f305adae909ea",
+  "mode": "feed_context/explicit_policy",
+  "observed_at": "2026-10-14T09:57:04.917886+00:00",
+  "output_token_cap": 16384,
+  "production_drained": false,
+  "prompt_hash": "42c6c363450dbd5c3f8e68056e57ca5a8458111e0ed0affb4a5e660b2a9d0053",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_time": 3.870055322,
+    "completion_tokens": 1849,
+    "completion_tokens_details": {
+      "reasoning_tokens": 1498
+    },
+    "prompt_time": 0.38571902,
+    "prompt_tokens": 6033,
+    "prompt_tokens_details": null,
+    "queue_time": 0.043421989,
+    "total_time": 4.255774342,
+    "total_tokens": 7882
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0312d144c749c190446edfe0\",\"bodies\":[{\"name\":\"2024 Capital Bond Streets & Transportation Subcommittee\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"]}],\"feed_slugs\":[\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\"dallas-tx-bond-program-meetings\",\"dallas-tx-transportation-and-infrastructure\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"],\"missing_evidence\":[],\"rationale\":\"The Swagit video (evidence ID provider-player) shows the meeting titled '2024 Capital Bond Streets & Transportation Subcommittee Meeting' and includes transcript references to the Streets and Transportation Subcommittee. The Dallas City Hall page (evidence ID dallas-streets-archive) lists the same meeting under the Streets and Transportation Subcommittee meeting list. These two sources directly confirm that the convening body is the 2024 Capital Bond Streets & Transportation Subcommittee. According to the publication_membership_policy, recordings of this subcommittee must be placed in three existing feeds: the specific subcommittee feed (dallas-tx-2024-bond-streets-and-transportation-subcommittee) and the broader Bond Program Meetings (dallas-tx-bond-program-meetings) and Transportation and Infrastructure (dallas-tx-transportation-and-infrastructure) feeds. No additional bodies are proven to have jointly convened this recording, so only the subcommittee is listed as the identified body. All required evidence is present; no missing evidence.\"}",
+          "function_call": null,
+          "reasoning": "We need to answer a question: \"Which municipal body or bodies does this recording belong to?\" The user provided a JSON with evidence, and the developer instructions require we parse the evidence, determine the convening institution(s) of the recording, identify bodies, assign to existing feed slugs if appropriate, or indicate unconfigured_body if no feed, or unresolved if cannot determine.\n\nWe have a recording of \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\" (title). The evidence includes:\n\n- Evidence ID \"provider-player\" (a video embed from Swagit). It includes a transcript that mentions \"Streets Committee\" and \"Bond Task Force\" and \"Streets and Transportation Subcommittee\". Also mentions \"Director of Public Works\" and \"Transportation Team\", etc.\n\n- Evidence ID \"dallas-streets-archive\" which is a page from \"Office of Bond & Construction Management\" showing a list of subcommittee meetings. It includes \"Streets and Transportation Subcommittee meeting list\" and shows the meeting on Tuesday, August 22, 2023 \"Streets and Transportation Meeting #6 Video\". The page likely belongs to the \"Streets and Transportation Subcommittee\". The title matches \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". So the body is \"2024 Capital Bond Streets & Transportation Subcommittee\". This appears to be a subcommittee under the \"2024 Bond Program\". The policy says that recordings convened by the 2024 Bond Streets and Transportation Subcommittee belong in all three subscription feeds: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, and dallas-tx-transportation-and-infrastructure. So the appropriate feed slugs are those.\n\nCheck existing_feeds list: There's a feed for \"Dallas 2024 bond Streets and Transportation subcommittee proceedings.\" Slug: \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\". Good.\n\nThere's also a generic \"dallas-tx-bond-program-meetings\". That's \"Bond Program Meetings\" feed.\n\nAnd \"dallas-tx-transportation-and-infrastructure\". That's a feed.\n\nThus, the feed_slugs should include these three slugs. All exist.\n\nNow, the bodies list: We need to list each identified body with name and evidence_ref_ids. According to policy, \"the convened body, not venue, topic or common members; numbered boards differ\". The recording belongs to the subcommittee \"2024 Capital Bond Streets & Transportation Subcommittee\". However, we also have the broader bodies? The policy says that recordings convened by the subcommittee belong in all three subscription feeds: the subcommittee, the bond program meetings, and transportation and infrastructure. But those are subscription feeds, not bodies? The body is the subcommittee. The feed mapping is for publication. The question: \"Which municipal body or bodies does this recording belong to?\" The developer instructions: \"Identify the actual body/program separately from its subscription grouping.\" So we need to identify the body that convened the meeting (the subcommittee). That is the \"2024 Capital Bond Streets & Transportation Subcommittee\". But also, the \"Bond Program\" and \"Transportation and Infrastructure\" might be bodies? However, they could be considered broader programs, not the convening body. The policy says: \"The latter two are broader subscription memberships, not proof that those committees jointly convened the recording.\" So they are not bodies that convened, they are just subscription categories. The \"actual body\" is the subcommittee.\n\nThus, we list the body: name: \"2024 Capital Bond Streets & Transportation Subcommittee\". Provide evidence refs: likely \"provider-player\" and \"dallas-streets-archive\". Both evidence IDs refer to the subcommittee.\n\nNow feed_slugs: we need to include all three as per policy: dallas-tx-2024-bond-streets-and-transportation-subcommittee, dallas-tx-bond-program-meetings, dallas-tx-transportation-and-infrastructure.\n\nNow publication_action: According to mapping, assign_existing (since feed exists). So \"assign_existing\".\n\nNow evidence_ref_ids: Should include all evidence IDs used for body assignment, possibly all evidence IDs. The evidence list includes two IDs: \"provider-player\" and \"dallas-streets-archive\". So we include those in evidence_ref_ids top-level.\n\nMissing_evidence: Since we have evidence, missing_evidence array likely empty.\n\nRationale: Provide explanation up to 2000 characters.\n\nNow case_id: \"recording-0312d144c749c190446edfe0\".\n\nNow we need to ensure JSON matches schema: fields: case_id, bodies (array of objects with name and evidence_ref_ids), feed_slugs (array of strings, max 15), publication_action, evidence_ref_ids (top-level array), missing_evidence (array), rationale.\n\nWe need to confirm feed slugs are correct. Let's check existence:\n\n- \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\": appears as a feed in existing_feeds: description \"Dallas 2024 bond Streets and Transportation subcommittee proceedings.\" So yes.\n\n- \"dallas-tx-bond-program-meetings\": exists: \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\"\n\n- \"dallas-tx-transportation-and-infrastructure\": exists: \"Transportation and Infrastructure meetings for Dallas.\"\n\nThus we can include them.\n\nNow verify body naming: \"2024 Capital Bond Streets & Transportation Subcommittee\". The evidence uses \"Streets and Transportation Subcommittee\". The recording title includes \"2024 Capital Bond Streets & Transportation Subcommittee Meeting\". So we can name body exactly as \"2024 Capital Bond Streets & Transportation Subcommittee\". Provide evidence IDs.\n\nNow the policy about \"joint participants\": No joint participants; only this subcommittee. The transcript mentions \"Bond Task Force\" and \"Streets Committee\", but not a joint meeting. However, the subcommittee might be part of a larger \"Bond Task Force\"? The transcript says \"This is the Streets Committee. ... There is an overall committee called the Bond Task Force.\" It appears to be a separate subcommittee. The meeting is a subcommittee meeting, not a joint meeting. We should not list the Bond Task Force as a separate body because not proven that they convened this recording. The policy says to list proven participants only, and to name each proven participant in a joint meeting. Here no proof that the Bond Task Force convened; only a mention. So we only list the subcommittee.\n\nNow we must be careful to not include other bodies erroneously.\n\nThus final JSON.\n\nRationale: Should explain that evidence from the video embed and the page confirm the subcommittee convened the meeting; that policy indicates to assign to three feeds; we have the subcommittee as the body; evidence IDs; missing evidence none.\n\nLet's produce JSON in compact format, no extra spaces? The spec says \"compact JSON formatting\". So we should not have extra whitespace or line breaks, but it's okay to have minimal. We'll produce a single line JSON.\n\nCheck length: Must be within 2000 characters for rationale.\n\nNow produce JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        }
+      }
+    ],
+    "created": 1791971829,
+    "id": "chatcmpl-99722899-47c4-439c-831d-c966249513d5",
+    "model": "openai/gpt-oss-120b",
+    "object": "chat.completion",
+    "service_tier": "auto",
+    "system_fingerprint": "fp_c652c0ffaa",
+    "usage": {
+      "completion_time": 3.870055322,
+      "completion_tokens": 1849,
+      "completion_tokens_details": {
+        "reasoning_tokens": 1498
+      },
+      "prompt_time": 0.38571902,
+      "prompt_tokens": 6033,
+      "prompt_tokens_details": null,
+      "queue_time": 0.043421989,
+      "total_time": 4.255774342,
+      "total_tokens": 7882
+    },
+    "usage_breakdown": null,
+    "x_groq": {
+      "id": "req_01m4wxg5tjezbt68ae30sj6kc6",
+      "seed": 1391902554
+    }
+  },
+  "reasoning": "high",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "groq_gpt_oss_120b_primary",
+  "route_settings_hash": "47ea294c4fc7d312649106ad749e754e2682900ab6af9e618d5b4fc62bea0d83",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "submitted_reasoning_controls": {
+    "reasoning_effort": "high",
+    "reasoning_format": "parsed"
+  },
+  "upstream_model": "openai/gpt-oss-120b",
+  "upstream_model_requested": "openai/gpt-oss-120b"
+}

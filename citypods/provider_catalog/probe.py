@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import platform
 import re
@@ -260,6 +261,35 @@ def _first_event_error(raw: str) -> bool:
     return False
 
 
+def _reachability_failure(exc, rules, model, phase, status=None):
+    """Log bounded exception classes, never exception text, URLs or credentials."""
+    pending, seen, kinds = [exc], set(), []
+    while pending and len(kinds) < 5:
+        error = pending.pop(0)
+        if id(error) in seen:
+            continue
+        seen.add(id(error))
+        kinds.append(re.sub(r"[^A-Za-z0-9_]", "", type(error).__name__)[:64])
+        pending.extend(
+            child
+            for child in (error.__cause__, error.__context__, *error.args)
+            if isinstance(child, BaseException)
+        )
+    logging.getLogger(__name__).warning(
+        "reachability_transport_failure provider=%s model=%s phase=%s status=%s causes=%s",
+        re.sub(r"[^A-Za-z0-9_.:/-]", "", rules.name)[:64],
+        re.sub(r"[^A-Za-z0-9_.:/-]", "", model)[:160],
+        phase,
+        status,
+        ":".join(kinds),
+    )
+    return Response(
+        status=status,
+        timed_out=isinstance(exc, requests.Timeout),
+        transport_error=None if isinstance(exc, requests.Timeout) else type(exc).__name__,
+    )
+
+
 def canary(
     rules: ProviderRules,
     provider_cfg: Mapping[str, Any],
@@ -283,10 +313,8 @@ def canary(
             timeout=(20, timeout),
             stream=True,
         )
-    except requests.Timeout:
-        return Response(status=None, timed_out=True)
     except requests.RequestException as exc:
-        return Response(status=None, transport_error=type(exc).__name__)
+        return _reachability_failure(exc, rules, model, "awaiting_headers")
     try:
         headers = dict(response.headers)
         if not response.ok:
@@ -310,10 +338,8 @@ def canary(
             body=text,
             first_event_error=_first_event_error(text),
         )
-    except requests.Timeout:
-        return Response(status=None, timed_out=True)
     except requests.RequestException as exc:
-        return Response(status=None, transport_error=type(exc).__name__)
+        return _reachability_failure(exc, rules, model, "reading_response", response.status_code)
     finally:
         response.close()
 

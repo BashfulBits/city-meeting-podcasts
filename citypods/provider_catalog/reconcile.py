@@ -613,10 +613,11 @@ def reconcile(
                 receipt_id = (discovery_receipt_ids or {}).get(key)
                 if (
                     not discovery_enabled
-                    or not receipt_id
-                    or key not in (retry_candidate_keys or set())
+                    or key not in ((retry_candidate_keys or set()) | (candidate_keys or set()))
+                    or (not receipt_id and key not in (candidate_keys or set()))
                     or any(
-                        row.get("session", {}).get("receipt_id") == receipt_id
+                        row.get("session", {}).get("provider") == _provider
+                        and row.get("session", {}).get("upstream_model") == model
                         for row in report.discovery_sessions
                     )
                 ):
@@ -638,7 +639,7 @@ def reconcile(
 
             for model, record in sorted(catalog.models.items()):
                 key = f"{provider}/{model}"
-                if key in (retry_candidate_keys or set()):
+                if key in ((retry_candidate_keys or set()) | (candidate_keys or set())):
                     retry_models_seen.add(key)
                 if candidate_keys is not None and key not in candidate_keys:
                     continue
@@ -698,7 +699,7 @@ def reconcile(
                     continue
                 score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
                 candidates.append((model, record, score, memory is not None))
-            for key in retry_candidate_keys or set():
+            for key in (retry_candidate_keys or set()) | (candidate_keys or set()):
                 provider_prefix, separator, model = key.partition("/")
                 if (
                     provider_prefix == provider

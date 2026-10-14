@@ -1,8 +1,9 @@
 # Approved varied comparison and recovery
 
 The frozen challenge is 113 questions across 60 recordings. Primary/secondary Gemini keys
-contribute to the same logical model. Eight models give a comparison target of 904 answers.
-Astra's historical observations are preserved but excluded from comparison and new requests.
+were pooled under the same logical model. On October 13 the maintainer discontinued both
+Gemini 3.7/3.8 models because of their low daily quotas. The active six-model target is 678.
+Historical Gemini and Astra observations remain preserved but excluded from scoring and calls.
 This is a regression challenge, not independent production-admission evidence.
 
 `run.py` makes bounded single-candidate batches with existing shared quota accounting,
@@ -36,7 +37,9 @@ The default horizon is 24 hours with at most 256 new provider attempts. Restarts
 the original deadline and allowance. An explicit `--new-run` begins another bounded run;
 `--horizon-hours` accepts up to seven days and `--max-calls` never exceeds 256. A completed
 run is recognized from successful logical model/case pairs, not elapsed time or a green exit.
-The active legacy runner is not stopped or restarted by this implementation.
+The legacy runner is retired. The eight-model recovery controller was stopped while idle
+after the maintainer discontinued Gemini 3.7/3.8. A new six-model run preserves the daily
+attempt cap and waits for midnight UTC before retrying the five remaining GLM/Sol cases.
 
 Recovery safeguards:
 
@@ -69,3 +72,52 @@ PYTHONPATH=. python evals/remedy/results/varied-2026-10-11/score.py \
 Use a new output filename for each score; it is created exclusively. Gold never enters the
 controller or model messages. The diagnosis and raw batches explain historical failures;
 quality, completion, latency and unresolved identity/maximum-effort holds remain separate.
+
+## One-off immediate retries approved October 13
+
+The maintainer approved five more attempts on each of the two remaining full GLM and three
+Sol questions, beginning immediately. The immutable `retry-allowance-2026-10-13-v1.json`
+binds those exact pairs to this manifest and authorization time. Only these pairs bypass
+the daily evaluator cap. At most five calls since that timestamp are allowed per pair,
+including unmatched intents; daily resets and new controller runs do not replenish them.
+A valid answer immediately suppresses further calls. Normal quotas, headroom, timeouts,
+provider cooldowns and unknown-outcome holds continue to apply. Resume with the same file:
+
+```sh
+/usr/local/bin/citypods-env env R2_BUCKET=citypods-spike PYTHONPATH=. \
+  python evals/remedy/results/varied-2026-10-11/backfill.py --execute --max-calls 25 \
+  --retry-allowance \
+  /private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/retry-allowance-2026-10-13-v1.json \
+  --results-dir /private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11
+```
+
+The initial authorized handoff used `--new-run`; ordinary restarts omit it. The stored
+allowance hash must match on restart. Keep the original allowance file unchanged.
+
+
+## Patient request timeout extension approved October 13
+
+Future non-Gemini requests use900-second provider timeouts,950-second case deadlines
+and1000-second covering provider pause leases. Flash-Lite retains120s/150s/4096.
+Controllers reserve1050 seconds before their original horizon expires. This changes
+only local evaluation waiting time; all retry counts, daily quotas, output caps and
+original controller deadlines remain intact. Earlier600-second observations stay
+immutable and retain their original settings. A provider gateway may still time out
+sooner; extending our local wait cannot bypass an upstream timeout.
+
+
+## Temporary coordination outage mode approved October13
+
+Explicit --coordination-bypass resumes this existing bounded evaluation using local
+CAS quota accounting. It skips unavailable Worker capacity/pause/drain/reservation
+requests; it does not skip local quotas, retry limits, cooldowns or the shared call
+lock. Results and intents record bypass and do not claim production was drained.
+Production jobs' usage cannot be seen in this mode, so provider failures still stop
+and cool down that route. Normal coordination checks remain the default.
+
+The older controller requires its existing retry allowance and refuses --new-run
+with bypass. Both controllers preserve their original horizons and prior answers.
+Qwen remains held during bypass until daily token capacity can be verified. GPT-OSS
+keeps its local180000/day cap and20% reserve; Worker token usage is recorded unknown.
+Use the same shared lock and saved result directories when switching modes. Stop
+only between submitted requests, then resume from tested code without changing caps.

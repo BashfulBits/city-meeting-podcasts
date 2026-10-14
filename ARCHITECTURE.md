@@ -1816,3 +1816,28 @@ actual reservations remain owned by the existing CAS scheduler. No model activat
 The review/51 evaluation lane can explicitly request NVIDIA Kimi K3 maximum reasoning through
 its compiled capability metadata. This adds no production default or model admission; local
 qualification uses the same shared CAS accounting and frozen evaluation provenance.
+
+The varied P1 evaluation comparison was narrowed by maintainer decision on 2026-10-13 to
+six models (678 questions), excluding Gemini 3.7/3.8 and Astra from future calls and aggregate
+scores while retaining their immutable history. Per-case daily retry limits remain unchanged.
+
+The independent body-selection evaluator under
+`evals/remedy/results/body-selection-2026-10-13/` uses a separately frozen 60-recording
+packet, opaque IDs, input-only evidence/taxonomy, and evaluation-local multi-feed answers.
+Its controller shares the older evaluation call lock, preserves round/attempt limits and
+quota headroom, and never reads gold. Explicit offline scoring keeps existing-body feed
+choice, publication controls, and insufficient-proof guardrails separate. No production
+model or feed activation follows from these historical challenge results.
+
+The body-selection evaluator can explicitly prioritize a concurrently running older
+comparison with persistent two-to-one contested call allocation. Failed submissions
+count as slots; idle/cooldown reservations are borrowable, while changed or stale older
+controller state holds new calls. The shared provider lock still prevents overlap, and
+all existing quota, retry and original-deadline checks remain in force.
+
+The body-selection challenge now has eight approved logical models after adding
+existing Groq GPT-OSS120B and Qwen3.8 routes at explicit high reasoning. Capability
+copies are evaluation-only; production catalogs remain unchanged. Persisted model
+set migration adds120 pairs while retaining old results and the original deadline.
+Groq execution checks local and Worker daily-token debt with production headroom,
+and saves actual submitted controls and returned usage alongside immutable answers.

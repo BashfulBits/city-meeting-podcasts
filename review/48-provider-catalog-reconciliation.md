@@ -2924,3 +2924,57 @@ or unknown envelopes. Exact output-parameter refusals are labelled requested_out
 axes so they can reduce fixed counterparts without creating combined bounds. Provider names and
 model allowlists do not grant size proof. This retains discovery for unseen routes while failing
 closed on undocumented shapes and ambiguous counts.
+
+A maintainer-authorized next direct session resumed from those local diagnostic observations.
+It revalidated 50,688 completion tokens (734 reasoning, 2,485 prompt, `length`) in 557.930
+seconds, then verified 52,992 completion tokens (1,198 reasoning, 2,485 prompt, `length`) in
+525.385 seconds. Both repeated-output fixtures passed. It sent exactly two calls, charged
+4,970 input and 103,680 output tokens, and stopped before a third admission with
+`insufficient_output_probe_window`. The verified local output lower bound is now 52,992, with
+unknown numerical upper and partial status. The next retry-hint midpoint would be 54,144; that
+value is not measured evidence or an authorized automatic next call. No Worker interaction,
+production publication or GitHub-history authentication was introduced. Local evidence remains
+diagnostic only; the workflow must obtain its own authenticated observations.
+
+
+The next maintainer-authorized direct session revalidated 52,992 output tokens (1,272 reasoning,
+2,484 prompt, `length`) in 550.353 seconds, then verified 54,144 output tokens (1,104 reasoning,
+2,484 prompt, `length`) in 551.162 seconds. Both fixtures passed; the two calls charged 4,968
+input and 107,136 output tokens. Again, `insufficient_output_probe_window` stopped the runner
+before a third admission. The verified local lower bound is now 54,144, with no numerical
+refused upper or true-cap convergence. The next unmeasured hint target would be 54,720. This
+continues the same reviewed diagnostic exception and changes no production limits or authority.
+
+
+The first local one-hour search after merged #2426 completed four direct calls in about
+39 minutes, without Worker reservations or pauses. Prior local records were diagnostic hints
+only; this does not establish authenticated workflow history.
+
+| Output target | Result | Actual completion | Reasoning | Duration |
+| --- | --- | --- | --- | --- |
+| 54,144 | verified, length | 54,144 | 881 | 528.748s |
+| 54,720 | verified, length | 54,720 | 1,001 | 588.610s |
+| 55,008 | local deadline, still streaming | unknown | unknown | 600s |
+| 54,864 | local deadline, still streaming | unknown | unknown | 600s |
+
+Both successes reported 2,476 prompt tokens. The two cancellations retained HTTP 200 and active
+streaming diagnostics with no finish or final usage; `worker_response_timeout` names the local
+transport subprocess here, not a Cloudflare Worker failure. The planner reduced the next size
+after the first timeout and stopped with `output_time_limited_lower_bound` after the second.
+Its final bracket is admitted 54,720, refused unknown, partial, with target width 274.
+The 144-token distance to the latest failed target is not a verified refusal bracket or true
+0.5% cap convergence. Charged/reserved totals were four calls, 9,048 input and 218,736 output
+tokens; canceled calls have no actual final usage. The hour allowed four attempts in one session,
+but the unchanged per-call deadline still limits proof for slow generation. No production cap
+was published and no additional call was automatically started after the escape.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
+
+Reachability failures now log bounded exception-class chains and awaiting-headers/reading-response
+phase, plus any received HTTP status. Logs exclude exception text, URLs, credentials and response
+bodies. Existing canary transport/timeouts and free-route eligibility remain unchanged. The
+shared probe module and reconciliation tests implement this authorized diagnostic extension.

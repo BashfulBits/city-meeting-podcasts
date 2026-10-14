@@ -1,0 +1,229 @@
+{
+  "observed_at": "2026-10-13T15:49:43.534257+00:00",
+  "token_measure": "repository content characters / 4 estimate; not provider tokenizer counts",
+  "manifest_sha256": {
+    "/private/tmp/p1-backfill-recovery/evals/remedy/holdout/backlog-varied-2026-10-11/approved-v2/manifest.json": "361acfc4e3ddbf6c2cb19c890afe6bb4b60295d9fed3f4386a4a35c0a3e08442",
+    "evals/remedy/holdout/body-selection-2026-10-13/manifest.json": "9e998bf153e47ec44b9b7639e1a62fa7307b73ec9863bf21f379764f8a1cd3f8"
+  },
+  "targets": [
+    {
+      "uid": "27254aa1a700569f",
+      "old_case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+      "old_estimated_input_tokens": 3680,
+      "new_case_id": "recording-7ff26ff432860aa1dd1e09fd",
+      "new_estimated_input_tokens": 3879,
+      "same_recording_old_observations": [
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T190642-17ea612c/glm_full-61502e0b2db605c8.json",
+          "sha256": "680f53e7d8e1f9c4d305826fa739898acbde16b8912bb49df2a8d4902e136fb5",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-wrong-target",
+          "status": "completed",
+          "observed_at": "2026-10-12T19:10:30.897647+00:00",
+          "end_to_end_seconds": 192.70269104186445,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": null,
+          "error": null,
+          "estimated_input_tokens": 3686
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T190642-17ea612c/glm_full-6d89d1f170fae11c.json",
+          "sha256": "a36345122032565e8e3d92ab15888ae2deac30680a90a46cf805e4140dd36261",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-gas-drilling-task-force",
+          "status": "completed",
+          "observed_at": "2026-10-12T19:06:42.057005+00:00",
+          "end_to_end_seconds": 228.8404013342224,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": null,
+          "error": null,
+          "estimated_input_tokens": 3686
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T133302-ab239416/glm_full-13635801d370d52f.json",
+          "sha256": "bf43a5e3349f88284d26be816da63f68e68cac2221088499f47e2ad1e6a30e9f",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T13:33:02.140503+00:00",
+          "end_to_end_seconds": 603.7547915419564,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T043047-b617a0a7/glm_full-13635801d370d52f.json",
+          "sha256": "fd7d669a55eeea45dac6598fda2e44bbe40afe04df3f241817d345aa36b5812d",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T04:45:34.124909+00:00",
+          "end_to_end_seconds": 601.6766477078199,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T141307-d3b0ec43/glm_full-13635801d370d52f.json",
+          "sha256": "fc61e99fd58505a892bbaff64929d715f02b4c1c56f1ca64fa644856f29f0893",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T14:13:07.791768+00:00",
+          "end_to_end_seconds": 604.295317332726,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T184551-5794edb5/glm_full-13635801d370d52f.json",
+          "sha256": "e34024e3b83bbc49539ac64778b3450d76a9d4ca86f1a2f9cc5dd54a2dddae4a",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-12T18:47:53.386216+00:00",
+          "end_to_end_seconds": 601.9284289171919,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T052537-4db29cd5/glm_full-13635801d370d52f.json",
+          "sha256": "549a50195636d7c19e19917352c2170789a800d4c20c21fde575ba859fa9054b",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T05:25:37.713509+00:00",
+          "end_to_end_seconds": 604.316468458157,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T060543-fa26b9f0/glm_full-13635801d370d52f.json",
+          "sha256": "b58f2337d117e4803c425c7a558afcee23a4e7a24904cfeea9f288ac30b36397",
+          "case_id": "fort-worth-tx-27254aa1a700569f-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T06:05:43.370390+00:00",
+          "end_to_end_seconds": 603.7286900002509,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 3680
+        }
+      ],
+      "new_same_recording_glm_attempt_count": 0
+    },
+    {
+      "uid": "497b3aa05255bfb9",
+      "old_case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+      "old_estimated_input_tokens": 4876,
+      "new_case_id": "recording-1fd48da636e2445a9d8ecebb",
+      "new_estimated_input_tokens": 5075,
+      "same_recording_old_observations": [
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T190642-17ea612c/glm_full-e8ea80b3d7c8772f.json",
+          "sha256": "f49a77a3819f56aa9b3a85e6ecaa0c73a8514063f73a142fce144f6facde10c8",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-12T19:13:43.606335+00:00",
+          "end_to_end_seconds": 602.0677841668949,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 4876
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T073738-cb6cbbde/glm_full-e8ea80b3d7c8772f.json",
+          "sha256": "68a3353a97d6f0dacd68bbc356d5dcbe9b0b5d2ce4d51b124f54231291bc5f24",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T07:37:38.184923+00:00",
+          "end_to_end_seconds": 603.37556041684,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 4876
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T081743-97724203/glm_full-e8ea80b3d7c8772f.json",
+          "sha256": "9872b35234dcbcf02e147d01e4cd56957d38d64e1506c033a7ead8da65bce572",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T08:17:43.145304+00:00",
+          "end_to_end_seconds": 603.8067316249944,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 4876
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T193112-41ef1c43/glm_full-8e9d0c3d5d8e62fd.json",
+          "sha256": "f2196735e74997b50d2ca8d624d436388c2e225df24519269cad61b734e09979",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-wrong-target",
+          "status": "completed",
+          "observed_at": "2026-10-12T19:35:51.158305+00:00",
+          "end_to_end_seconds": 219.16045049997047,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": null,
+          "error": null,
+          "estimated_input_tokens": 4882
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261012T193112-41ef1c43/glm_full-aefd3affec65dce0.json",
+          "sha256": "51313bb5958c2d0c00df1882f5d059afa963a6799ce33029757d0dbdeb2e29f9",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-emsisd-board-joint-meetings",
+          "status": "completed",
+          "observed_at": "2026-10-12T19:31:12.213341+00:00",
+          "end_to_end_seconds": 278.9394613332115,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": null,
+          "error": null,
+          "estimated_input_tokens": 4884
+        },
+        {
+          "file": "/private/tmp/p1-kimi-reviewer/evals/remedy/results/varied-2026-10-11/batches/20261013T064548-4f5b89f0/glm_full-e8ea80b3d7c8772f.json",
+          "sha256": "a17e4b835769a67607267b46d2863029b82e814655a856e215ec93dd1743cc24",
+          "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership-member-fort-worth-tx-city-council",
+          "status": "failed",
+          "observed_at": "2026-10-13T06:45:48.881078+00:00",
+          "end_to_end_seconds": 603.5870267502032,
+          "request_timeout": 600,
+          "output_token_cap": 16384,
+          "reason": "litellm.Timeout: APITimeoutError - Request timed out. Error_str: Request timed out.",
+          "error": null,
+          "estimated_input_tokens": 4876
+        }
+      ],
+      "new_same_recording_glm_attempt_count": 0
+    }
+  ],
+  "conclusion": "Input length alone does not explain the failures: GLM completed nearly identical packets for these same recordings with different claims, and larger packets. Prior failures were 600-second provider timeouts; current old-run retries are blocked by the shared runner lock. Same-recording new body-selection calls have not yet run. No provider requests launched by this diagnostic.",
+  "runner_status": {
+    "old": {
+      "updated_at": "2026-10-13T15:49:26.861347+00:00",
+      "answered": 676,
+      "target": 678,
+      "glm_state": "runner_busy",
+      "glm_answered": 111
+    },
+    "new": {
+      "updated_at": "2026-10-13T15:48:42.234229+00:00",
+      "answered": 46,
+      "target": 360,
+      "glm_state": "ready",
+      "glm_answered": 10
+    }
+  }
+}

@@ -3768,3 +3768,544 @@ Implementation PR: [#2410](https://github.com/BashfulBits/city-meeting-podcasts/
 dependent on #2277. The parent's single changelog conflict was resolved in an isolated checkout
 and carried forward. Current main's fragment convention applies: the lifecycle entry is in
 `changelog.d/2410-backfill-recovery.md`, compiled into CHANGELOG after human merge.
+
+### P1 six-model completion — L3, approved 2026-10-13
+
+The maintainer discontinued Gemini 3.7/3.8 testing because of their low daily quotas.
+Keep all historical Gemini and Astra observations, but exclude them from active calls and scores.
+The active comparison is Flash-Lite, Kimi, full GLM, GLM Flash, Sol and DeepSeek: six models
+with 113 questions each (678 answers). This supersedes the eight-model target above.
+
+Before changing code, stop the idle controller without interrupting a provider request.
+Change only the existing varied recovery.py/backfill.py/run.py/score.py and README,
+tests/test_remedy_backfill.py, and lifecycle docs. Separate active candidates from the
+historical candidate allowlist; block discontinued candidates before loading credentials.
+Prove historical observations remain readable, excluded calls/counts, and six-model stopping.
+The scorer must retain hashed provenance when results live outside the executing checkout.
+
+Resume a new bounded controller run to finish only unanswered active cases. Preserve the
+three-attempt per-case UTC-day cap, production headroom, model settings and existing timeouts.
+When those daily attempts are exhausted, wait until midnight UTC before any new request.
+Save separate scored reports using explicit approved truth; never replace raw observations.
+No production routes, feeds, quotas, workflow changes or model activations are authorized here.
+Run targeted tests and whole Ruff/format before resuming, and the full offline suite before push.
+
+Six-model follow-on validation: 87 targeted tests passed; full offline suite passed
+6,074 tests (16 deselected); whole Ruff/format passed across 539 files. The separate
+`six-model-scored-2026-10-13-v1.json` report records 673/678 answers. Full GLM has two
+unanswered and Sol three; the bounded replacement is waiting for 2026-10-14 00:00 UTC
+(October 13, 7 PM Chicago). This is incomplete comparison evidence, not P1 admission.
+
+### P1 immediate five-pair retry allowance — L3, approved 2026-10-13
+
+The maintainer explicitly approved up to five additional retries per remaining question/model
+to start immediately. This overrides the daily three-attempt evaluator cap only for the two
+remaining full GLM and three Sol pairs. Total additional provider attempts cannot exceed 25.
+
+Implement an explicit immutable local retry-allowance JSON in the existing varied result
+directory, binding the frozen manifest hash, exact five pairs, authorization timestamp and
+reference, and five attempts per pair. The existing recovery.py validates this scoped allowance;
+candidate_plan counts final observations and unmatched intents since its timestamp, holds
+unknown outcomes, stops at five per pair, and bypasses the daily cap only for listed pairs.
+Existing controller/run.py accept the explicit allowance path and persist/verify its hash
+across restarts. Completed pairs remain skipped; normal policies apply to unlisted pairs.
+Keep provider cooldowns, capacity checks, production headroom, per-call limits and timeouts.
+A new bounded controller run has max_calls=25; no daily reset refills this one-off allowance.
+Modify only the existing varied recovery.py/backfill.py/run.py/README, tests/test_remedy_backfill.py
+and lifecycle docs. Verify scope isolation, five-attempt exhaustion across daily resets,
+restart hash fencing and unknown-intent holds; targeted/whole Ruff before starting, full
+offline tests before push. Preserve all raw history. No production policy changes.
+
+The immediate allowance passed 95 targeted tests, 6,083 offline tests (16 deselected),
+whole Ruff/format (539 files), and changelog fragment validation. The scoped controller
+submitted its first full GLM attempt at 2026-10-13 13:33 UTC; no completed answer was
+available at that handoff. The existing hourly monitor follows actual saved results.
+
+### P1 full independent body-selection comparison — L3, approved 2026-10-13
+
+Maintainer directed the full 60-recording correct prompt for all six remaining models:
+which body or bodies does this recording belong to, with no suggested assignment.
+Use Flash-Lite, Kimi, full GLM, GLM Flash, Sol and DeepSeek; exclude Astra and Gemini 3.7/3.8.
+Reuse frozen official evidence, taxonomy and approved policies from approved-v2. Collapse
+113 membership questions into 60 unique source/UID pairs. Mask semantic case IDs, claims,
+review answers and proposal metadata. No model sees another model's answer or the gold.
+
+Create evaluation-only body_selection.py, freeze.py, run.py, score.py and README under
+evals/remedy/results/body-selection-2026-10-13/, frozen inputs and separately stored gold
+under evals/remedy/holdout/body-selection-2026-10-13/, tests/test_remedy_body_selection.py
+and lifecycle docs. No production schemas, routes, quotas, feeds or workflows change.
+Local answer schema contains opaque case_id, cited body/program names, selected feed slugs,
+publication action, evidence-reference IDs, missing evidence and rationale. Validate IDs
+and taxonomy locally. Score exact feed sets for 40 assignments, separate policy compliance
+for 15 approved archival/event/untracked outcomes, and unsupported-owner guardrails for
+five insufficient-proof programs. Do not count those five as known non-government content
+or invent exclusive owners for joints. Body-name free text remains available for human
+review; feed-choice and policy/insufficient-proof metrics are separately identified.
+
+Reuse existing varied provider routes, shared CAS quota/headroom, operator pause/drain/reserve
+helpers, timeout/output settings and immutable pre-call intents. Share the older evaluation's
+provider-call lock via an explicit CLI path; lock contention defers rather than duplicating
+calls. Independent controller lock/status prevents duplicate body-selection runners.
+Patient requests remain600s/650s/16384 output; Flash-Lite120s/150s/4096. Free routes only.
+Every completed answer stops retries regardless of its correctness; runtime never reads gold.
+
+Interpret approval as one initial attempt plus up to three retries per round, at most three
+rounds: maximum12 submitted attempts per model/recording,4320 across360 pairs. Retain
+failed attempts, round/attempt metadata and hashes. No SDK retries. Apply30-minute provider
+failure cooldowns and actual quota/reset waits; retain production headroom. Existing
+three-attempt daily evaluation cap is replaced only inside this specifically approved
+experiment by the12-attempt total cap, never applied to production or older experiments.
+A bounded seven-day horizon uses the existing controller hard ceiling; interrupted runs
+resume the same original deadline and allowance, never reset attempt counts. Missing final
+observations hold that pair as unknown instead of automatically repeating a lost response.
+
+Tests prove answer-free inputs,60 unique pairs, joint/feed-set scoring, unknown-proof holds,
+round boundaries/caps across resets, no gold in live execution, immutable deduplication,
+identity/provenance binding and shared-lock exclusion. Targeted/whole Ruff before calls;
+full offline tests before push. Retain input/result hashes and separate immutable reports.
+These reused historical records remain a regression challenge, not newly independent
+holdout admission evidence; production model approval remains separate.
+
+Body-selection input clarification before code: taxonomy includes feed names/descriptions,
+not existing body/GUID selector predicates that disclose historical assignments. Strip
+maintained-policy evidence and maintained_local_disposition; supply only general approved
+identity/publication rules. Retain verbatim official recording metadata and source identifiers.
+Gold keeps reviewed body descriptions for later review; do not score free-text institutional
+names by fabricated string aliases. Report exact feed-choice correctness, policy controls
+and insufficient-owner-proof guardrails separately.
+
+Body-selection verification: 115 targeted checks and 6,103 offline tests passed
+(16 deselected), whole Ruff/format544 files. A preparation-only metadata correction
+now hashes the complete gold document rather than its inner cases; original hash
+metadata is retained, model inputs/answers unchanged, and116 targeted checks pass.
+The corrected controller started2026-10-13 14:47UTC. First valid Flash-Lite, GLM Flash
+and Sol answers independently named the Addison Bond Advisory Committee and cited
+official evidence. Live results remain incremental; this is not completion or admission.
+
+Maintainer reporting direction2026-10-13: show the full six-model113-question
+suggested-assignment comparison after full GLM completes. Keep those results separate
+from the new60-recording body-selection scores. Defer production model recommendations
+and selection until the new experiment is scored. Body-selection work is retained in
+draft PR#2413, dependent on#2411, while immutable results accumulate.
+
+
+### P1 concurrent evaluation call priority — L3, approved 2026-10-13
+
+Maintainer approved 50–75% of contested provider-call slots for the older113-question
+comparison until it finishes. Choose two older submissions per one new submission
+(66.7%) when both runs are eligible. An older cooldown, quota wait, exhausted/held
+allowance or completed/stopped controller releases unused slots to body selection.
+This corrects shared-lock starvation; it changes neither provider capacity nor retry limits.
+
+Implement evaluation-only call_priority.py beside the body-selection runner, its explicit
+--priority-results-dir option, tests/test_remedy_body_selection.py and lifecycle docs.
+Persist the exact older results directory, manifest hash, controller run ID, initial
+submitted-attempt counter and new contested attempt IDs. Count older submitted attempts,
+including failed calls, rather than successful answers. Never reset allocation on resume;
+a changed controller identity/counter or stale/unreadable status holds new calls for review.
+The older runner_busy state represents eligible work despite its five-minute lock retry.
+Yield before acquiring the shared provider lock and recheck under that lock. Deferred
+preflight checks consume no slot. Borrowed calls during older capacity/cooldown waits
+consume no reserved new slot; publish allocation/wait reasons in controller-status.json.
+Use the existing controller lock to detect an older controller that has stopped.
+
+Move the new runner to the tested checkout only after taking its shared call lock,
+which proves its current provider call has finished. Interrupt the idle new controller,
+then resume with the same result directory, deadline, intents and bounded retry counters.
+Do not interrupt the older controller or any submitted request. No production files,
+model routes, prompts, gold answers, credentials, quota limits or admission rules change.
+Tests cover two-to-one contention, retries counting as slots, borrowing during cooldown,
+completion/stopping, stale or changed state, resume and zero-call preflight deferrals.
+Run targeted tests, full offline suite, whole Ruff/format and fragment validation before push.
+
+
+Priority verification: 6,118 full offline tests passed (16 deselected); the final
+38 body-selection targeted tests also pass, including controller-level allocation,
+resume and preflight-deferral checks. Whole Ruff/format545 files and changelog
+fragment validation pass. The former new controller stopped only after its call
+lock was acquired, with its response retained; the older GLM run submitted again
+at2026-10-13 15:58:29UTC. Resume body selection from the tested priority checkout
+using its existing results directory and original seven-day deadline. Draft#2413
+retains this fix and the input-size/timeout diagnosis; no model admission follows.
+
+
+Groq feasibility audit2026-10-13: all60 unchanged body-selection packets were measured
+with full schema and upstream tokenizer/chat templates, without provider calls.
+GPT-OSS high inputs span1,631–6,645 local tokens against configured7,125 input ceiling.
+Qwen3.8 native xhigh (Groq high mapping) spans1,694–6,995 against7,000; June13 Dallas
+Streets has only5 tokens of local margin, May25 only222. Hosted formatting may differ;
+no acceptance claim or new model scope follows. Audit and all60 per-record measurements
+are retained as groq-input-size-audit-2026-10-13-v1.json/.md in the body-selection
+results directory. Keep recorded hard ceilings and shared capacity unchanged.
+Current Groq documentation lists Qwen output maximum16,384, versus65,536 in our catalog;
+this is a follow-up catalog discrepancy, not a reason to alter production in this audit.
+
+
+### P1 Groq body-selection candidates — L3, approved 2026-10-13
+
+Maintainer approved adding the configured Groq GPT-OSS120B and Qwen3.8-27B routes to
+all60 unchanged independent body-selection questions. Add two logical candidates;
+comparison target becomes480 answers, while the older claim-checking target stays678.
+Keep the original manifest/prompt/schema/gold, six-model observations and seven-day
+start/deadline. Each added pair uses the same three rounds/four submitted attempts,
+maximum12; total experiment allowance grows4320→5760 only for120 additional pairs.
+Record this exact model-set expansion in persisted controller status on resume.
+
+Scope: evaluation-only groq_routes.py plus body_selection.py, run.py, README.md,
+score.py if needed, tests/test_remedy_body_selection.py and lifecycle docs under the
+existing body-selection contract. Do not edit production route catalogs, quotas,
+model activation, prompts, evidence, scoring answers, feeds, workers or workflows.
+Register local copies of the existing physical routes, explicit high reasoning
+(reasoning_effort=high on Groq; native Qwen xhigh), reasoning_format=parsed for JSON
+mode and maximum16384 output tokens. Retain600s request/650s case bounds and exact
+physical route allowlists/no fallback. Pin documented reasoning controls in local
+config/provenance, without claiming admission or maximum effort from default calls.
+GPT-OSS's missing daily-token field uses a conservative evaluation-only180000 cap
+below the public200000 limit; never raise an existing route limit. Retain Qwen's
+configured180000/day and all current input/rate ceilings. Shared quota/CAS accounting
+and provider pause/drain/reserve remain mandatory. Keep20% daily-token headroom too,
+using the higher known local/Worker usage; absent or invalid usage holds requests.
+
+For these two new candidates, try the largest two packets first, then the proven
+Fort Worth Council/school-board joint, then an insufficient-owner-proof recording.
+Continue the full unchanged set after submitted failures using existing cooldowns
+and caps; never retry a valid but wrong answer. Persist actual provider prompt/output
+usage, diagnostics, requested/observed model and exact controls. Provider input-cap
+or reasoning-control rejection remains failed evidence; do not trim the frozen packet
+or silently lower effort. The shared older comparison still gets two-thirds of
+contested slots. A safe restart takes the shared lock after any active call completes,
+then resumes the same results and deadline; never interrupt an in-flight request.
+
+Tests prove eight-model totals/migration without reset, unchanged old contexts,
+exact Groq route/effort parameters, complete schema-aware input checks, largest-first
+new-model order, daily-token headroom, no fallback and one provider call per attempt.
+Run targeted and full offline tests, whole Ruff/format and fragment checks before
+push and resumption. Raw live artifacts stay under evals/remedy/; no credentials print.
+Sources: https://console.groq.com/docs/api-reference and
+https://console.groq.com/docs/rate-limits (checked2026-10-13).
+
+
+Groq pre-code capacity clarification: existing pause-status reports request counts but
+not daily tokens. Read the existing authenticated v2/stats?detail=1&limit=100 endpoint
+via DispatchPauseClient's request helper for bounded route rows and tpd_used; do not
+create a Worker endpoint. Require complete route inventory and fresh numeric usage.
+Combine the observed Worker token debt and local CAS token debt conservatively;
+missing/partial evidence defers Groq calls. Local copies preserve all original limits
+and may only add the documented missing GPT-OSS daily-token cap for this evaluation.
+
+
+Groq expansion verification:147 targeted tests and6,135 full offline tests passed
+(16 deselected), whole Ruff/format546 files and changelog fragments clean. An offline
+expanded plan preserved69 prior answers and added two zero-call candidates for480
+pairs. Request tests verify high/parsed controls, schema shaping and one submitted
+attempt; capacity tests hold missing/stale/partial token evidence. Worker snapshot
+before resumption reported Qwen about179000/180000 daily tokens, so it must wait for
+production headroom. No first Groq answer is claimed by these offline checks.
+The previous controller stopped between requests; resume the original results and
+persisted priority from the tested Groq checkout, without extending the deadline.
+
+
+### P1 patient evaluation timeout extension — L3, approved 2026-10-13
+
+Maintainer directed increasing the existing600-second evaluation request bound to900 seconds
+so slow valid answers can finish. This supersedes only the patient bounds in both active
+experiments above: proposed-assignment comparison and independent body selection. Retain
+Flash-Lite120-second requests/150-second cases. Patient case deadlines become950 seconds;
+provider pause leases become1000 seconds and controller end-of-horizon guards1050 seconds.
+The longer wait can recover slow responses but cannot bypass an upstream gateway timeout.
+
+Scope: existing evaluation-only varied run.py/backfill.py and body-selection run.py, their
+READMEs, tests/test_remedy_backfill.py, tests/test_remedy_body_selection.py and lifecycle docs.
+Do not change production limits, retry allowances, quotas, output caps, route selection,
+input/gold, original deadlines or saved observations. Record the new actual timeout in
+immutable future intents/results and existing request provenance. Preserve all prior600s rows.
+
+Verify actual provider timeout, surrounding case deadline and pause duration with mocked
+requests; retain one provider attempt/no SDK retry. Run targeted and full offline tests,
+whole Ruff/format and fragment validation before push. Prepare in an isolated checkout.
+Take the shared provider-call lock only after current calls finish, stop both idle controllers
+and resume their saved state from tested code without --new-run. Preserve older run identity,
+priority allocation, original horizons and all per-question retry counters. Update the hourly
+monitor's execution paths after resumption; never interrupt a submitted request.
+
+
+Timeout extension verification:149 targeted checks and6,137 full offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment validation clean. Mocked
+requests verify900-second patient timeouts,950-second case deadlines,1000-second
+covering provider leases and retained Flash-Lite bounds. Offline resumption plans
+preserve the existing184/480 body-selection and676/678 claim-checking answers.
+The shared coordination service subsequently reported its Durable Objects free-tier
+rows-read budget exhausted; both controllers correctly hold unverifiable capacity.
+This timeout change does not bypass that operational limit.
+
+
+### P1 temporary coordination bypass — L3, approved 2026-10-13
+
+The maintainer explicitly approved the proposed temporary evaluation mode after the
+shared Worker exhausted its Durable Objects rows-read allowance. The proposal disclosed
+loss of visibility into production jobs' usage. Bypass only unavailable Worker status,
+pause/drain/resume and external reservation calls for the existing approved evaluations.
+Keep local CAS quota reservation/settlement and20% local headroom, exact free route
+allowlists, one shared provider-call lock, original retry caps, cooldowns, output caps,
+900s/950s patient bounds,120s/150s Flash-Lite bounds and original controller horizons.
+
+Add explicit default-off --coordination-bypass to the existing varied run.py/backfill.py
+and body-selection run.py. Scope also includes their READMEs, groq_routes.py, existing
+tests/test_remedy_backfill.py, tests/test_remedy_body_selection.py and lifecycle docs.
+No production implementation, catalog, workflow, feed or quota changes. Require the
+existing scoped allowance for older bypass calls; reject --new-run with bypass so it
+cannot mint fresh attempts. Record bypass/approval and local-only usage visibility in
+status, immutable intents/results and settings hashes; never claim production drained.
+Old Worker-error waits can be reevaluated on the explicit mode change, but actual provider
+cooldowns, successful answers and unknown-intent holds remain untouched.
+
+For GPT-OSS, retain local daily-token quota checks and20% reserve without querying the
+Worker. Mark Worker usage unknown, never zero. Qwen stays held in bypass because its
+last observed token allowance was almost exhausted; bypass does not authorize Qwen calls
+until capacity can be verified. Provider429s terminate the attempt and trigger existing
+cooldowns; do not interpret infrastructure capacity errors as submitted model failures.
+
+Test default normal gates, explicit bypass making zero Worker requests, local quota and
+token holds, Qwen exclusion, forwarding to older subprocesses, immutable mode provenance
+and one-call/no-retry controls. Run targeted and full offline suites, whole Ruff/format
+and fragment checks before push/resumption. Switch only while holding the shared call
+lock after all intents have final observations; retain run identities, deadlines, saved
+answers, allocation and retry counters. End the opt-in with these bounded evaluations;
+future runs retain normal coordination checks by default.
+
+
+Coordination bypass verification:164 targeted checks and6,152 offline tests passed
+(16 deselected), whole Ruff/format546 files and changelog fragment validation clean.
+Tests cover zero Worker calls in bypass, local request/token reserves, Qwen holds,
+mode-bound immutable intents, rate-limit preservation and older subprocess forwarding.
+A read-only local CAS preflight showed all seven permitted models eligible; GPT-OSS
+had about113287 local token debt against180000, with36000 tokens reserved. Worker
+usage remains unknown. Qwen was held before any provider request or Worker read.
+No live completion or quota visibility is inferred from these preparation checks.
+
+
+### P1 Qwen bypass hold removal — L3, approved2026-10-13
+
+Maintainer explicitly directed removing Qwen's unconditional bypass hold so evaluation
+can use the next available token window without another manual unblock. This supersedes
+only the Qwen exception in the temporary coordination bypass contract. Qwen now follows
+GPT-OSS's evaluation-local request/token checks with180000 daily-token cap and20% reserve.
+Worker usage remains unknown during bypass; do not claim a fresh provider reset from
+midnight alone. Preserve high/parsed controls, native xhigh mapping, all frozen packets,
+existing provider cooldowns,12 attempts per pair and original seven-day horizon.
+
+Scope: existing body-selection run.py/README, tests/test_remedy_body_selection.py and
+lifecycle docs. Remove both unconditional Qwen guards. On controller resumption, clear
+only the obsolete wait whose reason begins Qwen held: bypass; do not clear actual quota
+waits, cooldowns or unknown outcomes. Record qwen_bypass_enabled and its approval reference
+in status. All calls still pass local CAS reservation/settlement and exact physical route
+allowlists. No production routes/quotas, output/input caps, Worker or other experiment edits.
+
+Test Qwen bypass follows local token admission without any Worker request and fails before
+submission when tokens are unavailable. Verify actual high/parsed controls and immutable
+intents in the common provider-mock test. Run targeted/full offline, whole Ruff/format and
+fragment validation before push/resuming. Stop only the active body-selection controller
+under the shared call lock, preserving all responses, counters, deadline and allocation.
+The older comparison remains stopped; do not restart it.
+
+
+Qwen release verification:167 targeted checks and6,155 offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment validation clean. Tests
+verify high/parsed Qwen calls in bypass, real token admission and clearing only the
+obsolete hold on resume without resetting the horizon or allowance. Read-only local
+preflight permits Qwen; no local Qwen token debt was recorded. Worker production
+usage remains unknown, so that preflight is not a claim of unused provider capacity.
+
+
+Qwen release scheduling clarification before code: the maintainer's request targets
+the beginning of the upcoming capacity window. On the first release migration only,
+set the existing round-robin next_candidate_index to Qwen, so it gets the first
+eligible slot after the active request finishes. Then continue the normal cycle.
+Do not repeat this priority on later resumptions, alter shared allocation, bypass
+actual token waits or change any attempt allowance. Test initial and repeat resumes.
+
+
+First-slot verification:169 targeted checks and6,157 offline tests passed
+(16 deselected), whole Ruff/format546 files and fragment checks clean. Release
+resumption prioritizes Qwen once; repeat resumption preserves normal queue position.
+All attempt counters, original horizon and real token waits remain unchanged.
+
+
+### P1 Groq provider-authoritative stop — L3, approved2026-10-13
+
+Maintainer explicitly directed Qwen and GPT-OSS to continue now until provider429,
+then pause them. This supersedes local daily-token reserve/ceiling gates only for
+these two models in the current body-selection experiment. Keep free physical
+routes, input/output limits, high/parsed controls, RPM/RPD/TPM/concurrency checks,
+shared CAS request accounting, one call lock, original horizon and12 attempts/pair.
+No production route/catalog/Worker/workflow changes. No calls after all60 answers.
+
+Scope: existing body-selection run.py/groq_routes.py/README,
+tests/test_remedy_body_selection.py and lifecycle docs. Add default-off
+--groq-until-429, requiring --coordination-bypass and the existing saved run.
+Bind a persisted groq_until_429 session to its fixed authorized_at/approval_ref;
+resumption never resets this timestamp or a429 pause. Historical429s before that
+authorization do not pause this new window. Record mode and provider-authoritative
+daily-limit policy in status, immutable intents/results and request-settings hashes.
+
+Evaluation-local Groq route copies set quota.tpd=None only in this explicit mode,
+so the shared backend's daily token bucket does not block or erase prior token debt.
+Preserve all other route limits. Actual prompt/completion/reasoning usage remains in
+immutable results; normal shared request/minute reservations and settlement remain.
+Daily token counters do not include new calls while this exception is active, so
+they must not be represented as complete provider usage or reconciled implicitly.
+Keep earlier counters intact; no production budget edits or paid fallback.
+
+Skip only these models' evaluation-local daily token headroom/reserve tests while
+the mode is active. Reevaluate their old daily-quota waits on first activation;
+retain real provider cooldowns and unknown outcomes. Give eligible Groq requests
+priority while this window remains active, alternating via the existing round-robin
+position; other models can use slots when Groq waits or finishes/pauses.
+
+From immutable observations since authorized_at, detect an actual submitted
+provider_error.http_status429 and persist that model's paused_after_429 state,
+attempt ID and reason. It is a durable evaluation pause, not a production route
+pause. Never automatically resume it after cooldown or daily reset. If all remaining
+work is complete/held/paused, stop explicitly with an incomplete provider-pause reason.
+No unrecognized errors count as429; preserve normal retry handling for other failures.
+
+Tests verify exact two-route scope, preserved non-daily limits, daily gates bypassed,
+actual usage/provenance retained, old429 exclusion, first new429 pause across resets
+and restarts, and priority without duplicated calls. Targeted/full offline, whole
+Ruff/format and fragments before push and safe controller handoff between requests.
+The older comparison remains stopped. Future calls after a429 require new direction.
+
+
+Groq until429 implementation verification2026-10-13:180 targeted and6168 offline
+tests passed (16deselected); whole Ruff/format546 files and fragment/diff checks clean.
+Coverage includes preserved minute/request settlement and pre-existing daily debt,
+exact two-route scope, immutable actual usage, old429 exclusion and durable new429
+pauses across restarts. Controller handoff occurs under the shared call lock only
+after every intent has a final result. No production route/catalog changes.
+
+
+### P1 feed-context diagnostic — L3, approved2026-10-14
+
+Maintainer requests a separate one-recording, two-prompt, seven-model diagnostic
+(14provider submissions maximum) for Dallas recording270975, August22,2023.
+Compare explicit city/source-bound feed-membership policy against representative
+existing titles grouped by feed. Keep original evidence, question, response schema,
+route reasoning controls and frozen expected three-feed answer unchanged. Gold is
+loaded only after calls. This tests publication-context clarity, not independent
+institution discovery or production qualification. The existing60-recording study
+and Groq429 pauses are unchanged; the new request authorizes at most two diagnostic
+submissions per model, including GPT-OSS, without rearming its original study pause.
+
+Scope: new evals/remedy/holdout/feed-context-2026-10-14/{prepare.py,packet.json,README.md}
+and evals/remedy/results/feed-context-2026-10-14/{run.py,score.py}; optional-message
+parameters on existing body-selection run.py/shaped_messages/attempt; corresponding
+tests/test_remedy_feed_context.py and lifecycle docs. Preserve all existing callers
+and prompt hashes by default. Reuse current exact seven model routes, schema,
+shared call lock, CAS request/minute accounting and approved coordination bypass.
+Normal Groq daily-token gates/reserve apply to this separate job; wait for available
+capacity rather than modifying budgets or the paused original experiment.
+Each pair submits once, no SDK/provider retries, immutable pre-call intent/results,
+unknown interrupted outcomes held. Persist a bounded seven-day diagnostic horizon.
+
+Fetch public same-city feed RSS read-only through validate_source_url; retain URL,
+retrieval timestamp and hash. Examples are real episode titles, not selector regexes.
+Exclude the target UID/providerGUID/title-date entry from examples. Select bounded
+representatives by a declared rule independent of model answers; never silently
+replace missing histories with invented examples. Retain full title inventory for
+size comparison, but send bounded examples. Hash both prompt variants and measure
+schema-shaped input tokens/characters per route, showing estimator vs provider usage.
+Report exact three-feed match, institutional identity retained for manual review,
+missing/extra feeds, completion and latency separately. A local failure is not a
+provider call. Whole Ruff/format and targeted/full offline before live submissions.
+No production catalog/feed/record/audio/Worker/workflow changes or activation.
+
+Pair-audit retention: use the same seven models excluding Qwen; first intersect
+completed recordings across all seven, then score all21 unordered pairs on that
+identical set. Agreement means exact unordered feed set plus publication action;
+truepositive=agreement matching frozen gold, falsepositive=shared wrong recommendation,
+negative=different recommendations. Report counts and percentages plus common-set
+category coverage and partial-completion bias; never treat omitted answers as correct.
+Retain script, input hashes and per-case results under evals/remedy/. At final scoring
+repeat this audit, preserving interim artifacts and separately flagging suspected
+publication-policy inconsistencies rather than editing approved truth implicitly.
+
+
+Feed-context packet preparation: all70 public Dallas RSS feeds returned200. After
+excluding the target,5,372 RSS memberships and173 distinct-pattern samples are retained.
+Three samples for every feed estimate9,915 schema-shaped tokens, above GPT-OSS7,125.
+Use two patterns for six feeds selected by title-token Jaccard similarity, without
+gold consultation:6,414 estimated tokens vs6,030 baseline and6,175 explicit policy.
+All current RSS titles would cost81,020; that alternative is not sent. Public RSS
+caps mean inventories are not a complete historical catalog. Examples can inherit
+existing misassignments. This constrained retrieval design is chosen before calls;
+it preserves full official evidence and the frozen expected answer for the diagnostic.
+
+
+Feed-context implementation verification2026-10-14:215 targeted checks (including
+structured-shaping regressions) and6189 full offline tests passed,16deselected.
+Whole Ruff/format551 files, fragments and diff checks clean. Fixture isolation now
+restores all evaluation-local route dictionaries after tests. Fourteen mocked
+provider jobs verified exact variant messages, one submission, no SDK retry and
+pre-call intent provenance. Original default prompt/shape and Groq pauses remain.
+
+
+Feed-context diagnostic completed2026-10-14:14submitted,13answers,one fullGLM
+title-variant900s timeout, no retries. Explicit policy7/7 exact three-feed matches;
+retrieved titles5correct,one Flash-Lite omission of both broader feeds,one unanswered.
+Results/intents and immutable scored report are retained under
+evals/remedy/results/feed-context-2026-10-14; RESULTS.md includes actual prompt usage
+and provider latency. Actual successful inputs5881–6221 tokens with policy and
+6236–6517 with titles. This is rule-following vs inference from examples on one known
+error, not general accuracy or independent qualification. Existing identity/serving
+family admission holds remain. Original60-recording study and its Groq pauses unchanged.
+Keep final common-question21-pair audit pending remaining main-study results.
+
+
+### P1 three-route prompt comparison — L3, approved2026-10-14
+
+Maintainer switches focus to prompt variants for Sol, GLM Flash and DeepSeek V4.1
+Flash, with their three pairs. New independent experiment reuses the preserved60
+recordings, frozen evidence/schema/gold from PR2413; no committee-specific mapping,
+examples, suggested assignments or evaluation answers in live inputs. Three recipes:
+original, evidence-first body/grouping separation, self-check inclusions/omissions.
+540logical jobs; initial plus at most three retries each (2160submitted maximum),
+no SDK retry,30-minute failure cooldown, seven-day saved horizon, valid answers stop
+retries regardless correctness; unmatched intents held. Do not restart old lost-state
+controllers or rearm old Groq pauses. Shift the existing hourly monitor to this study.
+
+Scope:new evals/remedy/results/prompt-comparison-2026-10-14/{variants.py,run.py,score.py,
+README.md}, tests/test_remedy_prompt_comparison.py and lifecycle docs. Reuse existing
+body-selection optional request_messages/experiment_mode adapter. Same exact routes,
+controls,900s/950s timeout,16384output cap. Normal shared CAS quotas and production
+coordination first; existing approved coordination bypass may be selected explicitly
+if Worker is unavailable. Never erase accounting or claim production usage is zero.
+No catalogs, production routes/quotas, feeds/records/audio, Worker or workflow changes.
+
+Use managed durable prompt-comparison worktree; immutable intents/results, hashed
+case/prompt/model-set binding, restart status. Git-commit and push newly completed
+batches at bounded checkpoints to preserve them remotely. Never commit runtime locks
+or credentials, activate models or merge. Artifact PR2413 stays draft.
+
+Offline scorer alone reads gold. Per prompt, all three pairs use the same common
+completed-question intersection with coverage shown. Report correct/shared-wrong
+agreements and disagreements. Separately report feed-level FP(extra selected feeds),
+FN(missing expected feeds), over-/under-inclusion and action-only mismatches. The
+five unknown-owner cases lack established feed truth: score unresolved/unsupported
+assignment guardrail separately, not invented institutional negatives. Keep40assignment,
+15policy and5guardrail categories separate, with latency/tokens and provenance.
+This reused optimization set is not independent qualification; identity holds and
+suspected truth/policy mismatches stay explicit; approved truth never changes silently.
+Test540jobs/payload isolation, bounded retries/unknown holds, restart binding, pair
+and feed metrics, checkpoint preservation; whole Ruff/format and full offline beforecalls.
+
+
+Prompt-comparison checkpoint detail:push each immutable observation to the dedicated
+chore/2413-prompt-observations branch without a PR. This protects completed calls
+without triggering repeated PR CI; carry final observations into artifactPR2413 in
+a batch. Source is verified before calls; data-only pushes skip optional hooks.
+
+
+Prompt-comparison verification2026-10-14:125 targeted checks and6201 full offline
+tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks clean.
+Read-only Worker and shared-quota preflight confirms all three routes available;
+launch uses normal coordination. No provider requests occurred during preflight.

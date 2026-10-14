@@ -1,0 +1,7 @@
+{
+  "gold_hash": "2a8da03b1427885341ccee740d945e22b9766f4812af15b28ecf4853a4a62836",
+  "manifest_hash": "6cdcb447eafa02d3fedbe6e018b6f5293d921f52156e1d45ba36f26d55a3c9a1",
+  "source_review_hash": "49e92f01ed69f76073bbb00d160feead517dbbef8605f706c8f50213be1bcc85",
+  "superseded_inner_cases_hash": "2512ce688c1706e5cb1d695556ad41bfcba01c71c81eb1d2a2b42cd36d4908a4",
+  "correction": "Bind the complete gold document, not only its inner cases; original hashes.json retained."
+}
