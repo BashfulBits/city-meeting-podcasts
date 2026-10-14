@@ -1,0 +1,149 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-98b938d821e0d41caa8a48a6",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "exclude_event",
+    "rationale": "The official player identifies recording 56020, dated Dec 09, 2011, as \u201cGeorge Herbert Walker Bush Elementary Dedication.\u201d The supplied publication rules explicitly exclude dedications from body feeds. No convening municipal body is identified, and none is inferred from the school name or Addison hosting."
+  },
+  "attempt_id": "9d7620dcb73743ba82a1bdde6f14335b",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-98b938d821e0d41caa8a48a6",
+  "case_input_hash": "a10eb51712e2c12d131352b20e6c5209701725bd3fd7f897c35a577544688925",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.628408457996557
+    }
+  ],
+  "end_to_end_seconds": 59.26661316600075,
+  "finished_at": "2026-10-14T23:02:00.594372+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T23:01:01.327468+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2591bdc5e0d1e6c8749fb899e8495f5db530452dacee473828232e327af89139",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 1576,
+        "output_tokens": 121
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 121,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 1576,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 1576,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 1697,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-98b938d821e0d41caa8a48a6\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"exclude_event\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official player identifies recording 56020, dated Dec 09, 2011, as \u201cGeorge Herbert Walker Bush Elementary Dedication.\u201d The supplied publication rules explicitly exclude dedications from body feeds. No convening municipal body is identified, and none is inferred from the school name or Addison hosting.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792018919,
+    "id": "resp_0e163d2d32913db6016ad009e1e76c81999c39b49a0ae575d8",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 1576,
+          "output_tokens": 121
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 121,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 1576,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 1576,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 1697,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
