@@ -1,0 +1,135 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Health & Building Standards Commission of the City of Denton, Texas"
+      }
+    ],
+    "case_id": "recording-8dd902e97939f88dfa43b299",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-health-building-standards-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (recording_id 122398) certifies that the Health and Building Standards Commission of the City of Denton, Texas would convene a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m., matching the recording's title and date exactly; the Swagit player for video 122398 carries the same commission title and identical agenda items (pledge, May 13, 2021 minutes, construction codes report), and the native chapters mirror that agenda. This is recording-specific official evidence of the convening body, not merely a topic or venue reference: the 'Council Work Session Room' is only the meeting location, and TOMA Chapter 551 references are statutory boilerplate, so no other body (e.g., City Council) convened or jointly participated. The existing feed 'denton-tx-health-building-standards-commission' is described as 'Meetings of the Denton Health and Building Standards Commission,' an exact match for the proven body, so the recording is assigned to that feed. No joint-meeting participants exist to name, no unconfigured body is involved, and no archive/exclusion rules apply."
+  },
+  "attempt_id": "2feb431f57d0457caa87e4b9e0a8e4dc",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-8dd902e97939f88dfa43b299",
+  "case_input_hash": "ad20fb0146d9eb255ec24930716dd797fe3e89b35909ae60163492bc3161b52e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.3620341249989
+    }
+  ],
+  "end_to_end_seconds": 19.75166787499984,
+  "finished_at": "2026-10-14T16:35:43.210842+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T16:35:23.459023+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2c3ac99eb83217a6f89ccb806f02a5b5ac69a1404075ad4961652d9f6d764de7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 991,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 604,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4359,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5350
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-8dd902e97939f88dfa43b299\",\n  \"bodies\": [\n    {\n      \"name\": \"Health & Building Standards Commission of the City of Denton, Texas\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"denton-tx-health-building-standards-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (recording_id 122398) certifies that the Health and Building Standards Commission of the City of Denton, Texas would convene a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m., matching the recording's title and date exactly; the Swagit player for video 122398 carries the same commission title and identical agenda items (pledge, May 13, 2021 minutes, construction codes report), and the native chapters mirror that agenda. This is recording-specific official evidence of the convening body, not merely a topic or venue reference: the 'Council Work Session Room' is only the meeting location, and TOMA Chapter 551 references are statutory boilerplate, so no other body (e.g., City Council) convened or jointly participated. The existing feed 'denton-tx-health-building-standards-commission' is described as 'Meetings of the Denton Health and Building Standards Commission,' an exact match for the proven body, so the recording is assigned to that feed. No joint-meeting participants exist to name, no unconfigured body is involved, and no archive/exclusion rules apply.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nThe recording is \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" from Denton, TX, recording_id 122398.\n\nEvidence:\n1. retained-agenda: Official agenda for the \"Health & Building Standards Commission, City of Denton\" meeting on Thursday, June 3, 2021, at 3:00 p.m. in the Council Work Session Room at City Hall. It says \"After determining that a quorum is present, the Health and Building Standards Commission of the City of Denton, Texas will convene in a Regular Meeting...\" This is recording-specific official evidence (posted certificate, meeting date matches June 3, 2021, 3:00 PM).\n\n2. provider-player: Swagit video player titled \"Health & Building Standards Commission on 2021-06-03 3:00 PM - Denton, TX\" with same agenda items (Pledge, May 13, 2021 minutes, construction codes report). Recording ID 122398 matches.\n\n3. native-source-chapters: Chapters matching the same agenda items.\n\nThe convening body is clearly the Health & Building Standards Commission of the City of Denton, Texas. Evidence: retained-agenda (the agenda explicitly states the commission convenes a Regular Meeting), and provider-player title matches.\n\nExisting feeds: \"denton-tx-health-building-standards-commission\" \u2014 \"Meetings of the Denton Health and Building Standards Commission.\" That's an exact match.\n\nPublication action: assign_existing.\n\nBodies: Health & Building Standards Commission (City of Denton), with evidence_ref_ids [\"retained-agenda\", \"provider-player\"]. Maybe also native-source-chapters, but that just lists chapters; it corroborates content but not body identity strongly. I'll include retained-agenda and provider-player for the body.\n\nFeed slugs: [\"denton-tx-health-building-standards-commission\"].\n\nMissing evidence: none. No joint meeting; no other bodies. The agenda references \"City Council Work Session Room\" \u2014 that's just a venue name, not the City Council convening. Also the Texas Open Meetings Act references are statutory, not another body.\n\nRationale: The retained agenda states the Health and Building Standards Commission of the City of Denton convenes a Regular Meeting on June 3, 2021 at 3:00 PM (matching recording date/time), posted per TOMA Chapter 551; the Swagit player (recording 122398) carries the same title and agenda items. The feed \"denton-tx-health-building-standards-commission\" is configured for meetings of this commission, so assign existing. The Council Work Session Room is a venue, not a convening body; no joint participants.\n\nEcho case_id: \"recording-8dd902e97939f88dfa43b299\".\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nThe recording is \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" from Denton, TX, recording_id 122398.\n\nEvidence:\n1. retained-agenda: Official agenda for the \"Health & Building Standards Commission, City of Denton\" meeting on Thursday, June 3, 2021, at 3:00 p.m. in the Council Work Session Room at City Hall. It says \"After determining that a quorum is present, the Health and Building Standards Commission of the City of Denton, Texas will convene in a Regular Meeting...\" This is recording-specific official evidence (posted certificate, meeting date matches June 3, 2021, 3:00 PM).\n\n2. provider-player: Swagit video player titled \"Health & Building Standards Commission on 2021-06-03 3:00 PM - Denton, TX\" with same agenda items (Pledge, May 13, 2021 minutes, construction codes report). Recording ID 122398 matches.\n\n3. native-source-chapters: Chapters matching the same agenda items.\n\nThe convening body is clearly the Health & Building Standards Commission of the City of Denton, Texas. Evidence: retained-agenda (the agenda explicitly states the commission convenes a Regular Meeting), and provider-player title matches.\n\nExisting feeds: \"denton-tx-health-building-standards-commission\" \u2014 \"Meetings of the Denton Health and Building Standards Commission.\" That's an exact match.\n\nPublication action: assign_existing.\n\nBodies: Health & Building Standards Commission (City of Denton), with evidence_ref_ids [\"retained-agenda\", \"provider-player\"]. Maybe also native-source-chapters, but that just lists chapters; it corroborates content but not body identity strongly. I'll include retained-agenda and provider-player for the body.\n\nFeed slugs: [\"denton-tx-health-building-standards-commission\"].\n\nMissing evidence: none. No joint meeting; no other bodies. The agenda references \"City Council Work Session Room\" \u2014 that's just a venue name, not the City Council convening. Also the Texas Open Meetings Act references are statutory, not another body.\n\nRationale: The retained agenda states the Health and Building Standards Commission of the City of Denton convenes a Regular Meeting on June 3, 2021 at 3:00 PM (matching recording date/time), posted per TOMA Chapter 551; the Swagit player (recording 122398) carries the same title and agenda items. The feed \"denton-tx-health-building-standards-commission\" is configured for meetings of this commission, so assign existing. The Council Work Session Room is a venue, not a convening body; no joint participants.\n\nEcho case_id: \"recording-8dd902e97939f88dfa43b299\".\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791995742,
+    "id": "2cdefd304c2ee42aa8f77e79b50c2a53",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 991,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 604,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4359,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5350
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}
