@@ -2515,3 +2515,189 @@ def test_terminal_state_handles_untrusted_finish_types(finish):
     stream.finish = finish
     assert "finish=other" in stream.terminal_state()
     assert "private" not in stream.terminal_state()
+
+
+def _progress_stalled_transport(pipe, request, session, timeout, *options):
+    import time
+
+    from citypods.provider_catalog.rules import Response
+
+    try:
+        pipe.recv()
+        pipe.send("ready")
+        if pipe.recv() != "new":
+            return
+        pipe.send(
+            (
+                "progress",
+                Response(
+                    200,
+                    timed_out=True,
+                    context_diagnostics={
+                        "response_preview": '"phase=streaming eof=0 done=0 finish=missing usage=0"',
+                        "response_media_type": "text/event-stream",
+                        "stream_bytes": 1234,
+                        "stream_events": 12,
+                    },
+                ),
+            )
+        )
+        time.sleep(5)
+    finally:
+        pipe.close()
+
+
+def test_hard_cancellation_retains_last_progress_without_extending_deadline(monkeypatch):
+    import multiprocessing
+    import time
+
+    import requests
+
+    from citypods.provider_catalog.discovery import DiscoveryAdmission
+    from citypods.provider_catalog.probe import _measure_response
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("fork unavailable for deterministic offline child fixture")
+    ctx = multiprocessing.get_context("fork")
+    monkeypatch.setattr(multiprocessing, "get_context", lambda _: ctx)
+    monkeypatch.setattr(
+        "citypods.provider_catalog.probe._context_http_worker", _progress_stalled_transport
+    )
+    req, transient = minimum_generation_fixture()
+    receipt = DiscoveryAdmission(
+        req.session_id,
+        req.attempt_id,
+        req.identity,
+        req.input_tokens,
+        req.output_tokens,
+        time.monotonic() + 10,
+    )
+    before = time.monotonic()
+    response = _measure_response(
+        transient,
+        session=requests.Session(),
+        before_call=lambda: receipt,
+        clock=time.monotonic,
+        admission_type=DiscoveryAdmission,
+        admission_check=lambda candidate: candidate.matches(req),
+        timeout=0.3,
+        max_timeout=600,
+        discovery_stream=True,
+    )
+    assert time.monotonic() - before < 2
+    assert response.timed_out and response.status == 200 and response.body == ""
+    assert response.context_diagnostics["diagnostic_code"] == "worker_response_timeout"
+    assert response.context_diagnostics["stream_bytes"] == 1234
+    assert response.context_diagnostics["stream_events"] == 12
+    assert "phase=streaming" in response.context_diagnostics["response_preview"]
+    assert response.context_diagnostics["admitted_at_ms"] > 0
+
+
+def test_stream_progress_is_throttled_payload_free_and_phase_aware():
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    now = [0.0]
+    snapshots = []
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+
+        def iter_content(self, chunk_size):
+            for _ in range(100):
+                now[0] += 0.1
+                yield b": keepalive\n\n"
+            yield stream_fixture(content="private generated text")
+
+        def close(self):
+            pass
+
+    result = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {"Authorization": "Bearer private-key"},
+        600,
+        lambda: now[0],
+        discovery_stream=True,
+        progress=snapshots.append,
+    )
+    assert result.context_diagnostics["diagnostic_code"] == "response_received"
+    assert 3 <= len(snapshots) <= 6
+    assert "phase=requesting" in snapshots[0].context_diagnostics["response_preview"]
+    assert "phase=headers" in snapshots[1].context_diagnostics["response_preview"]
+    assert any("phase=streaming" in s.context_diagnostics["response_preview"] for s in snapshots)
+    assert all(s.body == "" for s in snapshots)
+    assert "private generated text" not in str(snapshots)
+    assert "private-key" not in str(snapshots)
+
+
+def test_configured_context_does_not_emit_discovery_progress():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    snapshots = []
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "application/json"}
+
+        def iter_content(self, chunk_size):
+            yield b"{}"
+
+        def close(self):
+            pass
+
+    result = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {},
+        120,
+        time.monotonic,
+        progress=snapshots.append,
+    )
+    assert result.body == "{}"
+    assert snapshots == []
+
+
+def test_progress_preserves_headers_of_falsey_http_error_response():
+    import time
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.probe import _collect_context
+
+    _, transient = minimum_generation_fixture()
+    snapshots = []
+
+    class Response:
+        status_code = 429
+        headers = {"Content-Type": "application/json"}
+
+        def __bool__(self):
+            return False
+
+        def iter_content(self, chunk_size):
+            yield b'{"error":{"message":"rate limit"}}'
+
+        def close(self):
+            pass
+
+    result = _collect_context(
+        SimpleNamespace(post=lambda *args, **kwargs: Response()),
+        transient,
+        {},
+        600,
+        time.monotonic,
+        discovery_stream=True,
+        progress=snapshots.append,
+    )
+    assert result.status == 429
+    headers = snapshots[1]
+    assert headers.status == 429
+    assert headers.context_diagnostics["response_media_type"] == "application/json"
+    assert "phase=headers" in headers.context_diagnostics["response_preview"]
