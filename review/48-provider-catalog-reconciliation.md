@@ -2665,3 +2665,21 @@ before any provider submission: `v2/dispatch:pause` returned HTTP 500 with the e
 Objects free-tier rows-read exhaustion message. Do not bypass the pause guard or infer a NVIDIA
 size result from this failure. Resume the approved single test only after pause admission works.
 This Worker quota failure is separate from the earlier 600-second SSE-envelope failure.
+
+After the DO rows-read exhaustion blocked pause admission, the maintainer explicitly authorized
+the same single local diagnostic to submit directly without Worker reservation or pause. This
+is a diagnostic-only exception: retain the one-call/token budget and 1,200-second local deadline,
+make no production-path change, and treat quota interference from concurrent traffic as
+inconclusive. Normal discovery workflow admission/pause contracts remain unchanged.
+
+The authorized direct diagnostic completed successfully: HTTP 200, 2,483 prompt tokens,
+36,864 completion tokens including 1,418 reasoning tokens, 39,347 total, and `length`. The
+repeated-output verifier accepted the fixture (17,723 lines). First data arrived at 401ms;
+completion took 311.441 seconds. The 11,964,623-byte / 36,480-event stream normalized to a
+53,626-byte envelope. The observation/journal records a verified 36,864 output lower bound,
+no refused upper bound, and one-call budget exhaustion rather than convergence. The corrected
+long-duration projection preserved the observation; successful output retained no preview.
+This success fits the existing 600-second workflow deadline, so it does not justify increasing
+that deadline or attribute the earlier stream failure to the Worker. The prior provider call
+also used direct HTTP; its Worker interaction was pause coordination. Next GitHub verification
+follows merge, and further boundary search requires its separately authorized bounded run.
