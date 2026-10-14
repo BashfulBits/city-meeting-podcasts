@@ -106,3 +106,7 @@ Qwen can now submit under --coordination-bypass using the same local daily-token
 capacity window. Midnight alone is not proof of a provider token reset. Worker usage
 remains unknown; preserve all caps, retries, controls and original experiment horizon.
 Only the obsolete explicit-hold wait is cleared on resume; real quota/cooldown waits stay.
+
+On the first Qwen release resume, Qwen gets the first eligible round-robin slot after
+the current call finishes. Later resumes preserve the normal queue position. Token
+waits still take precedence; the release does not reserve a provider capacity window.

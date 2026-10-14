@@ -686,8 +686,11 @@ def test_groq_bypass_keeps_local_token_reserve_without_worker(groq, used, expect
     assert capacity["production_token_reserve"] == 36000
 
 
+@pytest.mark.parametrize("already_enabled", [False, True])
 @pytest.mark.parametrize("obsolete", [False, True])
-def test_qwen_resume_clears_only_obsolete_hold(runner, monkeypatch, tmp_path, obsolete):
+def test_qwen_resume_clears_only_obsolete_hold(
+    runner, monkeypatch, tmp_path, obsolete, already_enabled
+):
     frozen, _cases = runner.load_manifest()
     shared = tmp_path / "shared.lock"
     next_time = (datetime.now(UTC) + timedelta(minutes=15)).isoformat()
@@ -700,6 +703,8 @@ def test_qwen_resume_clears_only_obsolete_hold(runner, monkeypatch, tmp_path, ob
         "deadline_at": (NOW + timedelta(days=7)).isoformat(),
         "max_provider_attempts": 5760,
         "coordination_bypass": True,
+        "qwen_bypass_enabled": already_enabled,
+        "next_candidate_index": 2,
         "models": {
             "qwen38": {
                 "state": "capacity_unknown" if obsolete else "daily_quota",
@@ -735,5 +740,8 @@ def test_qwen_resume_clears_only_obsolete_hold(runner, monkeypatch, tmp_path, ob
     saved = json.loads(path.read_text())
     assert saved["models"]["qwen38"]["next_eligible_at"] == (None if obsolete else next_time)
     assert saved["qwen_bypass_enabled"]
+    assert saved["next_candidate_index"] == (
+        2 if already_enabled else runner.MODELS.index("qwen38")
+    )
     for key in ("started_at", "deadline_at", "max_provider_attempts"):
         assert saved[key] == status[key]
