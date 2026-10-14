@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Discovery token-capacity proof and convergence.** Output discovery uses consistent provider
+  completion counts and a length finish independently of prescribed text. Combined proof still
+  requires the full requested output. Approximate size errors guide smaller requests without
+  fabricating upper bounds; clipping is rechecked and remains a lower bound. Daily/monthly
+  exhaustion defers, selected axes share session time, and the five-no-response escape spans axes.
+  No production limits or configured-route calibration policies change.
+
 - **Discovery selection evidence.** Retain terminal skip reasons for explicit manual candidates,
   including absent or unverified-free routes, without bypassing eligibility or making size calls.
 - **Reachability diagnostics.** Log request phase, received status and bounded transport-cause
