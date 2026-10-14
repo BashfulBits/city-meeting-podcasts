@@ -1075,7 +1075,7 @@ class DiscoverySSECollector:
         """Compact structural evidence within the existing 128-character preview bound."""
         finish = (
             self.finish
-            if self.finish in {"length", "stop"}
+            if isinstance(self.finish, str) and self.finish in {"length", "stop"}
             else "missing"
             if self.finish is None
             else "other"

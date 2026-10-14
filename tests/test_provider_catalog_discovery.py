@@ -2505,3 +2505,13 @@ def test_terminal_state_fits_preview_at_maximum_structural_sizes():
     assert "content=4194305" in preview
     assert "event=comment" in preview
     assert len(preview) <= 128
+
+
+@pytest.mark.parametrize("finish", [{}, [], {"unexpected": "private"}])
+def test_terminal_state_handles_untrusted_finish_types(finish):
+    from citypods.provider_catalog.probe import DiscoverySSECollector
+
+    stream = DiscoverySSECollector()
+    stream.finish = finish
+    assert "finish=other" in stream.terminal_state()
+    assert "private" not in stream.terminal_state()
