@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Health and Building Standards Commission of the City of Denton, Texas"
+      }
+    ],
+    "case_id": "recording-f61541eb16037ce8c08f7073",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-health-building-standards-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda, provider player, and native chapter evidence identify the convened body as the Health and Building Standards Commission of the City of Denton, Texas, meeting in a Regular Meeting on April 22, 2021. The existing feed denton-tx-health-building-standards-commission matches that body. The supplied evidence does not prove a joint meeting or any additional participating municipal body."
+  },
+  "attempt_id": "78bfca9e78144e3e8dc018aaef3ca6c7",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-f61541eb16037ce8c08f7073",
+  "case_input_hash": "97479c9e6191e9b95fdc744141c95ca57d433fea5bc2120b27c1b459145dd07a",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.093157791998237
+    }
+  ],
+  "end_to_end_seconds": 57.826805084001535,
+  "finished_at": "2026-10-14T17:32:08.695672+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:31:10.868535+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "477d9493cb0a9e380ab2affdc86ef556177d6dd20d28eb3498af1969a3cf8c8f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 944,
+    "completion_tokens": 1140,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 944,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 4088,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 4472,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5612
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-f61541eb16037ce8c08f7073\",\"bodies\":[{\"name\":\"Health and Building Standards Commission of the City of Denton, Texas\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-health-building-standards-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda, provider player, and native chapter evidence identify the convened body as the Health and Building Standards Commission of the City of Denton, Texas, meeting in a Regular Meeting on April 22, 2021. The existing feed denton-tx-health-building-standards-commission matches that body. The supplied evidence does not prove a joint meeting or any additional participating municipal body.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies from evidence. We have recording: Health & Building Standards Commission on 2021-04-22. Existing feed slug: denton-tx-health-building-standards-commission. Need identify actual body/program separately from subscription grouping. It's not joint meeting? Evidence says Health and Building Standards Commission of City of Denton, Texas will convene regular meeting. Participants listed: Commissioners Sebastian Delgadillo, Matthew Jendusa, Torrey Mitchell, Tim Stoltzfus, Cyndell Addison, Michael Sweigart, David Mollen, and Greg Coward (pending official appointment) participating via video/teleconference. The question asks \"Name every proven participant in a joint meeting.\" But it's not joint? Need bodies array includes body names with evidence. Probably just Health & Building Standards Commission. Publication_action assign_existing. feed_slugs [\"denton-tx-health-building-standards-commission\"]. Evidence refs: retained-agenda, provider-player, native-source-chapters maybe. Need cite evidence for body names and assignments. Include all evidence_ref_ids? Probably list evidence refs used. Missing_evidence maybe none. Rationale concise. Must echo case_id.\n\nNeed be careful: \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent feed slug. If real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved...\" Ownership established via agenda. Body: Health & Building Standards Commission (City of Denton, Texas). Existing feed matches. No joint participants? The commissioners listed are members, not separate bodies. The \"Health and Building Standards Commission\" is body. Publication action assign_existing. Bodies array can include one IdentifiedBody name \"Health & Building Standards Commission\" with evidence_ref_ids. Maybe also \"City of Denton\" not a body? The municipal body is Health & Building Standards Commission. The city is municipality, not body. Could include \"Health and Building Standards Commission of the City of Denton, Texas\" as name. Existing feed title \"Denton: Health & Building Standards Commission\". Use official title from agenda: \"Health and Building Standards Commission of the City of Denton, Texas\" maybe. But body_label uses ampersand. The feed slug maps. Name should be exact proven body: \"Health and Building Standards Commission\". Evidence IDs: retained-agenda, provider-player, native-source-chapters. The agenda source span states body. The provider-player source span states. Native chapters state. Evidence_ref_ids at top maybe all three. Missing evidence empty.\n\nNeed output JSON only. Ensure schema exactly. Publication_action enum assign_existing. Feed_slugs max 15. Evidence_ref_ids array. Rationale max 2000.\n\nPotential issue: \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" We use official agenda. \"Name every proven participant in a joint meeting.\" Not joint. Maybe they want bodies only, not participants. The bodies array is IdentifiedBody. If joint, include all bodies. Here only one.\n\nLet's craft:\n{\n \"case_id\": \"recording-f61541eb16037ce8c08f7073\",\n \"bodies\": [\n   {\"name\":\"Health and Building Standards Commission of the City of Denton, Texas\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}\n ],\n \"feed_slugs\":[\"denton-tx-health-building-standards-commission\"],\n \"publication_action\":\"assign_existing\",\n \"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\n \"missing_evidence\":[],\n \"rationale\":\"The retained agenda and player/chapter evidence identify the convened body as the Health and Building Standards Commission of the City of Denton, Texas, meeting in Regular Meeting on April 22, 2021. The existing feed denton-tx-health-building-standards-commission matches that body. No joint body or additional proven participant body appears in the supplied evidence.\"\n}\n\nNeed maybe mention listed commissioners are participants but not bodies. The prompt: \"Name every proven participant in a joint meeting.\" There is no joint meeting. But \"every proven participant\" could be individual commissioners? The schema only bodies, not people. So no.\n\nCheck evidence_ref_ids: Should include only supplied evidence IDs. Yes.\n\nPotential \"actual body/program separately from its subscription grouping.\" We identified body and feed slug. Good.\n\nNeed ensure no Markdown. Final only JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies from evidence. We have recording: Health & Building Standards Commission on 2021-04-22. Existing feed slug: denton-tx-health-building-standards-commission. Need identify actual body/program separately from subscription grouping. It's not joint meeting? Evidence says Health and Building Standards Commission of City of Denton, Texas will convene regular meeting. Participants listed: Commissioners Sebastian Delgadillo, Matthew Jendusa, Torrey Mitchell, Tim Stoltzfus, Cyndell Addison, Michael Sweigart, David Mollen, and Greg Coward (pending official appointment) participating via video/teleconference. The question asks \"Name every proven participant in a joint meeting.\" But it's not joint? Need bodies array includes body names with evidence. Probably just Health & Building Standards Commission. Publication_action assign_existing. feed_slugs [\"denton-tx-health-building-standards-commission\"]. Evidence refs: retained-agenda, provider-player, native-source-chapters maybe. Need cite evidence for body names and assignments. Include all evidence_ref_ids? Probably list evidence refs used. Missing_evidence maybe none. Rationale concise. Must echo case_id.\n\nNeed be careful: \"Select ALL appropriate existing feed slugs under supplied publication rules. Do not invent feed slug. If real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved...\" Ownership established via agenda. Body: Health & Building Standards Commission (City of Denton, Texas). Existing feed matches. No joint participants? The commissioners listed are members, not separate bodies. The \"Health and Building Standards Commission\" is body. Publication action assign_existing. Bodies array can include one IdentifiedBody name \"Health & Building Standards Commission\" with evidence_ref_ids. Maybe also \"City of Denton\" not a body? The municipal body is Health & Building Standards Commission. The city is municipality, not body. Could include \"Health and Building Standards Commission of the City of Denton, Texas\" as name. Existing feed title \"Denton: Health & Building Standards Commission\". Use official title from agenda: \"Health and Building Standards Commission of the City of Denton, Texas\" maybe. But body_label uses ampersand. The feed slug maps. Name should be exact proven body: \"Health and Building Standards Commission\". Evidence IDs: retained-agenda, provider-player, native-source-chapters. The agenda source span states body. The provider-player source span states. Native chapters state. Evidence_ref_ids at top maybe all three. Missing evidence empty.\n\nNeed output JSON only. Ensure schema exactly. Publication_action enum assign_existing. Feed_slugs max 15. Evidence_ref_ids array. Rationale max 2000.\n\nPotential issue: \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" We use official agenda. \"Name every proven participant in a joint meeting.\" Not joint. Maybe they want bodies only, not participants. The bodies array is IdentifiedBody. If joint, include all bodies. Here only one.\n\nLet's craft:\n{\n \"case_id\": \"recording-f61541eb16037ce8c08f7073\",\n \"bodies\": [\n   {\"name\":\"Health and Building Standards Commission of the City of Denton, Texas\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}\n ],\n \"feed_slugs\":[\"denton-tx-health-building-standards-commission\"],\n \"publication_action\":\"assign_existing\",\n \"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\n \"missing_evidence\":[],\n \"rationale\":\"The retained agenda and player/chapter evidence identify the convened body as the Health and Building Standards Commission of the City of Denton, Texas, meeting in Regular Meeting on April 22, 2021. The existing feed denton-tx-health-building-standards-commission matches that body. No joint body or additional proven participant body appears in the supplied evidence.\"\n}\n\nNeed maybe mention listed commissioners are participants but not bodies. The prompt: \"Name every proven participant in a joint meeting.\" There is no joint meeting. But \"every proven participant\" could be individual commissioners? The schema only bodies, not people. So no.\n\nCheck evidence_ref_ids: Should include only supplied evidence IDs. Yes.\n\nPotential \"actual body/program separately from its subscription grouping.\" We identified body and feed slug. Good.\n\nNeed ensure no Markdown. Final only JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999121,
+    "id": "a40dcb65533041f5161c9e70006e7a80",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 944,
+      "completion_tokens": 1140,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 944,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 4088,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 4472,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5612
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}
