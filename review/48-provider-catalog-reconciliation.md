@@ -2887,15 +2887,17 @@ For queue eligibility, enforce input <= input cap, requested output <= output ca
 input estimate + requested output <= total cap whenever each corresponding cap is configured.
 Reuse existing tokenizer calibration; add no blanket margin. Provider completion allowances
 include reasoning where counted. Discovery's combined coordinate is provider-counted input
-plus requested output, not an early-stopped usage total. NVIDIA enables both combined mixes
-with `reservation-v1` controls and the repeated-output fixture. A passing proof requires final
-consistent usage, a length finish, output exactly filling its allowance and valid repeated lines.
+plus requested output, not an early-stopped usage total. Recognized shared-chat routes support
+both combined mixes with `reservation-v2` controls and the varied-row fixture. A passing proof
+requires final consistent usage, a length finish and at least the requested output. Output text
+correctness is irrelevant. These approved follow-ups supersede the original `reservation-v1`
+repeated-line/exact-fill gate.
 An explicit context overflow must name input/output/total counts whose sum matches the request;
 output-field validation or input-only rejection cannot establish a combined upper bound.
 Short/empty length completions report `combined_output_clipped` and their actual total as a
 diagnostic only. Ordinary early stopping remains inconclusive. No clipped completion alone
 becomes a numerical refusal. Both mixes remain independent, conditional brackets; reaching
-the output ceiling may leave the output-heavy upper unknown. Other adapters stay unsupported.
+the output ceiling may leave the output-heavy upper unknown. Unknown protocols stay unsupported.
 File plan: existing discovery runner/control, probe fixture builder, shared chat parser, NVIDIA
 adapter and discovery tests, plus lifecycle docs/changelog. Existing workflow `all` selects these
 axes; deadlines, budgets, pauses, history authentication and production caps remain unchanged.
@@ -3217,3 +3219,64 @@ The follow-up CLI review found a valid precedence issue: collector diagnostics m
 That narrowly recognized HTTP 400 input-size evidence is now checked first. Regression cases
 include `provider_error_class=rate_limited`; a different typed reason still remains quota,
 so true throughput/daily errors are not reclassified as context proof.
+
+### Varied output elicitation and negative-budget replay — approved 2026-10-14
+
+The maintainer requested local generic output-elicitation improvements and offline negative-budget
+checks after merged #2439. Workflow 38646666670 completed without the old prompt-floor exception:
+input 130,617, output 2,722 and input-heavy combined 131,021 (246 fixed output) were verified
+lower bounds. Output-heavy replies stopped voluntarily. No exact refused upper was established.
+The installed LiteLLM 1.105.0 snapshot has no exact NVIDIA GPT-OSS-20B entry. These are not caps
+published by NVIDIA or values to apply automatically to runtime configuration.
+
+Replace the shared repeated-single-line generation task with numbered, varied data rows. Keep
+that task fixed across output targets and both combined mixes; output text correctness remains
+irrelevant to capacity proof. Valid consistent provider usage and a length finish remain required.
+Combined proof still requires at least the requested output, retains actual usage separately and
+uses provider input plus requested output for its coordinate. A voluntary stop, timeout or size
+hint never creates a numerical upper. No minimum-generation capability is added or broadened.
+
+Fence the new task with `output:v4` (and existing capability suffixes) and combined
+`reservation-v2` controls. Previous output/combined observations are diagnostic history only;
+charges remain consumed. Input-only history remains comparable because its fixture is unchanged.
+This deliberately trades another fresh baseline for honest comparison across different tasks.
+
+File plan: existing discovery.py, probe.py, rules.py and discovery tests; review/11, this document,
+ARCHITECTURE and a changelog fragment. No Worker, production configuration, endpoint/schema,
+dependency, quota, timeout, workflow step/input or recurring-maintenance change. Acceptance covers
+fixed task/padding/headroom, below/equal/overfilled count-based proof, malformed usage, tool calls,
+natural stops, old output/combined history exclusion and retained input comparability.
+
+Offline replay of the observed negative-output-budget error family covers deficits 63, 423,
+1,143, 6,918 and 352,879, both output field spellings and three provider adapters. Mismatched
+parameter/value pairs and zero are rejected as that typed guidance. These messages identify an
+unusable request but do not supply an independently measured input count or context cap. They
+continue to guide smaller requests without filling a refused bracket or claiming convergence.
+
+Local prompt comparison: NVIDIA GPT-OSS-20B counted to 1,692 output tokens then stopped on a
+4,096 allowance; varied numbered rows reached all 4,096 with a length finish. Kilo Liquid counted
+to the full 4,096. A separate NVIDIA 8,192 counting attempt hit the explicitly shorter local
+120-second diagnostic timeout, proving no cap. Those comparison calls omitted inert padding;
+subsequent acceptance uses the normal padded shared builder. All are authorized direct local
+diagnostics, without Worker admission or production changes, not authenticated workflow history.
+
+CLI review identified a stale earlier combined-proof paragraph. Updated that active contract to
+reservation-v2, at-least-requested generation and text-independent proof; the historical measured
+repeated-line results above remain point-in-time records. This is a documentation correction,
+not another parser or runtime change.
+
+Normal padded-builder validation reached NVIDIA GPT-OSS-20B 4,096 output (1,910 input) and
+Kilo Liquid 8,192 output (1,869 input, 142 reasoning included in output), both length finishes.
+NVIDIA's separate 8,192-output combined call stopped at 2,350 (1,915 input); no bound was inferred.
+A six-call normal output-heavy search then recovered from 16,384 requested / 2,713 stopped to
+802 input + 2,713 requested/generated output (length). Later early stops selected a different
+fixed-input control; the terminal comparable lower was 2,087 (397 input + 1,690 output) under
+`:opposite=364`, with upper unknown and `budget_exhausted`. The earlier 3,515 pass remains a
+verified different mix, not a larger comparable bound for the final control. Search reservations
+were 5,542 input and 28,432 output. No further calls were sent after the six-call escape.
+Reported `stop` does not distinguish model EOS from an undocumented serving-side termination;
+it is not a proved context refusal or evidence that GitHub transport truncated the reply.
+
+Validation: 6,445 offline tests passed (16 live tests deselected), 505 focused discovery,
+reconciliation and contract tests passed, whole-repository Ruff lint/format passed, and both
+compiled catalogs stayed unchanged. CLI review's one valid stale-contract finding was fixed.

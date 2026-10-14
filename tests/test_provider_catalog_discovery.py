@@ -37,7 +37,7 @@ def request(axis="input", target=2048, attempt="a"):
         output_tokens,
         f"{axis}:v2"
         if axis in {"input", "total_input_heavy"}
-        else "output:v3"
+        else "output:v4"
         if axis == "output"
         else f"{axis}:v1",
         "parser-v1",
@@ -1327,9 +1327,9 @@ def _chat_discovery_fixture(provider, axis="input"):
     req = replace(
         request(axis),
         control=(
-            "output:v3"
+            "output:v4"
             if axis == "output"
-            else f"{axis}:reservation-v1"
+            else f"{axis}:reservation-v2"
             if axis.startswith("total_")
             else request(axis).control
         ),
@@ -1641,18 +1641,19 @@ def test_count_mapping_is_retained_at_ceiling_and_refines_actual_input_boundary(
 def test_discovery_output_fixture_has_concrete_long_goal_and_preserves_request_bound(provider):
     _, req, transient = _chat_discovery_fixture(provider, "output")
     assert transient.messages[0]["role"] == "system"
-    assert "partial prefix is the intended result" in transient.messages[0]["content"]
+    assert "partial prefix is expected" in transient.messages[0]["content"]
     text = transient.messages[1]["content"]
-    assert "131072 times" in text
-    assert "server truncates output" in text
-    assert text.index("</padding>") < text.index("Repeat the line")
+    assert "100000 rows" in text
+    assert "server stops you" in text
+    assert text.index("</padding>") < text.index("Write 100000 rows")
     assert "1000000" not in text
     assert transient.shaped_body["body"]["max_tokens"] == req.output_tokens
     assert transient.local_input_estimate <= req.input_tokens
 
 
-def test_changed_output_control_excludes_old_prompt_history(tmp_path):
-    old = replace(request("output"), control="output:v2")
+@pytest.mark.parametrize("old_control", ["output:v2", "output:v3", "output:v3:min_tokens"])
+def test_changed_output_control_excludes_old_prompt_history(tmp_path, old_control):
+    old = replace(request("output"), control=old_control)
     previous = observation(old, 16384)
     seen = []
 
@@ -1662,7 +1663,7 @@ def test_changed_output_control_excludes_old_prompt_history(tmp_path):
         return DiscoveryObservation(req, STAMP)
 
     result = execute(tmp_path, measure, supported_axes=("output",), history=(previous,))
-    assert all(req.control == "output:v3" for req in seen)
+    assert all(req.control == "output:v4" for req in seen)
     assert result.brackets[1]["admitted"] is None
 
 
@@ -1750,7 +1751,7 @@ def test_api_input_capacity_stays_inconclusive_without_complete_consistent_evide
 
 def test_output_only_session_resumes_output_history_without_input_probes(tmp_path):
     previous_req = replace(
-        request("output"), output_tokens=24576, target=24576, control="output:v3"
+        request("output"), output_tokens=24576, target=24576, control="output:v4"
     )
     previous = observation(previous_req, 24576)
     requests = []
@@ -1892,7 +1893,7 @@ def minimum_generation_fixture(axis="output", minimum=True):
         identity=discovery_identity(
             "nvidia", "a", route["upstream_model"], cfg["api_base"] + "/chat/completions"
         ),
-        control="output:v3:min_tokens" if minimum else "output:v3",
+        control="output:v4:min_tokens" if minimum else "output:v4",
     )
     transient = build_discovery_request(req, route, cfg, rules, nonce="f" * 32)
     return req, transient
@@ -1914,7 +1915,7 @@ def test_unsupported_route_rejects_a_forged_minimum_control():
     from citypods.provider_catalog.registry import rules_for
 
     rules, req, _ = _chat_discovery_fixture("openrouter", "output")
-    req = replace(req, control="output:v3:min_tokens")
+    req = replace(req, control="output:v4:min_tokens")
     cfg = dict(api_base="https://provider.test/v1", accounts=[dict(id="a", api_key_env="KEY")])
     route = dict(provider="openrouter", account_id="a", upstream_model="org/model", route_id="c")
     with pytest.raises(ValueError, match="generation control mismatch"):
@@ -1938,7 +1939,7 @@ def test_minimum_generation_history_is_fenced_from_prompt_only_results(tmp_path)
         output_min_tokens=True,
         history=(previous,),
     )
-    assert all(req.control == "output:v3:min_tokens" for req in seen)
+    assert all(req.control == "output:v4:min_tokens" for req in seen)
     assert result.brackets[1]["admitted"] is None
     with pytest.raises(ValueError, match="minimum output capability"):
         execute(tmp_path, measure, output_min_tokens="yes")
@@ -1962,8 +1963,8 @@ def test_reduced_output_input_control_preserves_minimum_generation_flag(tmp_path
         return DiscoveryObservation(req, STAMP)
 
     execute(tmp_path, measure, supported_axes=("output",), output_min_tokens=True)
-    assert seen[0].control == "output:v3:min_tokens"
-    assert all(req.control == "output:v3:min_tokens:opposite=1024" for req in seen[1:])
+    assert seen[0].control == "output:v4:min_tokens"
+    assert all(req.control == "output:v4:min_tokens:opposite=1024" for req in seen[1:])
 
 
 def test_minimum_parameter_rejection_is_not_an_output_boundary():
@@ -2038,7 +2039,7 @@ def test_output_capacity_requires_usage_and_length_not_exact_text(bad):
         assert observed.coordinate == 24576
         assert observed.response_preview == ""
         if bad is None:
-            assert observed.diagnostic == "verified_repeated_output_fixture"
+            assert observed.diagnostic == "verified_generated_output"
     else:
         assert observed.outcome == "inconclusive" and observed.coordinate is None
 
@@ -2808,7 +2809,7 @@ def test_output_retry_hints_ignore_expired_incompatible_and_non_time_failures(tm
     if why == "old":
         failed = replace(failed, observed_at=(datetime.now(UTC) - timedelta(days=2)).isoformat())
     elif why == "wrong_control":
-        failed = replace(failed, request=replace(req, control="output:v3:min_tokens"))
+        failed = replace(failed, request=replace(req, control="output:v4:min_tokens"))
     elif why == "quota":
         failed = replace(failed, outcome="quota", diagnostic="provider_rate_limited")
     else:
@@ -3127,14 +3128,14 @@ def test_combined_nvidia_fixture_requests_full_streamed_output(axis):
     }
     req = replace(
         request(axis),
-        control=f"{axis}:reservation-v1",
+        control=f"{axis}:reservation-v2",
         identity=discovery_identity("nvidia", "a", model, cfg["api_base"] + "/chat/completions"),
     )
     transient = build_discovery_request(req, route, cfg, RULES, nonce="f" * 32)
     body = transient.shaped_body["body"]
     assert body["min_tokens"] == body["max_tokens"] == req.output_tokens
     assert body["stream"] is True and body["stream_options"]["include_usage"] is True
-    assert "Repeat the line 1" in transient.messages[1]["content"]
+    assert "Write 100000 rows" in transient.messages[1]["content"]
 
 
 def test_resumed_input_revalidation_reuses_provider_count_conversion(tmp_path):
@@ -3173,7 +3174,7 @@ def test_unregistered_route_uses_shared_interpretation_without_provider_parser(a
     assert rules.discovery_axes == AXES
     req = replace(
         request(axis),
-        control=f"{axis}:reservation-v1" if axis.startswith("total") else request(axis).control,
+        control=f"{axis}:reservation-v2" if axis.startswith("total") else request(axis).control,
     )
     payload = {
         "object": "chat.completion",
@@ -3466,19 +3467,23 @@ def test_qualitative_hint_cannot_replace_verified_output_upper_recheck(tmp_path)
 
 @pytest.mark.parametrize("provider", ["groq", "nvidia", "openrouter"])
 @pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
-def test_negative_computed_budget_is_only_smaller_input_guidance(provider, field):
+@pytest.mark.parametrize("deficit", [63, 423, 1143, 6918, 352879])
+def test_negative_computed_budget_is_only_smaller_input_guidance(provider, field, deficit):
     import json
 
     from citypods.provider_catalog.rules import Response, general_discovery_rules
 
     rules, req, transient = _chat_discovery_fixture(provider)
-    message = f"{field} must be at least 1, got -352879. (parameter={field}, value=-352879)"
+    message = f"{field} must be at least 1, got -{deficit}. (parameter={field}, value=-{deficit})"
     result = general_discovery_rules(rules).discovery_observation(
         Response(400, body=json.dumps({"error": {"message": message}})), req, transient
     )
     assert result.diagnostic == "computed_input_budget_exhausted"
     assert result.coordinate is None and result.reported_input is None and not result.verified
-    for bad in [message.replace("-352879", "0"), message.replace("value=-352879", "value=-7")]:
+    for bad in [
+        message.replace(f"-{deficit}", "0"),
+        message.replace(f"value=-{deficit}", "value=-7"),
+    ]:
         malformed = general_discovery_rules(rules).discovery_observation(
             Response(400, body=json.dumps({"error": {"message": bad}})), req, transient
         )
@@ -3787,7 +3792,7 @@ def test_provider_count_rescale_cannot_drop_combined_input_below_fixture_floor(t
         request("total_output_heavy", target=494),
         input_tokens=256,
         output_tokens=238,
-        control="total_output_heavy:reservation-v1:opposite=256",
+        control="total_output_heavy:reservation-v2:opposite=256",
     )
     old = DiscoveryObservation(
         req,
@@ -3927,3 +3932,20 @@ def test_combined_overfilled_output_proves_requested_reservation_with_actual_cou
     assert result.reported_output == 16783
     assert result.reported_input == 1974
     assert result.count_basis == "prompt_plus_requested_output"
+
+
+@pytest.mark.parametrize("axis", ["total_input_heavy", "total_output_heavy"])
+def test_varied_output_fixture_excludes_previous_combined_history(tmp_path, axis):
+    old = replace(request(axis, target=30000), control=f"{axis}:reservation-v1")
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        return DiscoveryObservation(req, STAMP, outcome="outage")
+
+    result = execute(tmp_path, measure, supported_axes=(axis,), history=(observation(old, 30000),))
+    assert len(seen) == 1
+    assert seen[0].control == f"{axis}:reservation-v2"
+    assert seen[0].target == DEFAULT_COMBINED_SEED
+    assert next(b for b in result.brackets if b["axis"] == axis)["admitted"] is None

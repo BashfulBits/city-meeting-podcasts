@@ -31,7 +31,7 @@ def output_discovery_control(min_tokens: bool = False) -> str:
     """The prompt and minimum-generation setting form one comparable output experiment."""
     if type(min_tokens) is not bool:
         raise ValueError("invalid minimum output capability")
-    return "output:v3:min_tokens" if min_tokens else "output:v3"
+    return "output:v4:min_tokens" if min_tokens else "output:v4"
 
 
 def default_discovery_seed(axis: str) -> int:
@@ -585,7 +585,7 @@ def run_discovery(
         base_control = (
             output_control
             if axis == "output"
-            else f"{axis}:reservation-v1"
+            else f"{axis}:reservation-v2"
             if axis.startswith("total_")
             else f"{axis}:{control_version}"
         )
