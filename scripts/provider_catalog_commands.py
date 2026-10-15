@@ -627,8 +627,11 @@ def main(argv=None):
         )
     if result.get("accepted") and result.get("retry_receipt") and args.retry_receipt:
         args.retry_receipt.write_text(json.dumps(result["retry_receipt"], indent=2) + "\n")
+    accepted = bool(result["accepted"])
+    # The Actions caller only consumes the public comment; do not persist event-derived gates.
+    result.pop("accepted", None)
     Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
-    return 0 if result["accepted"] else 1
+    return 0 if accepted else 1
 
 
 def prepare_discovery_retry(decision, *, event, issue_number, now):

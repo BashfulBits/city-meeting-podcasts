@@ -372,6 +372,23 @@ def test_automatic_removal_requires_successful_weekly_full_main_run():
         assert trusted_scheduled_run(changed, "owner/repo", weekly_full_only=True) is False
 
 
+def test_automatic_command_output_does_not_persist_trust_gate(monkeypatch, tmp_path):
+    import json
+
+    from scripts import provider_catalog_commands as commands
+
+    event = tmp_path / "event.json"
+    output = tmp_path / "result.json"
+    event.write_text(json.dumps({"action": "completed", "workflow_run": {}}))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    assert (
+        commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)]) == 1
+    )
+    result = json.loads(output.read_text())
+    assert result["comment"] == "Preparing evidence-gated route removals."
+    assert "accepted" not in result
+
+
 def test_removal_writer_rebuilds_on_changed_main_and_flags_primary(monkeypatch):
     from citypods.provider_catalog import retire
     from scripts.provider_catalog_commands import publish
