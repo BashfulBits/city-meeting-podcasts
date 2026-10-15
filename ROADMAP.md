@@ -707,8 +707,10 @@ from route maintenance. Periodic empirical limit verification, burst/refill and 
 are Deferred to [review/54](review/54-provider-limit-characterization.md), tracked by #2264; they
 do not block discovery reporting. Review/48 §8.13 defines the offline file/test plan, finite escape
 budgets and authenticated next-day retries; live discovery activation remains separately reviewed.
-The offline foundation shipped in #2273. Report/retry/workflow integration is under implementation
-review in #2271; live discovery remains separately gated by #2223.
+The offline foundation shipped in #2273; report/retry/workflow integration shipped in #2275.
+Before a new provider free route is added, §8.13 requires request-cap evidence to inform its proposed
+route values. Live discovery activation remains separately gated by #2223; route-removal activation
+is tracked by #2274.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing
