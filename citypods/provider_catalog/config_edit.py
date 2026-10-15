@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import re
+import textwrap
 
 import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
@@ -50,7 +51,7 @@ def _node(text, path):
     return node
 
 
-def _append(text, path, values):
+def _append(text, path, values, *, item_comments=None):
     if not values:
         return text
     node = _node(text, path)
@@ -82,6 +83,9 @@ def _append(text, path, values):
         raise ValueError("null lists are unsupported; declare [] explicitly")
     if not isinstance(node, SequenceNode):
         raise ValueError("expected a YAML sequence")
+    item_comments = item_comments or {}
+    if item_comments and (path != ("routes",) or (node.flow_style and node.value)):
+        raise ValueError("route evidence comments require the block route list")
     if node.flow_style:
         if node.value:
             # Flow lists remain flow lists; only insert new quoted values before the closing ].
@@ -93,16 +97,41 @@ def _append(text, path, values):
         comment_end = text.find("\n", end)
         comment_end = len(text) if comment_end < 0 else comment_end
         suffix = text[end:comment_end]
-        payload = "\n" + "\n".join(
-            " " * (indent + 2) + x
-            for x in yaml.safe_dump(values, sort_keys=False).strip().splitlines()
-        )
+        lines = []
+        for value in values:
+            route_id = value.get("route_id") if isinstance(value, dict) else None
+            for comment in item_comments.get(route_id, ()):
+                if not isinstance(comment, str) or not comment.strip():
+                    raise ValueError("invalid route evidence comment")
+                lines.extend(
+                    " " * (indent + 2) + "# " + line
+                    for line in textwrap.wrap(comment, width=92, break_long_words=False)
+                )
+            lines.extend(
+                " " * (indent + 2) + line
+                for line in yaml.safe_dump([value], sort_keys=False, allow_unicode=True)
+                .strip()
+                .splitlines()
+            )
+        payload = "\n" + "\n".join(lines)
         return text[:index].rstrip(" ") + suffix + payload + text[comment_end:]
     index = node.end_mark.index - node.end_mark.column
-    payload = "\n".join(
-        " " * node.start_mark.column + x
-        for x in yaml.safe_dump(values, sort_keys=False, allow_unicode=True).strip().splitlines()
-    )
+    chunks = []
+    for value in values:
+        route_id = value.get("route_id") if isinstance(value, dict) else None
+        comments = item_comments.get(route_id, ())
+        for comment in comments:
+            if not isinstance(comment, str) or not comment.strip():
+                raise ValueError("invalid route evidence comment")
+            for line in textwrap.wrap(comment, width=92, break_long_words=False):
+                chunks.append(" " * node.start_mark.column + "# " + line)
+        chunks.extend(
+            " " * node.start_mark.column + line
+            for line in yaml.safe_dump([value], sort_keys=False, allow_unicode=True)
+            .strip()
+            .splitlines()
+        )
+    payload = "\n".join(chunks)
     return text[:index] + payload + "\n" + text[index:]
 
 
@@ -422,7 +451,12 @@ def apply_config_edits(texts, plan: EditPlan):
             raise ValueError("route ID collision")
         limits["routes"].append(route)
         additions.append(route)
-    output[SOURCE_PATHS[0]] = _append(output[SOURCE_PATHS[0]], ("routes",), additions)
+    output[SOURCE_PATHS[0]] = _append(
+        output[SOURCE_PATHS[0]],
+        ("routes",),
+        additions,
+        item_comments=dict(plan.route_notes),
+    )
     for lane, model in plan.backups:
         block = site["llm_lanes"][lane]
         if model in (block.get("backup_models") or []):

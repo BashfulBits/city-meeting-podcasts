@@ -547,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     discovery_history = ()
     discovery_history_gaps = ()
     discovery_history_calls = {}
+    discovery_successful_input_evidence = set()
     retry_receipts = {}
     if args.discovery_evidence:
         now = datetime.now(UTC)
@@ -563,6 +564,9 @@ def main(argv: list[str] | None = None) -> int:
                     discovery_history_calls[identity] = (
                         discovery_history_calls.get(identity, 0) + calls
                     )
+                discovery_successful_input_evidence.update(
+                    accepted_run.get("successful_input_evidence", [])
+                )
             if args.due_only:
                 receipt_rows, receipt_gaps = discover_discovery_retry_receipts(
                     repository=repository, now=now
@@ -728,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
         discovery_axis=args.discovery_axis,
         discovery_history=discovery_history,
         discovery_history_calls=discovery_history_calls,
+        discovery_successful_input_evidence=discovery_successful_input_evidence,
         discovery_run_id=os.environ.get("GITHUB_RUN_ID", ""),
         discovery_receipt_ids=retry_receipts,
         retry_candidate_keys=set(retry_receipts) if retry_receipts else None,

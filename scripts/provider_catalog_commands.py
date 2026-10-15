@@ -130,6 +130,29 @@ def prepare(body, base_commit, proposal_kind=None):
         control = _control(False)
         if isinstance(control, NoDispatchControl):
             raise ValueError("route changes require a configured exclusive dispatch pause")
+        discovery_history = ()
+        discovery_history_gaps = ()
+        discovery_history_calls = {}
+        discovery_successful_input_evidence = set()
+        if selected:
+            now = datetime.now(UTC)
+            repository = os.environ.get("GITHUB_REPOSITORY")
+            if not repository:
+                raise ValueError("route additions require authenticated discovery provenance")
+            references = discover_discovery_references(repository=repository, now=now)
+            discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
+                references,
+                repository=repository,
+                now=now,
+            )
+            for accepted_run in accepted:
+                for identity, calls in accepted_run.get("call_counts", {}).items():
+                    discovery_history_calls[identity] = (
+                        discovery_history_calls.get(identity, 0) + calls
+                    )
+                discovery_successful_input_evidence.update(
+                    accepted_run.get("successful_input_evidence", [])
+                )
         session = requests.Session()
         report = reconcile(
             limits,
@@ -143,7 +166,11 @@ def prepare(body, base_commit, proposal_kind=None):
             providers={d.provider for d in decisions if d.key in selected or d.route_id in paid},
             candidate_keys=selected,
             route_ids=paid,
+            discovery_history=discovery_history,
+            discovery_history_calls=discovery_history_calls,
+            discovery_successful_input_evidence=discovery_successful_input_evidence,
         )
+        report.observations.extend(discovery_history_gaps)
     plan = plan_apply(report, decisions, config)
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:

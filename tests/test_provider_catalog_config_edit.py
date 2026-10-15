@@ -149,8 +149,15 @@ def test_real_additive_route_compiles_offline(tmp_path, monkeypatch):
         tuple((p, digest(texts[p])) for p in SOURCE_PATHS),
         (tuple(route.items()),),
         (("chapter-agenda", route["model"]),),
+        route_notes=(
+            (
+                route["route_id"],
+                ("Provider claim: 100000 from catalog source; measured window: 100000.",),
+            ),
+        ),
     )
     output = apply_config_edits(texts, plan)
+    assert "# Provider claim: 100000 from catalog source" in output[SOURCE_PATHS[0]]
     path = tmp_path / "config/provider_limits.yml"
     path.parent.mkdir()
     path.write_text(output[SOURCE_PATHS[0]])
@@ -159,6 +166,21 @@ def test_real_additive_route_compiles_offline(tmp_path, monkeypatch):
     compiled = compile_llm_limits.compile_limits()
     assert compiled["routes_by_id"]["catalog_test_new"]["structured_output_method"] == "prompt_only"
     assert compiled["model_routes_map"][route["model"]] == ["catalog_test_new"]
+
+
+def test_route_evidence_comments_convert_empty_flow_list_to_reviewable_block():
+    texts = source()
+    texts[SOURCE_PATHS[0]] = "providers: {}\nroutes: []\n"
+    route = {"route_id": "new", "model": "new", "provider": "host"}
+    plan = EditPlan(
+        "base",
+        tuple((p, digest(texts[p])) for p in SOURCE_PATHS),
+        (tuple(route.items()),),
+        route_notes=(("new", ("Authenticated admitted input: 12000 tokens.",)),),
+    )
+    output = apply_config_edits(texts, plan)[SOURCE_PATHS[0]]
+    assert "  # Authenticated admitted input: 12000 tokens." in output
+    assert load_config(output)["routes"] == [route]
 
 
 def test_paid_edit_changes_only_free_scalar_and_appends_acknowledgement():
