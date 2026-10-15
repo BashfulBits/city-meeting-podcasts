@@ -2107,3 +2107,9 @@ comparison reached 4,096 generated tokens on NVIDIA using varied numbered rows. 
 output and combined history, preserve input-only evidence, and retain negative-budget errors as
 non-numerical guidance. No production caps, timeout changes or maintenance promotion; review/48
 owns the file plan, acceptance and diagnostic evidence.
+
+Review/48 input-first refinement — L3 approved 2026-10-14: prioritize the input boundary, retain
+actual passing counts separately from calibrated estimated rejected sizes, and replace normal
+output/combined maximum searches with bounded supporting examples. Local NVIDIA plus a second
+provider validation precedes push. Full optional selected-axis searches and runtime caps remain
+unchanged; see review/48's updated contract.

@@ -459,6 +459,54 @@ def render_body(
                     "These values are not measured bounds.",
                     "",
                 ]
+            primary = result.get("input_characterization")
+            if isinstance(primary, dict) and primary.get("admitted_input"):
+                lines += [
+                    "**Primary input characterization:** confirmed "
+                    f"{_discovery_count(primary.get('admitted_input'))} provider-counted input "
+                    f"tokens, with {_discovery_count(primary.get('requested_output'))} output "
+                    f"requested and {_discovery_count(primary.get('generated_output'))} generated.",
+                    f"Passing request local input estimate: "
+                    f"{_discovery_count(primary.get('admitted_local_estimate'))} tokens.",
+                ]
+                rejections = primary.get("rejected_estimates")
+                for rejected in rejections[:3] if isinstance(rejections, list) else ():
+                    if not isinstance(rejected, dict):
+                        continue
+                    lines.append(
+                        "Rejected input-size request: local estimate "
+                        f"{_discovery_count(rejected.get('local_input_estimate'))}; "
+                        "approximately "
+                        f"{_discovery_count(rejected.get('provider_scale_estimate'))} input tokens "
+                        "after calibration against the passing request. "
+                        "This is an estimated rejected size, not a provider-counted upper bound."
+                    )
+                lines.append("")
+            if result.get("profile") == "input_priority":
+                lines += ["Output and combined checks are supporting examples, not maxima.", ""]
+                examples = {
+                    row["axis"]: row
+                    for row in _discovery_attempt_diagnostics(result.get("attempt_diagnostics"))
+                    if row["axis"] in {"output", "total_input_heavy"}
+                }
+                for axis, example in examples.items():
+                    reported_input = example.get("reported_input")
+                    generated = example.get("reported_output")
+                    consumed = (
+                        reported_input + generated
+                        if isinstance(reported_input, int) and isinstance(generated, int)
+                        else None
+                    )
+                    lines.append(
+                        f"Supporting `{axis}` example: reported input "
+                        f"{_discovery_count(reported_input)}, generated output "
+                        f"{_discovery_count(generated)}, requested output "
+                        f"{_discovery_count(example.get('requested_output'))}; observed "
+                        f"input plus generated output {_discovery_count(consumed)}; "
+                        f"finish `{example.get('finish_reason_state', 'unknown')}`. "
+                        "Consumed totals are separate from requested-output capacity proof."
+                    )
+                lines.append("")
             lines += [
                 "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
                 "Count basis / control | Status / note |",
@@ -487,7 +535,10 @@ def render_body(
             lines += [
                 "",
                 "The admitted count is the largest verified passing value to consider as an "
-                "operational cap; the refused count is its measured upper boundary. These "
+                "operational cap for the tested request conditions; the refused count, "
+                "when present, "
+                "is a measured upper boundary. An empty refused cell does not mean no approximate "
+                "boundary was found. These "
                 "results are evidence only and are never written to configuration automatically.",
                 f"Reachability: {result.get('reachability', 'verified')}; "
                 f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
