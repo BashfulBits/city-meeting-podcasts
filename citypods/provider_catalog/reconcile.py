@@ -1455,20 +1455,95 @@ def _discovery_history_summary(
         axes.append(summary)
     return {
         "retryable": bool(compatible)
-        and any(
-            row["axis"] in {"input", "output", "total_input_heavy", "total_output_heavy"}
-            and row["status"] != "converged"
-            for row in axes
+        and any(row["axis"] == "input" and row["status"] != "converged" for row in axes),
+        "profile": "history",
+        "reason": (
+            "input_characterized"
+            if any(row["axis"] == "input" and row["status"] == "converged" for row in axes)
+            else "partial"
         ),
-        "reason": "partial",
         "detail": "Bounds are rebuilt from authenticated, compatible provider observations.",
         "reachability": "verified",
         "calls": history_calls or len(compatible),
         "input_tokens": sum(item.request.input_tokens for item in compatible),
         "output_tokens": sum(item.request.output_tokens for item in compatible),
         "axes": axes,
+        "input_characterization": _discovery_input_characterization(
+            axes, compatible, identity=identity, parser_version=rules.discovery_parser_version
+        ),
         "attempt_diagnostics": _discovery_attempt_diagnostics(compatible),
         "litellm": litellm,
+    }
+
+
+def _discovery_input_characterization(axes, attempts, *, identity, parser_version):
+    """Advisory input evidence: never mix actual usage with estimated rejected sizes."""
+    from citypods.provider_catalog.discovery import INPUT_SIZE_GUIDANCE, positive
+
+    primary = next((axis for axis in axes if axis.get("axis") == "input"), {})
+    lower = primary.get("admitted")
+    control = primary.get("control")
+    if not positive(lower) or not control:
+        return {}
+    rows = []
+    for item in attempts:
+        row = item if isinstance(item, Mapping) else asdict(item)
+        req, obs = row.get("request") or {}, row.get("observation", row)
+        if (
+            req.get("identity") == identity
+            and req.get("parser_version") == parser_version
+            and req.get("fixture_version") == "discovery-v1"
+            and req.get("axis") == "input"
+            and req.get("control") == control
+        ):
+            rows.append((req, obs or {}))
+    passing = [
+        (req, obs)
+        for req, obs in rows
+        if obs.get("verified") is True
+        and obs.get("outcome") == "admitted"
+        and obs.get("reported_input") == lower
+        and positive(req.get("input_tokens"))
+    ]
+    if not passing:
+        return {}
+    req, obs = max(passing, key=lambda pair: pair[1].get("observed_at", ""))
+    rejected = sorted(
+        (
+            (r, o)
+            for r, o in rows
+            if o.get("diagnostic") in INPUT_SIZE_GUIDANCE | {"size_refused_without_exact_counts"}
+            and positive(r.get("input_tokens"))
+            and r["input_tokens"] > req["input_tokens"]
+            and positive(r.get("target"))
+            and r["target"] > lower
+        ),
+        key=lambda pair: pair[0]["input_tokens"],
+    )
+    rejected_rows = []
+    seen = set()
+    for r, o in rejected:
+        if r["input_tokens"] in seen:
+            continue
+        seen.add(r["input_tokens"])
+        # This maps local estimates through one admitted sample, not a provider refusal count.
+        estimate = (r["input_tokens"] * lower + req["input_tokens"] - 1) // req["input_tokens"]
+        rejected_rows.append(
+            {
+                "local_input_estimate": r["input_tokens"],
+                "provider_scale_estimate": estimate,
+                "requested_output": r.get("output_tokens"),
+                "observed_at": o.get("observed_at"),
+            }
+        )
+        if len(rejected_rows) == 3:
+            break
+    return {
+        "admitted_input": lower,
+        "admitted_local_estimate": req["input_tokens"],
+        "requested_output": req.get("output_tokens"),
+        "generated_output": obs.get("reported_output"),
+        "rejected_estimates": rejected_rows,
     }
 
 
@@ -1646,6 +1721,7 @@ def _discover_candidate_caps(
                 parser_version=rules.discovery_parser_version,
                 supported_axes=rules.discovery_axes,
                 selected_axes=selected_axes,
+                input_priority=selected_axes is None,
                 seeds=seeds,
                 counterparts=counterparts,
                 output_min_tokens=rules.discovery_output_min_tokens(endpoint, candidate.model),
@@ -1679,13 +1755,18 @@ def _discover_candidate_caps(
             and (
                 result is None
                 or any(
-                    row["axis"] in {"input", "output", "total_input_heavy", "total_output_heavy"}
-                    and row["status"] != "converged"
+                    row["axis"] in (selected_axes or ("input",)) and row["status"] != "converged"
                     for row in axes
                 )
             ),
+            "profile": "input_priority" if selected_axes is None else "selected_axes",
             "reason": result.reason if result is not None else journal.data["reason"],
-            "detail": "Only verified comparable accepted and refused counts establish a cap.",
+            "detail": (
+                "Input is primary; output and combined examples are supporting evidence. "
+                "Estimated rejected sizes indicate an approximate boundary, not a measured upper."
+                if selected_axes is None
+                else "Isolated selected-axis search; verified comparable counts establish bounds."
+            ),
             "reachability": "verified",
             "calls": reachability_calls + len(journal.data["attempts"]),
             "input_tokens": sum(row["request"]["input_tokens"] for row in journal.data["attempts"]),
@@ -1693,6 +1774,12 @@ def _discover_candidate_caps(
                 row["request"]["output_tokens"] for row in journal.data["attempts"]
             ),
             "axes": axes,
+            "input_characterization": _discovery_input_characterization(
+                axes,
+                list(history) + list(journal.data["attempts"]),
+                identity=identity,
+                parser_version=rules.discovery_parser_version,
+            ),
             "attempt_diagnostics": _discovery_attempt_diagnostics(journal.data["attempts"]),
             "litellm": litellm,
         }

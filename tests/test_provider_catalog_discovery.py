@@ -3949,3 +3949,134 @@ def test_varied_output_fixture_excludes_previous_combined_history(tmp_path, axis
     assert seen[0].control == f"{axis}:reservation-v2"
     assert seen[0].target == DEFAULT_COMBINED_SEED
     assert next(b for b in result.brackets if b["axis"] == axis)["admitted"] is None
+
+
+def test_input_priority_refines_primary_and_only_samples_supporting_axes(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append((req, timeout))
+        if req.axis == "input":
+            return observation(
+                req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+            )
+        if req.axis == "output":
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                reported_input=1900,
+                reported_output=500,
+                finish_reason="stop",
+                response_status=200,
+                usage_state="valid",
+                diagnostic="output_stopped_early",
+            )
+        assert req.axis == "total_input_heavy" and req.output_tokens == 500
+        return observation(
+            req,
+            req.input_tokens + req.output_tokens,
+            reported_input=req.input_tokens,
+        )
+
+    result = execute(
+        tmp_path, measure, input_priority=True, seeds={"input": 2000}, clock=lambda: 0, deadline=100
+    )
+    assert result.brackets[0]["status"] == "converged"
+    assert result.reason == "input_characterized"
+    assert seen[0][1] == 80
+    assert sum(req.axis == "output" for req, _ in seen) == 1
+    assert sum(req.axis == "total_input_heavy" for req, _ in seen) == 1
+    assert not any(req.axis == "total_output_heavy" for req, _ in seen)
+    combined = next(req for req, _ in seen if req.axis == "total_input_heavy")
+    assert combined.target == result.brackets[0]["admitted"] + 500
+    assert result.brackets[-1]["reason"] == "optional_output_heavy_not_searched"
+
+
+@pytest.mark.parametrize("now_passes", [True, False])
+@pytest.mark.parametrize("priority", [True, False])
+def test_input_priority_rechecks_old_approximate_refusal_before_finishing(
+    tmp_path, now_passes, priority
+):
+    baseline = request("input", 4000)
+    old_failure = replace(baseline, target=4010, input_tokens=4010, attempt_id="old-failure")
+    history = [
+        observation(baseline, 4000, reported_input=4000),
+        DiscoveryObservation(old_failure, STAMP, diagnostic="computed_input_budget_exhausted"),
+    ]
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req.target)
+        if req.target > 4000 and not now_passes:
+            return DiscoveryObservation(req, STAMP, diagnostic="computed_input_budget_exhausted")
+        return observation(req, req.input_tokens, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        input_priority=priority,
+        selected_axes=("input",),
+        history=history,
+        budget=DiscoveryBudget(max_calls=5),
+    )
+    assert seen[:3] == [4000, 4000, 4010]
+    assert result.brackets[0]["refused"] is None
+    if now_passes:
+        assert result.brackets[0]["admitted"] > 4010
+    else:
+        assert len(seen) == 3
+        assert result.brackets[0]["reason"] == "size_refusal_unmeasured_upper"
+        assert result.reason == ("input_boundary_estimated" if priority else "partial")
+
+
+def test_input_priority_does_not_spend_combined_call_without_verified_input(tmp_path):
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req.axis)
+        return DiscoveryObservation(req, STAMP)
+
+    result = execute(
+        tmp_path,
+        measure,
+        input_priority=True,
+        supported_axes=("output", "total_input_heavy", "total_output_heavy"),
+    )
+    assert seen == ["output"]
+    assert result.brackets[2]["reason"] == "supporting_input_not_verified"
+
+
+def test_input_priority_support_does_not_inherit_tiny_historical_output_allowance(tmp_path):
+    old = replace(
+        request("total_input_heavy", 130000),
+        output_tokens=65,
+        control="total_input_heavy:reservation-v2:opposite=65",
+    )
+    seen = []
+
+    def measure(req, admit, _timeout):
+        admit()
+        seen.append(req)
+        if req.axis == "input":
+            return observation(
+                req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+            )
+        if req.axis == "output":
+            return DiscoveryObservation(
+                req, STAMP, reported_output=3000, response_status=200, usage_state="valid"
+            )
+        assert req.output_tokens == 3000
+        return DiscoveryObservation(req, STAMP)
+
+    execute(
+        tmp_path,
+        measure,
+        input_priority=True,
+        seeds={"input": 4000},
+        history=[observation(old, 130000)],
+    )
+    combined = next(req for req in seen if req.axis == "total_input_heavy")
+    assert combined.control == "total_input_heavy:reservation-v2:opposite=3000"

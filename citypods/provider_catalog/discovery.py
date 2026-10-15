@@ -484,6 +484,7 @@ def run_discovery(
     parser_version,
     supported_axes,
     selected_axes=None,
+    input_priority=False,
     output_min_tokens=False,
     measure,
     renew,
@@ -498,6 +499,8 @@ def run_discovery(
     deadline=None,
 ):
     """Inject transport, pause renewal and time; no provider calls without a charged receipt."""
+    if type(input_priority) is not bool:
+        raise ValueError("invalid discovery input priority")
     output_control = output_discovery_control(output_min_tokens)
     budget = budget or DiscoveryBudget()
     if selected_axes is not None and (
@@ -551,19 +554,31 @@ def run_discovery(
         deadline = session_deadline
         bracket = Bracket(axis, int(seeds.get(axis, default_discovery_seed(axis))))
         brackets.append(bracket)
+        supporting = input_priority and axis in {"output", "total_input_heavy"}
+        if input_priority and axis == "total_output_heavy":
+            bracket.reason = "optional_output_heavy_not_searched"
+            continue
         if selected_axes is not None and axis not in selected_axes:
             bracket.reason = "not_selected"
             continue
         if axis not in supported_axes:
             bracket.reason = "unsupported_endpoint_axis"
             continue
-        remaining_axes = sum(
-            item in supported_axes and (selected_axes is None or item in selected_axes)
+        remaining_axes = [
+            item
             for item in AXES[axis_index:]
-        )
+            if item in supported_axes
+            and (selected_axes is None or item in selected_axes)
+            and not (input_priority and item == "total_output_heavy")
+        ]
         axis_started = clock()
-        if remaining_axes > 1 and axis_started < session_deadline:
-            deadline = axis_started + (session_deadline - axis_started) / remaining_axes
+        if len(remaining_axes) > 1 and axis_started < session_deadline:
+            weights = {
+                item: 8 if input_priority and item == "input" else 1 for item in remaining_axes
+            }
+            deadline = axis_started + (session_deadline - axis_started) * (
+                weights[axis] / sum(weights.values())
+            )
         compatible_history = [
             item
             for item in history
@@ -572,6 +587,10 @@ def run_discovery(
             and item.request.parser_version == parser_version
             and item.request.fixture_version == "discovery-v1"
         ]
+        if supporting:
+            # A prior maximum search may have reduced its counterpart to a tiny allowance.
+            # The supporting example must use this run's practical output target instead.
+            compatible_history = []
         previous = [
             item
             for item in compatible_history
@@ -641,12 +660,39 @@ def run_discovery(
             ),
             default=None,
         )
+        if supporting:
+            # Supporting checks are fresh examples, not independent maximum searches.
+            previous = []
+            pending = Bracket(axis, bracket.seed)
+            qualitative_upper = None
+            if axis == "total_input_heavy":
+                primary = next((b for b in brackets if b.axis == "input"), None)
+                if primary is None or primary.lower is None:
+                    bracket.reason = "supporting_input_not_verified"
+                    continue
+                generated = [
+                    item.reported_output
+                    for item in observations
+                    if item.request.axis == "output"
+                    and positive(item.reported_output)
+                    and item.response_status == 200
+                    and item.usage_state == "valid"
+                ]
+                if generated:
+                    counterpart = min(counterpart, max(generated))
+                    control = f"{base_control}:opposite={counterpart}"
+                bracket.seed = primary.lower + counterpart
+        qualitative_rechecked = False
+        axis_calls = 0
         recent_output_cost = None
         clipped_count = None
         clipped_recheck = None
         early_stop_retries = 0
         pending_transport = []
         while not bracket.converged and bracket.nonprogress < 3:
+            if supporting and axis_calls:
+                bracket.reason = "supporting_check_inconclusive"
+                break
             if clock() >= deadline or budget.overrun or (shared_budget and shared_budget.overrun):
                 if (
                     clock() >= deadline
@@ -698,6 +744,18 @@ def run_discovery(
                 or upper_recheck is not None
                 or bool(previous and fresh_successes < required_fresh and pending.lower)
             )
+            if (
+                axis == "input"
+                and qualitative_upper is not None
+                and qualitative_upper > (bracket.lower or 0)
+                and previous
+                and fresh_successes >= required_fresh
+                and not qualitative_rechecked
+            ):
+                # An old non-numerical refusal guides one fresh test, not a permanent ceiling.
+                target = qualitative_upper
+                explicit_recheck = True
+                qualitative_rechecked = True
             if qualitative_upper is not None and not explicit_recheck:
                 if bracket.lower is not None:
                     if qualitative_upper <= bracket.lower:
@@ -771,6 +829,16 @@ def run_discovery(
                 and item.verified
                 and item.outcome in {"admitted", "refused"}
             ]
+            if supporting and axis == "total_input_heavy":
+                matching = [
+                    item
+                    for item in observations
+                    if item.request.axis == "input"
+                    and item.request.control == primary.control
+                    and item.verified
+                    and item.outcome == "admitted"
+                    and positive(item.reported_input)
+                ]
             if matching and axis != "output":
                 last = max(
                     enumerate(matching),
@@ -866,6 +934,7 @@ def run_discovery(
                     tuple(transport_retries),
                 )
             observations.append(observation)
+            axis_calls += 1
             if (
                 axis == "output"
                 and observation.outcome == "admitted"
@@ -930,6 +999,17 @@ def run_discovery(
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
                 bracket.reason = reason
+                break
+            if supporting:
+                if observation.outcome == "quota":
+                    reason = bracket.reason = "quota_deferred"
+                else:
+                    bracket.observe(observation)
+                    bracket.reason = (
+                        "supporting_check_admitted"
+                        if bracket.lower is not None
+                        else "supporting_check_inconclusive"
+                    )
                 break
             if observation.outcome == "quota":
                 wait = observation.retry_after_seconds
@@ -1155,6 +1235,12 @@ def run_discovery(
             break
     if reason == "complete" and not all(bracket.converged for bracket in brackets):
         reason = "partial"
+    if input_priority and reason in {"complete", "partial"}:
+        primary = next((b for b in brackets if b.axis == "input"), None)
+        if primary and primary.converged:
+            reason = "input_characterized"
+        elif primary and primary.lower and primary.reason == "size_refusal_unmeasured_upper":
+            reason = "input_boundary_estimated"
     journal.data["reason"] = reason
     journal.save()
     return DiscoveryResult(

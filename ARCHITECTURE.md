@@ -326,7 +326,10 @@ unknown size errors create no cap proof. NVIDIA combined discovery uses provider
 requested output, with at least the requested output generated on a length finish and exact
 summed-context refusal evidence. Shared output and combined fixtures use varied numbered rows to reduce voluntary early stops;
 `output:v4` and combined `reservation-v2` fence older fixtures without resetting budget charges.
-Input-only fixture history is unchanged. Output text need not match the prompt; valid usage,
+Input-only fixture history is unchanged. Normal discovery prioritizes input refinement and uses
+one fresh output and one input-heavy combined example as supporting evidence. Input reports
+keep provider-counted passing sizes separate from calibrated rejected-size estimates; these
+estimates do not become measured upper bounds. Explicit isolated-axis searches remain available. Output text need not match the prompt; valid usage,
 finish and response-shape checks
 still bind. Clipped output is rechecked at the actual generated size, never a numerical refusal.
 Short or empty length completions retain actual input/output counts and clipping diagnostics,

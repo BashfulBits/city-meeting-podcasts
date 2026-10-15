@@ -1969,3 +1969,56 @@ def test_litellm_discovery_reads_installed_metadata_without_sdk_import(tmp_path,
         assert module._litellm_discovery_catalog() == ({}, "unavailable")
     finally:
         module._litellm_discovery_catalog.cache_clear()
+
+
+def test_input_characterization_keeps_rejection_estimates_out_of_verified_bounds():
+    from dataclasses import asdict, replace
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.discovery import DiscoveryObservation, DiscoveryRequest
+    from citypods.provider_catalog.reconcile import _discovery_input_characterization
+
+    req = DiscoveryRequest("s", "a", "physical", "input", 10000, 11000, 2048, "input:v2", "parser")
+    stamp = datetime.now(UTC).isoformat()
+    passed = DiscoveryObservation(
+        req,
+        stamp,
+        outcome="admitted",
+        coordinate=10000,
+        count_basis="input",
+        verified=True,
+        reported_input=10000,
+        reported_output=234,
+    )
+    rejected_req = replace(req, attempt_id="b", target=11000, input_tokens=12100)
+    rejected = DiscoveryObservation(
+        rejected_req, stamp, diagnostic="computed_input_budget_exhausted"
+    )
+    foreign = replace(rejected, request=replace(rejected_req, identity="other", input_tokens=11500))
+    other_control = replace(
+        rejected, request=replace(rejected_req, control="input:v2:opposite=100")
+    )
+    unknown = replace(rejected, diagnostic="unknown")
+    wrong_parser = replace(rejected, request=replace(rejected_req, parser_version="other"))
+    wrong_fixture = replace(rejected, request=replace(rejected_req, fixture_version="other"))
+    result = _discovery_input_characterization(
+        [{"axis": "input", "admitted": 10000, "refused": None, "control": "input:v2"}],
+        [
+            passed,
+            {"request": asdict(rejected_req), "observation": asdict(rejected)},
+            foreign,
+            other_control,
+            unknown,
+            wrong_parser,
+            wrong_fixture,
+        ],
+        identity="physical",
+        parser_version="parser",
+    )
+    assert result["admitted_input"] == 10000
+    assert result["admitted_local_estimate"] == 11000
+    assert result["requested_output"] == 2048 and result["generated_output"] == 234
+    assert len(result["rejected_estimates"]) == 1
+    assert result["rejected_estimates"][0]["local_input_estimate"] == 12100
+    assert result["rejected_estimates"][0]["provider_scale_estimate"] == 11000
+    assert "refused" not in result

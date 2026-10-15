@@ -3280,3 +3280,82 @@ it is not a proved context refusal or evidence that GitHub transport truncated t
 Validation: 6,445 offline tests passed (16 live tests deselected), 505 focused discovery,
 reconciliation and contract tests passed, whole-repository Ruff lint/format passed, and both
 compiled catalogs stayed unchanged. CLI review's one valid stale-contract finding was fixed.
+
+### Input-first discovery and approximate-boundary reporting — L3 approved 2026-10-14
+
+The maintainer approved prioritizing input characterization and treating output/combined checks
+as supporting evidence. This supersedes the earlier requirement to converge independent output
+and combined maxima during every route addition; full isolated output search remains optional.
+They explicitly authorized local validation on the same NVIDIA route and one different provider
+before any push. Workflow 38653665370 established input 130,626, output
+4,037 and conditional combined lower bounds, with no numerical refused bounds. This is useful
+approximate input-boundary evidence, not evidence that no boundary was found. Natural output
+stops do not establish output ceilings and must not become restrictive configured caps.
+
+For normal `all` discovery (manual or a queued new-route retry), spend most search effort on input:
+weight remaining wall time 8:1:1 for input/output/input-heavy combined. Keep the one-hour session,
+720-second calls, token/call envelopes, pauses and provider quotas. One fresh output example and
+one fresh input-heavy combined example replace their independent maximum searches. Omit the
+output-heavy maximum search in this profile. Explicit isolated `input`/`output` dispatches retain
+the existing full selected-axis search. The profile is an internal runner argument, not a new
+workflow input or runtime setting. Existing transport/auth/quota safety gates remain binding.
+
+Input keeps verified provider-counted passing/refused brackets and the existing two-success
+history rule. Recheck a compatible historical qualitative input refusal once after baseline
+validation before using it to finish approximate refinement. If it now passes, reopen exploration;
+if it fails without counts, retain a local estimated rejection, not a numerical provider upper.
+Report the largest confirmed passing input with its requested and actual output. Separately show
+the passing/rejected local input estimates and a clearly labelled provider-scale rejected-size
+estimate calibrated through the passing request. These estimates never enter a verified bracket,
+prove exact 0.5% convergence, write configuration, or acquire provider-canonical status. Dates and
+fixed-output controls bind those samples; incompatible route/account/parser/fixture evidence is
+excluded. A missing numerical refused cell must not be described as finding no input boundary.
+
+The fresh supporting combined example targets the confirmed passing input and uses generated
+output from the fresh output example as a generation target when available (bounded by the
+existing counterpart allowance). That choice is experimental, not a configured output limit.
+Calibrate its input reservation using fresh input evidence; use its own final provider counts
+for proof. Keep actual >= requested output with length finish for combined admission. Early
+stops remain inconclusive. An unknown output maximum does not prevent route-addition review.
+Supporting examples do not borrow old output/combined baselines or alter their proof rules.
+
+File plan: existing discovery.py, reconcile.py, issue.py, discovery/reconcile/apply tests,
+provider-catalog-reconcile.yml input-description text only, review/11, ARCHITECTURE and a changelog fragment. Advisory issue summaries may add derived input
+characterization; authenticated attempt/session artifacts are unchanged. No Worker, YAML caps,
+provider/model-specific parser, API/schema, dependency or recurring maintenance change. Acceptance
+covers weighting/call bounds, unsupported input, support failures, history reopening, cross-scope
+rejection exclusion, estimated-vs-actual reporting and preserved selected-axis search. Use the
+shared builder/interpreter/search locally via citypods-env, without Worker interaction; retain
+all successes/failures and never infer a cap from a timeout or natural stop.
+
+
+CLI review identified two valid reporting/calibration concerns. Profile labels now distinguish
+normal input-priority runs, explicit isolated-axis runs and history-only reports. Supporting
+combined checks always use verified fresh primary-input calibration, even when older combined
+measurements exist; old tiny-output controls are excluded from supporting selection. Added
+regressions, including safe rendering of edited advisory input data and a clipped 131,072-total
+example without claiming requested-output capacity. Supporting output uncertainty does not keep
+an exactly characterized input search unfinished: status can be `input_characterized` or
+`input_boundary_estimated`; estimated boundaries remain distinct from exact convergence.
+
+Local direct acceptance on NVIDIA GPT-OSS-20B completed in 13 calls: confirmed input 130,625,
+passing local estimate 134,886, nearest rejected local estimate 135,403 (calibrated estimate
+131,126; estimated gap 501 or 0.38%). Fixed requested output was 16,384; the maximum-input pass
+generated 200. The single output example generated 2,444 with `stop`. The combined example
+reported 130,463 input + 609 generated = 131,072 consumed, `length`, but had requested 2,444
+output; it is clipped evidence, not proof that the requested combination fits or a canonical cap.
+
+Kilo Liquid completed in 14 calls: confirmed input 54,420, passing local estimate 56,203, nearest
+rejected local estimate 56,464 (calibrated estimate 54,673; estimated gap 253 or 0.46%). Fixed
+requested output was 8,192; the maximum-input pass generated 3,136. Its output example filled
+8,192 with length, while combined 54,279 input / 4,175 generated stopped before the 8,192 goal.
+Its API supplied the 8,192 output starting hint; the local LiteLLM 1.83.7 exact Kilo entry was
+missing. NVIDIA's exact LiteLLM entry was also missing. Both use generic/shared parsing.
+
+The two sessions reserved 3,599,078 input and 313,740 output across 27 submissions; no Worker
+interaction, production setting, credential change or GitHub workflow dispatch. Both stopped
+at the approximate input-boundary tolerance without exhausting their 32-call per-route allowance.
+Numerical provider-counted refused bounds remain unknown. Final-code offline replay consumed
+all 27 recorded responses with exactly the same request axis/target/input/output/control and
+returned `input_boundary_estimated`; no additional quota was spent. This also verifies the final
+profile-label/calibration corrections made while the local diagnostics were running.

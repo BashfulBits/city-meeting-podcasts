@@ -29,7 +29,7 @@ on:
         default: ""
         type: string
       discovery_axis:
-        description: "Search all input/output/combined limits, or isolate input/output; bounded sessions"
+        description: "all: input search with supporting checks; input/output: isolated full search"
         required: false
         default: all
         type: choice

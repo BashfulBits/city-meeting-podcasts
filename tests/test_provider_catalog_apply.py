@@ -1056,3 +1056,56 @@ def test_rate_increase_waits_for_open_tightening_and_merged_branch_does_not_bloc
         "--force-with-lease=refs/heads/automation/provider-catalog-limits:oldsha" in c
         for c in calls
     )
+
+
+@pytest.mark.parametrize("profile", ["input_priority", "selected_axes", "history"])
+def test_input_characterization_report_separates_provider_usage_and_estimates(profile):
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "profile": profile,
+            "input_characterization": {
+                "admitted_input": 10000,
+                "admitted_local_estimate": 11000,
+                "requested_output": 2048,
+                "generated_output": 234,
+                "rejected_estimates": [
+                    {"local_input_estimate": 12100, "provider_scale_estimate": 11000}
+                ],
+            },
+        },
+    )
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+    assert "confirmed 10,000 provider-counted input" in body
+    assert "2,048 output requested and 234 generated" in body
+    assert "Passing request local input estimate: 11,000" in body
+    assert "Rejected input-size request: local estimate 12,100; approximately 11,000" in body
+    assert "not a provider-counted upper bound" in body
+    assert ("Output and combined checks are supporting examples, not maxima" in body) == (
+        profile == "input_priority"
+    )
+
+
+def test_input_priority_supporting_counts_do_not_claim_full_requested_output():
+    candidate = replace(
+        CANDIDATE,
+        discovery={
+            "profile": "input_priority",
+            "attempt_diagnostics": [
+                {
+                    "axis": "total_input_heavy",
+                    "outcome": "inconclusive",
+                    "reported_input": 130463,
+                    "reported_output": 609,
+                    "requested_output": 2444,
+                    "finish_reason_state": "length",
+                    "usage_state": "valid",
+                }
+            ],
+            "input_characterization": {"admitted_input": 130625, "rejected_estimates": 42},
+        },
+    )
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+    assert "reported input 130,463, generated output 609, requested output 2,444" in body
+    assert "input plus generated output 131,072" in body
+    assert "Consumed totals are separate from requested-output capacity proof" in body
