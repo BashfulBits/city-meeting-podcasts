@@ -289,9 +289,14 @@ def structural_recovery_context(
     Quota balances and pauses are deliberately absent from this lineage fingerprint.
     """
     models = tuple(dict.fromkeys((policy.allowed_models or ()) + policy.backup_models))
+    allowed_route_ids = (
+        set(policy.allowed_route_ids) if policy.allowed_route_ids is not None else None
+    )
     generations = {}
     for model in models:
         for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            if allowed_route_ids is not None and route.route_id not in allowed_route_ids:
+                continue
             if not policy.allow_paid and not route.free:
                 continue
             if route.experimental and not policy.allow_experimental:
@@ -321,6 +326,9 @@ def structural_recovery_context(
             generations[route.route_id or route.model] = digest
     return {
         "models": list(models),
+        "allowed_route_ids": list(policy.allowed_route_ids)
+        if policy.allowed_route_ids is not None
+        else None,
         "allow_paid": policy.allow_paid,
         "input_estimate": input_estimate,
         "output_budget": output_budget,

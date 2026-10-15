@@ -1172,6 +1172,30 @@ test("enqueueBatch rejects a model its lane does not declare", async () => {
   assert.equal(sched.ingress_write_units_today, 4, "only the admitted job may be charged");
 });
 
+test("enqueueBatch rejects a physical route pin outside the declared model pool", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_MODELS,
+  });
+  const job = laneModelJob("j-wrong-route-pin", "topic-tags:tagger", [
+    "gemini/gemini-3.1-flash-lite",
+  ]);
+  job.policy_json = JSON.stringify({
+    purpose: "topic-tags:tagger",
+    allowed_models: ["gemini/gemini-3.1-flash-lite"],
+    allowed_route_ids: ["nvidia_kimi_k3_free"],
+  });
+
+  const res = await coordinator.enqueueBatch([job]);
+
+  assert.deepEqual(res.rejected, [{
+    id: "j-wrong-route-pin",
+    reason: "route_id_not_in_model_pool",
+    route_ids: ["nvidia_kimi_k3_free"],
+  }]);
+  assert.equal([...sql.exec("SELECT id FROM jobs")].length, 0);
+});
+
 test("a lane that declares no models constrains no route", async () => {
   // The env override exists so an operator can reshape budgets without a redeploy; it need not
   // restate route lists, and an absent `models` must never read as "no route is allowed" -- that

@@ -58,6 +58,53 @@ test("paused rpd:0 routes are excluded before free/paid admission", () => {
   );
 });
 
+test("allowed_route_ids narrows a multi-provider model pool to the pinned physical route", () => {
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["beatapi_deepseek_v4_1_flash_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(
+    routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
+    ["beatapi_deepseek_v4_1_flash_free"],
+  );
+});
+
+test("allowed_route_ids cannot widen a model pool or fall back when its pin is invalid", () => {
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["nvidia_kimi_k3_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(routesEligibleFor(job, DISPATCH_LIMITS), []);
+});
+
+test("an unavailable pinned route does not fall back to another route in its model pool", () => {
+  const catalog = structuredClone(DISPATCH_LIMITS);
+  catalog.routes_by_id.beatapi_deepseek_v4_1_flash_free.rpd = 0;
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["beatapi_deepseek_v4_1_flash_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(routesEligibleFor(job, catalog), []);
+});
+
 // --- backupModelsActive / modelsForJob -------------------------------------------------------
 
 const AGENDA_POLICY = {

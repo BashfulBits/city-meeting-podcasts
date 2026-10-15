@@ -62,6 +62,8 @@ class LLMRequestPolicy:
     # dispatch has no equivalent persistent counter today and ignores these fields.
     backup_models: tuple[str, ...] = ()
     backup_after_attempts: int | None = None
+    # Optional Worker-side narrowing within allowed_models. Exact route IDs never add routes and
+    # remain a hard constraint even when backup_models become active.
     allowed_route_ids: tuple[str, ...] | None = None
 
 

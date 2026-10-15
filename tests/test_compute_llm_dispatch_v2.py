@@ -2247,6 +2247,28 @@ def test_queue_input_estimate_includes_response_schema():
     assert context["input_identity"] == submitted["request_digest"]
 
 
+def test_structural_recovery_context_tracks_only_the_pinned_physical_route():
+    route_id = "beatapi_deepseek_v4_1_flash_free"
+    request = InferenceJob(
+        task="tag",
+        recipe_hash="p3-pinned-route",
+        inputs={
+            "messages": [{"role": "user", "content": "evidence"}],
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("deepseek/deepseek-v4.1-flash",),
+                allowed_route_ids=(route_id,),
+                queue_only=True,
+            ),
+        },
+    )
+    backend = LiteLLMBackend(LLMBackendConfig())
+
+    context = backend._structural_recovery_context(request)
+
+    assert context["allowed_route_ids"] == [route_id]
+    assert set(context["route_generations"]) == {route_id}
+
+
 def test_structural_generation_retry_uses_new_idempotency_and_cannot_loop(monkeypatch):
     from dataclasses import replace
 

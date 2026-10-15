@@ -18,6 +18,8 @@ from citypods.compute.llm import (
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
+    _dispatch_policy_json_payload,
+    _dispatch_request_digest,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -1606,18 +1608,46 @@ def test_explicit_unsupported_effort_never_calls_provider():
         backend._provider_options(job(reasoning_level="high"), route.model, route=route)
 
 
-@pytest.mark.parametrize("queue_only", [False, True])
-def test_dispatch_allowlist_rejected_before_storage_or_calls(queue_only):
+def test_physical_route_allowlist_requires_worker_queue():
     backend = LiteLLMBackend(LLMBackendConfig())
     policy = LLMRequestPolicy(
-        allowed_route_ids=("physical",), queue_only=queue_only, require_direct=True
+        allowed_route_ids=("physical",), queue_only=False, require_direct=True
     )
     with pytest.raises(ValueError, match="requires run_immediate"):
         backend.run_inference(
             job(messages=[{"role": "user", "content": "evidence"}], llm_policy=policy)
         )
-    with pytest.raises(ValueError, match="dispatch cannot"):
+    with pytest.raises(ValueError, match="requires queue_only dispatch"):
         backend.enqueue_batch([job(llm_policy=policy)])
+
+
+def test_queue_payload_carries_physical_route_allowlist():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    policy = LLMRequestPolicy(
+        allowed_models=("deepseek/deepseek-v4.1-flash",),
+        allowed_route_ids=("beatapi_deepseek_v4_1_flash_free",),
+        queue_only=True,
+    )
+    payload = backend._payload(
+        job(messages=[{"role": "user", "content": "evidence"}]),
+        resolved_model="deepseek/deepseek-v4.1-flash",
+        policy=policy,
+        schema_only=True,
+    )
+
+    assert payload["allowed_models"] == ["deepseek/deepseek-v4.1-flash"]
+    assert payload["allowed_route_ids"] == ["beatapi_deepseek_v4_1_flash_free"]
+
+    coordinator_policy = _dispatch_policy_json_payload(policy, ["deepseek/deepseek-v4.1-flash"])
+    assert coordinator_policy["allowed_route_ids"] == ["beatapi_deepseek_v4_1_flash_free"]
+    assert _dispatch_request_digest(payload, policy) != _dispatch_request_digest(
+        payload,
+        LLMRequestPolicy(
+            allowed_models=("deepseek/deepseek-v4.1-flash",),
+            allowed_route_ids=("nvidia_deepseek_v4_1_flash_free",),
+            queue_only=True,
+        ),
+    )
 
 
 @pytest.mark.parametrize("policy", [None, LLMRequestPolicy(require_direct=True)])

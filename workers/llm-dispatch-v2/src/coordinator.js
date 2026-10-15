@@ -25,6 +25,7 @@ import {
   modelForRouteId,
   modelsForJob,
   routeFitsContext,
+  routeIdsOutsideModelPool,
   routesEligibleFor,
 } from "./routes.js";
 import {
@@ -2524,6 +2525,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
               ingressReservations[purpose],
               dispatchLimits
             );
+            const invalidSupersedeRoutePins = routeIdsOutsideModelPool(
+              { ...job, policy_json: policyJson }, dispatchLimits
+            );
+            if (invalidSupersedeRoutePins.length > 0) {
+              rejected.push({
+                id: job.id,
+                reason: "route_id_not_in_model_pool",
+                route_ids: invalidSupersedeRoutePins,
+              });
+              continue;
+            }
             if (supersedeOffenders.length > 0) {
               rejected.push({
                 id: job.id,
@@ -2659,6 +2671,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           reservation,
           dispatchLimits
         );
+        const invalidRoutePins = routeIdsOutsideModelPool(
+          { ...job, policy_json: policyJson }, dispatchLimits
+        );
+        if (invalidRoutePins.length > 0) {
+          rejected.push({
+            id: job.id,
+            reason: "route_id_not_in_model_pool",
+            route_ids: invalidRoutePins,
+          });
+          continue;
+        }
         if (offendingModels.length > 0) {
           rejected.push({
             id: job.id,

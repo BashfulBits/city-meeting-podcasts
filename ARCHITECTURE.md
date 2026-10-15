@@ -1073,7 +1073,10 @@ therefore fails closed. A future trusted dispatch integration must supply valida
 admissions and remains separate from this report-only replay tool.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
-substitution. Only `run_immediate` accepts this gate; deferred and dispatch requests reject it.
+substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same
+allowlist in `policy_json`, where the Worker intersects it with the permitted logical models and
+live route catalog. A pin only narrows eligible routes; if it is unavailable, the job waits rather
+than falling back to another provider. Requests without a physical pin retain existing routing.
 Synchronous `JobResult` adds selected route/upstream/parameter provenance and reports reasoning
 effort only when the route applied its controls; evaluation also validates returned model identity.
 Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared
