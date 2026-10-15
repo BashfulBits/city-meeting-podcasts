@@ -2014,6 +2014,33 @@ discrepancies request provider re-check and an explicit maintainer choice. A mai
 the empirically proposed operational cap based on provider data. Do not treat an entered value as
 provider-canonical unless its source and exact applicable scope are supplied.
 
+**New-provider onboarding requirement (maintainer decision, 2026-10-15).** Before adding a newly
+onboarded provider's free route to `config/provider_limits.yml`, run this request-cap suite on the
+exact free physical route as part of its reachability verification. Use the shared or provider-level
+parser path, not model-specific parsing. Include the route's published/API/LiteLLM starting hints,
+verified admitted sizes, any typed refusals, estimated rejected sizes, provider-count basis, and
+unsupported or inconclusive axes in the route-addition issue.
+
+The route-addition PR must carry the suite's evidence into the proposed route values. Use the largest
+verified admitted size only for the dimension and request shape it proves; a calibrated rejected-size
+estimate is useful for reporting/refinement but is not an exact refused count or a provider limit. A
+natural output stop, clipped combined response, missing usage, or unsupported parser cannot supply a
+verified cap. When an axis remains unresolved, retain the provider's sourced claim separately and
+ask the maintainer to provide/approve a value or select `test again`; do not silently substitute the
+claim for an empirical result. If the config schema cannot faithfully express a discovered combined
+constraint, defer that route addition until the schema or an explicit reviewed override can represent
+it. This gate applies to new free-route additions; it does not start recurring calibration of already
+configured routes (deferred to #2264).
+
+**Implementation gap.** The shipped discovery flow reports request-cap observations separately from
+`RouteEvidence`; current `/apply` builds route context values from catalog evidence and does not yet
+project the authenticated discovery history into the addition PR. The onboarding requirement is not
+complete until the candidate decision is bound to compatible authenticated discovery evidence and
+the resulting dimension-specific values (including their count basis and any provider/local estimate
+conversion) are included in the proposed route configuration. Add regression coverage for stale,
+missing, mismatched and partial evidence. No route cap is published automatically. Track this follow-up
+under #2271; unresolved combined-cap representation remains a design dependency where applicable.
+
 **Probe axes.** Seek at least one verified admitted size and one typed too-large size on each
 axis. For input, hold output reservation and task fixed and verify input processing. For output,
 hold small input fixed and use actual generated output plus finish reason; accepting an output

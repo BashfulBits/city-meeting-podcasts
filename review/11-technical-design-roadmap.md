@@ -1890,9 +1890,10 @@ The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city
 and report/retry/workflow integration shipped in [PR #2275](https://github.com/BashfulBits/city-meeting-podcasts/pull/2275).
 New reachable candidates receive bounded size discovery, the issue reports source claims and
 measured brackets, and an authorized `/apply` can queue an authenticated next-day retry without
-provider calls. Pure adapter tests cover supported axes; unsupported refusal/combined semantics
-remain explicit. Broad scheduled discovery remains disabled pending review of successful first-route
-evidence.
+provider calls. Before a new provider's free route is added, §8.13 requires this suite's evidence to
+inform the proposed route values; unresolved axes need sourced maintainer input or `test again`.
+Pure adapter tests cover supported axes; unsupported refusal/combined semantics remain explicit.
+Broad scheduled discovery remains disabled pending review of successful first-route evidence.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 
