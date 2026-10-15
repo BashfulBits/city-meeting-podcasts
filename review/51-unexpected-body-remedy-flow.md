@@ -1,9 +1,8 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evidence accepted for implementation; P2/P3 GitHub handoff in progress;
-route activation and P4–P5 remain gated.**
-**Revised:** 2026-10-15 after the daily caller (#2447) and bounded publication/P2 command handoff
-were added in PR #2449.
+**Status: P0 complete; P1 evidence accepted; P2/P3 implementation shipped in #2444, #2447, and
+#2449; runtime route admission/activation and P4–P5 remain gated.**
+**Revised:** 2026-10-15 after PR #2449 merged and the evaluated P3 model parameters were recorded.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -1397,6 +1396,37 @@ Worker and JEV adapter. This changes the implementation gate only; runtime verif
 physical route, serving identity, reasoning controls, and current admission remains required. The
 production remedy configuration remains shadowed until those checks pass.
 
+**P3 evaluated model parameters (maintainer direction, 2026-10-15):** use the parameters recorded
+by the approved evaluation artifacts as the comparison baseline; do not invent a higher reasoning
+setting or require another broad model comparison. The three chat-completion routes were evaluated
+with `reasoning: provider-default`, a 900-second request timeout, a 950-second per-case deadline,
+and a 16,384-token output cap. No temperature override was recorded, so it remained at the
+provider default. The evaluated physical/upstream identities are:
+
+* Initial Sol: `beatapi_gpt_6_1_sol_free` → `gpt-6.1-sol-free`;
+  provider-default reasoning.
+* Initial GLM Flash: `orcarouter_zai_glm_5_3_flash_free` →
+  `z-ai/glm-5.3-flash-free`; provider-default reasoning.
+* DeepSeek adjudicator: `beatapi_deepseek_v4_1_flash_free` →
+  `deepseek-v4.1-flash-free`; provider-default reasoning.
+
+The 60-recording prompt comparison contains 180 completed observations per route, covering the
+three prompt recipes; the eight-case expanded-context diagnostic adds eight completed DeepSeek
+observations. See `evals/remedy/results/prompt-comparison-2026-10-14/` and
+`evals/remedy/results/disagreement-2026-10-14/`. These values describe the tested settings, not a
+claim that provider-default is a named high/max effort mode. JEV's eight successful observations
+came from the approved existing local pilot after Worker payload uploads failed. They establish
+the diagnostic response only: those records do not persist equivalent reasoning, timeout, or output
+cap controls and do not qualify JEV's production Worker route parameters.
+
+There is an implementation mismatch to close before runtime activation: `AdmissionEntry` currently
+requires a named reasoning level (`minimal` through `max`) and the P3 caller validates that level,
+while the accepted Sol, GLM Flash, and DeepSeek evidence records `provider-default`. Preserve the
+current shadow/empty-admission behavior until the admission contract and route configuration can
+represent and verify the documented setting, and JEV's exact Worker-served identity and effective
+parameters are recorded. Do not silently substitute high/max or infer JEV controls from its local
+pilot.
+
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
 audit is already daily, while review/49's weekly judge audit is a separate workflow and keeps its
@@ -1524,7 +1554,8 @@ outcome is appended under the remedy lease. Evidence freshness is measured from 
 and stale submissions tell maintainers to wait for refreshed evidence. Model votes remain in the
 P3 observation log and never become P2 decisions.
 
-PR #2449 implements bounded GitHub publication and the P2 issue-command handoff. A separate,
+PR #2449 (merged 2026-10-15) implements bounded GitHub publication and the P2 issue-command
+handoff. A separate,
 least-privileged publisher job receives only the current run's short-retention report/evidence
 artifact and can create proposal PRs only from the revalidated mutation plan and
 human-disposition issues with stable finding/evidence keys; issue refresh preserves maintainer notes
@@ -1535,8 +1566,9 @@ additive `feed_dispositions` field and retain their prior event IDs. Proposal PR
 human-reviewed; terminal human dispositions close the issue, while a future-evidence hold remains
 open and its checked hold is preserved across ledger-parent refreshes. No publisher merges or writes
 feed files directly on main. Runtime activation
-remains separately gated on exact route admissions, serving identity, and verified reasoning
-controls. A monitored authorized production cycle remains the final operational completion check.
+remains separately gated on exact route admissions, serving identity, and the evaluated request
+parameters documented above. A monitored authorized production cycle remains the final operational
+completion check.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
