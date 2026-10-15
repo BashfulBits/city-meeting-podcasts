@@ -398,7 +398,11 @@ class Settlement:
 
 def settle(state: AuditState, now: datetime, *, force: bool = False) -> list[Settlement]:
     """Settle every open batch old enough: keep a task's labels, or discard them when more than
-    30% of its answers were Uncertain (and shrink its next batch)."""
+    30% of its answers were Uncertain (and shrink its next batch).
+
+    Ingest runs in another workflow, so an answer can land while a batch settles. It is stored and
+    later imported all the same (import reads every answer of a finalized batch); at worst the 30%
+    tally of that one week missed it."""
     results: list[Settlement] = []
     for name, batch in sorted(state.batches.items()):
         if batch.get("status", "open") != "open":

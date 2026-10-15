@@ -64,7 +64,8 @@ jobs:
           ENTRY: ${{ steps.promote.outputs.entry }}
         run: |
           set -euo pipefail
-          branch="chore/judge-gold-${ENTRY}"
+          # The run id keeps a re-promotion after a closed, undeleted PR from colliding with it.
+          branch="chore/judge-gold-${ENTRY}-${GITHUB_RUN_ID}"
           git config user.name "citypods-judge-audit[bot]"
           git config user.email "citypods-judge-audit@users.noreply.github.com"
           git switch -c "$branch"

@@ -1610,6 +1610,8 @@ def test_gold_lists_start_empty_and_validate_strictly():
             parse_probes(spec, [bad])
     with pytest.raises(ValueError):
         parse_probes(spec, [good, good])  # a repeated id
+    with pytest.raises(ValueError, match="must start with moment-"):
+        parse_probes(task("moment"), [{**good, "question_id": "supported"}])  # another task's id
     with pytest.raises(ValueError):
         parse_probes(task("moment"), [{**good, "question_id": "usefulness"}])  # not binary
     assert not gating(_probes(*[True] * (GATING_ITEMS - 1))) and gating(_probes(*[True] * 20))

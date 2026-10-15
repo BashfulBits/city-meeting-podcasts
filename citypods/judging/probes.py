@@ -64,6 +64,10 @@ def parse_probes(task: TaskSpec, rows: Any) -> list[Probe]:
         ident = str(row.get("id") or "")
         if not _ID.fullmatch(ident) or ident in seen:
             raise ValueError(f"gold id {ident!r} is missing, malformed or repeated")
+        if not ident.startswith(f"{task.name}-"):
+            # Ids are one namespace in the report and the ledger (`probe:<id>`): a tag probe and a
+            # moment probe must never share one, so each task's ids carry its name.
+            raise ValueError(f"gold id {ident!r} must start with {task.name}-")
         seen.add(ident)
         question = next((q for q in task.questions if q.id == row.get("question_id")), None)
         if question is None or question.kind not in ("validate", "gate"):
