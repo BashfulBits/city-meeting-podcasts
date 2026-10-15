@@ -70,6 +70,49 @@ def test_identity_and_time_come_from_verified_comment():
     assert result.recording_refs[0].uid == "original UID"
 
 
+def test_feed_checkboxes_are_bound_to_the_issue_and_persisted_as_typed_choices():
+    action, context = inputs(state="covered", disposition="assigned")
+    action["feed_dispositions"] = [
+        {"feed_slug": "test-city-council", "disposition": "include"},
+        {"feed_slug": "test-city-library-board", "disposition": "exclude"},
+    ]
+    context["comment"]["body"] = COMMAND + json.dumps(action)
+    context["issue_number"] = 1
+    binding = {
+        "city": action["city"],
+        "source_key": action["source_key"],
+        "policy_id": action["policy_id"],
+        "normalized_label": action["normalized_label"],
+        "decision_id": action["decision_id"],
+        "evidence_hash": action["evidence_hash"],
+        "config_hash": action["config_hash"],
+        "policy_hash": action["policy_hash"],
+        "recording_refs": action["recording_refs"],
+        "expected_parent_event_ids": action["expected_parent_event_ids"],
+        "observed_at": "2026-10-10T00:00:00Z",
+        "feed_slugs": ["test-city-council", "test-city-library-board"],
+    }
+    context["issue_body"] = (
+        "<!-- citypods:remedy-p3:binding="
+        + json.dumps(binding, sort_keys=True, separators=(",", ":"))
+        + " -->\n"
+        "- [x] Include `test-city-council`\n"
+        "- [ ] Exclude `test-city-council`\n"
+        "- [ ] Include `test-city-library-board`\n"
+        "- [x] Exclude `test-city-library-board`\n"
+        "- [ ] No feed assignment\n"
+        "- [ ] Hold for future evidence\n"
+    )
+    result = validate_decision_action(action, **context)
+    assert [item.disposition for item in result.feed_dispositions] == ["include", "exclude"]
+
+    context["issue_body"] = context["issue_body"].replace(
+        "[x] Exclude `test-city-library-board`", "[ ] Exclude `test-city-library-board`"
+    )
+    with pytest.raises(ValueError, match="checkbox"):
+        validate_decision_action(action, **context)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

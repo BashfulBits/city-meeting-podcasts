@@ -27,7 +27,6 @@ import itertools
 import json
 import re
 import subprocess
-import textwrap
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -403,7 +402,7 @@ def format_p3_manual_issue(
         f"Policy SHA-256: `{decision.policy_hash}`\n\n"
         f"Reason: {html.escape(decision.reason)}\n\n"
         "Evidence summary (quoted as data):\n\n"
-        f"{textwrap.indent(evidence_markdown.strip(), '    ', predicate=lambda _: True)}\n\n"
+        f"<pre>{html.escape(evidence_markdown.strip())}</pre>\n\n"
         "## Feed-by-feed disposition\n\n"
         + ("".join(rows) if rows else "No candidate feeds were supplied.\n\n")
         + "## Overall disposition\n\n"

@@ -1,9 +1,9 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evidence accepted for implementation; P2 integration and P3 daily
-Worker caller are in progress; route activation and P4–P5 remain gated.**
-**Revised:** 2026-10-15 after the P3 daily caller and append-only observation log were added in
-PR #2447.
+**Status: P0 complete; P1 evidence accepted for implementation; P2/P3 GitHub handoff in progress;
+route activation and P4–P5 remain gated.**
+**Revised:** 2026-10-15 after the daily caller (#2447) and bounded publication/P2 command handoff
+were added in PR #2449.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -1445,11 +1445,10 @@ malformed choices or probabilities remain raw evidence and resolve to the manual
 The merged scheduled caller writes an exclusive Actions report artifact and has no feed-file,
 GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed or
 exact route admissions/effort controls fail validation. P1 acceptance removes the need for another
-comparison; it does not establish unobserved serving-family identity or effort controls. Remaining
-P3 implementation is the bounded proposal/issue publisher and the P2 human-disposition command that
-records issue outcomes through the append-only ledger. After those ship, the schedule still needs an
-authorized runtime admission and a monitored end-to-end cycle before P3 is operationally complete.
-No provider calls were made by PR #2447.
+comparison; it does not establish unobserved serving-family identity or effort controls. PR #2449
+implements the bounded proposal/issue publisher and P2 human-disposition command. After that PR
+merges, P3 implementation is complete; operational completion still requires authorized runtime
+admissions and a monitored end-to-end cycle. No provider calls were made by PR #2447 or #2449.
 
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
@@ -1516,14 +1515,24 @@ source evidence hash, recomputes the consensus from route-bound votes using trus
 admissions, resolves episode IDs locally, and re-runs `validate_proposals` against the current feed
 catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
 and create a human-review PR; it must never push to main or merge. Manual issues must preserve the
-per-feed options and provide a structured `/citypods-decision` action. The issue command must
+per-feed options and provide a structured `/body-disposition` action. The issue command must
 authenticate a repository writer, bind the action to the exact issue/evidence and current ledger
 parents, and use `record_decision_action` so the human outcome is appended under the remedy lease.
 Model votes remain in the P3 observation log and never become P2 decisions.
 
-The remaining production integration is bounded GitHub publication and its P2 issue-command
-handoff. Runtime activation remains separately gated on exact route admissions, serving identity,
-and verified reasoning controls.
+PR #2449 implements bounded GitHub publication and the P2 issue-command handoff. A separate,
+least-privileged publisher job receives only the current run's short-retention report/evidence
+artifact and can create proposal PRs only from the revalidated mutation plan and
+human-disposition issues with stable finding/evidence keys; issue refresh preserves maintainer notes
+and checked choices only while the evidence binding is unchanged. `/body-disposition` reuses the
+existing issue-comment permission check and command recorder, validates every candidate feed
+checkbox, and appends typed include/exclude choices under the remedy lease. Legacy events omit the
+additive `feed_dispositions` field and retain their prior event IDs. Proposal PRs remain
+human-reviewed; terminal human dispositions close the issue, while a future-evidence hold remains
+open and its checked hold is preserved across ledger-parent refreshes. No publisher merges or writes
+feed files directly on main. Runtime activation
+remains separately gated on exact route admissions, serving identity, and verified reasoning
+controls. A monitored authorized production cycle remains the final operational completion check.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
@@ -3424,7 +3433,7 @@ Verify reports on frozen local fixtures before proposing any scheduled alert act
 
 #### P2c2b exact callable contract, approved transport
 
-Command body is exactly `/citypods-decision` followed by a newline and one JSON object containing
+Command body is exactly `/body-disposition` followed by a newline and one JSON object containing
 only the action fields listed above. Reject duplicate JSON keys. No free-form prose parsing.
 The action field `expected_parent_event_ids` becomes the existing event parent list. Provenance is
 empty for a human-only action. `reopen` must use proposed state and null disposition; a terminal

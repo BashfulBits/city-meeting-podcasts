@@ -1082,11 +1082,15 @@ shipped in PR #2447: it submits or reconciles stable recipe hashes, pins all fou
 routes, validates completed route identity, and emits report artifacts without activating the
 current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
 Deployment remains fail-closed until exact routes have valid runtime admissions and reasoning
-controls; the P1 evidence decision allowed implementation, not activation. The daily caller emits
-Actions report artifacts only. `citypods.remedy_p3_publication` re-resolves a consensus candidate
-against current source evidence and the existing feed validator before a future publisher can
-apply it. Automated GitHub proposal/issue publication and the P2 human-disposition command remain
-unfinished. No P3 calls are enabled by the repository's current shadow configuration.
+controls; the P1 evidence decision allowed implementation, not activation. A separate, write-scoped
+daily publisher job creates human-review proposal PRs from the revalidated mutation plan or
+reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
+choices forward only when the evidence binding is unchanged. `/body-disposition` reuses the
+existing current-writer permission check and P2 ledger append path; per-feed include/exclude choices
+are stored as an additive typed event field under the remedy lease. Old events omit that field and
+retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence
+hold stays open. The publisher does not merge PRs or write feed configuration on main. No P3 calls
+or publication are enabled by the repository's current shadow configuration.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same

@@ -1507,7 +1507,7 @@ def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
     assert "No feed assignment" in body
     assert "Hold for future evidence" in body
     assert "&lt;b&gt;Library&lt;/b&gt;" in body
-    assert "    ## Evidence\n    \n    Locally prepared source summary." in body
+    assert "<pre>## Evidence\n\nLocally prepared source summary.</pre>" in body
 
     with pytest.raises(ValueError, match="invalid candidate feed slug"):
         format_p3_manual_issue(

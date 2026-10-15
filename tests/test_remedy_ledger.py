@@ -98,6 +98,39 @@ def test_assignment_requires_recording_and_approval():
     assert fold_events([parsed]).state == "covered"
 
 
+def test_typed_feed_dispositions_are_validated_and_legacy_events_stay_unchanged():
+    legacy = event()
+    assert "feed_dispositions" not in parse_event(legacy).payload()
+    payload = event(
+        state="covered",
+        disposition="assigned",
+        feed_dispositions=[
+            {"feed_slug": "test-council", "disposition": "include"},
+            {"feed_slug": "test-library", "disposition": "exclude"},
+        ],
+    )
+    parsed = parse_event(payload)
+    assert [item.disposition for item in parsed.feed_dispositions] == ["include", "exclude"]
+    assert parse_event(parsed.payload()) == parsed
+
+    for invalid in (
+        [{"feed_slug": "../council", "disposition": "include"}],
+        [{"feed_slug": "test-council", "disposition": "possible"}],
+        [
+            {"feed_slug": "test-council", "disposition": "include"},
+            {"feed_slug": "test-council", "disposition": "exclude"},
+        ],
+    ):
+        bad = event(feed_dispositions=invalid)
+        with pytest.raises(ValueError, match="feed_dispositions"):
+            parse_event(bad)
+
+    hold = parse_event(event(state="blocked", disposition="watch", feed_dispositions=[]))
+    assert hold.feed_dispositions == ()
+    with pytest.raises(ValueError, match="feed_dispositions"):
+        parse_event(event(state="covered", disposition="assigned", feed_dispositions=[]))
+
+
 def test_optional_uid_and_provenance():
     p = event(
         recording_refs=[dict(source_key="source-a", uid=None, provider_guid="original")],
