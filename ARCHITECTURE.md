@@ -280,6 +280,14 @@ is based on completed responses and consistent provider usage.
 Sentinel accuracy is separately reported as a retrieval/truncation warning. Configured-route
 calibration retains its sentinel proof gate. Manual discovery can select all, input or output;
 output-only selection resumes compatible history in its own existing bounded session.
+For newly discovered route proposals, `/apply` accepts only fresh authenticated provider-counted
+input evidence. The largest admitted input becomes `hard_input_ceiling`; `input_context_limit` is
+proposed at least as large as both the published context claim and the admitted input plus actual
+generated output. YAML comments and the PR retain the claim and source for comparison. Estimated
+refusals are not promoted to caps, and missing provider/catalog and LiteLLM output-context values
+defer the addition for maintainer input. A cap offer also requires compatible admitted-input
+evidence from one successful authenticated discovery run; onboarding does not re-probe the route
+weekly. The issue and addition PR retain the evidence provenance for maintainer review.
 Discovery output can opt into a documented minimum-generation parameter for a verified
 endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is the initial opt-in;
 other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum

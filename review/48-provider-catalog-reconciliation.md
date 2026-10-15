@@ -2280,6 +2280,23 @@ from measurements. Missing quotas and explicit overrides require maintainer revi
 published automatically. Output/combined observations are diagnostic only and do not gate the
 addition. Configured-route recurring measurement is deferred to #2264.
 
+For a new route with fresh authenticated input evidence, `/apply` proposes `hard_input_ceiling` at
+the largest provider-counted admitted input. It proposes `input_context_limit` at least as large as
+the published provider/catalog claim and the admitted input plus actual generated output from that
+same request. The addition PR and YAML comments preserve the provider claim and source so a
+maintainer can review a discrepancy before merge. Estimated refusal sizes never become caps. The
+separate `output_context_limit` comes from provider/catalog or LiteLLM claims; if neither exists,
+`/apply` defers for maintainer input.
+
+One successful authenticated discovery run is sufficient to offer the cap. This is one-time
+onboarding, not a weekly re-probe of configured routes. `/apply` reauthenticates the run and
+artifact and requires the exact observation digest and matching route, parser, fixture, control,
+and count basis. Partial, failed, stale or mismatched history cannot authorize a cap. The
+`input_context_limit` is the combined request window, not a promise that maximum input and maximum
+output fit together; direct and Worker dispatch limit output by both `output_context_limit` and the
+window remaining after input. Do not inflate the window to the sum of separate maxima without
+evidence for that larger combined request.
+
 #### 8.13.5 Live activation — automatic weekly input discovery
 
 The automatic weekly activation runs only for newly found routes that are free, unconfigured,

@@ -461,6 +461,60 @@ def render_body(
                 ]
             primary = result.get("input_characterization")
             if isinstance(primary, dict) and primary.get("admitted_input"):
+                input_axis = next(
+                    (
+                        row
+                        for row in result.get("axes", [])
+                        if isinstance(row, dict) and row.get("axis") == "input"
+                    ),
+                    {},
+                )
+                admitted = primary.get("admitted_input")
+                generated = primary.get("generated_output")
+                claim = input_axis.get("published")
+                if (
+                    type(admitted) is int
+                    and admitted > 0
+                    and type(generated) is int
+                    and generated >= 0
+                    and primary.get("count_basis") == input_axis.get("count_basis")
+                    and primary.get("control") == input_axis.get("control")
+                ):
+                    claim_value = claim if type(claim) is int and claim > 0 else 0
+                    operational_window = max(claim_value, admitted + generated)
+                    claim_label = _discovery_count(claim) if type(claim) is int else "not published"
+                    output_claim = next(
+                        (
+                            row.get("published")
+                            for row in result.get("axes", [])
+                            if isinstance(row, dict) and row.get("axis") == "output"
+                        ),
+                        None,
+                    )
+                    if not output_claim and isinstance(hints, dict):
+                        output_claim = hints.get("output")
+                    output_label = (
+                        _discovery_count(output_claim)
+                        if type(output_claim) is int and output_claim > 0
+                        else "not published"
+                    )
+                    lines += [
+                        "**Proposed route values if you select add:** "
+                        f"`hard_input_ceiling` = {_discovery_count(admitted)} provider-counted "
+                        "input (verified admitted value); "
+                        f"`input_context_limit` = {_discovery_count(operational_window)} "
+                        f"(max of provider claim {claim_label} and the admitted input plus "
+                        f"{_discovery_count(generated)} actually generated output).",
+                        "The provider claim and source are preserved in route YAML comments. "
+                        "Output/combined probe results do not set caps; the route's separate "
+                        "`output_context_limit` comes from a provider/catalog or LiteLLM claim "
+                        "and stays visible for review. If neither exists, `/apply` defers for "
+                        "a maintainer-entered value.",
+                        f"Proposed `output_context_limit`: {output_label}.",
+                        "This proposal uses one successful authenticated discovery run; the "
+                        "addition remains subject to maintainer review.",
+                        "",
+                    ]
                 lines += [
                     "**Primary input characterization:** confirmed "
                     f"{_discovery_count(primary.get('admitted_input'))} provider-counted input "

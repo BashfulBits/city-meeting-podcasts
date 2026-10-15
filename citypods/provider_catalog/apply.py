@@ -40,6 +40,7 @@ class Decision:
     offered_lanes: tuple[str, ...] = ()
     route_id: str | None = None
     route_digest: str | None = None
+    discovery_digest: str | None = None
 
     @property
     def key(self):
@@ -68,6 +69,8 @@ class EditPlan:
     context_changes: tuple = ()
     # route ID, exact account, repeated verdict, HTTP status, and independent check timestamp.
     removal_confirmations: tuple[tuple[str, str, str, int, str], ...] = ()
+    # Route ID and safe, review-visible input-cap evidence notes for YAML and PR text.
+    route_notes: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,13 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
             for x in selected
             if x.startswith("add as backup to `")
         )
+        discovery_digest = None
+        if not ignore and candidate.discovery:
+            input_evidence = candidate.discovery.get("input_characterization")
+            if isinstance(input_evidence, Mapping):
+                stamp = input_evidence.get("evidence_digest")
+                if isinstance(stamp, str) and re.fullmatch(r"[a-f0-9]{64}", stamp):
+                    discovery_digest = stamp
         result.append(
             Decision(
                 candidate.provider,
@@ -127,6 +137,7 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
                 evidence,
                 candidate.evidence_digest,
                 candidate.lanes,
+                discovery_digest=discovery_digest,
             )
         )
     for anomaly in snapshot.anomalies:
@@ -183,6 +194,7 @@ def paid_fulfilled(decision: Decision, config: ApplyConfig) -> bool:
 def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyConfig) -> EditPlan:
     candidates = {c.key: c for c in report.candidates}
     routes, backups, ignored, applied, deferred, rejected = [], [], [], [], [], []
+    route_notes = []
     existing = list(config.limits.get("routes") or [])
     paid_routes, acknowledged = [], []
     anomalies = {a.route_id: a for a in report.anomalies}
@@ -345,8 +357,39 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             if not proof.model_key:
                 deferred.append(f"{decision.key}: identity_required; review a manual mapping")
                 continue
-            if not proof.input_context_limit or not proof.output_context_limit:
-                deferred.append(f"{decision.key}: compiler requires both evidenced context bounds")
+            discovery = current.discovery if current else None
+            cap = _verified_input_cap(discovery)
+            if (
+                not cap
+                or not decision.discovery_digest
+                or cap["evidence_digest"] != decision.discovery_digest
+            ):
+                deferred.append(
+                    f"{decision.key}: fresh authenticated provider-counted input evidence "
+                    "required; refresh the issue"
+                )
+                continue
+            litellm = discovery.get("litellm") if isinstance(discovery, Mapping) else None
+            litellm_output = litellm.get("output") if isinstance(litellm, Mapping) else None
+            provider_context_claim = (
+                proof.input_context_limit
+                if type(proof.input_context_limit) is int and proof.input_context_limit > 0
+                else None
+            )
+            provider_output_claim = (
+                proof.output_context_limit
+                if type(proof.output_context_limit) is int and proof.output_context_limit > 0
+                else None
+            )
+            output_context_limit = provider_output_claim or (
+                litellm_output if type(litellm_output) is int and litellm_output > 0 else None
+            )
+            if not output_context_limit:
+                deferred.append(
+                    f"{decision.key}: route config requires an output-context value; "
+                    "provider/catalog and LiteLLM claims are unavailable, enter a reviewed "
+                    "operational value before adding the route"
+                )
                 continue
             model_key = proof.model_key
             account = proof.account_id
@@ -363,7 +406,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 "provider": decision.provider,
                 "upstream_model": decision.model,
                 "account_id": account,
-                "input_context_limit": proof.input_context_limit,
+                "input_context_limit": max(
+                    provider_context_claim or 0,
+                    cap["admitted_input"] + cap["generated_output"],
+                ),
+                "hard_input_ceiling": cap["admitted_input"],
                 "structured_output_method": proof.structured_output_method,
                 "structured_output_verified_on": proof.structured_output_verified_on,
                 "rpm": 1,
@@ -374,8 +421,31 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             for observation in proof.limits:
                 if observation.scope == "route" and observation.metric in {"rpm", "tpm", "rpd"}:
                     route[observation.metric] = observation.value
-            if proof.output_context_limit:
-                route["output_context_limit"] = proof.output_context_limit
+            route["output_context_limit"] = output_context_limit
+            route_notes.append(
+                (
+                    rid,
+                    (
+                        f"Input cap evidence: {cap['admitted_input']} provider-counted input "
+                        f"tokens admitted; {cap['generated_output']} output tokens generated "
+                        f"in the same request (control {cap['control']}).",
+                        "The hard_input_ceiling is the admitted input lower bound; the estimated "
+                        "rejection is not used as a cap.",
+                        (
+                            f"Provider/catalog input_context_limit claim: "
+                            f"{provider_context_claim or 'not published'}; source: "
+                            f"{cap['source'] or 'unavailable'}. Operational context is at least "
+                            f"the empirically observed input plus generated output."
+                        ),
+                        (
+                            f"Output context is unmeasured; configured value "
+                            f"{output_context_limit} is sourced from "
+                            f"{'the provider catalog' if provider_output_claim else 'LiteLLM'} "
+                            "and is subject to this PR's review."
+                        ),
+                    ),
+                )
+            )
         bad_lanes = [
             lane
             for lane in decision.lanes
@@ -411,7 +481,63 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         tuple(rejected),
         tuple(paid_routes),
         tuple(acknowledged),
+        route_notes=tuple(route_notes),
     )
+
+
+def _verified_input_cap(discovery):
+    """Return only provider-counted, authenticated input evidence suitable for an add proposal."""
+    if not isinstance(discovery, Mapping):
+        return None
+    axes = discovery.get("axes")
+    characterization = discovery.get("input_characterization")
+    if not isinstance(axes, list) or not isinstance(characterization, Mapping):
+        return None
+    axis = next(
+        (row for row in axes if isinstance(row, Mapping) and row.get("axis") == "input"),
+        None,
+    )
+    admitted = characterization.get("admitted_input")
+    generated = characterization.get("generated_output")
+    count_basis = characterization.get("count_basis")
+    control = characterization.get("control")
+    stamp = characterization.get("evidence_digest")
+    identity = characterization.get("identity")
+    parser_version = characterization.get("parser_version")
+    fixture_version = characterization.get("fixture_version")
+    source = axis.get("source") if isinstance(axis, Mapping) else None
+    if (
+        not isinstance(axis, Mapping)
+        or axis.get("admitted") != admitted
+        or type(admitted) is not int
+        or admitted <= 0
+        or type(generated) is not int
+        or generated < 0
+        or count_basis not in {"input", "prompt_tokens"}
+        or count_basis != axis.get("count_basis")
+        or not isinstance(control, str)
+        or not control
+        or control != axis.get("control")
+        or not isinstance(stamp, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", stamp)
+        or not isinstance(identity, str)
+        or not identity
+        or not isinstance(parser_version, str)
+        or not parser_version
+        or fixture_version != "discovery-v1"
+    ):
+        return None
+    return {
+        "admitted_input": admitted,
+        "generated_output": generated,
+        "count_basis": count_basis,
+        "control": control,
+        "identity": identity,
+        "parser_version": parser_version,
+        "fixture_version": fixture_version,
+        "evidence_digest": stamp,
+        "source": source if isinstance(source, str) else None,
+    }
 
 
 def proposal_body(plan: EditPlan) -> str:
@@ -457,6 +583,12 @@ def proposal_body(plan: EditPlan) -> str:
             f"- `{route_id}` on account `{account_id}`: {verdict} (HTTP {status}) at `{checked_at}`"
             for route_id, account_id, verdict, status, checked_at in plan.removal_confirmations
         )
+        lines.append("")
+    if plan.route_notes:
+        lines += ["Authenticated input-cap evidence for proposed routes:"]
+        for route_id, notes in plan.route_notes:
+            lines.append(f"- `{route_id}`")
+            lines.extend(f"  - {note}" for note in notes)
         lines.append("")
     for label, values in (
         ("Selected", plan.applied),

@@ -679,14 +679,14 @@ cases with current coverage in inspectable reports. Recurring alerts remain unch
 Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
 route and immediate first-run evidence review. Output and broader rotation remain separately gated.
 
-**Review/48 current status (2026-10-15).** New-route discovery, report/retry integration and the
-reviewed automatic weekly input-discovery activation shipped in #2275, #2281 and #2445. The weekly
+**Review/48 current status (2026-10-15).** New-route discovery, report/retry integration, automatic
+weekly input discovery and authenticated cap projection shipped in #2275, #2281, #2445 and #2448. The weekly
 run probes newly found free routes only after reachability, structured-output and strict AA gates;
 it searches input size and reports published hints, provider counts and calibrated refusal estimates.
-Input evidence is the only required request-cap evidence for addition. Binding authenticated input
-evidence to the proposed route-addition `max_input_tokens` value remains open in #2271. The separate
-evidence-gated removal activation is being implemented under #2274. Recovery evidence #2220 is
-accepted; recurring configured-route calibration remains deferred to [review/54](review/54-provider-limit-characterization.md)
+One successful authenticated discovery run supplies the input-cap evidence; configured routes are
+not re-probed weekly. The separate evidence-gated removal activation is in PR #2446 under #2274.
+Recovery evidence #2220 is accepted; recurring configured-route calibration remains deferred to
+[review/54](review/54-provider-limit-characterization.md)
 and #2264. The Groq pilot's first evidence review remains operational follow-up under #2221 and does
 not block new-route discovery or removal activation. No workflow edits config directly, merges, or
 deploys it.
