@@ -10,6 +10,7 @@ from citypods.provider_catalog.discovery import (
     DEFAULT_COMBINED_SEED,
     DEFAULT_OUTPUT_SEED,
     INPUT_OUTPUT_COUNTERPART,
+    MAX_ARTIFACT_BYTES,
     MAX_INPUT,
     MAX_RUN_CALLS,
     MAX_RUN_INPUT,
@@ -37,6 +38,56 @@ def test_automatic_discovery_session_and_run_budgets_are_consistent():
     assert MAX_RUN_CALLS == MAX_SESSION_CALLS * MAX_RUN_SESSIONS
     assert MAX_RUN_INPUT == 3 * 16_777_216
     assert MAX_RUN_OUTPUT == 3 * MAX_SESSION_OUTPUT
+
+
+def test_discovery_artifact_accepts_full_run_session_and_attempt_budget():
+    import json
+
+    from citypods.provider_catalog.evidence import discovery_artifact
+
+    now = datetime.now(UTC)
+    sessions = []
+    for session_number in range(MAX_RUN_SESSIONS):
+        session_id = f"session-{session_number}"
+        identity = discovery_identity("groq", "account", "model", "https://api.groq.com")
+        metadata = {
+            "session_id": session_id,
+            "identity": identity,
+            "provider": "groq",
+            "account_id": "account",
+            "upstream_model": "model",
+            "endpoint": "https://api.groq.com",
+            "catalog_digest": "a" * 64,
+            "free_evidence_digest": "b" * 64,
+            "parser_version": "parser-v1",
+            "fixture_version": "fixture-v1",
+            "created_at": now.isoformat(),
+        }
+        attempts = []
+        for attempt_number in range(MAX_SESSION_CALLS):
+            req = replace(
+                request(),
+                session_id=session_id,
+                attempt_id=f"attempt-{attempt_number}",
+                identity=identity,
+            )
+            measured = observation(req, req.input_tokens, response_preview="x" * 1_024)
+            attempts.append({"request": asdict(req), "observation": asdict(measured)})
+        sessions.append({"session": metadata, "attempts": attempts})
+
+    artifact = discovery_artifact(
+        sessions,
+        repository="owner/repo",
+        run_id="123",
+        head_sha="c" * 40,
+        now=now,
+    )
+
+    assert len(artifact["payload"]["sessions"]) == MAX_RUN_SESSIONS
+    assert all(
+        len(session["attempts"]) == MAX_SESSION_CALLS for session in artifact["payload"]["sessions"]
+    )
+    assert len(json.dumps(artifact).encode()) < MAX_ARTIFACT_BYTES
 
 
 def request(axis="input", target=2048, attempt="a"):

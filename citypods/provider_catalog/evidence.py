@@ -1596,13 +1596,18 @@ def discover_discovery_retry_receipts(
 
 def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
     """A separate namespace: discovery results cannot authorize configured-route cap edits."""
-    from citypods.provider_catalog.discovery import MAX_ARTIFACT_BYTES, DiscoveryObservation
+    from citypods.provider_catalog.discovery import (
+        MAX_ARTIFACT_BYTES,
+        MAX_RUN_SESSIONS,
+        MAX_SESSION_CALLS,
+        DiscoveryObservation,
+    )
 
-    if len(sessions) > 2:
+    if len(sessions) > MAX_RUN_SESSIONS:
         raise ValueError("too many discovery sessions")
     normalized = []
     for session in sessions:
-        if len(session.get("attempts", [])) > 96:
+        if len(session.get("attempts", [])) > MAX_SESSION_CALLS:
             raise ValueError("too many discovery attempts")
         attempts = []
         for row in session.get("attempts", []):
