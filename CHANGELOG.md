@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 evidence-gated route removals.** After a successful weekly full catalog run, the
+  managed writer rechecks exact provider/account retirement evidence and prepares a review PR for
+  safe removals. It does not merge or deploy route configuration.
+
 Connect authenticated new-route input-discovery evidence to reviewed route additions. `/apply`
 proposes the largest provider-counted admitted input as `hard_input_ceiling` and raises the
 operational `input_context_limit` to cover the published claim or the admitted input plus actual
