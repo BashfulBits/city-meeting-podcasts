@@ -18,13 +18,15 @@ on:
 permissions: {}
 
 # One writer of the remedy ledger and the remedy PR/issue set at a time, across every workflow.
-concurrency:
-  group: remedy-taxonomy-writes
-  cancel-in-progress: false
-
+# The group is on the jobs, not the workflow, so an unrelated PR event (which skips the job) never
+# enters it, and `queue: max` keeps every waiting remedy run instead of replacing the pending one.
 jobs:
   feedback:
     name: Record feedback
+    concurrency:
+      group: remedy-taxonomy-writes
+      cancel-in-progress: false
+      queue: max
     if: >-
       ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' &&
         github.event.sender.type != 'Bot' &&
@@ -76,6 +78,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          set -o pipefail
           PYTHONPATH=. python scripts/remedy_feedback.py event \
             --event-name "$EVENT_NAME" --event "$GITHUB_EVENT_PATH" \
             --permission actor-permission.json --repository "$REPOSITORY" \
@@ -83,6 +86,10 @@ jobs:
 
   reconcile:
     name: Reconcile missed events
+    concurrency:
+      group: remedy-taxonomy-writes
+      cancel-in-progress: false
+      queue: max
     if: >-
       ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
         github.ref == 'refs/heads/main' }}
@@ -120,5 +127,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          set -o pipefail
           PYTHONPATH=. python scripts/remedy_feedback.py reconcile \
             --repository "$REPOSITORY" --result reconcile-result.json | tee -a "$GITHUB_STEP_SUMMARY"

@@ -314,17 +314,17 @@ def test_the_graphql_listing_carries_who_settled_each_artifact():
                 "state": "MERGED",
                 "createdAt": "2026-10-14T00:00:00Z",
                 "mergedAt": "2026-10-16T09:00:00Z",
-                "mergedBy": {"login": "maintainer"},
+                "mergedBy": {"__typename": "User", "login": "maintainer"},
                 "body": body((DECISION, binding())),
                 "headRefName": branch_name("example-tx", "council", [DECISION]),
                 "headRepository": {"nameWithOwner": REPO},
-                "author": {"login": "github-actions[bot]"},
+                "author": {"__typename": "Bot", "login": "github-actions"},
                 "timelineItems": {
                     "nodes": [
                         {
                             "__typename": "ClosedEvent",
                             "createdAt": "2026-10-16T09:00:00Z",
-                            "actor": {"login": "maintainer"},
+                            "actor": {"__typename": "User", "login": "maintainer"},
                         }
                     ]
                 },
@@ -335,18 +335,18 @@ def test_the_graphql_listing_carries_who_settled_each_artifact():
                 "state": "CLOSED",
                 "createdAt": "2026-10-14T00:00:00Z",
                 "body": body((DECISION, binding())),
-                "author": {"login": "github-actions[bot]"},
+                "author": {"__typename": "Bot", "login": "github-actions"},
                 "timelineItems": {
                     "nodes": [
                         {
                             "__typename": "ClosedEvent",
                             "createdAt": "2026-10-15T00:00:00Z",
-                            "actor": {"login": "early"},
+                            "actor": {"__typename": "User", "login": "early"},
                         },
                         {
                             "__typename": "ClosedEvent",
                             "createdAt": "2026-10-16T09:30:00Z",
-                            "actor": {"login": "maintainer"},
+                            "actor": {"__typename": "User", "login": "maintainer"},
                         },
                         {"__typename": "ReopenedEvent", "createdAt": "2026-10-15T12:00:00Z"},
                     ]
@@ -601,9 +601,16 @@ WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 def test_the_feedback_workflow_is_safe_on_pull_request_target():
     text = (WORKFLOWS / "remedy-feedback.yml").read_text()
     flow = yaml.safe_load(text)
-    assert flow["permissions"] == {} and flow["concurrency"]["group"] == "remedy-taxonomy-writes"
-    assert flow["concurrency"]["cancel-in-progress"] is False
+    assert flow["permissions"] == {} and "concurrency" not in flow  # not workflow-level
     assert flow[True]["pull_request_target"]["types"] == ["closed", "reopened"]  # YAML `on` is True
+    for name in ("feedback", "reconcile"):
+        # Job-level, so unrelated PR events never enter the group, and every waiting remedy run is
+        # kept: a group otherwise holds one pending run and replaces it with the next.
+        assert flow["jobs"][name]["concurrency"] == {
+            "group": "remedy-taxonomy-writes",
+            "cancel-in-progress": False,
+            "queue": "max",
+        }
     job = flow["jobs"]["feedback"]
     guard = job["if"]
     for required in (
@@ -621,12 +628,24 @@ def test_the_feedback_workflow_is_safe_on_pull_request_target():
     for secret in ("_API_KEY", "LLM_DISPATCH", "BEATAPI", "OPENAI", "GEMINI"):
         assert secret not in text
     assert flow["jobs"]["reconcile"]["if"].count("refs/heads/main") == 1
+    # A piped step must still fail when the script does: `tee` alone would hide its exit code.
+    for name in ("feedback", "reconcile"):
+        runs = [
+            step["run"]
+            for step in flow["jobs"][name]["steps"]
+            if "remedy_feedback.py" in step.get("run", "")
+        ]
+        assert runs and all(run.lstrip().startswith("set -o pipefail") for run in runs)
 
 
 def test_the_reopen_job_is_maintainer_only_and_runs_from_main():
     flow = yaml.safe_load((WORKFLOWS / "remedy-commands.yml").read_text())
     job = flow["jobs"]["reopen"]
-    assert job["concurrency"]["group"] == "remedy-taxonomy-writes"
+    assert job["concurrency"] == {
+        "group": "remedy-taxonomy-writes",
+        "cancel-in-progress": False,
+        "queue": "max",
+    }
     for required in (
         "'/remedy reopen '",
         "'github-actions[bot]'",
@@ -637,3 +656,57 @@ def test_the_reopen_job_is_maintainer_only_and_runs_from_main():
     assert checkout["with"]["ref"] == "main"
     # The old `/remedy` job keeps its own marker requirement, so a reopen is not mistaken for it.
     assert "citypods:feed-health:key=unexpected-body" in flow["jobs"]["remedy"]["if"]
+
+
+def test_a_graphql_bot_login_is_normalized_so_actions_artifacts_are_recognized():
+    """CodeRabbit CLI review: GraphQL reports Actions as `github-actions` with `__typename: Bot`."""
+    nodes = {
+        "issueCount": 2,
+        "pageInfo": {"hasNextPage": False},
+        "nodes": [
+            {
+                "number": 41,
+                "url": f"https://github.com/{REPO}/pull/41",
+                "state": "CLOSED",
+                "createdAt": "2026-10-14T00:00:00Z",
+                "body": body((DECISION, binding())),
+                "headRefName": branch_name("example-tx", "council", [DECISION]),
+                "headRepository": {"nameWithOwner": REPO},
+                "author": {"__typename": "Bot", "login": "github-actions"},
+                "timelineItems": {
+                    "nodes": [
+                        {
+                            "__typename": "ClosedEvent",
+                            "createdAt": "2026-10-16T09:00:00Z",
+                            "actor": {"__typename": "User", "login": "maintainer"},
+                        }
+                    ]
+                },
+            },
+            {
+                "number": 52,
+                "url": f"https://github.com/{REPO}/issues/52",
+                "state": "CLOSED",
+                "createdAt": "2026-10-14T00:00:00Z",
+                "body": body((DECISION, binding())),
+                "author": {"__typename": "Bot", "login": "github-actions"},
+                "timelineItems": {
+                    "nodes": [
+                        {
+                            "__typename": "ClosedEvent",
+                            "createdAt": "2026-10-16T09:30:00Z",
+                            "actor": {"__typename": "Bot", "login": "github-actions"},
+                        }
+                    ]
+                },
+            },
+        ],
+    }
+    pr, issue = parse_snapshot(nodes).artifacts
+    assert pr.actor == "github-actions[bot]" and pr.settled_by == "maintainer"
+    assert fb.signal_from_snapshot(pr, repository=REPO) is not None  # recognized as ours
+    assert issue.settled_by == "github-actions[bot]"
+    assert fb.signal_from_snapshot(issue, repository=REPO) is None  # a bot's close is no feedback
+    impostor = {**nodes["nodes"][0], "author": {"__typename": "User", "login": "github-actions"}}
+    [fake] = parse_snapshot({**nodes, "nodes": [impostor]}).artifacts
+    assert fake.actor == "github-actions" and fb.signal_from_snapshot(fake, repository=REPO) is None

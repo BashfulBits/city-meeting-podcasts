@@ -37,6 +37,7 @@ from citypods.remedy_queue import (
     Candidate,
     GitHubSnapshot,
     LedgerView,
+    parse_bindings,
     parse_snapshot,
     plan_publications,
     plan_report,
@@ -63,7 +64,8 @@ MAX_ISSUE_BODY_CHARS = 55_000
 
 _TIMELINE = (
     "timelineItems(itemTypes: [REOPENED_EVENT, CLOSED_EVENT], first: 50) { nodes { __typename "
-    "... on ReopenedEvent { createdAt } ... on ClosedEvent { createdAt actor { login } } } }"
+    "... on ReopenedEvent { createdAt } "
+    "... on ClosedEvent { createdAt actor { __typename login } } } }"
 )
 SNAPSHOT_QUERY = f"""
 query($q: String!) {{
@@ -72,12 +74,12 @@ query($q: String!) {{
     pageInfo {{ hasNextPage }}
     nodes {{
       ... on PullRequest {{
-        number url state createdAt mergedAt body headRefName author {{ login }}
-        headRepository {{ nameWithOwner }} mergedBy {{ login }}
+        number url state createdAt mergedAt body headRefName author {{ __typename login }}
+        headRepository {{ nameWithOwner }} mergedBy {{ __typename login }}
         {_TIMELINE}
       }}
       ... on Issue {{
-        number url state createdAt body author {{ login }}
+        number url state createdAt body author {{ __typename login }}
         {_TIMELINE}
       }}
     }}
@@ -344,20 +346,48 @@ def _publish_live(
         }
     published: list[dict] = []
     failures: list[dict] = []
+    unchanged: dict[str, dict] = {}
+
+    def guarded(label: str, action) -> None:
+        """One step's failure of any kind is recorded; it never stops the rest of the pass."""
+        try:
+            action()
+        except Exception as exc:  # noqa: BLE001 -- isolate every unit of work
+            failures.append({"unit": label, "reason": f"{type(exc).__name__}: {exc}"[:400]})
+
     for item in plan.reopens:
-        github.reopen(item.artifact.kind, item.artifact.number)
-        published.append({"type": "reopened", "url": item.artifact.url})
+
+        def reopen(item=item) -> None:
+            github.reopen(item.artifact.kind, item.artifact.number)
+            published.append({"type": "reopened", "url": item.artifact.url})
+
+        guarded(f"reopen {item.artifact.url}", reopen)
     for item in plan.updates:
-        if item.artifact.kind == "issue":
-            for identity in item.decision_ids:
-                if identity in issue_meta and not isinstance(issue_meta[identity], tuple):
-                    p3_report, binding = issue_meta[identity]
+        for identity in item.decision_ids:
+            if item.artifact.kind == "issue" and isinstance(issue_meta.get(identity), tuple):
+                p3_report, binding = issue_meta[identity]
+
+                def refresh(p3_report=p3_report, binding=binding) -> None:
                     published.append(
                         {
                             "type": "issue_updated",
                             "url": _reconcile_issue(p3_report, binding, dry_run=False),
                         }
                     )
+
+                guarded(f"update {item.artifact.url}", refresh)
+            elif item.artifact.kind == "pr":
+                # An open PR keeps its branch: its diff and body describe what was proposed. If the
+                # evidence has changed since, say so, and let a person close it to regenerate.
+                opened_with = parse_bindings(item.artifact.body).get(identity) or {}
+                current = (pr_meta.get(identity) or {}).get("evidence_hash")
+                entry = unchanged.setdefault(
+                    item.artifact.url,
+                    {"url": item.artifact.url, "kind": "pr", "evidence_changed": False},
+                )
+                entry["evidence_changed"] |= bool(
+                    opened_with and current and opened_with.get("evidence_hash") != current
+                )
     git = git or pub.Git(repo_root)
     if plan.prs:
         git.run("fetch", "origin", "main")
@@ -385,7 +415,7 @@ def _publish_live(
                     )
                 return changed
 
-            try:
+            def open_unit(unit=unit, details=details, apply_unit=apply_unit) -> None:
                 result = pub.publish_pr(
                     unit,
                     details,
@@ -396,29 +426,39 @@ def _publish_live(
                     apply=apply or apply_unit,
                     verify=verify or verify_remedy_mutations,
                 )
-            except pub.PublicationError as exc:
-                failures.append({"branch": unit.branch, "reason": str(exc)})
-                continue
-            published.append({"type": "proposal_pr", "url": result.url, "created": result.created})
+                published.append(
+                    {"type": "proposal_pr", "url": result.url, "created": result.created}
+                )
+
+            guarded(unit.branch, open_unit)
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
     for planned in plan.issues:
-        meta = issue_meta.get(planned.decision_id)
-        if isinstance(meta, tuple):
-            p3_report, binding = meta
-            published.append(
-                {"type": "manual_issue", "url": _reconcile_issue(p3_report, binding, dry_run=False)}
-            )
-        elif planned.decision_id in refinements:
-            tip = refinements[planned.decision_id]
-            body = pub.refinement_issue_body(
-                planned.decision_id,
-                _tip_binding(tip),
-                rejected_pr=tip.artifact_ref or "",
-                evidence_hash=tip.evidence_hash,
-            )
-            title = f"[Remedy refinement] {tip.normalized_label} ({tip.city})"
-            published.append({"type": "refinement_issue", "url": github.create_issue(title, body)})
+
+        def open_issue(planned=planned) -> None:
+            meta = issue_meta.get(planned.decision_id)
+            if isinstance(meta, tuple):
+                p3_report, binding = meta
+                published.append(
+                    {
+                        "type": "manual_issue",
+                        "url": _reconcile_issue(p3_report, binding, dry_run=False),
+                    }
+                )
+            elif planned.decision_id in refinements:
+                tip = refinements[planned.decision_id]
+                body = pub.refinement_issue_body(
+                    planned.decision_id,
+                    _tip_binding(tip),
+                    rejected_pr=tip.artifact_ref or "",
+                    evidence_hash=tip.evidence_hash,
+                )
+                title = f"[Remedy refinement] {tip.normalized_label} ({tip.city})"
+                published.append(
+                    {"type": "refinement_issue", "url": github.create_issue(title, body)}
+                )
+
+        guarded(f"issue {planned.decision_id[:12]}", open_issue)
     status = (
         "published"
         if published
@@ -433,7 +473,21 @@ def _publish_live(
         "published": published,
         "deferred": deferred,
         "failures": failures,
+        "unchanged": sorted(unchanged.values(), key=lambda row: row["url"]),
         "publication_plan": report,
+    }
+
+
+def _live_fail_closed(live: bool, plan_error: str, deferred: list) -> dict | None:
+    """In live mode an unplannable run publishes nothing; it never falls back to the legacy
+    single-PR path, which has no budgets and switches branches in the main checkout."""
+    if not (live and plan_error):
+        return None
+    return {
+        "status": "deferred",
+        "published": [],
+        "deferred": deferred,
+        "publication_plan": {"mode": "live", "error": plan_error},
     }
 
 
@@ -921,7 +975,10 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 candidates.append(_issue_candidate(binding, eligible_since))
                 candidate_sources.add(source["source_key"])
 
-    if live and not publication_plan_error:
+    closed = _live_fail_closed(live, publication_plan_error, deferred)
+    if closed is not None:
+        return closed
+    if live:
         return _publish_live(
             config=config,
             candidates=candidates,

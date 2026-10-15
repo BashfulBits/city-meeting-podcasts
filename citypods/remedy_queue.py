@@ -552,6 +552,16 @@ def plan_report(plan: PublicationPlan) -> dict[str, Any]:
     }
 
 
+def _login(actor: Any) -> str:
+    """A GraphQL actor's login in the REST form: a Bot is ``<login>[bot]`` there, bare here."""
+    if not isinstance(actor, Mapping):
+        return ""
+    login = str(actor.get("login") or "")
+    if login and actor.get("__typename") == "Bot" and not login.endswith("[bot]"):
+        return f"{login}[bot]"
+    return login
+
+
 def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
     """Build a snapshot from a GraphQL ``search`` result of marked PRs and issues.
 
@@ -588,10 +598,10 @@ def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
         closes = [item for item in events if item.get("__typename") == "ClosedEvent"]
         last_close = max(closes, key=lambda item: item["createdAt"], default=None)
         if state == "merged":
-            settled_by = str((node.get("mergedBy") or {}).get("login") or "")
+            settled_by = _login(node.get("mergedBy"))
             settled_at = _when(node["mergedAt"]) if node.get("mergedAt") else None
         elif state == "closed" and last_close is not None:
-            settled_by = str((last_close.get("actor") or {}).get("login") or "")
+            settled_by = _login(last_close.get("actor"))
             settled_at = _when(last_close["createdAt"])
         else:
             settled_by, settled_at = "", None
@@ -605,7 +615,7 @@ def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
                 decision_ids=ids,
                 reopened_at=reopened,
                 head_ref=node.get("headRefName"),
-                actor=str((node.get("author") or {}).get("login") or ""),
+                actor=_login(node.get("author")),
                 body=str(node.get("body") or ""),
                 head_repo=str((node.get("headRepository") or {}).get("nameWithOwner") or ""),
                 settled_by=settled_by,

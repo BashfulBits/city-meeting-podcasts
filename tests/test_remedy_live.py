@@ -325,3 +325,136 @@ def test_changing_only_the_mode_leaves_the_p3_config_hash_unchanged():
     before = RemedyConfig.model_validate({k: v for k, v in raw.items() if k != "publication_mode"})
     assert config_fingerprint(before) == config_fingerprint(RemedyConfig.model_validate(raw))
     assert decision_id("example-tx", SOURCE, "committee", "committee") == DECISION
+
+
+def test_every_kind_of_failure_is_isolated_to_its_unit_and_reported(repo, tmp_path):
+    """CodeRabbit CLI review: only PublicationError was isolated, so a ValueError from the
+    mutation or a RuntimeError from `gh` skipped every remaining unit and issue."""
+    first, second = "1" * 64, "2" * 64
+    metas = {first: meta("committee", first), second: meta("committee", second)}
+    cands = [
+        Candidate(first, "example-tx", "council", "union", "pr", NOW - timedelta(days=3), "a" * 64),
+        Candidate(
+            second, "example-tx", "library", "union", "pr", NOW - timedelta(days=2), "a" * 64
+        ),
+        Candidate(
+            OTHER, "example-tx", "council", "manual", "issue", NOW - timedelta(days=1), "a" * 64
+        ),
+    ]
+    calls = []
+
+    def apply(worktree):
+        calls.append(worktree.name)
+        if len(calls) == 1:
+            raise ValueError("stale evidence")  # not a PublicationError
+        return _edit(worktree, "library.yml")
+
+    github = LiveGitHub()
+
+    def explode(*_a, **_k):
+        raise RuntimeError("gh is down")
+
+    github.create_issue = explode
+    refinement_storage = FakeEventStorage()
+    record(refinement_storage, signal(pr_payload("closed")))
+    result, _ = run_live(
+        repo,
+        tmp_path,
+        cands + [candidate(DECISION, "committee")],
+        metas,
+        github=github,
+        apply=apply,
+        storage=refinement_storage,
+    )
+    reasons = {f["unit"]: f["reason"] for f in result["failures"]}
+    assert any("ValueError: stale evidence" in r for r in reasons.values())
+    assert any("RuntimeError: gh is down" in r for r in reasons.values())
+    assert [p["type"] for p in result["published"]] == ["proposal_pr"]  # the second unit went out
+    assert sh("git", "status", "--porcelain", cwd=repo).strip() == ""
+
+
+def test_a_failing_reopen_does_not_stop_the_pass(repo, tmp_path):
+    closed = marked_artifact(DECISION, state="closed", number=41, days=5)
+    storage = FakeEventStorage()
+    record(storage, signal(pr_payload("closed")))
+    event_ = fb.reopen_event(
+        command_decision=DECISION,
+        comment={
+            "id": 900,
+            "html_url": f"https://github.com/{REPO}/pull/41#issuecomment-900",
+            "created_at": "2026-10-17T08:00:00Z",
+            "user": {"login": "maintainer"},
+            "body": f"/remedy reopen {DECISION}",
+        },
+        permission={"permission": "write", "user": {"login": "maintainer"}},
+        repository=REPO,
+        artifact=pr_payload()["pull_request"],
+        kind="pr",
+        history=fb.load_decisions(storage, source_keys=[SOURCE])[DECISION],
+    )
+    fb.record_reopen(storage, event_, lease=FakeRemedyLease())
+    github = LiveGitHub()
+
+    def explode(kind, number):
+        raise RuntimeError("cannot reopen")
+
+    github.reopen = explode
+    result, _ = run_live(
+        repo,
+        tmp_path,
+        [candidate(DECISION, "committee"), candidate(OTHER, OTHER_LABEL)],
+        {DECISION: meta("committee", DECISION), OTHER: meta(OTHER_LABEL, OTHER)},
+        storage=storage,
+        snapshot=GitHubSnapshot((closed,), True),
+        github=github,
+    )
+    assert any("cannot reopen" in f["reason"] for f in result["failures"])
+    assert any(p["type"] == "proposal_pr" for p in result["published"])  # work went on
+
+
+def test_an_open_pr_is_left_alone_but_stale_evidence_is_called_out(repo, tmp_path):
+    stale_body = (
+        "x\n"
+        + render_markers([DECISION])
+        + "\n"
+        + render_binding(DECISION, {**binding(), "evidence_hash": "f" * 64})
+    )
+    open_pr = marked_artifact(DECISION, number=41, body=stale_body)
+    result, github = run_live(
+        repo,
+        tmp_path,
+        [candidate(DECISION, "committee")],
+        {DECISION: meta("committee", DECISION)},
+        snapshot=GitHubSnapshot((open_pr,), True),
+    )
+    assert github.created == [] and result["published"] == []
+    assert result["unchanged"] == [{"url": open_pr.url, "kind": "pr", "evidence_changed": True}]
+
+
+def test_an_open_p3_issue_is_refreshed_through_the_issue_reconciler(repo, tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        publisher, "_reconcile_issue", lambda report, bound, dry_run: seen.append(bound) or "u"
+    )
+    issue = marked_artifact(DECISION, kind="issue", number=52)
+    result, _ = run_live(
+        repo,
+        tmp_path,
+        [candidate(DECISION, "committee", kind="issue")],
+        {},
+        issue_meta={DECISION: ({"decision": {}}, binding())},
+        snapshot=GitHubSnapshot((issue,), True),
+    )
+    assert seen == [binding()] and result["published"] == [{"type": "issue_updated", "url": "u"}]
+
+
+def test_the_live_switch_fails_closed_instead_of_falling_back_to_the_legacy_publisher():
+    assert publisher._live_fail_closed(False, "bad time", []) is None  # report_only is unaffected
+    assert publisher._live_fail_closed(True, "", []) is None
+    closed = publisher._live_fail_closed(True, "unreadable evidence collection time: x", [{"a": 1}])
+    assert closed == {
+        "status": "deferred",
+        "published": [],
+        "deferred": [{"a": 1}],
+        "publication_plan": {"mode": "live", "error": "unreadable evidence collection time: x"},
+    }

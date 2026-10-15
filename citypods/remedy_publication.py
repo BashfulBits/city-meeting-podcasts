@@ -251,9 +251,22 @@ def publish_pr(
             "commit", "-m", f"fix(config): propose validated remedy ({len(details)} decision(s))",
             cwd=worktree,
         )  # fmt: skip
-        git.run("push", "-u", "origin", unit.branch, cwd=worktree)
-        # If creating the PR fails after this push the branch stays on the remote; the next run
-        # finds no PR for the branch and opens it.
+        # The branch name is derived from this unit's decision ids and owned by this publisher. A
+        # remote copy with no PR is the orphan of a run that crashed between its push and creating
+        # the PR (no PR exists for the branch in any state, checked above); it is replaced, but
+        # only if it is still the commit observed now, so nothing else can be overwritten.
+        remote = git.run(
+            "ls-remote", "--heads", "origin", f"refs/heads/{unit.branch}", cwd=worktree
+        ).split()
+        observed = remote[0] if remote else ""
+        git.run(
+            "push",
+            "-u",
+            f"--force-with-lease=refs/heads/{unit.branch}:{observed}",
+            "origin",
+            unit.branch,
+            cwd=worktree,
+        )
         body = render_pr_body(
             unit, details, manifest=manifest, files_hash=files_hash, verification="ruff, pytest"
         )

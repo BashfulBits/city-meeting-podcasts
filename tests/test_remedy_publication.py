@@ -260,3 +260,57 @@ def test_a_refinement_issue_preserves_the_decision_and_points_at_the_rejected_pr
     )
     assert parse_markers(body) == (DECISION_A,) and DECISION_A in parse_bindings(body)
     assert "pull/9" in body and f"/remedy reopen {DECISION_A}" in body and "Recordings: 1" in body
+
+
+def test_an_orphaned_remote_branch_from_a_crashed_run_is_replaced_not_a_permanent_block(
+    repo, tmp_path
+):
+    """CodeRabbit CLI review: a crash between the push and creating the PR left a remote branch
+    whose commit differs from the next run's, so the next push was rejected for ever."""
+    planned = unit(DECISION_A)
+    origin = repo.parent / "origin.git"
+    # The orphan: the same branch name, pushed earlier, holding a different commit.
+    sh("git", "switch", "-c", planned.branch, cwd=repo)
+    (repo / "config" / "feeds" / "council.yml").write_text("slug: council\n# an earlier attempt\n")
+    sh("git", "commit", "-am", "earlier attempt", cwd=repo)
+    sh("git", "push", "origin", planned.branch, cwd=repo)
+    orphan = sh("git", "rev-parse", planned.branch, cwd=origin).strip()
+    sh("git", "switch", "main", cwd=repo)
+    sh("git", "branch", "-D", planned.branch, cwd=repo)
+
+    result, github = publish(repo, tmp_path, planned)
+    assert result.created and len(github.created) == 1
+    replaced = sh("git", "rev-parse", planned.branch, cwd=origin).strip()
+    assert replaced != orphan
+    assert sh("git", "diff", "--name-only", "main", planned.branch, cwd=origin).split() == [
+        "config/feeds/council.yml"
+    ]
+
+
+def test_the_push_never_overwrites_a_remote_branch_that_moved_after_it_was_observed(
+    repo, tmp_path, monkeypatch
+):
+    planned = unit(DECISION_A)
+    origin = repo.parent / "origin.git"
+    real = pub.Git.run
+
+    def racing(self, *args, **kwargs):
+        out = real(self, *args, **kwargs)
+        if args[:2] == ("ls-remote", "--heads"):
+            # Someone else pushes to the branch after we looked and before we push.
+            other = repo.parent / "other"
+            sh("git", "clone", str(origin), str(other), cwd=repo.parent)
+            sh("git", "config", "user.name", "x", cwd=other)
+            sh("git", "config", "user.email", "x@example.test", cwd=other)
+            sh("git", "switch", "-c", planned.branch, cwd=other)
+            (other / "intruder.txt").write_text("not ours")
+            sh("git", "add", "-A", cwd=other)
+            sh("git", "commit", "-m", "intruder", cwd=other)
+            sh("git", "push", "origin", planned.branch, cwd=other)
+        return out
+
+    monkeypatch.setattr(pub.Git, "run", racing)
+    with pytest.raises(pub.PublicationError, match="git push"):
+        publish(repo, tmp_path, planned)
+    # The intruder's commit is still there: a lease, not a blind force.
+    assert "intruder" in sh("git", "log", "--oneline", planned.branch, cwd=origin)

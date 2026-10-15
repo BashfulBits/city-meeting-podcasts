@@ -1664,7 +1664,18 @@ its plan. In `live` mode (`scripts/remedy_p3_publish.py`, `citypods/remedy_publi
   `proposed` event carrying the decision's own hashes; the next pass reopens or updates the artifact
   and a reopening counts against the weekly budget. It cannot grant an alias auto-merge or change
   policy.
-- All mutation workflows share the concurrency group `remedy-taxonomy-writes`.
+- All mutation jobs share the concurrency group `remedy-taxonomy-writes` with `cancel-in-progress:
+  false` and `queue: max` (a group otherwise keeps one pending run and replaces it with the next, which
+  would drop a waiting merge or reopen). The group is on the jobs, not the workflow, so an unrelated PR
+  event never enters it. The remedy ledger lease still serializes the writes themselves.
+- **Failure isolation and fail-closed.** Any failure of one unit, reopening or issue is recorded under
+  `failures` and the pass continues. An unreadable evidence collection time in `live` mode publishes
+  nothing rather than falling back to the legacy single-PR path. A branch left on the remote by a run
+  that crashed between its push and creating the PR is replaced (`--force-with-lease` against the commit
+  just observed), never a permanent block. An open PR keeps its branch; the report lists it under
+  `unchanged` and flags `evidence_changed` so a person can close it to regenerate.
+- Reconciliation reads GitHub's GraphQL, where Actions is `github-actions` with `__typename: Bot`; the
+  login is normalized to the REST `github-actions[bot]` form before an artifact is recognized.
 
 **Gate:** P2/P3 are implemented; all external writes first run in report-only mode for inspection.
 **Permitted files:** new `citypods/remedy_queue.py`, `scripts/remedy_unexpected_bodies.py`,

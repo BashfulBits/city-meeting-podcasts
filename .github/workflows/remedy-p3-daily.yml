@@ -84,6 +84,7 @@ jobs:
     concurrency:
       group: remedy-taxonomy-writes
       cancel-in-progress: false
+      queue: max
     needs: p3
     if: >-
       github.ref == 'refs/heads/main' && needs.p3.outputs.report_ready_count != '0'
