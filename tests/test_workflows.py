@@ -1837,6 +1837,7 @@ def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock()
     assert "weekly-full" in producer["run-name"]
     assert "daily-due-only" in producer["run-name"]
     assert job["needs"] == "limits"
+    assert "always()" in job["if"]
     assert "name == 'Provider catalog reconciliation'" in job["if"]
     assert "display_title == 'Provider catalog reconciliation (weekly-full)'" in job["if"]
     assert "head_repository.full_name == github.repository" in job["if"]
