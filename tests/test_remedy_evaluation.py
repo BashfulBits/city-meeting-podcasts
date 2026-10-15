@@ -184,6 +184,90 @@ def test_candidate_evaluation_is_not_production_admission():
     assert "candidate is evaluation-only" in check.reasons
 
 
+def test_provider_default_is_explicit_admission_setting_without_effort_controls():
+    route = replace(capable_route(), reasoning_controls_json='{"high":{"reasoning_effort":"high"}}')
+    entry = candidate() | {
+        "reasoning_level": "provider-default",
+        "request_params_hash": canonical_hash({}),
+    }
+    check = validate_admission(
+        entry, {route.route_id: route}, frozen_context(), for_evaluation=True
+    )
+    assert check.usable
+
+    changed = entry | {"request_params_hash": canonical_hash({"reasoning_effort": "high"})}
+    check = validate_admission(
+        changed, {route.route_id: route}, frozen_context(), for_evaluation=True
+    )
+    assert "effective request-parameter mismatch: test-route" in check.reasons
+
+
+def test_provider_default_does_not_hide_non_reasoning_aa_variant():
+    entry = candidate() | {
+        "reasoning_level": "provider-default",
+        "request_params_hash": canonical_hash({}),
+        "aa": candidate()["aa"] | {"variant": "provider-default non-reasoning"},
+    }
+    check = validate_admission(
+        entry, {"test-route": capable_route()}, frozen_context(), for_evaluation=True
+    )
+    assert "AA reasoning variant mismatch" in check.reasons
+
+
+def test_provider_default_evaluation_records_omitted_effort(monkeypatch, dataset):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+    from citypods.compute.base import JobResult
+
+    route = replace(
+        capable_route(),
+        upstream_model="test-high",
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    entry = candidate() | {
+        "reasoning_level": "provider-default",
+        "request_params_hash": canonical_hash({}),
+    }
+    config = RemedyConfig.model_validate(
+        yaml.safe_load((ROOT / "config/remedy.yml").read_text()) | {"admissions": [entry]}
+    )
+    case = dataset.manifest.cases[0]
+    seen = []
+
+    def complete(job):
+        seen.append(job)
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={
+                "model": route.upstream_model,
+                "choices": [{"message": {"content": json.dumps(answer(case, False))}}],
+            },
+            route_id=route.route_id,
+            upstream_model=route.upstream_model,
+            request_params_hash=canonical_hash({}),
+        )
+
+    result = cli().run_cases(
+        dataset.manifest,
+        config,
+        "proposer",
+        dry_run=False,
+        max_cases=1,
+        backend=SimpleNamespace(run_immediate=complete),
+        quota_preflight=lambda _route: True,
+    )
+    assert len(seen) == 1
+    assert seen[0].inputs["reasoning_level"] == "provider-default"
+    assert result["results"][0]["status"] == "completed"
+    assert result["results"][0]["reasoning_setting"] == "provider-default"
+    assert result["results"][0]["reasoning_level"] is None
+
+
 @pytest.mark.parametrize(
     "change",
     [

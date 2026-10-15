@@ -224,7 +224,7 @@ evidence, not an independent benchmark of every physical provider identity. The 
 selected a bounded Sol + GLM Flash initial consensus followed by one DeepSeek V4.1 Flash + JEV
 adjudication round, as specified in
 review/51. The maintainer subsequently accepted the gathered P1 evidence for proceeding with the
-P3 implementation. Observed GLM alias/serving-family and default-effort caveats remain recorded;
+P3 implementation. Observed GLM alias/serving-family and provider-default caveats remain recorded;
 the production route configuration is unchanged, and JEV production dispatch remains gated.
 The maintainer's feed-by-feed annotations for the eight diagnostic cases are stored separately from
 the frozen gold. Publication-selection inactive machinery is **Shipped** in
@@ -247,18 +247,20 @@ through “hold for future evidence” and the existing P2 watch/blocked disposi
 The local replay tool and daily Worker caller/append-only observation log shipped in
 [PR #2447](https://github.com/BashfulBits/city-meeting-podcasts/pull/2447), merged 2026-10-15.
 The daily caller remains report-artifact-only and closed by shadow mode or missing exact
-route/parameter admissions. The maintainer accepted the existing `evals/remedy/` evidence for the
-P1 evaluation criterion; a second broad comparison and review/49's weekly league are not P3
+route/setting admissions. An admission may record `provider-default`, meaning no named reasoning
+override; its hash covers the compiled route parameters and does not claim internal provider effort.
+The maintainer accepted the existing `evals/remedy/` evidence for the P1
+evaluation criterion; a second broad comparison and review/49's weekly league are not P3
 prerequisites. PR #2449 merged on 2026-10-15, completing bounded GitHub proposal/issue publication
 and the P2 human-disposition command: proposal candidates are revalidated before a human-review PR;
 manual issues bind checked include/exclude choices to typed append-only P2 events. The evaluated
 Sol, GLM Flash, and DeepSeek parameters are provider-default reasoning, 900-second request timeout,
 950-second per-case deadline, and 16,384-token output cap; no temperature override was recorded.
-These are documented in review/51. The current admission schema still accepts only named reasoning
-levels, so runtime admission must be aligned to the evaluated setting, exact serving identities
-verified, and JEV's effective Worker parameters recorded before activation. P3 implementation is
-complete; operational completion is the authorized admission/configuration plus a monitored
-end-to-end cycle. Production behavior stays fail-closed until then. P4–P5 stay
+These are documented in review/51. The admission schema now supports provider-default and hashes
+the compiled route parameters. Exact serving identities and JEV's effective Worker parameters
+still need verification and admission before activation. P3 implementation is complete; operational
+completion is the authorized admission/configuration plus a monitored end-to-end cycle. Production
+behavior stays fail-closed until then. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID

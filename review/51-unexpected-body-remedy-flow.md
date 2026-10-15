@@ -220,8 +220,9 @@ that baseline are [Kimi K3 Max 44](https://artificialanalysis.ai/models/kimi-k3)
 These dated scores must be refreshed before admission; effort variants are not interchangeable.
 
 The configured catalog supplies Gemini routes, NVIDIA Kimi/DeepSeek routes and an OrcaRouter GLM
-route. Read catalog limits at execution; do not increase ceilings here. Availability and support
-for the required reasoning setting have not been live-tested in this work. In particular, the
+route. Read catalog limits at execution; do not increase ceilings here. The selected P3 candidates
+were evaluated with provider-default reasoning, meaning no named effort override was submitted.
+Named effort support on their exact routes remains unverified. In particular, the
 logical Gemini 3.7 alias can fall back to 3.6/3.8/3.5: admission must inspect the actual upstream
 model and effort, not only the pool's name. Remove below-floor fallback from this verb after
 project evaluation; exhausted free capacity defers work rather than downgrading judgment.
@@ -235,10 +236,10 @@ contains both initial proposals and only additional context selected by reproduc
 rules; it never contains gold or hidden expected labels.
 
 Agreement is evidence for a PR candidate, not ground truth or merge authorization. All routes
-must have current physical-model identity and reasoning-control evidence, independent P1
-admission, available free capacity, and the required distinct serving families. The configured
-catalog must be reconciled with those admissions before use. Deterministic city/source, owner,
-policy, schema, and selector-impact checks remain mandatory even when models agree. Every
+must have current physical-model identity, a matching evaluated reasoning setting/hash, maintainer-
+accepted P1 evidence, available free capacity, and the required distinct serving families. The
+configured catalog must be reconciled with those admissions before use. Deterministic checks for
+city/source, owner, policy, schema, and selector impact remain mandatory even when models agree. Every
 generated PR remains subject to human review and merge; this policy does not authorize production
 feed changes, auto-merge, paid fallback, or quota increases.
 
@@ -886,8 +887,9 @@ P1 tooling is complete; production route admission is not. The offline harness a
 routing/provenance are implemented, with empty shadow admissions and no live model calls.
 The maintainer resolved the three specification clarifications: hidden independently adjudicated
 `expected_owner` truth, explicit blind-owner isolation, and mandatory frozen input hashes for
-all evaluation candidates are implemented requirements. Current route effort capability metadata is
-unverified, so no candidate/admitted route is enabled. Live evaluation requires shared CAS-capable
+all evaluation candidates are implemented requirements. Named route effort capability metadata is
+unverified; `provider-default` is accepted as a distinct setting and does not assert a named effort.
+No candidate/admitted route is enabled. Live evaluation requires shared CAS-capable
 quota coordination; “no production writes” below means no feed/audio/catalog mutation, not bypass
 of shared quota bookkeeping.
 
@@ -982,16 +984,20 @@ and qualified types start empty. Limits: `decisions_per_pr: 5`, `prs_per_rolling
 Eight is a ceiling, not a target/minimum. Empty admissions produce a visible policy hold.
 
 Each entry has `status: candidate|admitted` and identifies role, physical route IDs, upstream model,
-model family, reasoning
-level, effective request-parameter fingerprint, AA version/variant/score/source/date, manifest/gold/
-prompt/schema/catalog hashes and reviewed result paths. Candidate entries may omit result hashes/paths only when
-`for_evaluation=True`; they still require the free/direct, AA, physical identity and effective-effort
+model family, reasoning setting, effective request-parameter fingerprint, AA version/variant/
+score/source/date, manifest/gold/prompt/schema/catalog hashes and reviewed result paths. Candidate
+entries may omit result hashes/paths only when
+`for_evaluation=True`; they still require the free/direct, AA, physical identity and effective-setting
 checks. Live evaluation records candidate status and cannot publish or qualify changes. Production
 requires `admitted`, complete version-matched results and the reviewed admission reference. This
 avoids requiring a model comparison before a candidate can participate in that comparison.
-Unknown effort or model identity fails
-admission. Role names map to `audit-remedy-proposer`, `audit-remedy-reviewer` and
-`audit-remedy-adjudicator`; `audit-remedy` remains the protected purpose for quota admission.
+Reasoning settings may be a verified named level or the explicit value `provider-default`.
+`provider-default` means no named reasoning override is applied; it is not a named effort and makes
+no claim about the provider's internal effort. Its parameter hash covers the route's compiled
+request parameters. Named levels still require verified route controls. Unknown
+settings or model identity fail admission. Role names map to `audit-remedy-proposer`,
+`audit-remedy-reviewer` and `audit-remedy-adjudicator`; `audit-remedy` remains the protected
+purpose for quota admission.
 
 Add optional `allowed_route_ids: tuple[str, ...] | None = None` to `LLMRequestPolicy`.
 `select_route` rejects physical IDs outside it **before** overflow/`also_serves` pool substitution
@@ -1385,7 +1391,7 @@ is not full-assignment accuracy.
 **Maintainer admission decision (2026-10-14):** the maintainer explicitly accepted the existing P1
 evaluation evidence as sufficient to proceed with P3 implementation. This acceptance does not
 rewrite observed provider identity or reasoning metadata: GLM's alias/serving-family question,
-default-effort evaluation coverage, and JEV's pilot-versus-dispatch distinction remain visible in
+provider-default evaluation coverage, and JEV's pilot-versus-dispatch distinction remain visible in
 the evaluation records. It does not change `config/remedy.yml`, enable runtime routing, publish
 feeds, or merge PRs.
 
@@ -1393,8 +1399,8 @@ feeds, or merge PRs.
 `evals/remedy/` satisfy the P1 evaluation acceptance criterion. Do not block P3 on another model
 comparison or completion of review/49's separate weekly judge league. P3 reuses the merged review/49
 Worker and JEV adapter. This changes the implementation gate only; runtime verification of exact
-physical route, serving identity, reasoning controls, and current admission remains required. The
-production remedy configuration remains shadowed until those checks pass.
+physical route, serving identity, reasoning setting/hash, and current admission remains required.
+The production remedy configuration remains shadowed until those checks pass.
 
 **P3 evaluated model parameters (maintainer direction, 2026-10-15):** use the parameters recorded
 by the approved evaluation artifacts as the comparison baseline; do not invent a higher reasoning
@@ -1419,13 +1425,11 @@ came from the approved existing local pilot after Worker payload uploads failed.
 the diagnostic response only: those records do not persist equivalent reasoning, timeout, or output
 cap controls and do not qualify JEV's production Worker route parameters.
 
-There is an implementation mismatch to close before runtime activation: `AdmissionEntry` currently
-requires a named reasoning level (`minimal` through `max`) and the P3 caller validates that level,
-while the accepted Sol, GLM Flash, and DeepSeek evidence records `provider-default`. Preserve the
-current shadow/empty-admission behavior until the admission contract and route configuration can
-represent and verify the documented setting, and JEV's exact Worker-served identity and effective
-parameters are recorded. Do not silently substitute high/max or infer JEV controls from its local
-pilot.
+The admission contract now supports `provider-default`: the request applies no named reasoning
+override, and the fingerprint covers the route's compiled request parameters. Preserve the current
+shadow/empty-admission behavior until exact route settings are admitted and JEV's Worker-served
+identity and effective parameters are recorded. Do not silently substitute high/max or infer JEV
+controls from its local pilot.
 
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
@@ -1453,8 +1457,9 @@ allowlist capability is a prerequisite to the P3 caller, not a production catalo
 response as a content-addressed object under `state/remedy/p3-observations/<source>/` and a hash of
 the finding identity. The strict schema binds finding/source identity, stage (`initial` or
 `adjudication`), role, stable Worker `recipe_hash`, request/evidence/config/policy hashes, selected
-route, logical/upstream model, applied reasoning level, collection time, structured response and
-response hash. Roles are restricted to Sol/GLM Flash in the initial stage and DeepSeek/JEV in
+route, logical/upstream model, applied reasoning level (null when provider-default omits an
+override), collection time, structured response and response hash. Roles are restricted to Sol/GLM
+Flash in the initial stage and DeepSeek/JEV in
 adjudication. Append and reconstruct under the existing remedy maintenance lease; read back and
 validate writes, reject corruption, and never replace an existing object. Store completed response
 observations only in this log; the existing deferred registry remains authoritative for pending
@@ -1474,8 +1479,9 @@ malformed choices or probabilities remain raw evidence and resolve to the manual
 
 The merged scheduled caller writes an exclusive Actions report artifact and has no feed-file,
 GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed or
-exact route admissions/effort controls fail validation. P1 acceptance removes the need for another
-comparison; it does not establish unobserved serving-family identity or effort controls. PR #2449
+exact route admissions/reasoning settings fail validation. P1 acceptance removes the need for
+another comparison; it does not establish unobserved serving-family identity or JEV dispatch
+qualification. PR #2449
 implements the bounded proposal/issue publisher and P2 human-disposition command. After that PR
 merges, P3 implementation is complete; operational completion still requires authorized runtime
 admissions and a monitored end-to-end cycle. No provider calls were made by PR #2447 or #2449.

@@ -43,10 +43,10 @@ Unknown or mismatched returned model identity is a failure, never a correct deci
 visible policy hold. Candidate entries can run only evaluations; admitted entries require reviewed,
 version-matched results and an admission reference for production qualification. Evaluations can
 rerun either status without reading prior gold or production qualification. Both must pass physical
-free/direct identity,
-dated comparable AA baseline, and effective-effort checks. The inspected catalog does not currently
-verify high/max controls for the proposed reasoning models; a separately reviewed capability update
-is required before live admission. No upstream incapability is inferred from absent catalog evidence.
+free/direct identity, dated comparable AA baseline, and effective-setting checks. A named reasoning
+level requires verified route controls. `provider-default` applies no named reasoning override and
+hashes the route's compiled request parameters; it does not claim a named internal effort. No
+upstream incapability is inferred from absent catalog evidence.
 Live runs use the existing CAS-capable scheduler storage and update shared quota bookkeeping;
 missing CAS configuration is a visible policy hold before provider calls. No production feed or
 audio artifact writes, route swaps, provider-limit changes or Worker changes occur in this lane.
