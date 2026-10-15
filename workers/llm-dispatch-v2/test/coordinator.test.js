@@ -3502,3 +3502,31 @@ test("the guarded detailed snapshot is cached, metered per UTC day and refuses o
   assert.equal(computed, 3);
   assert.equal(nextDay.marker, 3);
 });
+
+test("concurrent guarded snapshots share one computation, and a failed one is not kept", async () => {
+  const { coordinator } = makeCoordinator();
+  let computed = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  coordinator.detailedStats = async (now) => {
+    computed += 1;
+    await gate;
+    return { now, marker: computed };
+  };
+  const t0 = Date.UTC(2026, 9, 13, 17, 0, 0);
+  const pair = Promise.all([
+    coordinator.detailedStatsGuarded(t0, 20),
+    coordinator.detailedStatsGuarded(t0 + 5, 20),
+  ]);
+  release();
+  const [a, b] = await pair;
+  assert.equal(computed, 1);
+  assert.equal(a.marker, 1);
+  assert.equal(b.marker, 1);
+
+  coordinator.detailedStats = async () => { throw new Error("storage unavailable"); };
+  await assert.rejects(coordinator.detailedStatsGuarded(t0 + 400_000, 30), /storage unavailable/);
+  let recovered = 0;
+  coordinator.detailedStats = async (now) => ({ now, marker: ++recovered });
+  assert.equal((await coordinator.detailedStatsGuarded(t0 + 400_001, 30)).marker, 1);
+});

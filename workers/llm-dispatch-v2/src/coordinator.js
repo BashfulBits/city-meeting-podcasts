@@ -3370,10 +3370,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ...extra,
     });
     if (hit && now - hit.at < this._detailedStatsCacheSeconds() * 1000) {
-      return { ...hit.payload, cached: meta({}) };
+      return { ...(await hit.payload), cached: meta({}) };
     }
     if (this._detailedStatsComputed >= this._detailedStatsMaxPerUtcDay()) {
-      if (hit) return { ...hit.payload, cached: meta({ budget_exhausted: true }) };
+      if (hit) return { ...(await hit.payload), cached: meta({ budget_exhausted: true }) };
       return {
         ok: false,
         error: "detail_stats_budget_exhausted",
@@ -3383,9 +3383,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
     }
     this._detailedStatsComputed += 1;
-    const payload = await this.detailedStats(now, limit, { failureClasses });
-    this._detailedStatsCache.set(key, { at: now, payload });
-    return payload;
+    // The in-flight computation is what is cached, so concurrent callers (the 2026-10-13 evaluation
+    // sent them in pairs) share one scan; a failed one is dropped so it is not served as a copy.
+    const computing = this.detailedStats(now, limit, { failureClasses });
+    this._detailedStatsCache.set(key, { at: now, payload: computing });
+    try {
+      return await computing;
+    } catch (error) {
+      if (this._detailedStatsCache.get(key)?.payload === computing) {
+        this._detailedStatsCache.delete(key);
+      }
+      throw error;
+    }
   }
 
   async detailedStats(now, limit = 20, { failureClasses = null } = {}) {
