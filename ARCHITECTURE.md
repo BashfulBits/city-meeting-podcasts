@@ -311,10 +311,12 @@ starting experiments only, clamped to existing ceilings. A computed negative out
 can guide smaller input without producing a numerical refusal. Natural output stops can guide up
 to three smaller-output recovery attempts per axis; only fresh full/length evidence establishes
 capacity. Changed fixed counterparts fence history; upper bounds remain unknown without proof.
-New-route discovery sessions have a one-hour elapsed-time ceiling; at most two candidates
-permit two hours of discovery work. Manual discovery gets a three-hour workflow wrapper for
-evidence/cleanup, while ordinary reconciliation keeps its two-hour timeout. The 720-second
-per-call deadline matches v2 dispatch; all call/token budgets are unchanged; checkpoint age consumes the hour.
+New-route discovery sessions have a 90-minute elapsed-time ceiling; at most three candidates
+permit 4.5 hours of discovery work. Weekly automatic discovery gets a five-hour workflow wrapper
+for catalogs and cleanup; a manually selected discovery run gets three hours, while ordinary
+reconciliation keeps its two-hour timeout. The 720-second per-call deadline matches v2 dispatch.
+Each session allows 96 charged calls, 16,777,216 input tokens and 1,572,864 output tokens; the
+shared run budget permits at most three sessions. The checkpoint age consumes the session window.
 New-route output discovery resumes with one fresh admitted-size check and a fresh check of any
 historical refused upper. Recent authenticated time failures guide smaller retry targets but
 never supply cap evidence. A current-run timing estimate can defer a probe before admission
@@ -351,10 +353,11 @@ sends were needed, the issue includes per-attempt diagnostics: response status/m
 bounded message/finish/usage shape states, actual reported token counts and safe provider request
 IDs. Failed attempts may also retain a 128-character escaped provider error or returned model-text
 excerpt after prompt/credential redaction, including retrieval-quality failures on API-admitted
-input probes; ordinary successful text and full bodies are never retained. The
-workflow wiring remains disabled until the separate reviewed activation gate #2223 is approved and
-merged. This flow does not probe
-configured routes for recurring maintenance or publish cap changes automatically.
+input probes; ordinary successful text and full bodies are never retained. The #2223 first-route
+gate shipped. The current weekly workflow automatically runs input discovery for newly qualified
+free routes whose AA score exceeds GPT-OSS-120B, under the v2 provider pause
+and bounded session/run budgets described above. It does not probe configured routes for recurring
+maintenance or publish cap changes automatically.
 
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is

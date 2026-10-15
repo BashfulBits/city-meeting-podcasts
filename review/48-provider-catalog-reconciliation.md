@@ -1,13 +1,14 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); Slice 4 shipped (#2201); removal activation retains gates**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); Slice 4 shipped (#2201); removal activation retains gates; automatic input discovery activation in implementation PR**
 
-**Current scope decision — 2026-10-11:** route discovery/addition/removal plus new-route
-request-cap search in §8.13. Prior shipped calibration remains historical/operational context;
+**Current scope decision — 2026-10-11, amended 2026-10-14:** route discovery/addition/removal
+plus new-route input-cap search in §8.13. Prior shipped calibration remains historical/operational context;
 automatic runtime ceiling publication and broader recurring characterization are Deferred to
 [review/54](54-provider-limit-characterization.md). Existing dispatcher adaptations stay intact.
-The strict 0.5% discovery bracket and resumable `test again` contract supersede earlier goals
-only for new-route discovery, under its L3 offline implementation contract.
+The input-first profile reports provider-counted passing values separately from calibrated rejected
+size estimates. Its 0.5% tolerance is an estimate target, not a provider-verified refusal bracket.
+The resumable `test again` contract applies to new-route discovery under its L3 implementation.
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -3347,9 +3348,10 @@ stops remain inconclusive. An unknown output maximum does not prevent route-addi
 Supporting examples do not borrow old output/combined baselines or alter their proof rules.
 
 File plan: existing discovery.py, reconcile.py, issue.py, discovery/reconcile/apply tests,
-provider-catalog-reconcile.yml input-description text only, review/11, ARCHITECTURE and a changelog fragment. Advisory issue summaries may add derived input
-characterization; authenticated attempt/session artifacts are unchanged. No Worker, YAML caps,
-provider/model-specific parser, API/schema, dependency or recurring maintenance change. Acceptance
+provider-catalog-reconcile.yml input-description text only, review/11, ARCHITECTURE and a changelog
+fragment. Advisory issue summaries may add derived input characterization; authenticated
+attempt/session artifacts are unchanged. No Worker, YAML caps, provider/model-specific parser,
+API/schema, dependency or configured-route recurring maintenance change. Acceptance
 covers weighting/call bounds, unsupported input, support failures, history reopening, cross-scope
 rejection exclusion, estimated-vs-actual reporting and preserved selected-axis search. Use the
 shared builder/interpreter/search locally via citypods-env, without Worker interaction; retain
@@ -3386,3 +3388,39 @@ Numerical provider-counted refused bounds remain unknown. Final-code offline rep
 all 27 recorded responses with exactly the same request axis/target/input/output/control and
 returned `input_boundary_estimated`; no additional quota was spent. This also verifies the final
 profile-label/calibration corrections made while the local diagnostics were running.
+
+### Automatic new-route input discovery — maintainer-approved 2026-10-14
+
+The maintainer changed the activation target from manual-only discovery to automatic discovery
+when the weekly full catalog run finds a new route that passes the existing free-route,
+reachability and structured-output checks and has an Artificial Analysis score strictly above
+the current `openai/gpt-oss-120b` score. A missing score or a score equal to/below that reference
+does not qualify. Discovery is input-only; the existing output/combined checks remain supporting
+evidence and are not expanded into automatic limit searches. Generic shared chat response and
+provider parsers remain the contract; route/model-specific parsing is not allowed.
+
+Only routes newly qualified in that run are eligible. Authenticated history for the exact
+provider/account/model/endpoint suppresses an automatic repeat; another attempt requires the
+existing maintainer-reviewed `test again` path. The workflow retains the v2 provider pause,
+provider quota/spacing rules, strict evidence semantics and finite escape hatches. It never
+publishes a measured or inferred value into provider YAML, and configured-route recurring
+maintenance remains outside review/48.
+
+To fit ordinary 12–13-call searches and bounded slow calls, one candidate session allows up to
+96 charged calls, 16,777,216 reserved input tokens and 1,572,864 reserved output tokens, with a
+90-minute session ceiling and the existing 720-second per-call deadline. A weekly run allows at
+most three sessions (one per provider), 288 calls, 50,331,648 input tokens and 4,718,592 output
+tokens. The weekly GitHub Actions job is capped at five hours; a manually selected discovery job
+gets three hours. Catalog, qualification and cleanup time remain inside those job limits. Runs
+that reach a session/run bound retain partial evidence and are not reported as converged.
+When a qualified route cannot get one of the three sessions, its candidate memory keeps a pending
+marker. The next weekly run rechecks reachability/JSON before spending on it and prioritizes
+providers with the oldest pending route; a completed or ineligible attempt clears the marker.
+
+Implementation amendment file plan: discovery.py owns the raised shared limits; reconcile.py and
+reconcile_provider_routes.py own weekly activation, quality/history gates and pending fairness;
+evidence.py accepts the larger bounded attempt set; the existing workflow owns the weekly/manual
+timeouts. Tests cover generic parser compatibility, strict AA cutoff, input-only automatic axes,
+reviewed retry-axis preservation, pending deferral/recheck and budget enforcement. Lifecycle docs
+and a changelog fragment record this approved scope. Scheduled discovery remains limited to
+newly discovered routes; the configured-route sweep is a separate request.

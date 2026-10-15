@@ -712,6 +712,14 @@ Before a new provider free route is added, §8.13 requires request-cap evidence 
 route values. Live discovery activation remains separately gated by #2223; route-removal activation
 is tracked by #2274.
 
+**2026-10-14 approved implementation in progress:** weekly reconciliation will automatically run
+input discovery for newly found routes only after free, reachability and structured-output checks,
+and only when the AA score is strictly above GPT-OSS-120B. Missing or lower/equal scores defer it.
+The bounded plan permits three provider-paused sessions per weekly run, up to 96 calls and 90
+minutes per route, with 288 shared calls and a five-hour workflow ceiling. No cap is written to
+configuration automatically. This supersedes the earlier manual-only activation note above; a
+one-time scan of already-configured routes remains separate and unimplemented.
+
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing
 values with provenance and scope confirmation, and preserve current adaptive dispatch feedback.

@@ -694,6 +694,7 @@ def main(argv: list[str] | None = None) -> int:
     discovery_enabled = DISCOVERY_ACTIVATION_ENABLED and (
         args.discovery_enabled or activated_schedule or bool(retry_receipts)
     )
+    discovery_automatic = bool(activated_schedule and not args.discovery_enabled)
     if args.discovery_enabled and not args.discovery_candidate and not retry_receipts:
         parser.error("manual request-cap discovery requires one exact new-route candidate")
     if args.discovery_candidate and retry_receipts:
@@ -723,6 +724,7 @@ def main(argv: list[str] | None = None) -> int:
         early_rate_checks=early,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
+        discovery_automatic=discovery_automatic,
         discovery_axis=args.discovery_axis,
         discovery_history=discovery_history,
         discovery_history_calls=discovery_history_calls,

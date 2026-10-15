@@ -1876,8 +1876,9 @@ the verified hosted Lightning route. This advances onboarding caps, not recurrin
 The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
 verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
 had no usable completion counts or finish reasons, so it established no request-cap bracket. This
-high-first search follow-up is intended to make the next authorized run explore useful input sizes;
-broad scheduled discovery remains gated on review of successful first-route evidence. Combined-cap
+high-first search follow-up was intended to make the next authorized run explore useful input sizes;
+at that point, broad scheduled discovery remained gated on review of successful first-route evidence.
+The maintainer superseded that activation gate on 2026-10-14; see the current decision below. Combined-cap
 configuration remains gated on its separate schema design.
 
 After [workflow run 38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
@@ -1894,7 +1895,8 @@ measured brackets, and an authorized `/apply` can queue an authenticated next-da
 provider calls. Before a new provider's free route is added, §8.13 requires this suite's evidence to
 inform the proposed route values; unresolved axes need sourced maintainer input or `test again`.
 Pure adapter tests cover supported axes; unsupported refusal/combined semantics remain explicit.
-Broad scheduled discovery remains disabled pending review of successful first-route evidence.
+Broad scheduled discovery was disabled at the time of this initial integration; the later
+2026-10-14 decision below supersedes that state for qualifying input-only new-route discovery.
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 
@@ -2115,3 +2117,14 @@ actual passing counts separately from calibrated estimated rejected sizes, and r
 output/combined maximum searches with bounded supporting examples. Local NVIDIA plus a second
 provider validation precedes push. Full optional selected-axis searches and runtime caps remain
 unchanged; see review/48's updated contract.
+
+Review/48 automatic new-route input discovery — implementation in progress (2026-10-14): the
+maintainer approved running the input search automatically during the weekly full reconciliation
+when a newly found free route passes reachability and structured-output checks and its AA score is
+strictly above GPT-OSS-120B. Missing/equal/lower scores defer discovery. Existing exact-identity
+history prevents automatic duplicate spending; another attempt remains maintainer-reviewed.
+Provider-neutral parsing, v2 pause, provider quotas, and no automatic YAML writes remain binding.
+Capacity is three new-route sessions per weekly run, each capped at 96 calls, 16,777,216 input and
+1,572,864 output tokens, and 90 minutes; shared caps are 288 calls, 50,331,648 input and 4,718,592
+output tokens, with a five-hour weekly Action limit. Configured-route scans are a separate pending
+request and are not included. See review/48's activation amendment.

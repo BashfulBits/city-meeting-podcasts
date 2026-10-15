@@ -10,7 +10,15 @@ from citypods.provider_catalog.discovery import (
     DEFAULT_COMBINED_SEED,
     DEFAULT_OUTPUT_SEED,
     INPUT_OUTPUT_COUNTERPART,
+    MAX_ARTIFACT_BYTES,
     MAX_INPUT,
+    MAX_RUN_CALLS,
+    MAX_RUN_INPUT,
+    MAX_RUN_OUTPUT,
+    MAX_RUN_SESSIONS,
+    MAX_SESSION_CALLS,
+    MAX_SESSION_OUTPUT,
+    MAX_SESSION_SECONDS,
     Bracket,
     DiscoveryBudget,
     DiscoveryJournal,
@@ -21,6 +29,65 @@ from citypods.provider_catalog.discovery import (
 )
 
 STAMP = datetime.now(UTC).isoformat()
+
+
+def test_automatic_discovery_session_and_run_budgets_are_consistent():
+    assert MAX_SESSION_CALLS == 96
+    assert MAX_SESSION_SECONDS == 90 * 60
+    assert MAX_RUN_SESSIONS == 3
+    assert MAX_RUN_CALLS == MAX_SESSION_CALLS * MAX_RUN_SESSIONS
+    assert MAX_RUN_INPUT == 3 * 16_777_216
+    assert MAX_RUN_OUTPUT == 3 * MAX_SESSION_OUTPUT
+
+
+def test_discovery_artifact_accepts_full_run_session_and_attempt_budget():
+    import json
+
+    from citypods.provider_catalog.evidence import discovery_artifact
+
+    now = datetime.now(UTC)
+    sessions = []
+    for session_number in range(MAX_RUN_SESSIONS):
+        session_id = f"session-{session_number}"
+        identity = discovery_identity("groq", "account", "model", "https://api.groq.com")
+        metadata = {
+            "session_id": session_id,
+            "identity": identity,
+            "provider": "groq",
+            "account_id": "account",
+            "upstream_model": "model",
+            "endpoint": "https://api.groq.com",
+            "catalog_digest": "a" * 64,
+            "free_evidence_digest": "b" * 64,
+            "parser_version": "parser-v1",
+            "fixture_version": "fixture-v1",
+            "created_at": now.isoformat(),
+        }
+        attempts = []
+        for attempt_number in range(MAX_SESSION_CALLS):
+            req = replace(
+                request(),
+                session_id=session_id,
+                attempt_id=f"attempt-{attempt_number}",
+                identity=identity,
+            )
+            measured = observation(req, req.input_tokens, response_preview="x" * 1_024)
+            attempts.append({"request": asdict(req), "observation": asdict(measured)})
+        sessions.append({"session": metadata, "attempts": attempts})
+
+    artifact = discovery_artifact(
+        sessions,
+        repository="owner/repo",
+        run_id="123",
+        head_sha="c" * 40,
+        now=now,
+    )
+
+    assert len(artifact["payload"]["sessions"]) == MAX_RUN_SESSIONS
+    assert all(
+        len(session["attempts"]) == MAX_SESSION_CALLS for session in artifact["payload"]["sessions"]
+    )
+    assert len(json.dumps(artifact).encode()) < MAX_ARTIFACT_BYTES
 
 
 def request(axis="input", target=2048, attempt="a"):
@@ -74,7 +141,7 @@ def execute(tmp_path, adapter, **kwargs):
 
 @pytest.mark.parametrize("axis", AXES)
 @pytest.mark.parametrize("seed", [256, 20_000])
-def test_each_axis_converges_without_more_than_64_calls(tmp_path, axis, seed):
+def test_each_axis_converges_within_the_reviewed_per_route_call_limit(tmp_path, axis, seed):
     limits = dict(input=4000, output=1800, total_input_heavy=25_000, total_output_heavy=25_000)
     calls = []
 
@@ -93,7 +160,7 @@ def test_each_axis_converges_without_more_than_64_calls(tmp_path, axis, seed):
         return observation(req, count, count <= limits[req.axis], reported_input=actual_input)
 
     result = execute(tmp_path, measure, supported_axes=(axis,), seeds={axis: seed})
-    assert result.budget["calls"] <= 64
+    assert result.budget["calls"] <= MAX_SESSION_CALLS
     assert len(result.brackets) == 4
     bracket = next(bracket for bracket in result.brackets if bracket["axis"] == axis)
     assert bracket["status"] == "converged"
@@ -394,7 +461,7 @@ def test_no_response_retries_up_to_five_charged_calls_then_reports_uncertainty(t
         tmp_path,
         measure,
         supported_axes=("input",),
-        budget=DiscoveryBudget(max_calls=64),
+        budget=DiscoveryBudget(max_calls=MAX_SESSION_CALLS),
     )
 
     assert len(calls) == result.budget["calls"] == 5
@@ -502,6 +569,15 @@ def test_shared_budget_validation_is_atomic(tmp_path):
 
     result = execute(tmp_path, measure, shared_budget=shared)
     assert result.budget["calls"] == shared.calls == 0
+
+
+def test_shared_budget_cannot_exceed_three_session_envelope(tmp_path):
+    with pytest.raises(ValueError, match="discovery envelope exceeds reviewed ceiling"):
+        execute(
+            tmp_path,
+            lambda *_args: pytest.fail("no transport"),
+            shared_budget=DiscoveryBudget(max_calls=MAX_RUN_CALLS + 1),
+        )
 
 
 def test_contradiction_and_control_mismatch(tmp_path):
@@ -857,6 +933,33 @@ def test_unsupported_current_provider_endpoints_are_explicit():
     )
 
 
+def test_new_route_input_uses_the_generic_chat_contract_for_every_provider():
+    import json
+
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    for provider, _provider_rules in all_rules().items():
+        rules, req, transient = _chat_discovery_fixture(provider)
+        shared = general_discovery_rules(rules)
+        assert shared.discovery_axes == AXES
+        payload = {
+            "object": "chat.completion",
+            "usage": {"prompt_tokens": 2048, "completion_tokens": 1, "total_tokens": 2049},
+            "choices": [
+                {"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+            ],
+        }
+        observed = shared.discovery_observation(
+            Response(200, body=json.dumps(payload)), req, transient
+        )
+        assert observed.outcome == "admitted" and observed.verified, provider
+        malformed = shared.discovery_observation(
+            Response(200, body='{"native_unknown": 2048}'), req, transient
+        )
+        assert malformed.outcome == "inconclusive" and not malformed.verified, provider
+
+
 def test_chat_usage_and_rate_numbers_have_separate_authority():
     import json
 
@@ -1068,7 +1171,7 @@ def test_envelopes_cannot_be_raised_by_caller(tmp_path):
         execute(
             tmp_path,
             lambda *args: pytest.fail("no transport"),
-            budget=DiscoveryBudget(max_calls=65),
+            budget=DiscoveryBudget(max_calls=MAX_SESSION_CALLS + 1),
         )
 
 
@@ -2920,7 +3023,7 @@ def test_output_upper_recheck_repeats_same_size_after_quota_delay(tmp_path):
     assert result.brackets[1]["admitted"] <= 4200 < result.brackets[1]["refused"]
 
 
-def test_default_hour_session_allows_slow_refinement_without_expanding_other_budgets(tmp_path):
+def test_extended_session_allows_slow_refinement_with_reviewed_budgets(tmp_path):
     now, seen = [0.0], []
 
     def measure(req, admit, timeout):
@@ -2934,9 +3037,9 @@ def test_default_hour_session_allows_slow_refinement_without_expanding_other_bud
         tmp_path, measure, selected_axes=("output",), seeds={"output": 4000}, clock=lambda: now[0]
     )
     assert len(seen) > 2
-    assert now[0] > 1200 and now[0] <= 3600
-    assert result.budget["max_calls"] == 64
-    assert result.budget["max_output"] == 524288
+    assert now[0] > 1200 and now[0] <= 5400
+    assert result.budget["max_calls"] == MAX_SESSION_CALLS
+    assert result.budget["max_output"] == MAX_SESSION_OUTPUT
     assert result.brackets[1]["refused"] is None
 
 
