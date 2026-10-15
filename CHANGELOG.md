@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider-default remedy reasoning.** Remedy admissions can now explicitly record
+  `provider-default` reasoning, meaning the request omits a reasoning override and hashes only
+  the route's compiled request parameters. This supports the evaluated P3 configuration without
+  guessing a named provider effort; runtime routing remains shadowed until the exact routes are
+  admitted.
+
 - **P3 evaluated model parameters.** Record the settings used for Sol, GLM Flash, and DeepSeek:
   provider-default reasoning, a 900-second request timeout, a 950-second case deadline, a
   16,384-token output cap, and no temperature override. The admission schema needs to represent
