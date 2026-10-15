@@ -325,6 +325,20 @@ llm_lanes:
     # 920 from PR5, when adjudication starts dispatching; zero until then.
     reserved_write_units: 0
     daily_write_units: 1600
+  remedy:p3:
+    telemetry: {producer: remedy, unit: finding, completion: consumed, scope: sample}
+    # P3 consensus is daily but remains closed until config/remedy.yml admits each exact route.
+    # Four units per pinned job and an 800-unit ceiling bound this research lane at 200
+    # submissions/day without reserving capacity from production lanes.
+    models:
+      - "openai/gpt-6.1-sol"
+      - "zai/glm-5.3-flash"
+      - "deepseek/deepseek-v4.1-flash"
+      - "typesafe/jev-1.13"
+    dispatch_shape: per_model
+    max_dispatches_per_run: 200
+    reserved_write_units: 0
+    daily_write_units: 800
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
     telemetry: {producer: tournament, unit: example, completion: consumed, scope: sample}

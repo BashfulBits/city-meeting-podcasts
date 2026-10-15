@@ -103,6 +103,30 @@ export function jobPolicy(job) {
   }
 }
 
+/** Physical pins may only narrow the job's declared logical model pool. */
+export function routeIdsOutsideModelPool(job, dispatchLimits) {
+  const policy = jobPolicy(job);
+  if (policy?.allowed_route_ids === undefined) return [];
+  const pins = policy.allowed_route_ids;
+  if (!Array.isArray(pins) || pins.length === 0 || pins.some((id) => typeof id !== "string" || !id.trim())) {
+    return ["<invalid-allowed-route-ids>"];
+  }
+  if (new Set(pins).size !== pins.length) return ["<duplicate-allowed-route-id>"];
+  const models = [
+    ...(Array.isArray(policy.allowed_models) ? policy.allowed_models : []),
+    ...(Array.isArray(policy.backup_models) ? policy.backup_models : []),
+  ];
+  const poolRouteIds = new Set();
+  for (const rawModel of models) {
+    if (typeof rawModel !== "string" || !rawModel.trim()) continue;
+    const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
+    for (const routeId of dispatchLimits.model_routes_map?.[canonical] || []) {
+      poolRouteIds.add(routeId);
+    }
+  }
+  return pins.filter((routeId) => !poolRouteIds.has(routeId));
+}
+
 /**
  * Whether `policy.backup_models` should be folded into a job's eligible model list right now.
  *
@@ -146,10 +170,11 @@ export function modelsForJob(job, policy, structuralCatalog = null) {
 }
 
 /**
- * Every route a job's stored policy (policy_json: { allowed_models, allow_paid, backup_models,
- * backup_after_attempts }) can legally reach, filtered for combined input/output context-window
- * compatibility -- capacity/pacing eligibility (RPM/TPM/buffer/blocked_until) is a separate,
- * live-ledger-dependent check, see pacing.js.
+ * Every route a job's stored policy (policy_json: { allowed_models, allowed_route_ids,
+ * allow_paid, backup_models, backup_after_attempts }) can legally reach. `allowed_route_ids`, when
+ * present, intersects the logical model pool and can only narrow it; it never adds a route.
+ * Routes are also filtered for combined input/output context-window compatibility -- capacity/
+ * pacing eligibility (RPM/TPM/buffer/blocked_until) is a separate live-ledger check, see pacing.js.
  *
  * Returns routes in model_routes_map's own catalog order (config/provider_limits.yml's authored
  * order, e.g. "high-capacity workhorses" listed first) with no additional ranking -- Unit 4's
@@ -161,6 +186,11 @@ export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispa
   const policy = jobPolicy(job);
   const modelsToConsider = modelsForJob(job, policy, structuralCatalog);
   const allowPaid = Boolean(policy?.allow_paid);
+  const allowedRouteIds = policy?.allowed_route_ids === undefined
+    ? null
+    : new Set(Array.isArray(policy.allowed_route_ids)
+      ? policy.allowed_route_ids.filter((id) => typeof id === "string" && id.trim())
+      : []);
   const inputTokens = job.input_token_estimate || 0;
   const outputTokens = job.max_output_token_estimate || 0;
 
@@ -170,6 +200,7 @@ export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispa
     const canonical = canonicalModelName(rawModel, dispatchLimits);
     const routeIds = dispatchLimits.model_routes_map?.[canonical] || [];
     for (const routeId of routeIds) {
+      if (allowedRouteIds && !allowedRouteIds.has(routeId)) continue;
       if (seenRouteIds.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;

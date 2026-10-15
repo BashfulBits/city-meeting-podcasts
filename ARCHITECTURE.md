@@ -1066,8 +1066,33 @@ routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admis
 qualifications. Current high/max effort capabilities are unverified in the route catalog, so
 admission fails closed rather than silently dropping effort or accepting a weaker fallback.
 
+`citypods.audit_remedy_report` and `scripts/report_p3_remedy.py` replay saved, route-bound P3 votes
+through the pure consensus engine into a new local JSON report. The CLI has no provider, storage,
+GitHub, feed-write or admission-override path; it supplies an empty trusted-admission set and
+therefore fails closed. A future trusted dispatch integration must supply validated runtime
+admissions and remains separate from this report-only replay tool.
+
+`citypods.remedy_p3_observations` persists completed P3 Worker responses as strict,
+content-addressed objects under `state/remedy/p3-observations/<source>/`. Appends and reconstruction
+use the shared remedy maintenance lease and verify the object after writing. Repeated collection of
+the same recipe/role is idempotent; a conflicting result is rejected. Pending Worker handles stay
+in the existing deferred-request registry. P3 votes remain separate from
+`citypods.remedy_ledger`'s human dispositions. The daily Worker caller and scheduled workflow are
+implemented in PR #2447: it submits or reconciles stable recipe hashes, pins all four physical
+routes, validates completed route identity, and emits report artifacts without activating the
+current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
+Deployment remains fail-closed until exact routes have valid runtime admissions and reasoning
+controls; the P1 evidence decision allowed implementation, not activation. The caller does not
+mutate feed files, open GitHub issues/PRs, or record model responses as human P2 dispositions.
+Its current output is an Actions report artifact; automatic proposal/issue publication and the P2
+human-disposition connection remain unfinished. No P3 calls are enabled by the repository's
+current shadow configuration.
+
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
-substitution. Only `run_immediate` accepts this gate; deferred and dispatch requests reject it.
+substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same
+allowlist in `policy_json`, where the Worker intersects it with the permitted logical models and
+live route catalog. A pin only narrows eligible routes; if it is unavailable, the job waits rather
+than falling back to another provider. Requests without a physical pin retain existing routing.
 Synchronous `JobResult` adds selected route/upstream/parameter provenance and reports reasoning
 effort only when the route applied its controls; evaluation also validates returned model identity.
 Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared

@@ -723,6 +723,7 @@ test("pollBatch reports the model the completed route actually served, not just 
 
   const pollRes = await coordinator.pollBatch(["j1"]);
   assert.equal(pollRes.statuses[0].model, "backup/model");
+  assert.equal(pollRes.statuses[0].route_id, "backup-route");
 });
 
 test("terminalFeed is keyset paginated and cancelBatch removes queued work from dispatch", async () => {
@@ -1170,6 +1171,30 @@ test("enqueueBatch rejects a model its lane does not declare", async () => {
   ]);
   const sched = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0];
   assert.equal(sched.ingress_write_units_today, 4, "only the admitted job may be charged");
+});
+
+test("enqueueBatch rejects a physical route pin outside the declared model pool", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_MODELS,
+  });
+  const job = laneModelJob("j-wrong-route-pin", "topic-tags:tagger", [
+    "gemini/gemini-3.1-flash-lite",
+  ]);
+  job.policy_json = JSON.stringify({
+    purpose: "topic-tags:tagger",
+    allowed_models: ["gemini/gemini-3.1-flash-lite"],
+    allowed_route_ids: ["nvidia_kimi_k3_free"],
+  });
+
+  const res = await coordinator.enqueueBatch([job]);
+
+  assert.deepEqual(res.rejected, [{
+    id: "j-wrong-route-pin",
+    reason: "route_id_not_in_model_pool",
+    route_ids: ["nvidia_kimi_k3_free"],
+  }]);
+  assert.equal([...sql.exec("SELECT id FROM jobs")].length, 0);
 });
 
 test("a lane that declares no models constrains no route", async () => {

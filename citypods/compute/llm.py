@@ -773,6 +773,37 @@ def _positive_seconds(name: str, default: float) -> float:
     return value
 
 
+def _dispatch_policy_json_payload(
+    policy: LLMRequestPolicy | None, allowed_models: Sequence[str]
+) -> dict[str, Any]:
+    """Build the coordinator policy, keeping physical pins out of provider request bodies."""
+    payload: dict[str, Any] = {
+        "allowed_models": list(allowed_models),
+        "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
+        "purpose": getattr(policy, "purpose", "") if policy else "",
+    }
+    if policy and policy.allowed_route_ids is not None:
+        payload["allowed_route_ids"] = list(policy.allowed_route_ids)
+    backup_models = getattr(policy, "backup_models", ()) if policy else ()
+    backup_after_attempts = getattr(policy, "backup_after_attempts", None) if policy else None
+    if backup_models and backup_after_attempts:
+        payload["backup_models"] = list(backup_models)
+        payload["backup_after_attempts"] = backup_after_attempts
+    return payload
+
+
+def _dispatch_request_digest(payload: Mapping[str, Any], policy: LLMRequestPolicy | None) -> str:
+    """Bind a physical route pin into request identity without sending it upstream."""
+    identity: Any = payload
+    if policy and policy.allowed_route_ids is not None:
+        identity = {
+            "provider_payload": payload,
+            "allowed_route_ids": list(policy.allowed_route_ids),
+        }
+    canonical = json.dumps(identity, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _messages_with_schema(
     messages: list[dict[str, Any]], model: ResponseModel
 ) -> list[dict[str, Any]]:
@@ -1092,6 +1123,10 @@ class LiteLLMBackend(Backend):
                 # Durable requests are routed by the Worker.  Retain every permitted logical
                 # model there so independent quota pools can be used when the first is full.
                 payload["allowed_models"] = list(policy.allowed_models)
+            if policy.queue_only and policy.allowed_route_ids is not None:
+                # A physical route constraint narrows the logical model pool. The Worker applies
+                # it against its current catalog and never falls back outside this exact set.
+                payload["allowed_route_ids"] = list(policy.allowed_route_ids)
             if input_tokens_estimate is not None:
                 payload["input_tokens_estimate"] = input_tokens_estimate
             if output_token_budget is not None:
@@ -1337,6 +1372,7 @@ class LiteLLMBackend(Backend):
         output: Any,
         structured_output: str | None,
         model: str | None = None,
+        route_id: str | None = None,
     ) -> JobResult:
         """Validate and normalize a terminal Worker response from either POST or poll."""
         if not isinstance(output, Mapping):
@@ -1347,7 +1383,13 @@ class LiteLLMBackend(Backend):
         # be persisted/acknowledged as a genuine successful completion.
         self._raise_if_upstream_passthrough(output)
         self._validate_reconciled(output, structured_output)
-        return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
+        return JobResult(
+            task=task,
+            recipe_hash=recipe_hash,
+            output=output,
+            model=model,
+            route_id=route_id,
+        )
 
     def _deferred_handle(
         self,
@@ -1391,7 +1433,7 @@ class LiteLLMBackend(Backend):
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
-        if policy.allowed_route_ids is not None:
+        if policy.allowed_route_ids is not None and not policy.queue_only:
             raise ValueError("physical route allowlist requires run_immediate")
         if self.storage is None or (
             not policy.queue_only and not getattr(self.storage, "cas_capable", False)
@@ -1955,9 +1997,10 @@ class LiteLLMBackend(Backend):
         if any(
             isinstance(job.inputs.get("llm_policy"), LLMRequestPolicy)
             and job.inputs["llm_policy"].allowed_route_ids is not None
+            and not job.inputs["llm_policy"].queue_only
             for job in jobs
         ):
-            raise ValueError("dispatch cannot enforce physical route allowlists")
+            raise ValueError("physical route allowlist requires queue_only dispatch")
         if any(job.inputs.get("reasoning_level") is not None for job in jobs):
             raise ValueError("dispatch cannot enforce explicit reasoning_level")
         if any(job.inputs.get("max_provider_attempts") is not None for job in jobs):
@@ -2113,7 +2156,7 @@ class LiteLLMBackend(Backend):
                 schema_only=True,
             )
             canonical_payload_str = json.dumps(payload, sort_keys=True)
-            request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
+            request_digest = _dispatch_request_digest(payload, policy)
             idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
             generation = recovery_generations.get(idx)
             if generation:
@@ -2133,18 +2176,7 @@ class LiteLLMBackend(Backend):
             out_tokens = self._output_token_budget(job)
             priority = policy.priority if policy else 1
 
-            policy_json_payload: dict[str, Any] = {
-                "allowed_models": allowed,
-                "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
-                "purpose": getattr(policy, "purpose", "") if policy else "",
-            }
-            backup_models = getattr(policy, "backup_models", ()) if policy else ()
-            backup_after_attempts = (
-                getattr(policy, "backup_after_attempts", None) if policy else None
-            )
-            if backup_models and backup_after_attempts:
-                policy_json_payload["backup_models"] = list(backup_models)
-                policy_json_payload["backup_after_attempts"] = backup_after_attempts
+            policy_json_payload = _dispatch_policy_json_payload(policy, allowed)
 
             prepared_jobs.append(
                 {
@@ -2530,7 +2562,12 @@ class LiteLLMBackend(Backend):
         results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
 
-        def _resolve_completed(h: JobHandle, result_key: str, completed_model: str | None = None):
+        def _resolve_completed(
+            h: JobHandle,
+            result_key: str,
+            completed_model: str | None = None,
+            completed_route_id: str | None = None,
+        ):
             """Fetch, validate and persist one completed job's result.
 
             Runs on a worker thread. Each handle touches only keys derived from its own
@@ -2563,7 +2600,15 @@ class LiteLLMBackend(Backend):
                     output=output,
                     structured_output=h.structured_output,
                     model=completed_model or h.model,
+                    route_id=completed_route_id,
                 )
+                if completed_route_id:
+                    route = ROUTE_REGISTRY.get(completed_route_id)
+                    if route is not None:
+                        res = replace(
+                            res,
+                            upstream_model=route.upstream_model or None,
+                        )
                 write_deferred(storage, h.recipe_hash, res)
             except LLMBackendError as exc:
                 return "error", exc
@@ -2586,7 +2631,7 @@ class LiteLLMBackend(Backend):
 
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
         # is pure bookkeeping over the already-fetched statuses.
-        completed: list[tuple[JobHandle, str, str | None]] = []
+        completed: list[tuple[JobHandle, str, str | None, str | None]] = []
         payload_keys: dict[str, str | None] = {}
         for h in v2_handles:
             st = statuses.get(h.ref)
@@ -2600,7 +2645,13 @@ class LiteLLMBackend(Backend):
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
-                completed.append((h, st["result_key"], st.get("model")))
+                route_id = st.get("route_id")
+                if route_id is not None and not isinstance(route_id, str):
+                    results[h.ref] = LLMBackendError(
+                        "LLM dispatch v2 poll-batch returned malformed route identity"
+                    )
+                    continue
+                completed.append((h, st["result_key"], st.get("model"), route_id))
                 payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
@@ -2624,12 +2675,14 @@ class LiteLLMBackend(Backend):
                     outcomes = list(pool.map(lambda item: _resolve_completed(*item), completed))
             else:
                 outcomes = [_resolve_completed(*item) for item in completed]
-            for (h, _key, _model), (kind, value) in zip(completed, outcomes, strict=True):
+            for (h, _key, _model, _route_id), (kind, value) in zip(
+                completed, outcomes, strict=True
+            ):
                 resolved.append((h, kind, value))
 
         acked_refs: list[str] = []
         consumed: list[tuple[str, str, str | None]] = []
-        result_keys = {h.ref: key for h, key, _model in completed}
+        result_keys = {h.ref: key for h, key, _model, _route_id in completed}
         for h, kind, value in resolved:
             if kind == "done":
                 results[h.ref] = value

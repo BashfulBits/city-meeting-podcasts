@@ -1,8 +1,9 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evidence accepted by maintainer for P3 implementation; P2 integration,
-P3 dispatch integration, and P4–P5 remain gated.**
-**Revised:** 2026-10-14 after P3 consensus-routing decision and evaluation capture.
+**Status: P0 complete; P1 evidence accepted for implementation; P2 integration and P3 daily
+Worker caller are in progress; route activation and P4–P5 remain gated.**
+**Revised:** 2026-10-15 after the P3 daily caller and append-only observation log were added in
+PR #2447.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -1393,6 +1394,59 @@ durable P2 policy, evidence and decision-ledger contracts; and implement JEV thr
 review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy that integration
 gate. Until these gates pass, production publication remains manual.
 
+**P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
+Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
+audit is already daily, while review/49's weekly judge audit is a separate workflow and keeps its
+cadence. A P3 invocation submits the two initial votes or reconciles their stable recipe hashes; a
+later daily invocation submits adjudication only after both initial results are available and
+disagree, then a subsequent invocation collects the adjudication and emits the report candidate.
+This permits the two model round-trips to finish over two or three days without keeping a GitHub
+runner alive or duplicating a deferred Worker job. Persist P3 model observations separately from
+the P2 human-decision ledger before enabling this scheduled caller. The maintainer approved this
+boundary on 2026-10-15: model votes and Worker receipts are intermediate evidence, not human
+dispositions. The P2 ledger remains authoritative for reviewed decisions; its final event may
+reference the P3 report artifact.
+
+Use the common adjudicator interface from review/49 and reuse its existing `JevBackend` for JEV's
+`systemone` request/response shape. Keep that wire adapter model-specific; do not create a second
+JEV client or fork the common orchestration and normalization. The current Worker catalog maps JEV
+to one physical route, so an allowed-model constraint is sufficient for it today. DeepSeek V4.1
+Flash maps to both NVIDIA and BeatAPI routes; P3's recorded route is
+`beatapi_deepseek_v4_1_flash_free`. The Worker request must constrain that physical route as well as
+the logical model, and defer rather than fall back if the pinned route is unavailable. This route
+allowlist capability is a prerequisite to the P3 caller, not a production catalog change.
+
+**P3 observation persistence contract (maintainer, 2026-10-15):** store each completed Worker
+response as a content-addressed object under `state/remedy/p3-observations/<source>/` and a hash of
+the finding identity. The strict schema binds finding/source identity, stage (`initial` or
+`adjudication`), role, stable Worker `recipe_hash`, request/evidence/config/policy hashes, selected
+route, logical/upstream model, applied reasoning level, collection time, structured response and
+response hash. Roles are restricted to Sol/GLM Flash in the initial stage and DeepSeek/JEV in
+adjudication. Append and reconstruct under the existing remedy maintenance lease; read back and
+validate writes, reject corruption, and never replace an existing object. Store completed response
+observations only in this log; the existing deferred registry remains authoritative for pending
+Worker handles. Stable recipe hashes make enqueue/reconciliation idempotent across daily GitHub
+runs. A terminal failure or missing/unknown result cannot be promoted to a vote. Append P2 decision
+events only for human dispositions; those events may reference the P3 report artifact.
+
+**P3 daily caller implementation (PR #2447, not yet merged):** `scripts/remedy_p3_daily.py` runs
+from a dedicated daily GitHub Actions workflow. `citypods.remedy_p3_runner` submits the initial
+Sol/GLM Flash pair, then one DeepSeek/JEV adjudication round only after a recorded disagreement;
+subsequent daily invocations reconcile the existing Worker handle by its stable recipe hash and
+never create a second submission for a pending job. Every request is queue-only, free-route only,
+and pinned to its configured physical route. Completed results must echo both the expected logical
+model and exact route ID before they enter the separate observation log. JEV uses the review/49
+`JevBackend` wire adapter, with explicit A/B/C/D options and strict expected-question matching;
+malformed choices or probabilities remain raw evidence and resolve to the manual issue candidate.
+
+The scheduled caller currently writes an exclusive Actions report artifact and has no feed-file,
+GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed
+or exact route admissions/effort controls fail validation. This implementation PR advances the
+daily dispatch and persistence stage; it does not claim P3 is operationally complete. Remaining P3
+work is to bind consensus candidates to the bounded proposal/issue publication contract and finish
+the durable P2 review/ledger connection, then exercise the enabled schedule only after exact route
+admissions and JEV dispatch qualification are available. No provider calls were made by this PR.
+
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
 `P3Adjudication`, evidence/policy hashes, and an explicit set of runtime-admitted route IDs. It
@@ -1407,11 +1461,50 @@ cannot produce a PR candidate. Missing route admission returns a policy hold.
 `format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, and per-feed
 correct/include, possible/hold, and incorrect/exclude checkboxes plus the two overall hold choices.
 It does not write to GitHub. The caller must supply feed names/slugs from locally validated
-evidence. P3 produces candidates only: no provider call, direct JEV client, fallback, automatic
-retry, feed mutation, GitHub write, or auto-merge is added here. JEV production work must use the
-review/49 dispatch API. Tests cover normalized consensus, adjudication, mismatches, validator
-failure, provenance binding, unavailable routes, JEV abstentions, and checkbox formatting. Keep
-unrelated P4/P5 controls, historical coverage, and stage/pipeline versions unchanged.
+evidence. The pure P3 decision engine and local report remain provider-free. A separate daily
+caller uses the review/49 Worker dispatch stack and P3 observation log; it may open proposal PRs or
+manual-disposition issues according to the agreed P3 policy, but never changes feed configuration
+or merges a PR. It does not call JEV directly, fall back to another model/route, or repeat semantic
+adjudication. Tests cover normalized consensus, adjudication, mismatches, validator failure,
+provenance binding, unavailable routes, JEV abstentions, observation recovery and checkbox
+formatting. Keep unrelated P4/P5 controls, historical coverage, and stage/pipeline versions
+unchanged.
+
+**Report-only replay contract (2026-10-14):** implement `citypods.audit_remedy_report` and
+`scripts/report_p3_remedy.py` as a local replay boundary over already-recorded P3 observations.
+This resolves the runner's missing input/output contract without activating provider calls or
+publication. The strict input JSON has `schema_version: 1`, `finding_id`, `evidence_hash`,
+`policy_hash`, `evidence_summary`, `feeds`, `initial_votes`, `initial_validators`, optional
+`adjudication`, and `adjudication_validator_passed`. Each vote/adjudication uses the P3 models
+above; each feed has only `slug` and `title`. Reject unknown keys, malformed hashes, duplicate
+feed slugs, and a finding/hash mismatch before rendering. Evidence summary is caller-prepared,
+bounded plain text; this tool never opens URLs or reads gold.
+
+Run the offline replay:
+
+```bash
+PYTHONPATH=. python scripts/report_p3_remedy.py --input recorded-votes.json --out p3-report.json
+```
+
+The input can contain recorded outputs from a prior authorized run; the script itself makes no
+model calls. The output path must not exist.
+
+The replay caller supplies `admitted_routes` as a runtime argument derived by its trusted
+integration; it is deliberately not accepted from the input file. The local CLI supplies an empty
+set, so it can never promote a saved vote to a proposal. The report contains schema version,
+input hash, the pure `P3ReviewDecision`, and either a proposal candidate summary, a formatted
+checkbox issue candidate, or the exact policy hold. The issue body is rendered locally only.
+Output creation is exclusive and atomic; raw input and prior reports are never overwritten. The
+CLI has no live, apply, GitHub, storage, or route-configuration flags. It performs no network,
+provider, credential, GitHub, feed, or durable-ledger operations. This is a report/replay aid, not
+the production P3 dispatch integration.
+
+Tests must cover strict input validation, empty-admission holds, exact consensus and adjudication
+replay, manual checkbox output, no input/output overwrite, and proof that CLI execution makes no
+network or GitHub calls. The report must retain the original route/model/reasoning provenance and
+raw response hashes from each vote. The remaining dispatch integration stays gated on separately
+approved route admissions, dispatch-bound JEV qualification, and the still-gated P2 workflow
+connection.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed

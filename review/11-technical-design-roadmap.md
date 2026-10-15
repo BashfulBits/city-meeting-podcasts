@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-09 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-15 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -242,13 +242,25 @@ and the maintainer accepted the gathered P1 evaluation evidence as sufficient to
 implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
 production route configuration remains unchanged. P3's pure consensus decision engine and manual
 issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
-production integration remains gated on any
-remaining durable P2 contracts and JEV's documented review/49 dispatch integration. P4–P5 stay
+the local replay tool and daily Worker caller/append-only observation log are in PR #2447. The daily
+caller remains report-artifact-only and closed by shadow mode or missing exact route/effort
+admissions. P3 still needs bounded GitHub proposal/issue publication and its durable P2 workflow
+connection before it is operationally complete; serving-family, effort and JEV dispatch gates remain
+explicit. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
 it does not silently reorder the unrelated Phase-H queue or change production route/Worker limits.
+
+The maintainer selected a dedicated daily P3 Worker workflow on 2026-10-15 so the initial judge
+round, disagreement adjudication, and report can complete across two or three daily invocations.
+This does not change review/49's separate weekly judge-audit cadence. The caller resumes stable
+Worker recipe hashes from the existing deferred-request registry and stores completed model votes
+in the separate append-only P3 observation log; the P2 decision ledger remains for human
+dispositions and may reference the resulting report. Reuse review/49's JEV adapter and pin
+DeepSeek to `beatapi_deepseek_v4_1_flash_free`; JEV currently has only one catalog route. These are
+design decisions, not an activated schedule or route change.
 
 ### Active reliability follow-up: interactive remedy (#1231)
 
@@ -1231,6 +1243,14 @@ by #2201, its CHANGELOG entry and ARCHITECTURE description; Slice 5 is not stamp
 Checked all 72 unique local Markdown link targets in VISION, ROADMAP, this index and review/48;
 none are missing. The status date is updated. This is a scoped change verification, not a new
 repository-wide completeness audit or permission to activate probes.
+
+**2026-10-15 verification record — P3 daily caller PR #2447:** VISION and the Phase-H roadmap
+ordering are unchanged. The P3 catalog narrative matches review/51: the Worker caller and separate
+observation log are in an unmerged PR, while GitHub publication, P2 connection, exact route
+admissions and JEV dispatch qualification remain open; no Shipped status is claimed. The
+`changelog.d/p3-daily-worker.md` fragment describes the same scope, and ARCHITECTURE records the
+report-only artifact boundary. Checked 280 Markdown links in this document; all local targets
+resolve. This is a scoped status check, not approval to enable the daily workflow.
 
 ---
 

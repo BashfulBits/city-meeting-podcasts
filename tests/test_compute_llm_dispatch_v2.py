@@ -726,6 +726,7 @@ def test_poll_batch_fetches_completed_results_from_b2():
                     "id": "j1",
                     "state": "completed",
                     "result_key": "results/j1/lt1.json",
+                    "route_id": "gemini_3_flash_preview_primary",
                     "attempts": 1,
                 },
                 {"id": "j2", "state": "queued", "result_key": None, "attempts": 0},
@@ -745,6 +746,8 @@ def test_poll_batch_fetches_completed_results_from_b2():
     poll_results = backend.poll_batch([h1, h2])
     assert "j1" in poll_results
     assert isinstance(poll_results["j1"], JobResult)
+    assert poll_results["j1"].route_id == "gemini_3_flash_preview_primary"
+    assert poll_results["j1"].upstream_model == "gemini-3-flash-preview"
     assert poll_results["j1"].output == {"choices": [{"message": {"content": "completed result"}}]}
     assert poll_results["j2"] is None
 
@@ -2245,6 +2248,28 @@ def test_queue_input_estimate_includes_response_schema():
     context = backend._structural_recovery_context(job)
     assert context["input_estimate"] == submitted["input_token_estimate"]
     assert context["input_identity"] == submitted["request_digest"]
+
+
+def test_structural_recovery_context_tracks_only_the_pinned_physical_route():
+    route_id = "beatapi_deepseek_v4_1_flash_free"
+    request = InferenceJob(
+        task="tag",
+        recipe_hash="p3-pinned-route",
+        inputs={
+            "messages": [{"role": "user", "content": "evidence"}],
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("deepseek/deepseek-v4.1-flash",),
+                allowed_route_ids=(route_id,),
+                queue_only=True,
+            ),
+        },
+    )
+    backend = LiteLLMBackend(LLMBackendConfig())
+
+    context = backend._structural_recovery_context(request)
+
+    assert context["allowed_route_ids"] == [route_id]
+    assert set(context["route_generations"]) == {route_id}
 
 
 def test_structural_generation_retry_uses_new_idempotency_and_cannot_loop(monkeypatch):

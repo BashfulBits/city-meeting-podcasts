@@ -59,12 +59,15 @@ DISPATCHING_PURPOSES = frozenset(
         "judge:anchor",
         "judge:sibling",
         "judge:adjudicator",
+        "remedy:p3",
     }
 )
 # Purposes whose producer is not enabled yet. A reservation is subtracted from every other lane's
 # headroom, so a lane nothing dispatches to must reserve zero; PR4 moves these out and sets the
 # review/53 reservations in the same change that turns judging on.
-PENDING_DISPATCH_PURPOSES = frozenset({"judge:adjudicator"})  # dispatched from PR5
+PENDING_DISPATCH_PURPOSES = frozenset(
+    {"judge:adjudicator", "remedy:p3"}
+)  # P3 stays closed until all exact route admissions exist
 
 
 def _lane(**overrides):
