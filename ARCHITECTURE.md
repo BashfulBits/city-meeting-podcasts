@@ -1053,9 +1053,12 @@ outcomes until reconciliation. Original sanitized provider errors remain visible
 backend attempt-budget exception replaces the outward error. Existing shared quota and production
 headroom controls remain authoritative; this controller does not change production routing.
 
-Explicit reasoning effort requires immediate execution; deferred and dispatch paths reject it
-before side effects. Evaluation candidates interleave by case under a total logical-case cap, and
-timeouts hold only their configuration. Each evaluation case shares a two-invocation budget across
+Named reasoning effort requires immediate execution; deferred and dispatch paths reject it
+before side effects. Remedy admissions also support the explicit `provider-default` setting, which
+adds no named reasoning override and fingerprints the compiled route parameters. P3's Worker lane
+uses provider defaults by leaving per-model reasoning unset. Evaluation candidates interleave by
+case under a total logical-case cap, and timeouts hold only their configuration. Each evaluation
+case shares a two-invocation budget across
 correction and capacity retries, with SDK retries disabled and attempt counts recorded. Remote
 provider/gateway internal attempts are outside that client count. Git/version metadata is captured
 before provider calls.
@@ -1063,8 +1066,9 @@ before provider calls.
 `scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
 rescoring artifacts; independently maintained gold never enters model messages. Production remedy
 routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admissions and alias
-qualifications. Current high/max effort capabilities are unverified in the route catalog, so
-admission fails closed rather than silently dropping effort or accepting a weaker fallback.
+qualifications. Named high/max effort remains unavailable unless verified in the route catalog; an
+explicit provider-default admission records an omitted override without claiming a named effort or
+silently accepting a fallback.
 
 `citypods.audit_remedy_report` and `scripts/report_p3_remedy.py` replay saved, route-bound P3 votes
 through the pure consensus engine into a new local JSON report. The CLI has no provider, storage,
@@ -1086,10 +1090,10 @@ request parameters; the P1 evidence decision allowed implementation, not activat
 three-route prompt comparison recorded provider-default reasoning, 900-second request timeouts,
 950-second case deadlines, and 16,384-token output caps, with no temperature override. JEV's eight
 completed local-pilot observations do not record equivalent effective parameter provenance. The
-current admission schema requires a named reasoning level, which cannot represent the evaluated
-provider-default setting; keep P3 shadowed until that contract is aligned and the exact route
-settings are admitted. A separate, write-scoped
-daily publisher job creates human-review proposal PRs from the revalidated mutation plan or
+admission schema now represents provider-default settings and hashes compiled route parameters;
+exact route settings and JEV's effective Worker parameters still need qualification before P3
+production activation. A separate, write-scoped daily publisher job creates human-review proposal
+PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
 choices forward only when the evidence binding is unchanged. Manual choices include every feed
 from locally collected, same-source evidence, even when no model suggested it.

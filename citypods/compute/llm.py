@@ -715,6 +715,8 @@ def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
     """The reasoning level the job's lane sets for this route's model, if any."""
     explicit = job.inputs.get("reasoning_level")
     if explicit is not None:
+        if explicit == "provider-default":
+            return None
         if explicit not in {"off", "minimal", "low", "medium", "high", "max"}:
             raise ValueError("unsupported explicit reasoning_level")
         if not route_reasoning_controls(route, explicit):

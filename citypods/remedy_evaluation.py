@@ -193,7 +193,7 @@ class AdmissionEntry(StrictModel):
     physical_route_ids: list[str]
     upstream_model: str
     model_family: str
-    reasoning_level: Literal["minimal", "low", "medium", "high", "max"]
+    reasoning_level: Literal["provider-default", "minimal", "low", "medium", "high", "max"]
     request_params_hash: str
     aa: AA
     manifest_hash: str | None = None
@@ -503,7 +503,12 @@ def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False)
         reasons.append("AA evidence does not meet comparable Gemini 3.7 High baseline")
     variant_tokens = set(re.findall(r"[a-z0-9]+", entry.aa.variant.lower()))
     non_reasoning = bool(re.search(r"\bnon[ -]?reasoning\b", entry.aa.variant.lower()))
-    if entry.reasoning_level not in variant_tokens or non_reasoning:
+    # A provider default is an explicit request configuration: omit reasoning overrides. It has
+    # no honest named-level equivalent to compare with the benchmark variant string.
+    named_variant_mismatch = (
+        entry.reasoning_level != "provider-default" and entry.reasoning_level not in variant_tokens
+    )
+    if named_variant_mismatch or non_reasoning:
         reasons.append("AA reasoning variant mismatch")
     try:
         observed = datetime.fromisoformat(entry.aa.date.replace("Z", "+00:00"))
@@ -520,11 +525,12 @@ def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False)
             reasons.append(f"not an ordinary free direct route: {route_id}")
         if not route.upstream_model or route.upstream_model != entry.upstream_model:
             reasons.append(f"physical upstream mismatch: {route_id}")
-        controls = route_reasoning_controls(route, entry.reasoning_level)
-        if not controls:
-            reasons.append(f"unverified effort controls: {route_id}")
         params = route_request_params(route)
-        params.update(controls)
+        if entry.reasoning_level != "provider-default":
+            controls = route_reasoning_controls(route, entry.reasoning_level)
+            if not controls:
+                reasons.append(f"unverified effort controls: {route_id}")
+            params.update(controls)
         if canonical_hash(params) != entry.request_params_hash:
             reasons.append(f"effective request-parameter mismatch: {route_id}")
     if for_evaluation:

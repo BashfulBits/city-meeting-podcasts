@@ -214,6 +214,7 @@ def run_cases(
             "configuration_id": plan["configuration_id"],
             "prompt_case_id": plan["prompt_case_id"],
             "candidate_status": entry["status"],
+            "reasoning_setting": entry["reasoning_level"],
         }
         pair = (row["case_id"], row["configuration_id"])
         if pair in completed:
@@ -268,10 +269,13 @@ def run_cases(
             )
             returned = result.output.get("model")
             routes = [ROUTE_REGISTRY[r] for r in entry["physical_route_ids"]]
+            expected_level = (
+                None if entry["reasoning_level"] == "provider-default" else entry["reasoning_level"]
+            )
             if (
                 result.route_id not in entry["physical_route_ids"]
                 or result.upstream_model != entry["upstream_model"]
-                or result.reasoning_level != entry["reasoning_level"]
+                or result.reasoning_level != expected_level
                 or result.request_params_hash != entry["request_params_hash"]
                 or returned
                 not in {r.upstream_model for r in routes} | {r.direct_model for r in routes}

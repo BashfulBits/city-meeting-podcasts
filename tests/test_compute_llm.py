@@ -1596,6 +1596,22 @@ def test_immediate_result_records_physical_route_and_explicit_controls(monkeypat
     assert result.model == route.model
 
 
+def test_provider_default_setting_omits_reasoning_override():
+    from dataclasses import replace
+
+    from citypods.compute.llm import _lane_reasoning_level
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    request = job(reasoning_level="provider-default")
+    backend = LiteLLMBackend(LLMBackendConfig())
+    assert _lane_reasoning_level(request, route) is None
+    options = backend._provider_options(request, route.model, route=route, direct=True)
+    assert "extra_body" not in options or "reasoning_effort" not in options["extra_body"]
+
+
 def test_explicit_unsupported_effort_never_calls_provider():
     from dataclasses import replace
 
