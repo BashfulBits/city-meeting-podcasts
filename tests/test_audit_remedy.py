@@ -20,8 +20,12 @@ from citypods.audit_remedy import (
     DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
     REMEDY_CONTRACT,
+    BodyDecision,
     BodyDecisions,
     BodyProposal,
+    P3Adjudication,
+    P3ReviewDecision,
+    P3Vote,
     RejectedProposal,
     RemedyOutput,
     RemedyPlan,
@@ -30,10 +34,12 @@ from citypods.audit_remedy import (
     _new_feed_lifecycle,
     _resolve_decisions,
     apply_remedy_plan,
+    build_p3_review_decision,
     classify_unexpected_bodies,
     ensure_remedy_contract,
     evidence_recipe_hash,
     feed_paths_by_slug,
+    format_p3_manual_issue,
     format_remedy_markdown,
     gather_unexpected_body_evidence,
     remedy_batches,
@@ -150,6 +156,31 @@ def proposal(**overrides):
         "rationale": "Recurring council session",
     }
     return BodyProposal(**{**base, **overrides})
+
+
+def p3_vote(route, *, target_feeds=None, action="union", response_hash="a" * 64):
+    return P3Vote(
+        route_id=route,
+        upstream_model=f"upstream/{route}",
+        reasoning_level=None,
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash=response_hash,
+        decision=BodyDecision(
+            finding_id="finding-1",
+            action=action,
+            target_feeds=target_feeds or ["test-city-council"],
+            episode_ids=["guid-101"],
+            rationale="Assignment based on evidence.",
+        ),
+    )
+
+
+def p3_votes(*, glm_feeds=None):
+    return [
+        p3_vote("beatapi_gpt_6_1_sol_free"),
+        p3_vote("orcarouter_zai_glm_5_3_flash_free", target_feeds=glm_feeds),
+    ]
 
 
 # --- evidence -----------------------------------------------------------------------------
@@ -1254,3 +1285,167 @@ def test_joint_exact_owners_require_all_reviewed_subscriptions(overlapping_polic
     assert not _aggregate_policy_reason(proposal, set(paths), paths)
     proposal.target_feeds = ["udc"]
     assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_p3_initial_agreement_yields_pr_candidate_only_after_validation():
+    votes = p3_votes()
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+        admitted_routes={vote.route_id for vote in votes},
+    )
+    result = build_p3_review_decision(**common)
+    assert result.disposition == "pr_candidate"
+    assert result.validator_passed is True
+    assert result.adjudication is None
+
+    failed = build_p3_review_decision(
+        **{**common, "initial_validators": {votes[0].route_id: True, votes[1].route_id: False}}
+    )
+    assert failed.disposition == "issue_candidate"
+    assert failed.validator_passed is False
+
+
+def test_p3_initial_disagreement_holds_without_adjudication_then_uses_exact_agreement():
+    votes = p3_votes(glm_feeds=["test-city-library-board"])
+    admitted = {vote.route_id for vote in votes} | {
+        "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_jev_1_13_free",
+    }
+    validators = {vote.route_id: True for vote in votes}
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators=validators,
+        admitted_routes=admitted,
+    )
+    held = build_p3_review_decision(**common)
+    assert held.disposition == "policy_hold"
+
+    adjudication = P3Adjudication(
+        deepseek=p3_vote(
+            "beatapi_deepseek_v4_1_flash_free", target_feeds=["test-city-library-board"]
+        ),
+        jev_route_id="beatapi_jev_1_13_free",
+        jev_upstream_model="jev-1.13-free",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash="b" * 64,
+        choice="B",
+        supported_a=0.2,
+        supported_b=0.9,
+    )
+    result = build_p3_review_decision(
+        **common,
+        adjudication=adjudication,
+        adjudication_validator_passed=True,
+    )
+    assert result.disposition == "pr_candidate"
+    assert result.validator_passed is True
+
+
+def test_p3_adjudication_mismatch_or_abstention_becomes_manual_issue():
+    votes = p3_votes(glm_feeds=["test-city-library-board"])
+    admitted = {vote.route_id for vote in votes} | {
+        "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_jev_1_13_free",
+    }
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+        admitted_routes=admitted,
+    )
+    abstain = P3Adjudication(
+        deepseek=None,
+        jev_route_id="beatapi_jev_1_13_free",
+        jev_upstream_model="jev-1.13-free",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash="b" * 64,
+        choice="C",
+        supported_a=0.1,
+        supported_b=0.1,
+    )
+    result = build_p3_review_decision(
+        **common, adjudication=abstain, adjudication_validator_passed=False
+    )
+    assert result.disposition == "issue_candidate"
+
+    mismatch = P3Adjudication(
+        **{
+            **abstain.model_dump(),
+            "deepseek": p3_vote("beatapi_deepseek_v4_1_flash_free"),
+            "choice": "B",
+        }
+    )
+    result = build_p3_review_decision(
+        **common, adjudication=mismatch, adjudication_validator_passed=True
+    )
+    assert result.disposition == "issue_candidate"
+
+
+def test_p3_route_admission_and_hash_mismatches_fail_closed():
+    votes = p3_votes()
+    result = build_p3_review_decision(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+    )
+    assert result.disposition == "policy_hold"
+    assert result.validator_passed is False
+
+    votes[0].response_hash = "bad"
+    with pytest.raises(ValueError, match="response hash"):
+        build_p3_review_decision(
+            finding_id="finding-1",
+            evidence_hash="e" * 64,
+            policy_hash="f" * 64,
+            initial_votes=votes,
+            initial_validators={vote.route_id: True for vote in votes},
+            admitted_routes={vote.route_id for vote in votes},
+        )
+
+
+def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
+    decision = P3ReviewDecision(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=p3_votes(),
+        validator_passed=False,
+        disposition="issue_candidate",
+        reason="The adjudicators disagree.",
+    )
+    body = format_p3_manual_issue(
+        decision,
+        candidate_feeds=[
+            ("test-city-council", "Test City Council"),
+            ("test-city-library-board", "<b>Library</b>"),
+            ("test-city-council", "Duplicate is removed"),
+        ],
+        evidence_markdown="## Evidence\n\nLocally prepared source summary.",
+    )
+    assert body.count("Correct / include") == 2
+    assert body.count("Possible / hold") == 2
+    assert body.count("Incorrect / exclude") == 2
+    assert "No feed assignment" in body
+    assert "Hold for future evidence" in body
+    assert "&lt;b&gt;Library&lt;/b&gt;" in body
+    assert "    ## Evidence\n    \n    Locally prepared source summary." in body
+
+    with pytest.raises(ValueError, match="invalid candidate feed slug"):
+        format_p3_manual_issue(
+            decision,
+            candidate_feeds=[("../unsafe", "bad")],
+            evidence_markdown="Evidence",
+        )

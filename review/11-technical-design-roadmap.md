@@ -215,15 +215,17 @@ exact reviewed named bodies. Unknown identities remain held; this does not compl
 inventory or implement P2's persistent ledger.
 
 [review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, records the P1–P5
-structure and phase contracts. **P1 harness: Shipped** (#1987); strict physical-route admission
-remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)). P1 also has
+structure and phase contracts. **P1 harness: Shipped** (#1987); physical route and effort evidence
+is retained with the caveats below. P1 also has
 a completed three-model, three-prompt, 60-recording comparison and an eight-case disagreement
 diagnostic, preserved under `evals/remedy/results/`. On the original prompt, Sol + GLM Flash
 agreed correctly on 52/60 with zero shared wrong agreements; these reused cases are comparison
-evidence, not independent route admission. The maintainer selected a bounded Sol + GLM Flash
-initial consensus followed by one DeepSeek V4.1 Flash + JEV adjudication round, as specified in
-review/51. Exact physical model identity, serving family, reasoning controls, free-route capacity,
-P1 admission, and JEV's production dispatch integration remain open gates; no model is admitted.
+evidence, not an independent benchmark of every physical provider identity. The maintainer
+selected a bounded Sol + GLM Flash initial consensus followed by one DeepSeek V4.1 Flash + JEV
+adjudication round, as specified in
+review/51. The maintainer subsequently accepted the gathered P1 evidence for proceeding with the
+P3 implementation. Observed GLM alias/serving-family and default-effort caveats remain recorded;
+the production route configuration is unchanged, and JEV production dispatch remains gated.
 The maintainer's feed-by-feed annotations for the eight diagnostic cases are stored separately from
 the frozen gold. Publication-selection inactive machinery is **Shipped** in
 [PR #1999](https://github.com/BashfulBits/city-meeting-podcasts/pull/1999)
@@ -236,8 +238,13 @@ onboarding and maintenance; verified identities and feedback remain city/source-
 P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped
 L3 contracts and issues are being prepared. The maintainer approved source-partitioned immutable
 feedback-event paths on 2026-10-04. P3 follows the consensus cascade now recorded in review/51,
-but remains predecessor-gated on P1 route admission, complete P2 contracts, and the documented
-JEV dispatch integration. P4–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
+and the maintainer accepted the gathered P1 evaluation evidence as sufficient to proceed with P3
+implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
+production route configuration remains unchanged. P3's pure consensus decision engine and manual
+issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
+production integration remains gated on any
+remaining durable P2 contracts and JEV's documented review/49 dispatch integration. P4–P5 stay
+predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
