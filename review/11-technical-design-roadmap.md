@@ -258,9 +258,12 @@ Sol, GLM Flash, and DeepSeek parameters are provider-default reasoning, 900-seco
 950-second per-case deadline, and 16,384-token output cap; no temperature override was recorded.
 These are documented in review/51. The admission schema now supports provider-default and hashes
 the compiled route parameters. Exact serving identities and JEV's effective Worker parameters
-still need verification and admission before activation. P3 implementation is complete; operational
-completion is the authorized admission/configuration plus a monitored end-to-end cycle. Production
-behavior stays fail-closed until then. P4–P5 stay
+still need verification and admission before activation. The route-selection record in review/51
+also documents that the P3 chat caller currently uses an 8,192-token cap and a 720-second Worker
+response ceiling, versus the evaluated 16,384-token cap and 900-second provider timeout. Reconcile
+that profile and capture JEV Worker provenance before runtime admission. P3 implementation is
+complete; operational completion is the authorized admission/configuration plus a monitored
+end-to-end cycle. Production behavior stays fail-closed until then. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
