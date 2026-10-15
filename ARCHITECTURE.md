@@ -1340,7 +1340,11 @@ lane the Worker's ingress preflight reports closed starts with no packets. Adjud
 third, independent judge at the largest context tier, and a chat judge's or adjudicator's quoted
 evidence is checked mechanically (`quote_valid`; false rows are kept but ignored as votes); 2% of
 subjects are also re-asked, worded differently, as stability probes. All of it is data only: nothing
-reads these judgments to decide until the calibration report (PR7). Judgments are an episode artifact
+reads these judgments to decide until the calibration report (PR7). Human-verified probes
+(`evals/judge/<task>/gold.json`) ride invisibly in each judge's live packets and are reported per judge
+(non-gating until 20), and a weekly blind audit (`judge-audit.yml`, at most 12 claims chosen by
+expected information, verdicts hidden, answers imported as `judge_role: "audit"` rows) gives a person
+one vote that queues adjudication and never overrides. Judgments are an episode artifact
 block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
 `unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
 written. The stage runs once across every source (`run_judge_across_sources`), planning the newest

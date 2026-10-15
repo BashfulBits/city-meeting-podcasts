@@ -1,0 +1,77 @@
+name: Promote a judge-audit answer to the probe set
+
+# One click: a finalized, clear-cut (Supported or Not supported) audit answer becomes an entry in
+# evals/judge/<task>/gold.json, proposed as a pull request for a person to merge. An Uncertain
+# answer, or one from a discarded batch, is refused.
+
+on:
+  workflow_dispatch:
+    inputs:
+      item_id:
+        description: "Audit item id (the candidate id in the audit issue's envelope)"
+        required: true
+        type: string
+
+concurrency:
+  group: judge-audit-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - name: Add the entry to gold.json
+        id: promote
+        env:
+          ITEM_ID: ${{ inputs.item_id }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          [[ "$ITEM_ID" =~ ^[0-9a-f]{24}$ ]] || { echo "item id must be 24 hex characters"; exit 1; }
+          python -m citypods.cli judge-audit promote --item-id "$ITEM_ID" --repo-root . \
+            | tee "$RUNNER_TEMP/promote.json"
+          echo "promoted=$(jq -r '.promoted' "$RUNNER_TEMP/promote.json")" >> "$GITHUB_OUTPUT"
+          echo "entry=$(jq -r '.id' "$RUNNER_TEMP/promote.json")" >> "$GITHUB_OUTPUT"
+      - name: Open a pull request for the new probe
+        if: steps.promote.outputs.promoted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENTRY: ${{ steps.promote.outputs.entry }}
+        run: |
+          set -euo pipefail
+          branch="chore/judge-gold-${ENTRY}"
+          git config user.name "citypods-judge-audit[bot]"
+          git config user.email "citypods-judge-audit@users.noreply.github.com"
+          git switch -c "$branch"
+          git add evals/judge
+          git commit -m "chore(judge): promote audit answer ${ENTRY} to the probe set"
+          gh auth setup-git
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "chore(judge): promote audit answer ${ENTRY} to the probe set" \
+            --body "A person answered this audit claim Supported or Not supported in a finalized batch. Review the evidence in evals/judge before merging; the answer becomes a probe judges are scored against. GitHub Actions does not run checks for PRs created with GITHUB_TOKEN; dispatch them before merging."
