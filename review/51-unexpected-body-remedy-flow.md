@@ -1431,6 +1431,37 @@ shadow/empty-admission behavior until exact route settings are admitted and JEV'
 identity and effective parameters are recorded. Do not silently substitute high/max or infer JEV
 controls from its local pilot.
 
+**Maintainer route-selection record (2026-10-15):** use these exact physical routes for P3; do
+not substitute another route through pool overflow or fallback. This records the approved target
+mapping and the evaluated chat configuration. It does not mark a route production-admitted or
+change `config/remedy.yml`.
+
+| P3 role | Physical route ID | Catalog upstream model | Evidence and admission status |
+|---|---|---|---|
+| Initial: Sol | `beatapi_gpt_6_1_sol_free` | `gpt-6.1-sol-free` | 180 scored evaluations; returned upstream matched the request. Serving-family hold remains in every completed observation. |
+| Initial: GLM Flash | `orcarouter_zai_glm_5_3_flash_free` | `z-ai/glm-5.3-flash-free` | 180 scored evaluations; identity hold remains in every completed observation. |
+| Adjudicator: DeepSeek V4.1 Flash | `beatapi_deepseek_v4_1_flash_free` | `deepseek-v4.1-flash-free` | 180 scored evaluations; returned upstream matched the request. Serving-family hold remains in every completed observation. |
+| Adjudicator: JEV 1.13 | `beatapi_jev_1_13_free` | `jev-1.13-free` | Eight local-pilot answers; no Worker receipt or returned route/upstream identity was captured. Not admitted. |
+
+For the three chat evaluations, the recorded request setting was `provider-default`, with no
+temperature override, a 900-second provider timeout, a 950-second case deadline, and a 16,384
+output-token cap. The compiled route-parameter map was empty (`{}`); its canonical admission
+`request_params_hash` is
+`44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a`. This hash covers the
+compiled route override map only; it does not bind timeouts or output-token limits. The individual
+evaluation `route_settings_hash` values and raw observations remain in the linked immutable result
+directories above.
+
+The current P3 chat caller is not yet using the evaluated request budgets: `_chat_job` sets
+`max_tokens=8192` and `timeout_class=long`; the configured Worker `MAX_RESPONSE_SECONDS` is 720.
+JEV's P3 `JevBackend` reserves 1,024 output tokens and also uses the long timeout class. The local
+JEV pilot bypassed the Worker and did not persist equivalent effective request parameters. Before
+admission, either align runtime chat settings with the evaluated profile and collect a JEV Worker
+observation, or explicitly qualify the runtime profile that will actually be used. Preserve shadow
+mode and empty admissions until the exact serving identities and effective Worker settings are
+verified against that decision. The current route catalog lists JEV's 4,096-token output context
+limit; that ceiling is not evidence of the effective per-request reservation.
+
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
 audit is already daily, while review/49's weekly judge audit is a separate workflow and keeps its
