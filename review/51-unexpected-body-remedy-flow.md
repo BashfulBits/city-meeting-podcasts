@@ -1,6 +1,7 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evaluation evidence recorded; P1 admission, remaining P2, and P3–P5 gated.**
+**Status: P0 complete; P1 evaluation evidence recorded; P1 admission, P2 integration, and P3–P5
+gated.**
 **Revised:** 2026-10-14 after P3 consensus-routing decision and evaluation capture.
 This specification does not itself change production routing or enable auto-merge.
 
@@ -3393,6 +3394,13 @@ bounded work. Do not describe these local fixture results as deployed scan suppr
 P2c3a prepared verification: 209 targeted ledger/action/audit-script checks and 5,724 offline
 tests passed (16 deselected); whole Ruff/format passed across 511 files. Four synthetic local
 case reports matched the recommendations above. No production reads/writes or alert activation.
+
+P2c2b trusted decision actions and retry recovery shipped in
+[PR #2244](https://github.com/BashfulBits/city-meeting-podcasts/pull/2244), merged 2026-10-10.
+P2c3a remembered-decision comparison shipped in
+[PR #2245](https://github.com/BashfulBits/city-meeting-podcasts/pull/2245), merged 2026-10-10.
+These callable and local report slices do not connect a scheduled caller, automatic coverage
+projection, recurring alert, or publication coordinator. Those P2 integrations remain gated.
 
 CLI review of #2244 completed 2026-10-10 against main with three low-severity findings.
 The stale-parent error-order suggestion is not adopted: the early terminal-parent guard also

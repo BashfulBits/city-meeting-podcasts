@@ -1740,20 +1740,13 @@ grouping and quiet unchanged scans.
 P2c2a merged at 2026-10-10T04:23:55Z. Final CI passed; substantive CodeRabbit coverage was absent
 before human merge and is explicitly recorded in review/51. No production caller is enabled.
 
-Next authorized review/51 work: P2c2b trusted decision actions/retry recovery, then P2c3a
-remembered-decision comparison reports. Both are L2 proposals in review/51 pending the exact
-maintainer-command transport; recurring alert activation and publication coordinator remain gated.
-
-P2c2b command transport approved: dedicated `/citypods-decision` JSON comment. Exact callable
-contract in review/51 is L3; production command runner/activation remains separate.
-
-
-P2c2b implementation prepared under #2242: trusted-snapshot command binding, permission/evidence
-freshness and lease-protected retry recovery. No scheduled entrypoint connected. P2c3a local
-comparison report contract is L3 under #2243; activation remains separate from report validation.
-
-P2c3a implementation prepared under #2243: pure comparison and local report CLI. Reviewed case
-projections are explicit inputs; automatic coverage projection and alert activation are not enabled.
+P2c2b trusted decision actions and retry recovery shipped in
+[PR #2244](https://github.com/BashfulBits/city-meeting-podcasts/pull/2244); P2c3a
+remembered-decision comparison shipped in
+[PR #2245](https://github.com/BashfulBits/city-meeting-podcasts/pull/2245).
+They provide callable validation/recovery and a local report CLI. Scheduled callers, automatic
+coverage projection, recurring alerts, and publication coordination remain gated; these are the
+remaining P2 integrations before P3's decision ledger is connected to the production workflow.
 
 P1 completion prerequisite (2026-10-10): maintainer approved scoped existing-route reasoning
 capability metadata and local credential-wrapper evaluation. Exact prerequisite contract is in
