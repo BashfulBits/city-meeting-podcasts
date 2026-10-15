@@ -1501,9 +1501,9 @@ def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
         ],
         evidence_markdown="## Evidence\n\nLocally prepared source summary.",
     )
-    assert body.count("Correct / include") == 2
-    assert body.count("Possible / hold") == 2
-    assert body.count("Incorrect / exclude") == 2
+    assert body.count("Include `") == 2
+    assert body.count("Exclude `") == 2
+    assert "Possible / hold" not in body
     assert "No feed assignment" in body
     assert "Hold for future evidence" in body
     assert "&lt;b&gt;Library&lt;/b&gt;" in body

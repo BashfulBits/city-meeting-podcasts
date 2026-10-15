@@ -1371,10 +1371,11 @@ routes or change production behavior.
    proposal and PR candidate, still requiring human review and merge.
 5. **Manual disposition:** if adjudicators disagree, either abstains, selects “neither proposal” or
    “insufficient evidence,” fails transport/schema/identity checks, or deterministic validation
-   fails, create a GitHub issue with the evidence and explicit option checkboxes for each feed and
-   disposition. For every candidate feed, offer `correct/include`, `possible/hold`, and
-   `incorrect/exclude` boxes, plus overall `no feed assignment` and `hold for future evidence`
-   choices. A human selects the disposition; do not retry the semantic escalation.
+   fails, create a GitHub issue with the evidence and explicit include/exclude checkboxes for each
+   candidate feed, plus overall `no feed assignment` and `hold for future evidence` choices. A
+   human decides what goes in and out; there is no per-feed “possible” disposition. A human may
+   defer the whole finding while waiting for additional meetings or other material evidence. Do
+   not retry the semantic escalation.
 
 JEV's bounded choice is A, B, neither complete proposal, or insufficient evidence; it also returns
 independent support probabilities for A/B. “Neither” and “insufficient evidence” are safe holds,
@@ -1461,8 +1462,10 @@ candidate requires the initial validated agreement, or a selected A/B proposal t
 matches DeepSeek and all validators pass. C/D, missing results, mismatches, and validation failure
 cannot produce a PR candidate. Missing route admission returns a policy hold.
 
-`format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, and per-feed
-correct/include, possible/hold, and incorrect/exclude checkboxes plus the two overall hold choices.
+`format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, per-feed include/exclude
+checkboxes, and the two overall hold choices. “Hold for future evidence” is a finding-level defer,
+not a per-feed quality rating; subsequent related meetings or material evidence can renew review
+under the existing P2 `watch`/`blocked` disposition. An unchanged scan does not re-open it.
 It does not write to GitHub. The caller must supply feed names/slugs from locally validated
 evidence. The pure P3 decision engine and local report remain provider-free. A separate daily
 caller uses the review/49 Worker dispatch stack and P3 observation log; it may open proposal PRs or

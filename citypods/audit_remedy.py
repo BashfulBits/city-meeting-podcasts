@@ -393,9 +393,8 @@ def format_p3_manual_issue(
         rows.append(f"### `{slug}`\n\n{safe_label}\n\n")
         rows.extend(
             [
-                f"- [ ] Correct / include `{slug}`\n",
-                f"- [ ] Possible / hold `{slug}`\n",
-                f"- [ ] Incorrect / exclude `{slug}`\n\n",
+                f"- [ ] Include `{slug}`\n",
+                f"- [ ] Exclude `{slug}`\n\n",
             ]
         )
     body = (

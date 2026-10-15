@@ -1,5 +1,10 @@
 # Changelog
 
+### P3 manual disposition clarification (2026-10-15)
+
+- Manual issues ask humans to include or exclude each candidate feed. Deferral applies to the whole
+  finding through “hold for future evidence,” matching the existing P2 watch/blocked workflow.
+
 All notable changes to this project are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is **pre-1.0 (beta)** and does not
 yet cut tagged releases, so entries are grouped by milestone (most recent first) rather than by version.
