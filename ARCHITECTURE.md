@@ -792,6 +792,16 @@ Scheduled catalog early checks use authenticated `/v2/stats?rate_failures=1`: to
 rate-failure cells per configured route, read by their complete SQLite primary keys. A 128-route
 ceiling bounds reads to 384 cells; excessive configuration or unavailable storage defers checks.
 This mode performs no job scans or storage writes and rejects combination with manual detailed stats.
+`/v2/stats?routes=1` returns the route inventory alone (`routes.total`, `routes.all` with capacity,
+`tpd_used` and block state) from the small routes table and a lease-state seek, so its cost does not
+grow with retained or queued jobs; callers that need a route's capacity read it, not the detailed
+snapshot. `/v2/stats?detail=1` scans every retained and queued job (about 80,000 rows read in
+production), so it is metered: a copy younger than `DETAILED_STATS_CACHE_SECONDS` (300) is served
+as is, at most `DETAILED_STATS_MAX_PER_UTC_DAY` (24) fresh snapshots are computed a day, and past
+that the last copy is returned marked `cached.budget_exhausted` (HTTP 429 when there is none). The
+three modes are mutually exclusive. On 2026-10-13 an evaluation polling the detailed snapshot before
+each request read 4.65 million rows in three hours and exhausted the free tier's 5,000,000 daily
+rows, so the Worker refused every call until 00:00 UTC.
 
 A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
 reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next

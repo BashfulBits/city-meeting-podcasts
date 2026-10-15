@@ -3444,3 +3444,61 @@ test("manual session token ceilings, finish idempotency and expiry preserve week
   assert.equal(next.weekly_requests_used, 0);
   assert.equal([...sql.exec("SELECT * FROM context_manual_weeks")].length, 2);
 });
+
+test("route inventory stats lists the same routes as the detailed snapshot, and nothing else", async () => {
+  const { coordinator } = makeCoordinator();
+  const now = Date.now();
+  coordinator._getOrCreateRouteLedger("gemini_3_5_flash_primary", now, {});
+  coordinator._getOrCreateRouteLedger("route-b", now, {});
+  const inventory = await coordinator.routeInventoryStats(now, 10);
+  const detailed = await coordinator.detailedStats(now, 10);
+  assert.deepEqual(Object.keys(inventory).sort(), ["now", "routes"]);
+  assert.equal(inventory.now, now);
+  assert.equal(inventory.routes.total, detailed.routes.total);
+  assert.deepEqual(inventory.routes.all, detailed.routes.all);
+  assert.equal((await coordinator.routeInventoryStats(now, 1)).routes.all.length, 1);
+});
+
+test("the guarded detailed snapshot is cached, metered per UTC day and refuses once spent", async () => {
+  // 2026-10-13: an evaluation polling the detailed snapshot before every request read 4.65 million
+  // rows in three hours (about 80,000 a call) and exhausted the free tier's daily read allowance.
+  const { coordinator } = makeCoordinator();
+  coordinator.env.DETAILED_STATS_MAX_PER_UTC_DAY = "2";
+  coordinator.env.DETAILED_STATS_CACHE_SECONDS = "300";
+  let computed = 0;
+  coordinator.detailedStats = async (now, limit) => {
+    computed += 1;
+    return { now, limit, marker: computed };
+  };
+  const t0 = Date.UTC(2026, 9, 13, 17, 0, 0);
+
+  const first = await coordinator.detailedStatsGuarded(t0, 20);
+  assert.equal(first.marker, 1);
+  assert.equal(first.cached, undefined);
+
+  // Inside the cache window the stored copy answers and nothing is recomputed.
+  const again = await coordinator.detailedStatsGuarded(t0 + 10_000, 20);
+  assert.equal(computed, 1);
+  assert.equal(again.marker, 1);
+  assert.equal(again.cached.age_ms, 10_000);
+
+  // A different question is its own cache entry and spends the second computation.
+  assert.equal((await coordinator.detailedStatsGuarded(t0 + 20_000, 50)).marker, 2);
+
+  // Past the window, with the day's allowance spent: the last copy, marked, never a recompute.
+  const stale = await coordinator.detailedStatsGuarded(t0 + 400_000, 20);
+  assert.equal(computed, 2);
+  assert.equal(stale.marker, 1);
+  assert.equal(stale.cached.budget_exhausted, true);
+
+  // No copy to fall back on: a refusal that names the cheaper views.
+  const refused = await coordinator.detailedStatsGuarded(t0 + 400_000, 77);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error, "detail_stats_budget_exhausted");
+  assert.match(refused.detail, /routes=1/);
+
+  // The allowance is per UTC day.
+  const nextDay = await coordinator.detailedStatsGuarded(Date.UTC(2026, 9, 14, 0, 5, 0), 20);
+  assert.equal(computed, 3);
+  assert.equal(nextDay.marker, 3);
+});

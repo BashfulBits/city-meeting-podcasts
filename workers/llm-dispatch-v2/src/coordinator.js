@@ -3240,49 +3240,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return cells;
   }
 
-  async detailedStats(now, limit = 20, { failureClasses = null } = {}) {
-    this._transactionSync(() => this._ensureQueuedJobCounter());
-    const sql = this._getSql();
-    const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
-
-    const states = {};
-    for (const row of sql.exec("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state")) {
-      states[row.state] = row.n;
-    }
-
-    // The stranding check. A queued job with no job_models row can never be selected by
-    // claimDispatchWindow, so `queued` above would look healthy while nothing is claimable.
-    // Without the legacy job_id index, look each queued job's rows up by the primary key its
-    // recorded queue_models implies. A NULL list after that index is retired is itself a defect
-    // and counts as unindexed.
-    const unindexed = this._hasLegacyJobModelsIndex()
-      ? one(
-        `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
-           AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
-      ).n
-      : one(
-        `SELECT COUNT(*) AS n FROM jobs j WHERE j.state = 'queued'
-           AND NOT EXISTS (
-             SELECT 1 FROM json_each(j.queue_models) q
-             JOIN job_models m ON m.model = q.value AND m.priority = j.priority
-               AND m.created_at = j.created_at AND m.job_id = j.id
-           )`
-      ).n;
-
-    const oldestQueued = one(
-      "SELECT MIN(created_at) AS t FROM jobs WHERE state = 'queued'"
-    ).t;
-
-    // What the scheduler actually ranks over: queued work grouped by the model it can run on.
-    const queuedByModel = [...sql.exec(
-      `SELECT m.model AS model, COUNT(*) AS queued
-         FROM job_models m JOIN jobs j ON j.id = m.job_id
-        WHERE j.state = 'queued'
-        GROUP BY m.model ORDER BY queued DESC LIMIT ?`,
-      limit
-    )];
-
-    // Every route the DO has a ledger row for, with the two independent reasons a route can be
+  /**
+   * Every route the DO has a ledger row for, with the live capacity the scheduler ranks on and its
+   * leased counts. The routes table is a small, fixed population (one row per route ever touched,
+   * bounded by the static catalog), and the lease count seeks the `state` index, so this costs a
+   * few hundred rows however much work is queued or retained: it is the cheap part of
+   * `detailedStats`, served on its own by `routeInventoryStats`.
+   */
+  _routeInventory(sql, now) {
+    // The two independent reasons a route can be
     // unusable AND the capacity score itself.
     //
     // The first cut of this reported only blocked_until, which is why it could not diagnose the
@@ -3349,6 +3315,122 @@ export class LLMSchedulerDO extends DurableObjectBase {
         in_catalog: Boolean(catalogRoute),
       };
     });
+    return { routes, leasedByRoute, leasedByProvider };
+  }
+
+  /**
+   * The route inventory alone (`GET /v2/stats?routes=1`): what a caller that needs a route's
+   * capacity, daily token use or block state should read instead of the detailed snapshot, whose
+   * cost grows with every job the DO retains (2026-10-13: an evaluation polling the detailed
+   * snapshot before each request read 4.65 million rows in three hours and exhausted the free
+   * tier's 5,000,000 daily rows, so the Worker refused every call until the reset).
+   */
+  async routeInventoryStats(now, limit = 20) {
+    const { routes } = this._routeInventory(this._getSql(), now);
+    return {
+      now,
+      routes: {
+        total: routes.length,
+        all: routes.slice(0, limit),
+      },
+    };
+  }
+
+  /** Minimum seconds between recomputations of one detailed snapshot (repeat calls get the copy). */
+  _detailedStatsCacheSeconds() {
+    return this._envInt("DETAILED_STATS_CACHE_SECONDS", 300);
+  }
+
+  /** Most detailed snapshots computed per UTC day; past it a caller gets the last copy or a 429. */
+  _detailedStatsMaxPerUtcDay() {
+    return this._envInt("DETAILED_STATS_MAX_PER_UTC_DAY", 24);
+  }
+
+  /**
+   * `detailedStats` behind a cost guard. The snapshot scans every retained job and every queued
+   * job, about 80,000 rows read in production, so an unmetered caller can spend the day's whole
+   * read allowance. A copy younger than the cache window is returned as is; a new computation is
+   * allowed only while the day's allowance lasts, after which the last copy is returned marked
+   * `budget_exhausted` (or HTTP 429 when there is none). The counters live in memory: a DO that is
+   * evicted starts a fresh day's count, which only ever errs toward allowing a few more.
+   */
+  async detailedStatsGuarded(now, limit = 20, { failureClasses = null } = {}) {
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (this._detailedStatsDay !== day) {
+      this._detailedStatsDay = day;
+      this._detailedStatsComputed = 0;
+    }
+    this._detailedStatsCache ??= new Map();
+    const key = JSON.stringify([limit, failureClasses || []]);
+    const hit = this._detailedStatsCache.get(key);
+    const meta = (extra) => ({
+      age_ms: hit ? now - hit.at : 0,
+      computed_today: this._detailedStatsComputed,
+      max_per_day: this._detailedStatsMaxPerUtcDay(),
+      ...extra,
+    });
+    if (hit && now - hit.at < this._detailedStatsCacheSeconds() * 1000) {
+      return { ...hit.payload, cached: meta({}) };
+    }
+    if (this._detailedStatsComputed >= this._detailedStatsMaxPerUtcDay()) {
+      if (hit) return { ...hit.payload, cached: meta({ budget_exhausted: true }) };
+      return {
+        ok: false,
+        error: "detail_stats_budget_exhausted",
+        detail:
+          "the detailed snapshot's daily computation allowance is spent; use /v2/stats?routes=1 " +
+          "for route capacity or the default /v2/stats for counters",
+      };
+    }
+    this._detailedStatsComputed += 1;
+    const payload = await this.detailedStats(now, limit, { failureClasses });
+    this._detailedStatsCache.set(key, { at: now, payload });
+    return payload;
+  }
+
+  async detailedStats(now, limit = 20, { failureClasses = null } = {}) {
+    this._transactionSync(() => this._ensureQueuedJobCounter());
+    const sql = this._getSql();
+    const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
+
+    const states = {};
+    for (const row of sql.exec("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state")) {
+      states[row.state] = row.n;
+    }
+
+    // The stranding check. A queued job with no job_models row can never be selected by
+    // claimDispatchWindow, so `queued` above would look healthy while nothing is claimable.
+    // Without the legacy job_id index, look each queued job's rows up by the primary key its
+    // recorded queue_models implies. A NULL list after that index is retired is itself a defect
+    // and counts as unindexed.
+    const unindexed = this._hasLegacyJobModelsIndex()
+      ? one(
+        `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
+           AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
+      ).n
+      : one(
+        `SELECT COUNT(*) AS n FROM jobs j WHERE j.state = 'queued'
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(j.queue_models) q
+             JOIN job_models m ON m.model = q.value AND m.priority = j.priority
+               AND m.created_at = j.created_at AND m.job_id = j.id
+           )`
+      ).n;
+
+    const oldestQueued = one(
+      "SELECT MIN(created_at) AS t FROM jobs WHERE state = 'queued'"
+    ).t;
+
+    // What the scheduler actually ranks over: queued work grouped by the model it can run on.
+    const queuedByModel = [...sql.exec(
+      `SELECT m.model AS model, COUNT(*) AS queued
+         FROM job_models m JOIN jobs j ON j.id = m.job_id
+        WHERE j.state = 'queued'
+        GROUP BY m.model ORDER BY queued DESC LIMIT ?`,
+      limit
+    )];
+
+    const { routes, leasedByRoute, leasedByProvider } = this._routeInventory(sql, now);
     // Surface the ones that cannot currently take work first -- that is what an operator is
     // looking for -- then the rest, so a healthy fleet still reads as healthy.
     const zeroCapacity = routes.filter((r) => r.capacity === 0 || r.capacity === null);
