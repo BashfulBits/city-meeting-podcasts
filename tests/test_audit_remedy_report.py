@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -129,8 +130,49 @@ def test_input_rejects_unknown_admission_claim_and_duplicate_feed():
         record(feeds=[{"slug": "test-city-council", "title": "A"}] * 2)
     with pytest.raises(ValueError, match="exactly the two initial routes"):
         record(initial_validators={"untrusted-route": True})
+    with pytest.raises(ValueError, match="exactly the configured"):
+        record(initial_votes=record().initial_votes + [vote("beatapi_gpt_6_1_sol_free")])
     with pytest.raises(ValueError, match="valid slugs"):
         record(feeds=[{"slug": "../outside", "title": "A"}])
+
+
+def test_input_rejects_initial_vote_binding_mismatch():
+    votes = list(record().initial_votes)
+    votes[0] = votes[0].model_copy(update={"evidence_hash": "1" * 64})
+
+    with pytest.raises(ValueError, match="initial vote evidence or policy binding"):
+        record(initial_votes=votes)
+
+
+def test_input_rejects_adjudication_binding_mismatch():
+    adjudication = {
+        "deepseek": vote("beatapi_deepseek_v4_1_flash_free").model_dump(mode="json"),
+        "jev_route_id": "beatapi_jev_1_13_free",
+        "jev_upstream_model": "model/jev",
+        "evidence_hash": "1" * 64,
+        "policy_hash": POLICY_HASH,
+        "response_hash": "d" * 64,
+        "choice": "A",
+    }
+
+    with pytest.raises(ValueError, match="adjudication evidence or policy binding"):
+        record(adjudication=adjudication)
+
+
+def test_input_rejects_nested_deepseek_vote_binding_mismatch():
+    deepseek = vote("beatapi_deepseek_v4_1_flash_free").model_copy(update={"policy_hash": "1" * 64})
+    adjudication = {
+        "deepseek": deepseek.model_dump(mode="json"),
+        "jev_route_id": "beatapi_jev_1_13_free",
+        "jev_upstream_model": "model/jev",
+        "evidence_hash": EVIDENCE_HASH,
+        "policy_hash": POLICY_HASH,
+        "response_hash": "d" * 64,
+        "choice": "A",
+    }
+
+    with pytest.raises(ValueError, match="DeepSeek vote evidence or policy binding"):
+        record(adjudication=adjudication)
 
 
 def test_json_loader_rejects_duplicate_keys(tmp_path: Path):
@@ -155,10 +197,35 @@ def test_writer_is_exclusive_and_never_overwrites_input(tmp_path: Path):
     assert json.loads(output.read_text(encoding="utf-8")) == report
 
 
+def test_writer_rejects_dangling_output_symlink(tmp_path: Path):
+    source = tmp_path / "source.json"
+    output = tmp_path / "report.json"
+    target = tmp_path / "missing-target.json"
+    source.write_text("{}", encoding="utf-8")
+    output.symlink_to(target)
+
+    with pytest.raises(FileExistsError):
+        write_report_exclusive(output, {"schema_version": 1}, input_path=source)
+    assert not target.exists()
+
+
 def test_cli_is_local_report_only_and_creates_a_held_report(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
     source = tmp_path / "input.json"
     output = tmp_path / "report.json"
+    guard = tmp_path / "offline_guard"
+    guard.mkdir()
+    (guard / "sitecustomize.py").write_text(
+        "import socket\n"
+        "import subprocess\n"
+        "def blocked(*args, **kwargs):\n"
+        "    raise RuntimeError('offline CLI attempted network/process access')\n"
+        "socket.create_connection = blocked\n"
+        "socket.socket.connect = blocked\n"
+        "socket.socket.connect_ex = blocked\n"
+        "subprocess.Popen = blocked\n",
+        encoding="utf-8",
+    )
     source.write_text(record().model_dump_json(), encoding="utf-8")
 
     result = subprocess.run(
@@ -175,6 +242,7 @@ def test_cli_is_local_report_only_and_creates_a_held_report(tmp_path: Path):
         capture_output=True,
         text=True,
         timeout=15,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join((str(guard), str(root)))},
     )
 
     assert result.returncode == 0, result.stderr

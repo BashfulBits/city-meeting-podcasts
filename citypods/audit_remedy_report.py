@@ -52,15 +52,33 @@ class P3ReportInput(BaseModel):
             raise ValueError("feed slugs must be unique")
         if any(not SLUG_RE.fullmatch(feed.slug) or not feed.title.strip() for feed in self.feeds):
             raise ValueError("feed labels require valid slugs and nonblank titles")
-        if {vote.route_id for vote in self.initial_votes} != P3_INITIAL_ROUTES:
+        if (
+            len(self.initial_votes) != 2
+            or {vote.route_id for vote in self.initial_votes} != P3_INITIAL_ROUTES
+        ):
             raise ValueError("input must contain exactly the configured Sol and GLM Flash votes")
         if set(self.initial_validators) != P3_INITIAL_ROUTES:
             raise ValueError("validator results must bind exactly the two initial routes")
         if any(vote.decision.finding_id != self.finding_id for vote in self.initial_votes):
             raise ValueError("initial vote finding IDs must match the report input")
+        if any(
+            vote.evidence_hash != self.evidence_hash or vote.policy_hash != self.policy_hash
+            for vote in self.initial_votes
+        ):
+            raise ValueError("initial vote evidence or policy binding mismatch")
+        if self.adjudication and (
+            self.adjudication.evidence_hash != self.evidence_hash
+            or self.adjudication.policy_hash != self.policy_hash
+        ):
+            raise ValueError("adjudication evidence or policy binding mismatch")
         if self.adjudication and self.adjudication.deepseek:
             if self.adjudication.deepseek.decision.finding_id != self.finding_id:
                 raise ValueError("DeepSeek finding ID must match the report input")
+            if (
+                self.adjudication.deepseek.evidence_hash != self.evidence_hash
+                or self.adjudication.deepseek.policy_hash != self.policy_hash
+            ):
+                raise ValueError("DeepSeek vote evidence or policy binding mismatch")
         return self
 
 
@@ -143,7 +161,7 @@ def load_report_input(path: Path) -> P3ReportInput:
 
 def write_report_exclusive(path: Path, report: dict[str, Any], *, input_path: Path) -> None:
     """Atomically create a report without replacing input or prior output."""
-    output = path.resolve()
+    output = path.parent.resolve() / path.name
     source = input_path.resolve()
     if output == source:
         raise ValueError("report output must differ from the input path")
