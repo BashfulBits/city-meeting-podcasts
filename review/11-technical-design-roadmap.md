@@ -242,8 +242,9 @@ and the maintainer accepted the gathered P1 evaluation evidence as sufficient to
 implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
 production route configuration remains unchanged. P3's pure consensus decision engine and manual
 issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
-production integration remains gated on any
-remaining durable P2 contracts and JEV's documented review/49 dispatch integration. P4–P5 stay
+the strict local report-only replay contract and CLI are implemented in the current P3 follow-up.
+Production integration remains gated on remaining durable P2 workflow connections, validated
+route admissions, and JEV's documented review/49 dispatch integration. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID

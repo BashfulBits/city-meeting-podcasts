@@ -1413,6 +1413,42 @@ review/49 dispatch API. Tests cover normalized consensus, adjudication, mismatch
 failure, provenance binding, unavailable routes, JEV abstentions, and checkbox formatting. Keep
 unrelated P4/P5 controls, historical coverage, and stage/pipeline versions unchanged.
 
+**Report-only replay contract (2026-10-14):** implement `citypods.audit_remedy_report` and
+`scripts/report_p3_remedy.py` as a local replay boundary over already-recorded P3 observations.
+This resolves the runner's missing input/output contract without activating provider calls or
+publication. The strict input JSON has `schema_version: 1`, `finding_id`, `evidence_hash`,
+`policy_hash`, `evidence_summary`, `feeds`, `initial_votes`, `initial_validators`, optional
+`adjudication`, and `adjudication_validator_passed`. Each vote/adjudication uses the P3 models
+above; each feed has only `slug` and `title`. Reject unknown keys, malformed hashes, duplicate
+feed slugs, and a finding/hash mismatch before rendering. Evidence summary is caller-prepared,
+bounded plain text; this tool never opens URLs or reads gold.
+
+Run the offline replay:
+
+```bash
+PYTHONPATH=. python scripts/report_p3_remedy.py --input recorded-votes.json --out p3-report.json
+```
+
+The input can contain recorded outputs from a prior authorized run; the script itself makes no
+model calls. The output path must not exist.
+
+The replay caller supplies `admitted_routes` as a runtime argument derived by its trusted
+integration; it is deliberately not accepted from the input file. The local CLI supplies an empty
+set, so it can never promote a saved vote to a proposal. The report contains schema version,
+input hash, the pure `P3ReviewDecision`, and either a proposal candidate summary, a formatted
+checkbox issue candidate, or the exact policy hold. The issue body is rendered locally only.
+Output creation is exclusive and atomic; raw input and prior reports are never overwritten. The
+CLI has no live, apply, GitHub, storage, or route-configuration flags. It performs no network,
+provider, credential, GitHub, feed, or durable-ledger operations. This is a report/replay aid, not
+the production P3 dispatch integration.
+
+Tests must cover strict input validation, empty-admission holds, exact consensus and adjudication
+replay, manual checkbox output, no input/output overwrite, and proof that CLI execution makes no
+network or GitHub calls. The report must retain the original route/model/reasoning provenance and
+raw response hashes from each vote. The remaining dispatch integration stays gated on separately
+approved route admissions, dispatch-bound JEV qualification, and the still-gated P2 workflow
+connection.
+
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
 correctly on 52/60 cases, had zero shared wrong agreements, and disagreed on 8. The disagreement

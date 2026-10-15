@@ -1066,6 +1066,12 @@ routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admis
 qualifications. Current high/max effort capabilities are unverified in the route catalog, so
 admission fails closed rather than silently dropping effort or accepting a weaker fallback.
 
+`citypods.audit_remedy_report` and `scripts/report_p3_remedy.py` replay saved, route-bound P3 votes
+through the pure consensus engine into a new local JSON report. The CLI has no provider, storage,
+GitHub, feed-write or admission-override path; it supplies an empty trusted-admission set and
+therefore fails closed. A future trusted dispatch integration must supply validated runtime
+admissions and remains separate from this report-only replay tool.
+
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. Only `run_immediate` accepts this gate; deferred and dispatch requests reject it.
 Synchronous `JobResult` adds selected route/upstream/parameter provenance and reports reasoning
