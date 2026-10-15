@@ -1171,3 +1171,26 @@ def test_the_judge_stage_hands_the_runner_its_ratio_and_outstanding_limits(monke
     assert asked == [(JEV_ROUTE_ID, "judge")]
     assert seen["ctx"].anchor_input_ratio == 1.17
     assert seen["ctx"].max_outstanding == {"judge:anchor": 7, "judge:sibling": 9}
+
+
+def test_packets_waiting_for_superseded_subjects_still_count_as_outstanding():
+    """A candidate whose evidence changes gets a new subject id, so its old pending markers are
+    never visited while the packet they name is still queued; they must still hold the limit."""
+    dispatch = FakeDispatch()
+    limits = {"judge:anchor": 1, "judge:sibling": 1}
+    ep = _episode(uid="ep-a")
+    first = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert first.counts["packets:anchor"] == 1
+    store = _subjects(ep)[0].store
+    # Supersede every subject: the entries (and their pending markers) stay, under ids no
+    # current subject has.
+    store["subjects"] = {f"old-{key}": entry for key, entry in store["subjects"].items()}
+    held = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert held.counts["superseded_pending"] >= 1
+    assert held.counts["outstanding:judge:anchor"] == 1
+    assert held.counts["packets:anchor"] == 0 and held.counts["packets:sibling"] == 0
+    # Once the Worker answers, the old packets stop counting.
+    dispatch.answer()
+    freed = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert freed.counts["outstanding:judge:anchor"] == 0
+    assert freed.counts["packets:anchor"] == 1

@@ -222,6 +222,37 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
             if not rows:
                 stats.counts["answer_missing"] += 1
             _record(packet, rows, stats)
+    _count_superseded_outstanding(subjects, ctx, stats, outputs)
+
+
+def _count_superseded_outstanding(
+    subjects: Sequence[Subject],
+    ctx: JudgingContext,
+    stats: JudgingStats,
+    outputs: dict[str, Any],
+) -> None:
+    """Count packets still waiting at the Worker for subjects that are no longer current.
+
+    A candidate whose evidence changes gets a new subject id, so its old subject's pending markers
+    are never visited by the loop above while the packet they name is still queued. They stay in
+    the episode's ``judging`` block, so they are read from there and added to the outstanding
+    count: otherwise repeated candidate changes could admit packets past the outstanding limit."""
+    current = {subject.subject_id for subject in subjects}
+    stores = {id(subject.store): subject.store for subject in subjects}
+    for store in stores.values():
+        for subject_id, entry in (store.get("subjects") or {}).items():
+            if subject_id in current or not isinstance(entry, dict):
+                continue
+            for marker in entry.get("pending") or []:
+                recipe = str((marker or {}).get("recipe_hash") or "")
+                if not recipe:
+                    continue
+                if recipe not in outputs:
+                    outputs[recipe] = ctx.look_up(recipe)
+                if isinstance(outputs[recipe], JobHandle):
+                    purpose = str(marker.get("purpose") or "")
+                    stats.outstanding.setdefault(purpose, set()).add(recipe)
+                    stats.counts["superseded_pending"] += 1
 
 
 def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
