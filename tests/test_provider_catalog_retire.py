@@ -360,8 +360,8 @@ def test_automatic_removal_requires_successful_weekly_full_main_run():
             "display_title": "Provider catalog reconciliation (weekly-full)",
         },
     }
-    assert trusted_scheduled_run(event, "owner/repo", weekly_full_only=True)
-    assert not trusted_scheduled_run(event, "other/repo", weekly_full_only=True)
+    assert trusted_scheduled_run(event, "owner/repo", weekly_full_only=True) is True
+    assert trusted_scheduled_run(event, "other/repo", weekly_full_only=True) is False
     for change in (
         {"conclusion": "failure"},
         {"event": "workflow_dispatch"},
@@ -369,7 +369,7 @@ def test_automatic_removal_requires_successful_weekly_full_main_run():
         {"display_title": "Provider catalog reconciliation (daily-due-only)"},
     ):
         changed = {**event, "workflow_run": {**event["workflow_run"], **change}}
-        assert not trusted_scheduled_run(changed, "owner/repo", weekly_full_only=True)
+        assert trusted_scheduled_run(changed, "owner/repo", weekly_full_only=True) is False
 
 
 def test_removal_writer_rebuilds_on_changed_main_and_flags_primary(monkeypatch):

@@ -78,9 +78,12 @@ def trusted_scheduled_run(event, repository, *, weekly_full_only=False):
         and source.get("name") == "Provider catalog reconciliation"
         and (source.get("head_repository") or {}).get("full_name") == repository
     )
-    return accepted and (
-        not weekly_full_only
-        or source.get("display_title") == "Provider catalog reconciliation (weekly-full)"
+    return bool(
+        accepted
+        and (
+            not weekly_full_only
+            or source.get("display_title") == "Provider catalog reconciliation (weekly-full)"
+        )
     )
 
 
