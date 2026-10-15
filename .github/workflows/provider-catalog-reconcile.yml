@@ -1,4 +1,8 @@
 name: Provider catalog reconciliation
+run-name: >-
+  ${{ github.event.schedule == '17 10 * * 1' && 'Provider catalog reconciliation (weekly-full)' ||
+      github.event.schedule == '20 8 * * *' && 'Provider catalog reconciliation (daily-due-only)' ||
+      'Provider catalog reconciliation (manual)' }}
 
 # review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
 # configured free routes and canaries a few free-marked candidates -- each provider inside a v2

@@ -332,8 +332,10 @@ def test_lane_comments_survive_primary_backup_and_reasoning_cleanup():
 
 
 def test_activation_gate_prevents_probes_and_publication(monkeypatch):
+    from citypods.provider_catalog import retire
     from scripts import provider_catalog_commands as commands
 
+    monkeypatch.setattr(retire, "RETIREMENTS_ENABLED", False)
     monkeypatch.setattr(commands, "_control", lambda *a: pytest.fail("must not acquire live pause"))
     with pytest.raises(ValueError, match="canary"):
         commands.prepare_retirements("main")
@@ -342,6 +344,32 @@ def test_activation_gate_prevents_probes_and_publication(monkeypatch):
             EditPlan("main", (), proposal_kind="removals"),
             run_fn=lambda *a: pytest.fail("must not publish"),
         )
+
+
+def test_automatic_removal_requires_successful_weekly_full_main_run():
+    from scripts.provider_catalog_commands import trusted_scheduled_run
+
+    event = {
+        "action": "completed",
+        "workflow_run": {
+            "conclusion": "success",
+            "event": "schedule",
+            "head_branch": "main",
+            "head_repository": {"full_name": "owner/repo"},
+            "name": "Provider catalog reconciliation",
+            "display_title": "Provider catalog reconciliation (weekly-full)",
+        },
+    }
+    assert trusted_scheduled_run(event, "owner/repo", weekly_full_only=True)
+    assert not trusted_scheduled_run(event, "other/repo", weekly_full_only=True)
+    for change in (
+        {"conclusion": "failure"},
+        {"event": "workflow_dispatch"},
+        {"head_branch": "feature"},
+        {"display_title": "Provider catalog reconciliation (daily-due-only)"},
+    ):
+        changed = {**event, "workflow_run": {**event["workflow_run"], **change}}
+        assert not trusted_scheduled_run(changed, "owner/repo", weekly_full_only=True)
 
 
 def test_removal_writer_rebuilds_on_changed_main_and_flags_primary(monkeypatch):

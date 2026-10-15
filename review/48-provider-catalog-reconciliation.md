@@ -1,8 +1,8 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); Slice 4 shipped (#2201); removal activation retains gates; automatic input discovery activation in implementation PR**
+**Maturity: Slices 1–4 and automatic new-route input discovery shipped (#2445); evidence-gated removal activation is this implementation; new-route cap projection into addition PRs remains tracked by #2271**
 
-**Current scope decision — 2026-10-11, amended 2026-10-14:** route discovery/addition/removal
+**Current scope decision — 2026-10-11, amended 2026-10-15:** route discovery/addition/removal
 plus new-route input-cap search in §8.13. Prior shipped calibration remains historical/operational context;
 automatic runtime ceiling publication and broader recurring characterization are Deferred to
 [review/54](54-provider-limit-characterization.md). Existing dispatcher adaptations stay intact.
@@ -650,7 +650,9 @@ structurally failed deferred work; already-completed recipes remain reusable.
 
 Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
 The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
-implemented in PR #2193, merged 2026-10-08 (America/Chicago). Live publication remains disabled.
+merged 2026-10-08 (America/Chicago). The separate activation is prepared in PR #2274 after
+maintainer acceptance of the recovery evidence under #2220. It proposes reviewed route-removal
+PRs from the weekly full catalog run; it never edits configuration directly.
 Retirement requires current-day complete catalog evidence and an unchanged route digest for
 each configured physical account serving the upstream. Old issue markers alone cannot authorize
 a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
@@ -662,13 +664,12 @@ pool alternatives. Remove `backup_after_attempts` when the last backup is remove
 reasoning entries for models no longer in the lane. Do not rewrite existing queued jobs or their
 stored policies. New lane primary identities affect new jobs; completed artifacts remain reusable.
 
-Finish and merge the code with removal publication disabled. Then verify a bounded recovery canary
-against deployed Worker/Python consumers and enable the writer in a separate reviewed activation
-change. `retire.py::RETIREMENTS_ENABLED` remains false; dormant preparation/publication helpers
-`scripts/provider_catalog_commands.py::prepare_retirements()` and `publish()` fail before
-live probes or publication while false, and no workflow calls the retirement preparer. The later activation
-change must record canary evidence and wire the existing reconcile/writer workflow paths under the
-shared writer lock. This PR does not dispatch a canary or change deployment settings.
+The code and managed writer are activated in the reviewed PR for #2274 after the accepted
+recovery-canary evidence. The existing `prepare_retirements()` rebuilds from fresh `main`, obtains
+the ordinary v2 provider pause, performs fresh route/account confirmations, compiles both catalogs,
+and publishes only a managed review PR. The writer runs after a successful weekly full catalog
+workflow under the shared writer lock; the daily due-only run does not start extra route probes.
+No route config is merged or deployed automatically.
 
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
 Require fresh absence from a complete catalog, an initial definitive retired/not-served result, and
@@ -760,13 +761,12 @@ inspection. The GitHub Actions run metadata and named payload-free telemetry art
   of `898147413ca26d4ce87265e691d5ee0de25960e9` at 23:25 UTC. This is continuity across a
   deployment window, not proof of a particular DO instance recreation or injected outage.
 
-**Remaining gaps:** legacy sentinel/no-route index coverage is not established by these
+**Disposition at the time:** legacy sentinel/no-route index coverage was not established by these
 `unadmissible` events; nonzero retry counts or an already-used schema correction are not exercised;
 explicit outage/recreation continuity is not established. Current data proves two zero-state audits,
 subsequent blocked checks in two runs and a retained completed checkpoint. It does not satisfy the
-entire removal gate. #2220 remains open and removals remain disabled. Continue observing ordinary
-runs; missing cases must not be manufactured with synthetic production jobs or inferred from offline
-tests. Any change to the acceptance gate requires a recorded maintainer decision.
+entire removal gate on its own. The later isolated acceptance below supersedes this partial checkpoint.
+Missing cases were not manufactured with synthetic production jobs or inferred from offline tests.
 
 
 The deployed coordinator run [37857444179](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37857444179)
@@ -1813,8 +1813,9 @@ Acceptance results:
 
 Combined with the two preserved production audits, subsequent blocked unchanged-generation checks
 in two ordinary runs and completed checkpoint continuity, this satisfies the revised #2220 evidence
-gate. It does not authorize removal activation: prepare and review that narrow change separately.
-Live context input/output canaries and recurring calibration remain independent gates.
+gate. The separate removal activation is tracked by #2274. This acceptance does not claim actual
+Cloudflare quota exhaustion was tested. Live context input/output canaries and recurring calibration
+remain independent gates.
 
 ### Proposed input-canary activation contract — #2221, 2026-10-10
 
@@ -2001,78 +2002,67 @@ prototype notes as historical material. This supersedes the earlier L3 implement
 for #2264; that issue now tracks deferred future characterization. No production policy, schema,
 quota or workflow activation is changed by this scope correction.
 
-### 8.13 New-route request-cap discovery — L3, 2026-10-11
+### 8.13 New-route request-cap discovery — L3, amended 2026-10-15
 
 Implementation tracking: [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
 
-**Maintainer decisions.** At reachability verification, run an admitted/refused request-size
-search on each new physical route for input, output and combined token constraints. Include API
-limits, provider source references, AA quality compared with current models, experimental brackets
-and unresolved evidence in the existing route-addition decision issue. Ask the maintainer to
-provide provider-claimed missing quotas/caps and approve preparation of the exact config PR, or
-to select `test again`. Published provider values remain separate canonical facts; empirical
-discrepancies request provider re-check and an explicit maintainer choice. A maintainer may overrule
-the empirically proposed operational cap based on provider data. Do not treat an entered value as
-provider-canonical unless its source and exact applicable scope are supplied.
+**Maintainer decisions, amended 2026-10-15.** The earlier all-axis route-addition language below
+is superseded for automatic discovery: input evidence alone is the required request-size gate.
+Manual output/combined probes remain diagnostics and do not set route-addition caps. During
+reachability verification, run the bounded
+input-size search on each newly qualifying free route. Input is the only measured request-size
+limit required to propose a route: output and combined searches are not route-addition gates because
+their results have not been reliable enough to constrain dispatch. Include API/LiteLLM claims and
+sources, AA quality, verified admitted input, calibrated rejected-size estimate, count basis and
+uncertainty in the route-addition decision. Ask for missing provider quotas or an explicit cap
+override before preparing the exact config PR. Provider values remain separate canonical facts;
+empirical discrepancies request a provider re-check and maintainer choice. Do not treat an
+unsourced entered value as provider-canonical.
 
 **New-provider onboarding requirement (maintainer decision, 2026-10-15).** Before adding a newly
-onboarded provider's free route to `config/provider_limits.yml`, run this request-cap suite on the
-exact free physical route as part of its reachability verification. Use the shared or provider-level
-parser path, not model-specific parsing. Include the route's published/API/LiteLLM starting hints,
-verified admitted sizes, any typed refusals, estimated rejected sizes, provider-count basis, and
-unsupported or inconclusive axes in the route-addition issue.
+onboarded provider's free route to `config/provider_limits.yml`, run the input-size suite on that
+exact physical route as part of reachability verification. Use shared or provider-level parsing,
+not model-specific parsing. Include published/API/LiteLLM starting hints, the largest verified
+admitted input, any typed refusals, calibrated rejected-size estimate, provider-count basis and
+uncertainty in the route-addition issue.
 
-The route-addition PR must carry the suite's evidence into the proposed route values. Use the largest
-verified admitted size only for the dimension and request shape it proves; a calibrated rejected-size
-estimate is useful for reporting/refinement but is not an exact refused count or a provider limit. A
-natural output stop, clipped combined response, missing usage, or unsupported parser cannot supply a
-verified cap. When an axis remains unresolved, retain the provider's sourced claim separately and
-ask the maintainer to provide/approve a value or select `test again`; do not silently substitute the
-claim for an empirical result. If the config schema cannot faithfully express a discovered combined
-constraint, defer that route addition until the schema or an explicit reviewed override can represent
-it. This gate applies to new free-route additions; it does not start recurring calibration of already
-configured routes (deferred to #2264).
+The route-addition PR must carry authenticated input evidence into the proposed `max_input_tokens`
+value and explain any provider claim or override. A calibrated rejected-size estimate is useful for
+reporting and refinement, but is not an exact refused count or a provider limit. If no verified
+admitted input is available, ask the maintainer for an explicit value or select `test again`; do not
+silently substitute a provider claim for empirical evidence. Output and combined observations may
+be shown as diagnostics but do not gate a new route or get converted into caps by this workflow.
+This applies to newly added free routes only; recurring configured-route calibration remains deferred
+to #2264.
 
 **Implementation gap.** The shipped discovery flow reports request-cap observations separately from
-`RouteEvidence`; current `/apply` builds route context values from catalog evidence and does not yet
-project the authenticated discovery history into the addition PR. The onboarding requirement is not
-complete until the candidate decision is bound to compatible authenticated discovery evidence and
-the resulting dimension-specific values (including their count basis and any provider/local estimate
-conversion) are included in the proposed route configuration. Add regression coverage for stale,
-missing, mismatched and partial evidence. No route cap is published automatically. Track this follow-up
-under #2271; unresolved combined-cap representation remains a design dependency where applicable.
+`RouteEvidence`; current `/apply` builds route values from catalog evidence and does not yet project
+authenticated input history into the addition PR. The onboarding requirement is not complete until
+the candidate decision is bound to compatible authenticated input evidence and the proposed
+`max_input_tokens` value carries its count basis and provider/local estimate conversion. Add
+regression coverage for stale, missing, mismatched and partial evidence. No route cap is published
+automatically. Track this follow-up under #2271.
 
-**Probe axes.** Seek at least one verified admitted size and one typed too-large size on each
-axis. For input, hold output reservation and task fixed and verify input processing. For output,
-hold small input fixed and use actual generated output plus finish reason; accepting an output
-parameter or stopping naturally does not prove the output ceiling. For total, verify provider
-combined-count semantics and vary input/output mixes. Keep actual input, requested output, actual
-output, reasoning and cache accounting distinct. An input-only error does not establish a total
-cap; unsupported count/error semantics remain unresolved. Use provider-reported comparable counts
-where available and record parser/count-basis uncertainty explicitly.
+**Probe axes.** Automatic route-addition discovery searches input only, holding the output
+reservation and task fixed and verifying input processing. Manual output/combined probes may still
+be used to diagnose a route, but their natural stops, clipping and unresolved parser semantics do
+not establish a route cap. Keep provider-reported input counts distinct from local estimates and
+record count-basis uncertainty explicitly.
 
-**Direction and convergence.** Reduce after a typed too-large result until a compatible probe
-passes; then increase until a rejection and refine the bracket. Continue within the discovery
-session until all measurable axes have both bounds and each width satisfies
-`refused - admitted <= max(1, ceil(admitted * 0.005))` tokens. This is the new-route 0.5% goal:
-there is no 128-token floor or arbitrary percentage reduction to turn a passing bound into a cap.
-Round only for integer token resolution. Keep axis/control/count identities separate. Stretch
-from successes without a rejection, preserving a truthful lower-bound-only result if an upper
-edge cannot be reached. If another constraint binds first, report the resulting conditional
-request-size bracket and the blocking constraint; do not claim an independently verified input or
-output maximum. A resumed search may reopen contradictory/stale evidence and refine it.
+**Direction and convergence.** Reduce after a typed input-size refusal until a compatible input
+probe passes; then increase and refine using the existing search and count-correction rules. The
+0.5% gap is a target for the calibrated rejected-size estimate, not a provider-verified upper
+bound. Preserve a truthful admitted lower bound and mark an upper estimate as approximate when a
+provider refusal supplies no exact count. Never infer output or combined caps from this search.
 
 **RPD and bounded execution.** Newly discovered routes need no configured RPD value before this
-search; do not apply the established-route six-call weekly or scarce-RPD health cadence as its
-convergence rule. Never ignore provider-enforced daily/token limits or bypass credential/account
-scope, free/paid policy or known shared quotas. Discovery needs a separate reviewed finite call,
-aggregate token, per-call and wall-time envelope before live integration. Reaching that envelope
-returns partial evidence rather than claiming convergence. This is an escape bound, not an
-assumption about the new route's daily quota. Numerical envelopes and exact transport/workflow
-changes are specified below; no existing admission gate is bypassed by this L2 decision.
+search. Never ignore provider-enforced daily/token limits or bypass credential/account scope,
+free/paid policy or known shared quotas. The reviewed finite call, aggregate-token, per-call and
+wall-time envelope below bounds discovery. Reaching it returns partial evidence rather than
+claiming convergence; it is not an assumption about the route's daily quota.
 
-**Stuck escape hatch.** Bound same-shape retries and consecutive no-progress observations per
-axis. Honor typed reset/Retry-After, reducing size only for the appropriate typed size constraint.
+**Stuck escape hatch.** Bound same-shape retries and consecutive no-progress observations for the
+active search. Honor typed reset/Retry-After, reducing size only for the appropriate typed size constraint.
 Persistent quota errors, unavailable service, repeated unparseable results, inability to generate
 output, contradictory counts, transport deadline or cancellation defer the affected axis and
 report a reason, calls/tokens spent and all admitted/refused bounds found so far. Other axes may
@@ -2121,69 +2111,51 @@ Thus simulator convergence does not claim that a live route's caps have been mea
 
 The foundation added no workflow calls, quota reservations, issue choices or runtime publication.
 The follow-up implementation in #2271 integrates reports, authenticated retry receipts and daily
-selection while keeping live discovery disabled. It reports experimental caps without publishing
-them, and does not turn configured-route maintenance into part of this workflow. The complete
-discovery initiative remains L3, not Shipped, until the implementation merges. Separate quota-pool
-configuration and reviewed live activation gates remain required for their respective scopes.
+selection. Manual live activation shipped in #2281, and weekly automatic input discovery shipped in
+#2445. The remaining integration is to bind authenticated input evidence to the proposed input cap
+in the route-addition PR; it must not infer output/combined caps or alter configured-route maintenance.
+That work remains tracked by #2271. Recurring configured-route measurement is deferred to #2264.
 
 #### 8.13.1 Execution contract and escape budgets
 
-This section's offline implementation is shipped. Live discovery requires the explicit
-`discovery_enabled` workflow input. The first activation accepts one exact `provider/model`
-candidate per manual run; broad weekly candidate discovery stays disabled until the first route's
-evidence is reviewed in a later activation. Authenticated maintainer retry receipts remain eligible
-for the daily workflow. Existing configured-route calibration authority and six-call budgets are
-unchanged; new candidates use the separate discovery envelope below.
+The offline implementation and automatic weekly input activation shipped in #2445. The weekly full
+catalog run selects only newly discovered routes that pass the existing free, reachability and
+structured-output checks and exceed the GPT-OSS-120B AA reference. Missing or lower/equal AA scores
+defer the route. One provider-paused input-search session per selected provider is allowed; pending
+candidates are rechecked on later weekly runs. Manual exact-candidate diagnostics and authenticated
+retry receipts remain available under their existing guards. Configured-route calibration is not
+part of this execution contract.
 
 | Bound | Per candidate/session | Per maintenance run |
 | --- | --- | --- |
-| Provider submissions, including reachability and retries | 64 | 128 |
-| Reserved estimated input tokens | 8,388,608 | 16,777,216 |
-| Requested output tokens | 524,288 | 1,048,576 |
-| Elapsed time, including cooldowns | 60 minutes | 120 minutes discovery work |
-| Candidate selection | One session per identity | Two candidates, at most one per provider |
-| Individual request | 1,000,000 input estimate; 131,072 requested output | Same |
-| Transport | 600 seconds; 4 MiB response | Same |
+| Provider submissions, including qualification and retries | 96 | 288 |
+| Reserved estimated input tokens | 16,777,216 | 50,331,648 |
+| Requested output tokens | 1,572,864 | 4,718,592 |
+| Elapsed time, including cooldowns | 90 minutes | 270 minutes discovery work |
+| Candidate selection | One session per identity | Three sessions, at most one per provider |
+| Individual request | 1,000,000 input estimate; bounded output counterpart | Same |
+| Transport | 720 seconds; 4 MiB response | Same |
+
+The weekly full workflow has a 300-minute timeout. A manual discovery-enabled run has a 180-minute
+timeout. The per-call timeout is now 720 seconds. Bounds and any earlier provider cooldown apply.
+One input search can return partial evidence when its finite budget is reached; no output or
+combined maximum is inferred from an input-only result.
 
 All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
-transport process; failed/unknown attempts are never refunded or reused. The no-response limit
-allows at most five calls total, counting the initial send. The 60-minute session deadline may stop
-a run earlier; any collected timeout attempts are retained and reported as uncertain, never as a
-refused size boundary. The five-call no-response ceiling still stops unanswered requests even when more session
-time remains; longer sessions do not increase that retry allowance. Token budgets are
-reservations, not a claim that local estimates equal provider usage. Record actual counts and stop
-when reported usage reveals an aggregate overrun. Hard request-body and response bounds remain
-4 MiB. Provider/account permissions, verified free-route evidence, known applicable quotas and
-provider-enforced cooldowns always bind; unknown RPD does not acquire an invented value. The
-maintainer approved the first-route canary even when a new model's separate quota scope is unknown:
-the route is not yet eligible for repo-managed dispatch, and the existing v2 provider pause drains
-repo-managed traffic across that provider while probing. The pause cannot control unrelated clients
-using the same provider account. Unknown/shared quota scope remains unknown in evidence and is never
-converted into a numeric claim.
-The requested-output budget remains 524,288 tokens per candidate/session and 1,048,576 per run.
-With no compatible history, output searches now start at 16,384 tokens instead of 256, with input
-held near 2,048. Combined searches start at 18,432 total tokens (2,048 input plus 16,384 output);
-the input-heavy combined mix keeps output at 16,384, while the output-heavy mix keeps input near
-2,048. This gives reasoning models room to complete output and combined verification without
-adding blanket margins to later probes. A typed refusal can still reduce the fixed counterpart and
-start a distinct control identity. The 16,384-token input counterpart permits at most 32 such
-reservations per session before accounting for other output reservations. If the finite envelope
-interrupts refinement, preserve the partial bracket and use the authenticated `test again` path; do
-not silently increase aggregate spend.
-Manual discovery uses a 180-minute workflow timeout; ordinary reconciliation retains 120
-minutes. Discovery stops before its own session deadline and
-leaves time for artifact upload, issue synchronization and pause cleanup.
-
-**Maintainer-approved discovery timeout increase — 2026-10-12:** after workflow run
+transport process; failed or unknown attempts are never refunded or reused. A no-response probe
+allows at most five calls total, counting the initial send. The 90-minute session deadline may stop
+the search earlier; timeouts are uncertain attempts, never refused-size evidence. Reservations do
+not claim local estimates equal provider usage. Record actual counts and stop if reported usage
+reveals an aggregate overrun. Provider/account permissions, verified-free eligibility, known
+applicable quotas and provider cooldowns always bind. The provider pause drains repo-managed
+traffic, not unrelated clients using the same account; unknown shared quota scope remains unknown.
+**Superseded timeout decision — 2026-10-12.** After workflow run
 [38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
 timed out five times at 120 seconds while probing a larger input after a verified 645,195-token
 input success, the maintainer approved a 600-second hard deadline for new-route discovery calls.
-The larger bound gives a slow high-input request more time to return usable counts or a typed
-size refusal. A timeout remains inconclusive; it never creates a refused boundary. The existing
-20-minute session, 40-minute run, five-call maximum, four-MiB response limit and 900-second
-provider pause remain unchanged. If the session deadline arrives first, preserve its partial
-timeout evidence and report uncertainty. Configured-route calibration retains its separate
-120-second transport deadline.
+Later decisions expanded the per-call deadline to 720 seconds and the session to 90 minutes, and
+raised the call and aggregate token budgets as listed above. Timeouts remain inconclusive and never
+create a refused boundary. Configured-route calibration retains its separate transport deadline.
 
 Take the existing exclusive provider dispatch pause, drain current work and renew its lease before
 calls and during waits. Contention, inability to drain/renew or unclear free endpoint eligibility
@@ -2202,6 +2174,10 @@ can proceed independently within the remaining budget it may do so. There is no 
 spend: stop as soon as all supported axes converge or no safe progress remains.
 
 #### 8.13.2 Search, fixtures and evidence semantics
+
+The all-axis behavior in this subsection remains available only to explicitly selected diagnostic
+runs. Automatic weekly route-addition discovery searches input only; it does not require output or
+combined searches to converge.
 
 Use separate input, output and combined searches in that order. A pure planner chooses requests;
 transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
@@ -2295,31 +2271,22 @@ the issue publishes a new result revision. Retry selection bypasses the daily no
 
 #### 8.13.4 Issue results and configuration boundary
 
-The issue shows API/provider claimed limits with source and scope separately from experimental
-bounds, plus AA comparison, reachability, counts, conditional constraints, convergence status,
-spent budgets, deferral reason and evidence links. Missing provider quotas are questions, not
-RPM/RPD guesses. Existing automatic route-addition defaults must not masquerade as claimed limits.
-An addition requires explicit maintainer-reviewed values for the existing representable required
-caps/quotas; the preparation PR displays provenance and any override/disagreement. Provider-canonical
-status requires exact source/scope; otherwise label the entered value maintainer supplied.
+The route-addition issue shows API/provider/LiteLLM input claims with sources and scope, AA score,
+reachability, provider-counted admitted input, calibrated rejected-size estimate, count basis,
+uncertainty, spend, deferrals and authenticated evidence links. The addition PR binds compatible
+authenticated input history to the proposed `max_input_tokens` and labels provider claims separately
+from measurements. Missing quotas and explicit overrides require maintainer review; no cap is
+published automatically. Output/combined observations are diagnostic only and do not gate the
+addition. Configured-route recurring measurement is deferred to #2264.
 
-Discovery reporting/retry can ship independently of the separate explicit quota-pool and combined-cap
-schema design. If a measured combined cap or shared quota cannot be faithfully enforced by current
-configuration, `/apply` defers addition with the exact missing schema dependency. Do not silently
-approximate combined capacity with independent input/output maxima or discard a binding shared cap.
-An override must be an explicit reviewed decision with rationale/source, never an editable numeric
-issue marker interpreted as authenticated probe evidence. The exact numeric-entry/config migration
-format belongs to that separate design before implementing addition of such constrained routes.
+#### 8.13.5 Live activation — automatic weekly input discovery
 
-#### 8.13.5 First live activation — one manually selected new route
-
-The first activation is manual and deliberately narrower than recurring discovery. The workflow
-requires both `discovery_enabled=true` and one exact `discovery_candidate=provider/model` value.
-Reconciliation must find that exact identity in the current provider catalog, establish verified
-free eligibility, reject configured/ignored/alias routes, prove chat reachability and run the
-existing structured-output usability check before request-size discovery. A missing or ineligible
-candidate results in no model request. Only that candidate may receive discovery in the run, so its
-own bounded canary evidence can be reviewed before broad schedule activation.
+The automatic weekly activation runs only for newly found routes that are free, unconfigured,
+unignored, reachable, pass the existing structured-output check, and exceed the configured AA
+quality reference. Ineligible candidates make no size-search calls. Each selected candidate uses
+the input-only bounded search and the provider pause; existing configured routes are not scanned.
+The exact-candidate manual path remains available for diagnostics but does not broaden automatic
+selection or route-addition authority.
 
 The workflow sends catalog and completion requests directly from the GitHub Actions runner to the
 provider API; the v2 Worker is used only for its repo-wide dispatch pause, so these requests do not
@@ -2629,7 +2596,12 @@ route's reachability, usage, cap brackets, scope uncertainty, spend, deferrals a
 broader scheduled discovery requires a separate reviewed activation change. No config values are
 automatically added or changed.
 
-#### 8.13.6 Closed file/function plan and acceptance
+#### 8.13.6 Closed implementation plan and acceptance
+
+The three-axis acceptance below records the original offline planner/diagnostic contract. Current
+automatic route-addition activation is input-only as amended above. Its acceptance additionally
+requires weekly-only trusted selection, strict AA/free/reachability/JSON gates, authenticated
+input-evidence projection into the addition PR, and fail-closed removal regressions.
 
 Allowed implementation files and responsibilities:
 

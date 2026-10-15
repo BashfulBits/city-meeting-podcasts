@@ -1831,6 +1831,39 @@ def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provide
     assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
 
 
+def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock():
+    producer, _ = _job("provider-catalog-reconcile.yml", "reconcile")
+    workflow, job = _job("provider-catalog-commands.yml", "retirements")
+    assert "weekly-full" in producer["run-name"]
+    assert "daily-due-only" in producer["run-name"]
+    assert job["needs"] == "limits"
+    assert "name == 'Provider catalog reconciliation'" in job["if"]
+    assert "display_title == 'Provider catalog reconciliation (weekly-full)'" in job["if"]
+    assert "head_repository.full_name == github.repository" in job["if"]
+    assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
+    assert workflow["concurrency"] == producer["concurrency"]
+    assert "--automatic-retirements" in job["steps"][-1]["run"]
+    assert job["timeout-minutes"] == 120
+    env = job["steps"][-1]["env"]
+    assert env["LLM_DISPATCH_V2_URL"] == "${{ secrets.LLM_DISPATCH_V2_URL }}"
+    assert env["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+    assert {key for key in env if key.endswith("_API_KEY")} == {
+        "AIRFORCE_API_KEY",
+        "BEATAPI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "KILO_API_KEY",
+        "NVIDIA_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ORCAROUTER_API_KEY",
+        "SAMBANOVA_API_KEY",
+        "SILICONFLOW_API_KEY",
+        "ZAI_API_KEY",
+    }
+
+
 def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
     wf, producer = _job("provider-catalog-reconcile.yml", "reconcile")
     run = next(s for s in producer["steps"] if s.get("name") == "Reconcile provider catalogs")

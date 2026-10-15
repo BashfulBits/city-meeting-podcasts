@@ -67,6 +67,23 @@ def run(args):
     return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
 
 
+def trusted_scheduled_run(event, repository, *, weekly_full_only=False):
+    """Accept only successful schedules from this repository's main catalog workflow."""
+    source = event.get("workflow_run") or {}
+    accepted = (
+        event.get("action") == "completed"
+        and source.get("conclusion") == "success"
+        and source.get("event") == "schedule"
+        and source.get("head_branch") == "main"
+        and source.get("name") == "Provider catalog reconciliation"
+        and (source.get("head_repository") or {}).get("full_name") == repository
+    )
+    return accepted and (
+        not weekly_full_only
+        or source.get("display_title") == "Provider catalog reconciliation (weekly-full)"
+    )
+
+
 def process_event(event, permission):
     issue = event.get("issue") or {}
     number = issue.get("number")
@@ -217,7 +234,7 @@ def prepare_context(base_commit, *, selected=()):
 
 
 def prepare_retirements(base_commit):
-    """Dormant automatic-removal preparation; activation is a separate reviewed change."""
+    """Rebuild retirement proposals from fresh catalogs and account-level confirmations."""
     from citypods.provider_catalog.reconcile import confirm_retirement_candidates
     from citypods.provider_catalog.retire import RETIREMENTS_ENABLED, plan_retirements
 
@@ -441,25 +458,26 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True)
     parser.add_argument("--permission")
-    parser.add_argument("--automatic-limits", action="store_true")
+    automatic = parser.add_mutually_exclusive_group()
+    automatic.add_argument("--automatic-limits", action="store_true")
+    automatic.add_argument("--automatic-retirements", action="store_true")
     parser.add_argument("--retry-receipt", type=Path)
     parser.add_argument("--out", required=True)
     # All publication operations are confined to the repository's own trusted Actions runner.
     args = parser.parse_args(argv)
     event = json.loads(Path(args.event).read_text())
-    if args.automatic_limits:
-        source = event.get("workflow_run") or {}
+    if args.automatic_limits or args.automatic_retirements:
         result = {
-            "accepted": bool(
-                event.get("action") == "completed"
-                and source.get("conclusion") == "success"
-                and source.get("event") == "schedule"
-                and source.get("head_branch") == "main"
-                and source.get("name") == "Provider catalog reconciliation"
-                and (source.get("head_repository") or {}).get("full_name")
-                == os.environ.get("GITHUB_REPOSITORY")
+            "accepted": trusted_scheduled_run(
+                event,
+                os.environ.get("GITHUB_REPOSITORY", ""),
+                weekly_full_only=args.automatic_retirements,
             ),
-            "comment": "Preparing verified automatic rate tightening.",
+            "comment": (
+                "Preparing evidence-gated route removals."
+                if args.automatic_retirements
+                else "Preparing verified automatic rate tightening."
+            ),
         }
     else:
         if not args.permission:
@@ -488,6 +506,25 @@ def main(argv=None):
                     break
             else:
                 raise ValueError("main changed repeatedly; defer rate maintenance")
+        elif result["accepted"] and args.automatic_retirements:
+            for _ in range(3):
+                run(["git", "fetch", "origin", "main"])
+                base = run(["git", "rev-parse", "origin/main"])
+                run(["git", "reset", "--hard", base])
+                plan = prepare_retirements(base)
+                if not plan.removed_routes:
+                    result["comment"] = "No route has fresh evidence qualifying it for removal."
+                    break
+                validate()
+                url = publish(plan)
+                if url is not None:
+                    result["comment"] = url
+                    if not url.startswith("Waiting:"):
+                        result["comment"] += "\n\n" + proposal_body(plan)
+                        result["plan"] = asdict(plan)
+                    break
+            else:
+                raise ValueError("main changed repeatedly; defer route-removal publication")
         elif result["accepted"]:
             number = result["issue_number"]
             current = json.loads(
