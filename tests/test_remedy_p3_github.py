@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from citypods.audit_remedy import P3_INITIAL_ROUTES, BodyDecision, P3Vote
+from citypods.audit_remedy import P3_INITIAL_ROUTES, BodyDecision, BodyProposal, P3Vote
 from citypods.audit_remedy_report import P3ReportInput, build_p3_report
 from citypods.remedy_actions import COMMAND, _p3_generated_section
 from citypods.remedy_ledger import load_decisions
@@ -200,6 +200,57 @@ def test_public_disposition_error_is_single_line_and_does_not_expose_other_error
     )
     assert remedy_disposition_command._public_error(RuntimeError("secret detail")) == (
         "P3 disposition could not be applied. Check the workflow log for details."
+    )
+
+
+def test_terminal_disposition_blocks_same_evidence_but_new_evidence_reopens_review():
+    from types import SimpleNamespace
+
+    tip = SimpleNamespace(event_id="event", evidence_hash="b" * 64)
+    history = SimpleNamespace(
+        diagnostics=(),
+        state="covered",
+        tip_ids=(tip.event_id,),
+        events=(tip,),
+    )
+    binding = {"evidence_hash": "b" * 64}
+
+    assert remedy_p3_publish._terminal_disposition_is_current(history, binding)
+    assert not remedy_p3_publish._terminal_disposition_is_current(
+        history, {"evidence_hash": "e" * 64}
+    )
+    assert not remedy_p3_publish._terminal_disposition_is_current(
+        SimpleNamespace(**{**history.__dict__, "state": "blocked"}), binding
+    )
+
+
+def test_proposal_pr_identity_uses_assignment_not_evidence_hash():
+    from citypods.audit_remedy import RemedyPlan
+
+    plan = RemedyPlan(
+        accepted=[
+            BodyProposal(
+                source_key="example:source",
+                unexpected_body="Committee",
+                action="union",
+                target_feeds=["test-city-council"],
+                rationale="One route-bound assignment.",
+            )
+        ]
+    )
+    row = (plan, {}, None, "finding-1", "b" * 64)
+    revised = BodyProposal(
+        source_key="example:source",
+        unexpected_body="Committee",
+        action="union",
+        target_feeds=["test-city-council"],
+        rationale="Same assignment from refreshed evidence.",
+    )
+    updated_plan = RemedyPlan(accepted=[revised])
+    updated_evidence = (updated_plan, {}, None, "finding-1", "e" * 64)
+
+    assert remedy_p3_publish._proposal_digest([row]) == remedy_p3_publish._proposal_digest(
+        [updated_evidence]
     )
 
 

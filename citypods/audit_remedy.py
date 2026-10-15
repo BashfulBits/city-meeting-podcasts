@@ -402,7 +402,7 @@ def format_p3_manual_issue(
         f"Policy SHA-256: `{decision.policy_hash}`\n\n"
         f"Reason: {html.escape(decision.reason)}\n\n"
         "Evidence summary (quoted as data):\n\n"
-        f"<pre>{html.escape(evidence_markdown.strip())}</pre>\n\n"
+        f"<pre>{html.escape(evidence_markdown.strip(), quote=False)}</pre>\n\n"
         "## Feed-by-feed disposition\n\n"
         + ("".join(rows) if rows else "No candidate feeds were supplied.\n\n")
         + "## Overall disposition\n\n"

@@ -267,6 +267,42 @@ def _reconcile_issue(report: dict, binding: dict, *, dry_run: bool) -> str:
     return url
 
 
+def _terminal_disposition_is_current(history, binding: dict) -> bool:
+    if (
+        history is None
+        or history.diagnostics
+        or history.state not in {"covered", "excluded", "resolved"}
+        or len(history.tip_ids) != 1
+    ):
+        return False
+    tip = next((event for event in history.events if event.event_id == history.tip_ids[0]), None)
+    return tip is not None and tip.evidence_hash == binding["evidence_hash"]
+
+
+def _proposal_digest(plans) -> str:
+    assignments = sorted(
+        f"{finding_id}:{canonical_hash([_assignment_payload(item) for item in plan.accepted])}"
+        for plan, _paths, _context, finding_id, _evidence_hash in plans
+    )
+    return hashlib.sha256("\n".join(assignments).encode()).hexdigest()
+
+
+def _assignment_payload(proposal) -> dict:
+    return {
+        "source_key": proposal.source_key,
+        "unexpected_body": proposal.unexpected_body,
+        "action": proposal.action,
+        "target_feeds": sorted(proposal.target_feeds),
+        "provider_guids": sorted(proposal.provider_guids),
+        "body_selector": proposal.body_selector,
+        "new_feed_slug": proposal.new_feed_slug,
+        "new_feed_title": proposal.new_feed_title,
+        "new_feed_description": proposal.new_feed_description,
+        "lifecycle_status": proposal.lifecycle_status,
+        "lifecycle_reason": proposal.lifecycle_reason,
+    }
+
+
 def _publish_pr(plans, *, repo_root: Path, digest: str) -> str:
     branch = f"fix/p3-remedy-{digest[:12]}"
     existing = _gh(
@@ -396,9 +432,16 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                     {"finding_id": decision["finding_id"], "reason": "per-run proposal cap"}
                 )
                 continue
-            plan, paths = validated_p3_plan(
-                p3_report, evidence, repo_root=repo_root, admitted_routes=admitted_p3_routes(config)
-            )
+            try:
+                plan, paths = validated_p3_plan(
+                    p3_report,
+                    evidence,
+                    repo_root=repo_root,
+                    admitted_routes=admitted_p3_routes(config),
+                )
+            except ValueError as exc:
+                deferred.append({"finding_id": decision["finding_id"], "reason": str(exc)})
+                continue
             sibling = next(
                 (
                     cities[feed["slug"]]
@@ -431,6 +474,14 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 history = states.get(binding["decision_id"])
                 if history is not None and history.diagnostics:
                     raise ValueError("P2 ledger history is damaged; refusing to publish issue")
+                if _terminal_disposition_is_current(history, binding):
+                    deferred.append(
+                        {
+                            "finding_id": decision["finding_id"],
+                            "reason": "current terminal P2 disposition already exists",
+                        }
+                    )
+                    continue
                 binding["expected_parent_event_ids"] = list(history.tip_ids) if history else []
                 # Refresh lease before using the just-read parent snapshot.
                 lease.assert_held()
@@ -438,11 +489,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
 
     published = []
     if plans:
-        digest = hashlib.sha256(
-            "\n".join(
-                sorted(f"{finding_id}:{evidence_hash}" for *_, finding_id, evidence_hash in plans)
-            ).encode()
-        ).hexdigest()
+        digest = _proposal_digest(plans)
         if dry_run:
             published.append({"type": "proposal_pr", "url": "dry-run", "count": len(plans)})
         else:

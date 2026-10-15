@@ -1513,7 +1513,7 @@ def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
             ("test-city-library-board", "<b>Library</b>"),
             ("test-city-council", "Duplicate is removed"),
         ],
-        evidence_markdown="## Evidence\n\nLocally prepared source summary.",
+        evidence_markdown='## Evidence\n\nQuoted "text" & <markup>.',
     )
     assert body.count("Include `") == 2
     assert body.count("Exclude `") == 2
@@ -1521,7 +1521,7 @@ def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
     assert "No feed assignment" in body
     assert "Hold for future evidence" in body
     assert "&lt;b&gt;Library&lt;/b&gt;" in body
-    assert "<pre>## Evidence\n\nLocally prepared source summary.</pre>" in body
+    assert '<pre>## Evidence\n\nQuoted "text" &amp; &lt;markup&gt;.</pre>' in body
 
     with pytest.raises(ValueError, match="invalid candidate feed slug"):
         format_p3_manual_issue(
