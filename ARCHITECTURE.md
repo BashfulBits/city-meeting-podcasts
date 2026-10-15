@@ -1081,8 +1081,14 @@ in the existing deferred-request registry. P3 votes remain separate from
 shipped in PR #2447: it submits or reconciles stable recipe hashes, pins all four physical
 routes, validates completed route identity, and emits report artifacts without activating the
 current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
-Deployment remains fail-closed until exact routes have valid runtime admissions and reasoning
-controls; the P1 evidence decision allowed implementation, not activation. A separate, write-scoped
+Deployment remains fail-closed until exact routes have valid runtime admissions and evaluated
+request parameters; the P1 evidence decision allowed implementation, not activation. The approved
+three-route prompt comparison recorded provider-default reasoning, 900-second request timeouts,
+950-second case deadlines, and 16,384-token output caps, with no temperature override. JEV's eight
+completed local-pilot observations do not record equivalent effective parameter provenance. The
+current admission schema requires a named reasoning level, which cannot represent the evaluated
+provider-default setting; keep P3 shadowed until that contract is aligned and the exact route
+settings are admitted. A separate, write-scoped
 daily publisher job creates human-review proposal PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
 choices forward only when the evidence binding is unchanged. Manual choices include every feed

@@ -247,14 +247,18 @@ through “hold for future evidence” and the existing P2 watch/blocked disposi
 The local replay tool and daily Worker caller/append-only observation log shipped in
 [PR #2447](https://github.com/BashfulBits/city-meeting-podcasts/pull/2447), merged 2026-10-15.
 The daily caller remains report-artifact-only and closed by shadow mode or missing exact
-route/effort admissions. The maintainer accepted the existing `evals/remedy/` evidence for the P1
-evaluation criterion; a second broad comparison and review/49's weekly league are not P3
-prerequisites. PR #2449 implements bounded GitHub proposal/issue publication and the P2
-human-disposition command: proposal candidates are revalidated before a human-review PR; manual
-issues bind checked include/exclude choices to typed append-only P2 events. After merge, remaining
-P3 completion is authorized route/effort admission and a monitored end-to-end cycle; production
-behavior stays fail-closed until then. Serving-family, effort and runtime admission checks remain
-explicit. P4–P5 stay
+route/parameter admissions. The maintainer accepted the existing `evals/remedy/` evidence for the
+P1 evaluation criterion; a second broad comparison and review/49's weekly league are not P3
+prerequisites. PR #2449 merged on 2026-10-15, completing bounded GitHub proposal/issue publication
+and the P2 human-disposition command: proposal candidates are revalidated before a human-review PR;
+manual issues bind checked include/exclude choices to typed append-only P2 events. The evaluated
+Sol, GLM Flash, and DeepSeek parameters are provider-default reasoning, 900-second request timeout,
+950-second per-case deadline, and 16,384-token output cap; no temperature override was recorded.
+These are documented in review/51. The current admission schema still accepts only named reasoning
+levels, so runtime admission must be aligned to the evaluated setting, exact serving identities
+verified, and JEV's effective Worker parameters recorded before activation. P3 implementation is
+complete; operational completion is the authorized admission/configuration plus a monitored
+end-to-end cycle. Production behavior stays fail-closed until then. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
@@ -1262,12 +1266,14 @@ report-only artifact boundary. Checked 280 Markdown links in this document; all 
 resolve. This is a scoped status check, not approval to enable the daily workflow.
 
 **2026-10-15 verification record — P3 GitHub handoff PR #2449:** this entry supersedes the earlier
-#2447 record for current implementation status. PR #2447 is merged; #2449 adds bounded proposal
-PRs, manual issues, and typed P2 feed dispositions using the existing issue reconciliation path.
-PR #2449 remains under review, so no Shipped status is claimed. Production stays shadowed until the
-four exact route/effort admissions pass and a monitored end-to-end cycle completes. Changelog
-content is kept in fragments, with no direct CHANGELOG.md edit. Ruff, formatting, targeted tests,
-and the full local suite passed. This scoped verification does not authorize activation.
+#2447 record for current implementation status. PR #2447 is merged; #2449 merged at
+`34b285487d3b04c9863efbbbda020d101fe4e85f`, completing bounded proposal PRs, manual issues, and
+typed P2 feed dispositions through the existing issue reconciliation path. P3 implementation is
+shipped; production stays shadowed until exact route/parameter admissions pass and a monitored
+end-to-end cycle completes. The evaluated Sol, GLM Flash, and DeepSeek settings and remaining
+admission-contract mismatch are recorded in review/51. Changelog content is kept in fragments, with
+no direct CHANGELOG.md edit. PR #2449 validation included Ruff, formatting, targeted tests, and the
+full local suite. This scoped verification does not authorize activation.
 
 ---
 
