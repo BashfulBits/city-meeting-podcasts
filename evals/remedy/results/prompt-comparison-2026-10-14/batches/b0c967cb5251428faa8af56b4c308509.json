@@ -1,0 +1,127 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-0f3acb8e63bc7affb3b03495",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No recording-specific agenda, caption text, or official document naming a convening body; the provider-player evidence contains only the clip title 'City Page Update' and generic player interface text",
+      "No official description establishing 'City Page Update' as a promotional/orientation film or other program covered by the archive-only publication rule",
+      "No evidence linking the recording to any listed feed's body or grouping scope"
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The sole supplied evidence (provider-player) is the Granicus player page for clip_id=585, which yields only the opaque program/clip label 'City Page Update' plus generic player navigation text. No agenda, document, membership, or official body name is present. Per the publication rules, a player/program title alone does not establish a formal municipal convening institution, and ownership proof cannot be supplied from city name, venue, or topic words. The title does not match any existing feed's body, and no feed description covers a 'City Page Update' program. It also cannot be confirmed as a promotional/orientation film, so archive_only cannot be applied on this evidence. Per the proof rule, missing ownership proof requires unresolved rather than exclusion or an invented institution."
+  },
+  "attempt_id": "c5b72f793f6a4b749fcb913c5112dc69",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-0f3acb8e63bc7affb3b03495",
+  "case_input_hash": "a6d2a30cc6e86ae69c16f7f0d2281449fc9d937528cd2b880f69d578448b8141",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.589445749999868
+    }
+  ],
+  "end_to_end_seconds": 19.263456374999805,
+  "finished_at": "2026-10-14T19:09:04.189848+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T19:08:44.926260+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "226b2d37b002aabeec059d48044d203d51c62c9f4b3a8fc8073315721f0cb3f2",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 933,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 623,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3839,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4772
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\"bodies\": [], \"case_id\": \"recording-0f3acb8e63bc7affb3b03495\", \"evidence_ref_ids\": [\"provider-player\"], \"feed_slugs\": [], \"missing_evidence\": [\"No recording-specific agenda, caption text, or official document naming a convening body; the provider-player evidence contains only the clip title 'City Page Update' and generic player interface text\", \"No official description establishing 'City Page Update' as a promotional/orientation film or other program covered by the archive-only publication rule\", \"No evidence linking the recording to any listed feed's body or grouping scope\"], \"publication_action\": \"unresolved\", \"rationale\": \"The sole supplied evidence (provider-player) is the Granicus player page for clip_id=585, which yields only the opaque program/clip label 'City Page Update' plus generic player navigation text. No agenda, document, membership, or official body name is present. Per the publication rules, a player/program title alone does not establish a formal municipal convening institution, and ownership proof cannot be supplied from city name, venue, or topic words. The title does not match any existing feed's body, and no feed description covers a 'City Page Update' program. It also cannot be confirmed as a promotional/orientation film, so archive_only cannot be applied on this evidence. Per the proof rule, missing ownership proof requires unresolved rather than exclusion or an invented institution.\"}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"City Page Update\" with clip_id=585 on the Fort Worth Granicus archive. The only evidence is the provider-player evidence ref, which contains the video player page content: \"City Page Update Video Player and Subtitles City Page Update Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px)...\"\n\nSo the evidence is just a player page with the title \"City Page Update\" \u2014 no agenda, no named body, no membership proof. \"City Page Update\" sounds like a promotional/informational video segment \u2014 possibly a TV program or city webpage update segment, not a convened municipal body.\n\nThe instructions say:\n- Identify the convening body/program from recording-specific official evidence.\n- A player/program title alone does not establish a formal municipal convening institution. Distinguish a real, proven unconfigured body from an unresolved institutional owner.\n- If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\n\nThe title \"City Page Update\" \u2014 this appears to be some sort of program. It's not clearly a convened body like City Council or a committee. There's no evidence establishing a convening institution. The policy says \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n\nAlso, could \"City Page Update\" be a promotional film? The policy archive rule: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But we only have the title \"City Page Update\" \u2014 it suggests maybe a segment updating the city's webpage? We cannot establish that it's a promotional film either without evidence. The archive_only action requires that \"the general approved publication rules apply\" \u2014 but we'd need to prove it's a promotional/orientation film. The title alone doesn't establish that. Actually, hmm \u2014 \"City Page Update\" is quite ambiguous. It could be a promotional video about the city's website. But we can't prove it.\n\nThe safest answer per instructions: publication_action = \"unresolved\", bodies = [], feed_slugs = [], missing_evidence cited: no agenda/document/transcript establishing the convening body; the player page only provides the title \"City Page Update\"; no evidence it's a promotional/orientation film for archive-only.\n\nEvidence ref ids: [\"provider-player\"].\n\nCase id: \"recording-0f3acb8e63bc7affb3b03495\".\n\nRationale: The only supplied evidence is the Granicus player page, whose text yields only the program title \"City Page Update.\" No agenda, membership list, or official body name is present; the title is a program/clip label, which per policy does not establish a formal municipal convening institution. Cannot confirm it's a promotional/orientation film for archive_only either. Therefore unresolved.\n\nMissing evidence: agenda or official description identifying the convening body; evidence that the recording is a promotional/orientation film (for archive_only classification).\n\nOutput JSON matching schema.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"City Page Update\" with clip_id=585 on the Fort Worth Granicus archive. The only evidence is the provider-player evidence ref, which contains the video player page content: \"City Page Update Video Player and Subtitles City Page Update Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px)...\"\n\nSo the evidence is just a player page with the title \"City Page Update\" \u2014 no agenda, no named body, no membership proof. \"City Page Update\" sounds like a promotional/informational video segment \u2014 possibly a TV program or city webpage update segment, not a convened municipal body.\n\nThe instructions say:\n- Identify the convening body/program from recording-specific official evidence.\n- A player/program title alone does not establish a formal municipal convening institution. Distinguish a real, proven unconfigured body from an unresolved institutional owner.\n- If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\n\nThe title \"City Page Update\" \u2014 this appears to be some sort of program. It's not clearly a convened body like City Council or a committee. There's no evidence establishing a convening institution. The policy says \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n\nAlso, could \"City Page Update\" be a promotional film? The policy archive rule: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But we only have the title \"City Page Update\" \u2014 it suggests maybe a segment updating the city's webpage? We cannot establish that it's a promotional film either without evidence. The archive_only action requires that \"the general approved publication rules apply\" \u2014 but we'd need to prove it's a promotional/orientation film. The title alone doesn't establish that. Actually, hmm \u2014 \"City Page Update\" is quite ambiguous. It could be a promotional video about the city's website. But we can't prove it.\n\nThe safest answer per instructions: publication_action = \"unresolved\", bodies = [], feed_slugs = [], missing_evidence cited: no agenda/document/transcript establishing the convening body; the player page only provides the title \"City Page Update\"; no evidence it's a promotional/orientation film for archive-only.\n\nEvidence ref ids: [\"provider-player\"].\n\nCase id: \"recording-0f3acb8e63bc7affb3b03495\".\n\nRationale: The only supplied evidence is the Granicus player page, whose text yields only the program title \"City Page Update.\" No agenda, membership list, or official body name is present; the title is a program/clip label, which per policy does not establish a formal municipal convening institution. Cannot confirm it's a promotional/orientation film for archive_only either. Therefore unresolved.\n\nMissing evidence: agenda or official description identifying the convening body; evidence that the recording is a promotional/orientation film (for archive_only classification).\n\nOutput JSON matching schema.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792004942,
+    "id": "019580bbe6322c684fdc6fb7e33bb9c7",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 933,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 623,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3839,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4772
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

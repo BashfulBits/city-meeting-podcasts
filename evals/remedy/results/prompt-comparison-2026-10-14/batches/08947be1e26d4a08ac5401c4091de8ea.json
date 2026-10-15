@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Bond Advisory Committee (Town of Addison, TX)"
+      }
+    ],
+    "case_id": "recording-9bd6780e16f497eb919d9423",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The posted agenda (retained-agenda) convenes a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on January 8, 2026 at Addison Town Hall, posted by Valencia Garcia, City Secretary of the Town of Addison, establishing the convened body and its municipal ownership. The Swagit recording 371625 (provider-player) is titled 'Jan 08, 2026 Bond Advisory Committee - Addison, TX' and its video index and transcript match the same agenda items (minutes of the December 4, 2025 Bond Advisory Committee meeting, Committee Q&A, recommendation to the Addison City Council on calling a bond election for the Police and Courts facility), and native-source-chapters mirrors these items, confirming the recording belongs to this body rather than to a venue, topic, or any other numbered board. The existing feed 'addison-tx-bond-committees' explicitly covers verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee, which is exactly this committee and subject matter, so the recording is assigned to that single existing feed. No joint meeting is indicated: the Farmers Branch facility tours referenced in the transcript were prior site visits acknowledged by a member, not a separate convened body participating in this recording, so no additional body or feed is proven."
+  },
+  "attempt_id": "00b7ac3aad7740f488524a42aa28e61e",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-9bd6780e16f497eb919d9423",
+  "case_input_hash": "ad40f40f0a8d44f7d3d8337ccc185f4306718fff4f8b80d57f387152defefc05",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.617338790994836
+    }
+  ],
+  "end_to_end_seconds": 10.054762917003245,
+  "finished_at": "2026-10-14T21:26:03.144759+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T21:25:53.089907+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "bd36797b1ca2cf35e2ad43603f651fdd6683d7e056be6d857b812c1068e7db8f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 988,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 591,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3379,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4367
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"name\": \"Bond Advisory Committee (Town of Addison, TX)\"}], \"case_id\": \"recording-9bd6780e16f497eb919d9423\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"feed_slugs\": [\"addison-tx-bond-committees\"], \"missing_evidence\": [], \"publication_action\": \"assign_existing\", \"rationale\": \"The posted agenda (retained-agenda) convenes a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on January 8, 2026 at Addison Town Hall, posted by Valencia Garcia, City Secretary of the Town of Addison, establishing the convened body and its municipal ownership. The Swagit recording 371625 (provider-player) is titled 'Jan 08, 2026 Bond Advisory Committee - Addison, TX' and its video index and transcript match the same agenda items (minutes of the December 4, 2025 Bond Advisory Committee meeting, Committee Q&A, recommendation to the Addison City Council on calling a bond election for the Police and Courts facility), and native-source-chapters mirrors these items, confirming the recording belongs to this body rather than to a venue, topic, or any other numbered board. The existing feed 'addison-tx-bond-committees' explicitly covers verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee, which is exactly this committee and subject matter, so the recording is assigned to that single existing feed. No joint meeting is indicated: the Farmers Branch facility tours referenced in the transcript were prior site visits acknowledged by a member, not a separate convened body participating in this recording, so no additional body or feed is proven.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nCase ID: recording-9bd6780e16f497eb919d9423\nCity: addison-tx\nRecording: \"Bond Advisory Committee \u2013 Jan 08, 2026\" from Swagit provider, recording_id 371625.\n\nEvidence:\n1. retained-agenda: The agenda shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, January 8, 2026, 6:00 PM, WORK SESSION ROOM, ADDISON TOWN HALL, 15600 ADDISON ROAD, ADDISON, TX 75001\". Posted by Valencia Garcia, City Secretary. This establishes the convened body as the Bond Advisory Committee of the Town of Addison.\n\n2. provider-player: Swagit video player page titled \"Jan 08, 2026 Bond Advisory Committee - Addison, TX\". Transcript confirms committee meeting, deputy city manager facilitating, etc.\n\n3. native-source-chapters: Chapter titles consistent with the agenda.\n\nSo the body: Bond Advisory Committee (Town of Addison, TX). The evidence mentions \"Addison Town Hall\" and \"Addison City Council\" recommendation, city secretary posting. So the convened body is the Bond Advisory Committee in Addison, TX.\n\nExisting feeds: There's \"addison-tx-bond-committees\" \u2014 \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This matches exactly \u2014 the meeting discusses recommendation to the City Council including the calling of a bond election regarding a capital project to address the Town's Police and Courts facility.\n\nSo feed slug: addison-tx-bond-committees.\n\nPublication action: assign_existing.\n\nBodies: Identify the body name \u2014 \"Bond Advisory Committee\" (Town of Addison). Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none significant. Maybe note that no other body suspected. Joint meeting? Not a joint meeting \u2014 single body. The meeting took place partly at Farmers Branch facility? Actually the transcript mentions tours of the Farmers Branch Chief facility, but that's a prior tour, not a joint meeting.\n\nEvidence ref IDs to cite: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nRationale: The agenda posted by the Addison City Secretary convenes a \"Regular Meeting of the Bond Advisory Committee\" at Addison Town Hall; the Swagit recording (371625) titled \"Bond Advisory Committee \u2013 Jan 08, 2026\" matches the same agenda items, confirming identity. The feed addison-tx-bond-committees explicitly includes the 2026 Police and Courts facility Bond Advisory Committee, which matches the meeting's subject (recommendation regarding bond election for Police and Courts facility). So assign_existing.\n\nMissing evidence: empty list.\n\nJSON object only, matching schema.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nCase ID: recording-9bd6780e16f497eb919d9423\nCity: addison-tx\nRecording: \"Bond Advisory Committee \u2013 Jan 08, 2026\" from Swagit provider, recording_id 371625.\n\nEvidence:\n1. retained-agenda: The agenda shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, January 8, 2026, 6:00 PM, WORK SESSION ROOM, ADDISON TOWN HALL, 15600 ADDISON ROAD, ADDISON, TX 75001\". Posted by Valencia Garcia, City Secretary. This establishes the convened body as the Bond Advisory Committee of the Town of Addison.\n\n2. provider-player: Swagit video player page titled \"Jan 08, 2026 Bond Advisory Committee - Addison, TX\". Transcript confirms committee meeting, deputy city manager facilitating, etc.\n\n3. native-source-chapters: Chapter titles consistent with the agenda.\n\nSo the body: Bond Advisory Committee (Town of Addison, TX). The evidence mentions \"Addison Town Hall\" and \"Addison City Council\" recommendation, city secretary posting. So the convened body is the Bond Advisory Committee in Addison, TX.\n\nExisting feeds: There's \"addison-tx-bond-committees\" \u2014 \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This matches exactly \u2014 the meeting discusses recommendation to the City Council including the calling of a bond election regarding a capital project to address the Town's Police and Courts facility.\n\nSo feed slug: addison-tx-bond-committees.\n\nPublication action: assign_existing.\n\nBodies: Identify the body name \u2014 \"Bond Advisory Committee\" (Town of Addison). Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none significant. Maybe note that no other body suspected. Joint meeting? Not a joint meeting \u2014 single body. The meeting took place partly at Farmers Branch facility? Actually the transcript mentions tours of the Farmers Branch Chief facility, but that's a prior tour, not a joint meeting.\n\nEvidence ref IDs to cite: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nRationale: The agenda posted by the Addison City Secretary convenes a \"Regular Meeting of the Bond Advisory Committee\" at Addison Town Hall; the Swagit recording (371625) titled \"Bond Advisory Committee \u2013 Jan 08, 2026\" matches the same agenda items, confirming identity. The feed addison-tx-bond-committees explicitly includes the 2026 Police and Courts facility Bond Advisory Committee, which matches the meeting's subject (recommendation regarding bond election for Police and Courts facility). So assign_existing.\n\nMissing evidence: empty list.\n\nJSON object only, matching schema.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792013098,
+    "id": "9044ffbfa76f7e7dadc220077150a7d2",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 988,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 591,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3379,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4367
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

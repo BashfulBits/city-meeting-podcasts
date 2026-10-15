@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-b8889e50555726dfbb7f1a00",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda and provider player identify the convened body as the Planning and Zoning Commission in a work session on Nov 16, 2021. The native chapters mirror the same commission work-session agenda. No supplied evidence proves a joint meeting or another participating municipal body; City Council references are status updates, not joint participation. The existing Addison feed 'addison-tx-planning-and-zoning-commission' is the configured feed for this body, so assign_existing."
+  },
+  "attempt_id": "fb79481eb24b435d94e0ab91c4eae017",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-b8889e50555726dfbb7f1a00",
+  "case_input_hash": "6259eece37a05c73703d12ee53ac2b9633e80d0235a0ad575a1e92047bcd3d36",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.977667915998609
+    }
+  ],
+  "end_to_end_seconds": 55.27273575000072,
+  "finished_at": "2026-10-14T17:44:10.857942+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T17:43:15.584864+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "65d1f86ab5efde6d0ca491dff91afbd2ee5bf6f53ea312fd44bdc86a15119003",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1292,
+    "completion_tokens": 1498,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1292,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3247,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3887,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5385
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-b8889e50555726dfbb7f1a00\",\"bodies\":[{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider player identify the convened body as the Planning and Zoning Commission in a work session on Nov 16, 2021. The native chapters mirror the same commission work-session agenda. No supplied evidence proves a joint meeting or another participating municipal body; City Council references are status updates, not joint participation. The existing Addison feed 'addison-tx-planning-and-zoning-commission' is the configured feed for this body, so assign_existing.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Evidence: agenda retained, provider-player, native chapters. Body label \"Planning & Zoning Commission Work Session\". City addison-tx. Existing feed slug addison-tx-planning-and-zoning-commission. Need assign_existing? Need consider if work session is same body P&Z Commission. Yes official agenda says PLANNING AND ZONING COMMISSION WORK SESSION. Convening institution Town of Addison? The body is Planning and Zoning Commission. Need name every proven participant in a joint meeting. No joint meeting evidence. Only P&Z Commission. Maybe \"Town of Addison\" is municipality not body? Schema bodies IdentifiedBody. Need include actual body/program separately from subscription grouping. The feed is Planning and Zoning Commission. Publication action assign_existing. Feed slug addison-tx-planning-and-zoning-commission. Evidence IDs: retained-agenda, provider-player, native-source-chapters. Need cite evidence for body name and assignment. Bodies: [{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}] Maybe include \"Work Session\" as part of body? Body_label says Planning & Zoning Commission Work Session. But actual body is Planning and Zoning Commission. Work session is meeting type. Feed covers Planning and Zoning Commission meetings. Good.\n\nNeed maybe consider public briefings? No, it's commission work session, not public briefing. TIF? no. Board of zoning adjustment? no. UDC? no. City Council? It discusses items from regular meeting and city council actions, but convened body is P&Z. No joint. Need not include city council.\n\nNeed missing_evidence: perhaps none. But instructions: If evidence insufficient for another suspected participant, explain gap. Are there suspected participants? The recording references City Council actions but not joint. Not participant. Maybe no missing evidence. But maybe need note no evidence of joint participants? The field missing_evidence array. Could include \"No official evidence identifies any joint participant beyond the Planning and Zoning Commission; city council is referenced only in updates.\" But that's not missing evidence? It is gap? Hmm.\n\nNeed publication_action. assign_existing. feed_slugs [\"addison-tx-planning-and-zoning-commission\"]. evidence_ref_ids maybe all evidence used? The schema has top-level evidence_ref_ids. Should include evidence IDs supporting selection. Could include [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Rationale concise within 2000.\n\nNeed ensure no Markdown. Return JSON only. \n\nLet's formulate. Need case_id exact.\n\nPotential nuance: \"Planning & Zoning Commission Work Session\" is a work session of P&Z Commission. Existing feed slug \"addison-tx-planning-and-zoning-commission\" description \"Planning and Zoning Commission meetings for Addison.\" Work sessions are meetings? Yes likely. Publication action assign_existing. Not archive_series/exclude. The policy \"identity use convened body, not venue, topic or common members.\" So P&Z.\n\nNeed mention \"actual body/program separately from its subscription grouping.\" In bodies name actual body. Feed slug subscription grouping. Good.\n\nNeed maybe bodies include \"Town of Addison Planning and Zoning Commission\"? Official title says PLANNING AND ZONING COMMISSION. Use that.\n\nNeed missing_evidence maybe empty array. If empty membership? Existing feed configured. No unconfigured. \n\nLet's craft JSON:\n\n{\n  \"case_id\": \"recording-b8889e50555726dfbb7f1a00\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda and provider player identify the convened body as the Planning and Zoning Commission in a work session on Nov 16, 2021. The chapters mirror the same commission work-session agenda. No evidence proves a joint meeting or another participating municipal body; references to City Council actions are only updates, not joint participation. The existing Addison feed 'addison-tx-planning-and-zoning-commission' is the configured feed for this body, so assign_existing.\"\n}\n\nCheck if \"No evidence proves a joint meeting or another participating municipal body\" maybe missing_evidence should mention? It says missing_evidence: genuine missing evidence. Could include \"No evidence of joint participants beyond the Planning and Zoning Commission; City Council is referenced only in status updates.\" But missing_evidence usually evidence not supplied. Maybe we can include that as missing? But if no suspected participant, no missing. The prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Is City Council suspected? It is mentioned in transcript? The source_span in provider-player includes \"AT THE RECENT NOVEMBER, UH, CITY COUNCIL MEETING, THEY ACTED...\" This is not a participant. No need. But maybe to be safe, missing_evidence: [\"No supplied evidence shows any joint participant or co-convener; City Council appears only as a referenced prior meeting, not as a participant in this recording.\"] Is that \"missing evidence\"? It could be okay. But if no missing, empty array. The instructions: \"If ownership cannot be established, return unresolved... Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Since ownership established. For suspected City Council? The evidence itself shows not participant. Not missing. Better empty.\n\nNeed top-level evidence_ref_ids maybe all evidence IDs? Yes.\n\nPotential issue: existing_feeds has addison-tx-planning-and-zoning-commission. There is no feed for \"Planning and Zoning Commission Work Session\" separately. So assign existing.\n\nLet's final. Ensure valid JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Evidence: agenda retained, provider-player, native chapters. Body label \"Planning & Zoning Commission Work Session\". City addison-tx. Existing feed slug addison-tx-planning-and-zoning-commission. Need assign_existing? Need consider if work session is same body P&Z Commission. Yes official agenda says PLANNING AND ZONING COMMISSION WORK SESSION. Convening institution Town of Addison? The body is Planning and Zoning Commission. Need name every proven participant in a joint meeting. No joint meeting evidence. Only P&Z Commission. Maybe \"Town of Addison\" is municipality not body? Schema bodies IdentifiedBody. Need include actual body/program separately from subscription grouping. The feed is Planning and Zoning Commission. Publication action assign_existing. Feed slug addison-tx-planning-and-zoning-commission. Evidence IDs: retained-agenda, provider-player, native-source-chapters. Need cite evidence for body name and assignment. Bodies: [{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}] Maybe include \"Work Session\" as part of body? Body_label says Planning & Zoning Commission Work Session. But actual body is Planning and Zoning Commission. Work session is meeting type. Feed covers Planning and Zoning Commission meetings. Good.\n\nNeed maybe consider public briefings? No, it's commission work session, not public briefing. TIF? no. Board of zoning adjustment? no. UDC? no. City Council? It discusses items from regular meeting and city council actions, but convened body is P&Z. No joint. Need not include city council.\n\nNeed missing_evidence: perhaps none. But instructions: If evidence insufficient for another suspected participant, explain gap. Are there suspected participants? The recording references City Council actions but not joint. Not participant. Maybe no missing evidence. But maybe need note no evidence of joint participants? The field missing_evidence array. Could include \"No official evidence identifies any joint participant beyond the Planning and Zoning Commission; city council is referenced only in updates.\" But that's not missing evidence? It is gap? Hmm.\n\nNeed publication_action. assign_existing. feed_slugs [\"addison-tx-planning-and-zoning-commission\"]. evidence_ref_ids maybe all evidence used? The schema has top-level evidence_ref_ids. Should include evidence IDs supporting selection. Could include [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Rationale concise within 2000.\n\nNeed ensure no Markdown. Return JSON only. \n\nLet's formulate. Need case_id exact.\n\nPotential nuance: \"Planning & Zoning Commission Work Session\" is a work session of P&Z Commission. Existing feed slug \"addison-tx-planning-and-zoning-commission\" description \"Planning and Zoning Commission meetings for Addison.\" Work sessions are meetings? Yes likely. Publication action assign_existing. Not archive_series/exclude. The policy \"identity use convened body, not venue, topic or common members.\" So P&Z.\n\nNeed mention \"actual body/program separately from its subscription grouping.\" In bodies name actual body. Feed slug subscription grouping. Good.\n\nNeed maybe bodies include \"Town of Addison Planning and Zoning Commission\"? Official title says PLANNING AND ZONING COMMISSION. Use that.\n\nNeed missing_evidence maybe empty array. If empty membership? Existing feed configured. No unconfigured. \n\nLet's craft JSON:\n\n{\n  \"case_id\": \"recording-b8889e50555726dfbb7f1a00\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda and provider player identify the convened body as the Planning and Zoning Commission in a work session on Nov 16, 2021. The chapters mirror the same commission work-session agenda. No evidence proves a joint meeting or another participating municipal body; references to City Council actions are only updates, not joint participation. The existing Addison feed 'addison-tx-planning-and-zoning-commission' is the configured feed for this body, so assign_existing.\"\n}\n\nCheck if \"No evidence proves a joint meeting or another participating municipal body\" maybe missing_evidence should mention? It says missing_evidence: genuine missing evidence. Could include \"No evidence of joint participants beyond the Planning and Zoning Commission; City Council is referenced only in status updates.\" But missing_evidence usually evidence not supplied. Maybe we can include that as missing? But if no suspected participant, no missing. The prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Is City Council suspected? It is mentioned in transcript? The source_span in provider-player includes \"AT THE RECENT NOVEMBER, UH, CITY COUNCIL MEETING, THEY ACTED...\" This is not a participant. No need. But maybe to be safe, missing_evidence: [\"No supplied evidence shows any joint participant or co-convener; City Council appears only as a referenced prior meeting, not as a participant in this recording.\"] Is that \"missing evidence\"? It could be okay. But if no missing, empty array. The instructions: \"If ownership cannot be established, return unresolved... Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Since ownership established. For suspected City Council? The evidence itself shows not participant. Not missing. Better empty.\n\nNeed top-level evidence_ref_ids maybe all evidence IDs? Yes.\n\nPotential issue: existing_feeds has addison-tx-planning-and-zoning-commission. There is no feed for \"Planning and Zoning Commission Work Session\" separately. So assign existing.\n\nLet's final. Ensure valid JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999841,
+    "id": "3218aa0af8abb1e89f57e60477369159",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1292,
+      "completion_tokens": 1498,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1292,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3247,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3887,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5385
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

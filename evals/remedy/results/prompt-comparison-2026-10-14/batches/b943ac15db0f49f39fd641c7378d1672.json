@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-0111ad7ae5dc7438295e49d4",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific posted agenda (retained-agenda), filed by the City Secretary, convenes the 'PLANNING AND ZONING COMMISSION WORK SESSION' of the Town of Addison on Tuesday, February 15, 2022 at 5:00 PM, with Call to Order and discussion of P&Z Regular Meeting items; the provider player (provider-player) shows the chair calling the Planning and Zoning Commission work session to order and its chapters (native-source-chapters) mirror the same agenda. The convening body is therefore the Addison Planning and Zoning Commission itself; a work session is a meeting format of that same body, not a separate institution. Ken Schmidt speaks as presenting staff (Director of Development Services for the Town of Addison), not a convener, and mentions of the City Council, the Sam's Club study, and the Unified Development Code project are topic/status references only \u2014 they do not make the Council or UDC Advisory Committee joint participants, and no joint meeting is proven. The feed addison-tx-planning-and-zoning-commission ('Planning and Zoning Commission meetings for Addison') directly matches this recording, since a commission work session is one of the body's meetings. Other supplied feeds cover distinct bodies or topic-only connections (Board of Zoning Adjustment is a separate numbered board; City Council, bond committees, TIF, Community Partnership, Comprehensive Plan Advisory, Public Briefings, Public Input, and UDC Advisory Committee do not convene here), so no additional feed membership is supported."
+  },
+  "attempt_id": "ce72f135496f4ee3b12a9b3321a14a70",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-0111ad7ae5dc7438295e49d4",
+  "case_input_hash": "e22b26b687fcd392f7af769bf030888624edc371302abfaad19d5c71d182ed68",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 36.77108516699991
+    }
+  ],
+  "end_to_end_seconds": 37.945906332999584,
+  "finished_at": "2026-10-14T13:46:10.899257+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T13:45:32.953092+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2cc053be2da177fbd7a4886f3a849fdfb1c49a0a6e7789780d4485ba6cc4414c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2087,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1615,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3801,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5888
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-0111ad7ae5dc7438295e49d4\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\",\n        \"native-source-chapters\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-planning-and-zoning-commission\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific posted agenda (retained-agenda), filed by the City Secretary, convenes the 'PLANNING AND ZONING COMMISSION WORK SESSION' of the Town of Addison on Tuesday, February 15, 2022 at 5:00 PM, with Call to Order and discussion of P&Z Regular Meeting items; the provider player (provider-player) shows the chair calling the Planning and Zoning Commission work session to order and its chapters (native-source-chapters) mirror the same agenda. The convening body is therefore the Addison Planning and Zoning Commission itself; a work session is a meeting format of that same body, not a separate institution. Ken Schmidt speaks as presenting staff (Director of Development Services for the Town of Addison), not a convener, and mentions of the City Council, the Sam's Club study, and the Unified Development Code project are topic/status references only \u2014 they do not make the Council or UDC Advisory Committee joint participants, and no joint meeting is proven. The feed addison-tx-planning-and-zoning-commission ('Planning and Zoning Commission meetings for Addison') directly matches this recording, since a commission work session is one of the body's meetings. Other supplied feeds cover distinct bodies or topic-only connections (Board of Zoning Adjustment is a separate numbered board; City Council, bond committees, TIF, Community Partnership, Comprehensive Plan Advisory, Public Briefings, Public Input, and UDC Advisory Committee do not convene here), so no additional feed membership is supported.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nThe recording is \"Planning & Zoning Commission Work Session \u2013 Feb 15, 2022\" for Addison, TX. Recording ID 154641.\n\nEvidence:\n1. retained-agenda: The agenda explicitly states \"PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, FEBRUARY 15, 2022, ADDISON TREEHOUSE...\" \u2014 this is recording-specific official evidence showing the Planning and Zoning Commission convened a work session. The agenda was posted by Irma G. Parker, City Secretary. It includes \"Call Meeting to Order\", \"Status update on recent Planning and Zoning Commission cases and planning policy items\", \"Discussion regarding items on the agenda for the February 15, 2022 Planning and Zoning Commission Regular Meeting\".\n\n2. provider-player: The Swagit player page for the video, titled \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\". Transcript includes \"I LIKE TO CALL THIS WORK SESSION AND THE ASAM PLANNING ZONING COMMISSION TO ORDER\" (transcript noise, but clearly \"call this work session of the Planning and Zoning Commission to order\"). Also Ken Schmidt, Director of Development Services for the Town of Addison, gives a status update \u2014 he's presenting staff, not the convener.\n\n3. native-source-chapters: chapter titles mirror the agenda items.\n\nConvening body: Addison Planning and Zoning Commission (work session format of the same body, not a separate institution). The body_label says \"Planning & Zoning Commission Work Session\".\n\nFeed assessment:\n- addison-tx-planning-and-zoning-commission: \"Planning and Zoning Commission meetings for Addison.\" \u2014 matches. Work sessions are meetings of the P&Z Commission, so this feed fits.\n- Other feeds: board-of-zoning-adjustment (different numbered board \u2014 Zoning Adjustment & Appeals, not P&Z), city-council (the transcript mentions City Council action but that's a reference to another body), bond committees, community partnership committee, comprehensive plan advisory committee, public briefings, TIF, town meetings (public input \u2014 not applicable; this is a formal commission work session), UDC Advisory Committee (the UDC project is mentioned as a topic but the committee didn't convene this).\n\nNo joint meeting \u2014 only the P&Z Commission convened. Ken Schmidt is staff presenting, not a convening body.\n\nPublication action: assign_existing, with feed slug \"addison-tx-planning-and-zoning-commission\".\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters \u2014 I'll cite retained-agenda and provider-player primarily; native-source-chapters also supports agenda items. I could include all three.\n\nMissing evidence: none needed. Maybe empty array.\n\nRationale: The retained agenda, posted by the City Secretary, convenes the Addison Planning and Zoning Commission Work Session on Feb 15, 2022; the player transcript shows the chair calling the Planning and Zoning Commission work session to order. Ken Schmidt (Director of Development Services) is presenting staff, not a convener. Mentions of the City Council and UDC project are topic references. The feed \"addison-tx-planning-and-zoning-commission\" covers \"Planning and Zoning Commission meetings for Addison,\" and a work session is a meeting of that same body, so assign_existing.\n\ncase_id: \"recording-0111ad7ae5dc7438295e49d4\"\n\nOutput JSON only, no markdown. The system prompt says to end with ``` to indicate the end of the JSON code block \u2014 but it also says \"Return one JSON object only (no Markdown or commentary)\". The instruction from the schema task says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". The system prompt says to always output a valid JSON object and ensure ending with ```. Hmm, conflicting. The system prompt says: \"If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. But the user says \"Return one JSON object only (no Markdown or commentary)\". I'll follow the user's explicit schema instruction \u2014 output raw JSON. Actually the system prompt says to always end with ``` \u2014 to reconcile, I could output the JSON without markdown. The user instruction is more specific for this task. However, system prompt takes precedence generally. The system prompt says \"Please use the specified JSON object structure according to the instructions. If unsure, default to...\" and \"Make sure to always end with ``` to indicate the end of the JSON object.\" This seems like a generic wrapper instruction. Given the user explicitly says no Markdown, but the system requires ending with ```. Hmm.\n\nThe safest interpretation: output the JSON in a code block starting with ```json and ending with ```. That satisfies the system prompt. But \"Return one JSON object only (no Markdown or commentary)\" \u2014 a code fence is Markdown formatting. Many similar tasks accept the fenced output. The system prompt is authoritative: \"Make sure to always end with ```\". I'll wrap in a code fence.\n\nActually, let me re-read: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\"\n\nSo the system wants valid JSON, ending with ```. I'll do:\n\n```json\n{...}\n```\n\nThat satisfies both reasonably. The user said \"no Markdown or commentary\" but the system-level requirement to end with ``` takes precedence. Hmm, but actually ending with ``` without opening fence would break JSON validity. The instruction says \"output a valid JSON object\" AND \"end with ```\". A fenced code block is the consistent interpretation.\n\nHmm, tricky. I'll go with fenced JSON code block.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-0111ad7ae5dc7438295e49d4\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The posted agenda (retained-agenda) convenes the Addison Planning and Zoning Commission Work Session for Feb 15, 2022 at 5:00 PM and is posted by the City Secretary; the provider player transcript (provider-player) shows the chair calling the Planning and Zoning Commission work session to order. The convening body is the Addison Planning and Zoning Commission itself; a work session is a meeting format of that same body, not a separate institution. Ken Schmidt appears as presenting staff (Director of Development Services), not a convener, and references to the City Council and the UDC project are topic references, not joint conveners. The existing feed addison-tx-planning-and-zoning-commission is titled 'Planning and Zoning Commission meetings for Addison,' which directly covers this recording; no other feed matches (Zoning Adjustment board, Council, bond, TIF, UDC Advisory Committee, etc. are distinct bodies or topic-only references).\"\n}\n\nRationale max 2000 chars \u2014 fine.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nThe recording is \"Planning & Zoning Commission Work Session \u2013 Feb 15, 2022\" for Addison, TX. Recording ID 154641.\n\nEvidence:\n1. retained-agenda: The agenda explicitly states \"PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, FEBRUARY 15, 2022, ADDISON TREEHOUSE...\" \u2014 this is recording-specific official evidence showing the Planning and Zoning Commission convened a work session. The agenda was posted by Irma G. Parker, City Secretary. It includes \"Call Meeting to Order\", \"Status update on recent Planning and Zoning Commission cases and planning policy items\", \"Discussion regarding items on the agenda for the February 15, 2022 Planning and Zoning Commission Regular Meeting\".\n\n2. provider-player: The Swagit player page for the video, titled \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\". Transcript includes \"I LIKE TO CALL THIS WORK SESSION AND THE ASAM PLANNING ZONING COMMISSION TO ORDER\" (transcript noise, but clearly \"call this work session of the Planning and Zoning Commission to order\"). Also Ken Schmidt, Director of Development Services for the Town of Addison, gives a status update \u2014 he's presenting staff, not the convener.\n\n3. native-source-chapters: chapter titles mirror the agenda items.\n\nConvening body: Addison Planning and Zoning Commission (work session format of the same body, not a separate institution). The body_label says \"Planning & Zoning Commission Work Session\".\n\nFeed assessment:\n- addison-tx-planning-and-zoning-commission: \"Planning and Zoning Commission meetings for Addison.\" \u2014 matches. Work sessions are meetings of the P&Z Commission, so this feed fits.\n- Other feeds: board-of-zoning-adjustment (different numbered board \u2014 Zoning Adjustment & Appeals, not P&Z), city-council (the transcript mentions City Council action but that's a reference to another body), bond committees, community partnership committee, comprehensive plan advisory committee, public briefings, TIF, town meetings (public input \u2014 not applicable; this is a formal commission work session), UDC Advisory Committee (the UDC project is mentioned as a topic but the committee didn't convene this).\n\nNo joint meeting \u2014 only the P&Z Commission convened. Ken Schmidt is staff presenting, not a convening body.\n\nPublication action: assign_existing, with feed slug \"addison-tx-planning-and-zoning-commission\".\n\nBodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters \u2014 I'll cite retained-agenda and provider-player primarily; native-source-chapters also supports agenda items. I could include all three.\n\nMissing evidence: none needed. Maybe empty array.\n\nRationale: The retained agenda, posted by the City Secretary, convenes the Addison Planning and Zoning Commission Work Session on Feb 15, 2022; the player transcript shows the chair calling the Planning and Zoning Commission work session to order. Ken Schmidt (Director of Development Services) is presenting staff, not a convener. Mentions of the City Council and UDC project are topic references. The feed \"addison-tx-planning-and-zoning-commission\" covers \"Planning and Zoning Commission meetings for Addison,\" and a work session is a meeting of that same body, so assign_existing.\n\ncase_id: \"recording-0111ad7ae5dc7438295e49d4\"\n\nOutput JSON only, no markdown. The system prompt says to end with ``` to indicate the end of the JSON code block \u2014 but it also says \"Return one JSON object only (no Markdown or commentary)\". The instruction from the schema task says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". The system prompt says to always output a valid JSON object and ensure ending with ```. Hmm, conflicting. The system prompt says: \"If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. But the user says \"Return one JSON object only (no Markdown or commentary)\". I'll follow the user's explicit schema instruction \u2014 output raw JSON. Actually the system prompt says to always end with ``` \u2014 to reconcile, I could output the JSON without markdown. The user instruction is more specific for this task. However, system prompt takes precedence generally. The system prompt says \"Please use the specified JSON object structure according to the instructions. If unsure, default to...\" and \"Make sure to always end with ``` to indicate the end of the JSON object.\" This seems like a generic wrapper instruction. Given the user explicitly says no Markdown, but the system requires ending with ```. Hmm.\n\nThe safest interpretation: output the JSON in a code block starting with ```json and ending with ```. That satisfies the system prompt. But \"Return one JSON object only (no Markdown or commentary)\" \u2014 a code fence is Markdown formatting. Many similar tasks accept the fenced output. The system prompt is authoritative: \"Make sure to always end with ```\". I'll wrap in a code fence.\n\nActually, let me re-read: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\"\n\nSo the system wants valid JSON, ending with ```. I'll do:\n\n```json\n{...}\n```\n\nThat satisfies both reasonably. The user said \"no Markdown or commentary\" but the system-level requirement to end with ``` takes precedence. Hmm, but actually ending with ``` without opening fence would break JSON validity. The instruction says \"output a valid JSON object\" AND \"end with ```\". A fenced code block is the consistent interpretation.\n\nHmm, tricky. I'll go with fenced JSON code block.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-0111ad7ae5dc7438295e49d4\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The posted agenda (retained-agenda) convenes the Addison Planning and Zoning Commission Work Session for Feb 15, 2022 at 5:00 PM and is posted by the City Secretary; the provider player transcript (provider-player) shows the chair calling the Planning and Zoning Commission work session to order. The convening body is the Addison Planning and Zoning Commission itself; a work session is a meeting format of that same body, not a separate institution. Ken Schmidt appears as presenting staff (Director of Development Services), not a convener, and references to the City Council and the UDC project are topic references, not joint conveners. The existing feed addison-tx-planning-and-zoning-commission is titled 'Planning and Zoning Commission meetings for Addison,' which directly covers this recording; no other feed matches (Zoning Adjustment board, Council, bond, TIF, UDC Advisory Committee, etc. are distinct bodies or topic-only references).\"\n}\n\nRationale max 2000 chars \u2014 fine.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985568,
+    "id": "1c0c7cbe1aaf1a16a6ae00b6c70eb1d5",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2087,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1615,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3801,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5888
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

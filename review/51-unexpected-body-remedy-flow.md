@@ -1,7 +1,7 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1, P2a and report-only P2b shipped; remaining P2 and P3–P5 gated.**
-**Revised:** 2026-10-09 after final P0 replay and deployed verification.
+**Status: P0 complete; P1 evaluation evidence recorded; P1 admission, remaining P2, and P3–P5 gated.**
+**Revised:** 2026-10-14 after P3 consensus-routing decision and evaluation capture.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -225,27 +225,27 @@ logical Gemini 3.7 alias can fall back to 3.6/3.8/3.5: admission must inspect th
 model and effort, not only the pool's name. Remove below-floor fallback from this verb after
 project evaluation; exhausted free capacity defers work rather than downgrading judgment.
 
-A proposer produces a structured claim with citations, alternatives, uncertainties, policy and
-coverage impact. An independent reviewer from a different model family first classifies the
-same evidence without seeing the proposer's rationale, then checks the proposed change. Shared
-provider accounts or a second call to the same model are not model diversity. Deterministic
-city/source, district-number, ownership, schema and selector-impact checks remain mandatory.
-Agreement is supporting evidence, not ground truth. Disagreement gets one independent stronger
-adjudicator if an admitted free route is available; otherwise queue human review. Do not create
-an unbounded debate or silently use paid capacity.
+The maintainer replaced the earlier blind-review/JEV-shadow proposal on 2026-10-14 with a
+bounded consensus cascade. Two exact routes, Sol and GLM Flash, make the initial assignment
+independently from the same evidence and policy. If their normalized decisions agree and pass the
+deterministic validator, create the proposal and pull request. If they disagree, send one
+expanded, provenance-preserving packet to DeepSeek V4.1 Flash and JEV. The adjudication packet
+contains both initial proposals and only additional context selected by reproducible retrieval
+rules; it never contains gold or hidden expected labels.
 
-JEV can judge bounded factual claims after its own project evaluation; it is not a substitute
-proposer or exempted general reasoning model. Begin in shadow mode, measure its added value, and
-require agreement only after a separate promotion decision. The maintainer identifies GitHub's
-`BEATAPI_API_KEY` and a newly added dispatch route. The inspected catalog does not yet expose that
-route, so reconcile the route PR before an L3 implementation. Do not create a new direct JEV client
-or copy credentials. Reuse [review/49](49-judge-consensus-admission.md)'s judgment contract where applicable.
+Agreement is evidence for a PR candidate, not ground truth or merge authorization. All routes
+must have current physical-model identity and reasoning-control evidence, independent P1
+admission, available free capacity, and the required distinct serving families. The configured
+catalog must be reconciled with those admissions before use. Deterministic city/source, owner,
+policy, schema, and selector-impact checks remain mandatory even when models agree. Every
+generated PR remains subject to human review and merge; this policy does not authorize production
+feed changes, auto-merge, paid fallback, or quota increases.
 
-The current interactive remedy contract is direct-only and same-run (#1231). Preserve it for
-proposer/reviewer initially. JEV shadow work may use the approved dispatch integration separately;
-a mandatory asynchronous judge would change that contract and requires an explicit later gate.
-Coordinate route admission/retirement with review/48 and telemetry with review/50; this plan does
-not change dispatch infrastructure, Worker concurrency or provider budgets.
+JEV's diagnostic used the existing local pilot only after its Worker upload path failed. That
+diagnostic does not qualify JEV for production dispatch. Production P3 remains gated on the
+documented review/49 dispatch integration, a remedy-specific JEV evaluation/admission, and the
+same identity, quota, and free-route checks as the other judges. Do not copy a direct client or
+credentials. The local pilot is not an implementation substitute for the dispatch integration.
 
 ## 4. Rerunnable evaluation and confidence
 
@@ -293,7 +293,7 @@ existing PRs/issues instead of opening duplicate branches every run.
 
 Each PR shows: official evidence and uncertainty; why this is an alias/new body/aggregate/exclusion;
 which policy authorizes it; alternatives rejected; unique historical recordings newly covered;
-selector positive/negative replay; independent reviewer verdict and actual routes; eval results;
+selector positive/negative replay; initial/adjudication results and actual routes; eval results;
 feed URL/UID/retention consequences. A count of accepted proposals is not evidence of correctness.
 
 High confidence: only evaluated, independently reviewed alias types within approved ownership and
@@ -311,7 +311,7 @@ Rejected PRs enter that third queue and cannot regenerate unchanged.
 | P0 | Finish historical census and approved category rules; all legitimate recordings covered or explicitly investigated; verify migration/exclusion evidence | #1973–#1975, `config/feeds/`, historical inventory, fixtures |
 | P1 | Rerunnable route/effort comparison, held-out truth, no below-floor fallback; report unknowns/errors honestly | `evals/remedy/`, new `scripts/eval_remedy.py`, existing model routing/catalog, evaluation tests |
 | P2 | Policy-scoped evidence and durable rejection/exclusion history; replay all archive coverage and newly matched labels | `citypods/audit.py`, `citypods/audit_remedy.py`, config validation, existing storage CAS helpers, new ledger module to specify at L3 |
-| P3 | Independent family reviewer, once-only escalation, shadow JEV dispatch integration after route reconciliation | `classify_unexpected_bodies`, `validate_proposals`, prompt/schema contracts, existing LLM/judge APIs |
+| P3 | Sol + GLM Flash initial consensus; one DeepSeek V4.1 Flash + JEV adjudication on disagreement; validated PR candidate or checkbox-based manual issue | `classify_unexpected_bodies`, `validate_proposals`, prompt/schema contracts, admitted route adapters, review/49 dispatch API |
 | P4 | Small PRs, issue refinement, queue fairness and review-cap enforcement | remedy workflows, remedy command scripts, `format_remedy_markdown`, ledger feedback consumer |
 | P5 | Qualified alias auto-merge pilot and city-onboarding coverage gate; evaluate manual-work trend | remedy workflows, `.github/ADD_CITY.md`, admitted-type policy and holdout |
 
@@ -354,9 +354,10 @@ or minimum-volume incentive is added to this task.
 Compare candidate models on identical frozen inputs and report by decision type, source/family,
 truth provenance and evidence quality. Replacement is event-driven: retirement, new candidate,
 route/effort changes or a detected regression produces a reviewed admission config PR. Keep
-coverage/quality checks even when only one candidate is available; lack of an independent reviewer
-means a policy hold, not relaxed diversity. Shared JEV reliability may be measured by review/49,
-but remedy-specific claim accuracy still needs this lane's verified truth.
+coverage/quality checks even when only one candidate is available; if either required initial
+judge is unavailable or the two do not agree, use the bounded adjudication or a manual hold rather
+than relaxing the consensus rule. Shared JEV reliability may be measured by review/49, but
+remedy-specific claim accuracy still needs this lane's verified truth.
 
 ## Build contracts
 
@@ -1348,51 +1349,59 @@ approved source-partitioned paths later; no remaining question about that path. 
 actual independently reviewed model admissions. No claim full historical backlog is complete.
 
 
-### P3 — diverse reasoning review and bounded escalation
+### P3 — two-stage consensus and bounded adjudication
 
-**Gate:** P1 reports support at least one admitted proposer and a reviewer from another family;
-P2 policy/evidence/ledger contracts are implemented. Missing either route keeps production manual.
-**Permitted files:** new `citypods/remedy_review.py`, `citypods/audit_remedy.py`,
-`scripts/remedy_unexpected_bodies.py`, `config/remedy.yml`, existing remedy tests,
-new `tests/test_remedy_review.py` and lifecycle docs. No Worker or shared judge API invented here.
+**Decision (2026-10-14):** replace the prior blind independent reviewer followed by optional JEV
+shadow flow with the following bounded policy. This is a design decision only; it does not admit
+routes or change production behavior.
 
-New `ReviewDecision` contract: decision ID, independently selected owner/action, supported/unknown,
-policy ID, evidence refs, conflicts, alternatives, missing evidence and critical-error class.
-New `ReviewedDecision`: proposal, blind verdict, comparison, optional adjudicator result, role/route/
-effort provenance and disposition `pr_candidate|issue_candidate|policy_hold`.
+1. **Initial score:** Sol and GLM Flash receive the same evidence, approved policy, and original
+   assignment prompt independently. Preserve their raw responses and route/model/effort provenance.
+2. **Agreement:** normalize publication action, owner/body identity, and the exact unordered feed
+   set. If these fields agree and deterministic policy/evidence validation passes, create a
+   proposal and PR candidate. The PR still requires human review and merge.
+3. **Disagreement:** make exactly one adjudication round with DeepSeek V4.1 Flash and JEV. Both
+   receive the same expanded, hashed packet: original source evidence, both initial proposals
+   labeled A/B, and additional title/context evidence selected by a deterministic retrieval
+   procedure. Do not include the gold answer or hidden expected labels.
+4. **Adjudication agreement:** DeepSeek's normalized assignment must exactly match the determinate
+   A/B proposal selected by JEV, and both must pass deterministic validation. Then create a
+   proposal and PR candidate, still requiring human review and merge.
+5. **Manual disposition:** if adjudicators disagree, either abstains, selects “neither proposal” or
+   “insufficient evidence,” fails transport/schema/identity checks, or deterministic validation
+   fails, create a GitHub issue with the evidence and explicit option checkboxes for each feed and
+   disposition. For every candidate feed, offer `correct/include`, `possible/hold`, and
+   `incorrect/exclude` boxes, plus overall `no feed assignment` and `hold for future evidence`
+   choices. A human selects the disposition; do not retry the semantic escalation.
 
-`review_decisions(evidence, *, admissions, backend, deadline_at) -> list[ReviewedDecision]` uses
-existing `classify_unexpected_bodies` for proposer generation with P1 strict routing, then a separate
-blind reviewer job using the same input-only evidence and approved policies. The reviewer cannot
-see proposer rationale, verdict or selected owner. Compare independently derived decisions locally;
-retain both. Agreement on an unsupported identity still fails deterministic validation.
-One adjudicator sees both claims and cited evidence after disagreement. It is a third model family
-with approved stronger reasoning baseline, not a second account of either model. If unavailable or
-still uncertain/disagreeing, make an issue candidate; never repeat semantic escalation.
-Existing bounded schema repair is distinct from semantic escalation and must be counted/reported.
+JEV's bounded choice is A, B, neither complete proposal, or insufficient evidence; it also returns
+independent support probabilities for A/B. “Neither” and “insufficient evidence” are safe holds,
+not assignments. A JEV choice only agrees when it selects A or B and DeepSeek independently returns
+the same normalized action, owner, and full feed set. The diagnostic's JEV multiple-choice result
+is not full-assignment accuracy.
 
-Remove the three-recording eligibility rule from prompt and `_rejection_reason`; verified sparse
-bodies are legitimate. A dated alias uses a proven rule; unknown sparse bodies abstain. Replace
-city/topic token acceptance with P2 ownership and replay checks. Refresh feed context between
-accepted family groups; unmerged proposals are labelled pending, never treated as approved policy.
+**Gates before production implementation:** finish the P1 physical-route/model-family/effort
+admissions for Sol, GLM Flash, DeepSeek V4.1 Flash, and JEV; reconcile exact route catalog entries;
+complete the durable P2 policy, evidence and decision-ledger contracts; and implement JEV through
+the documented review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy
+that integration gate. Until these gates pass, production publication remains manual.
 
-All role calls remain direct/same-run and free, using existing quota/deadline accounting. Exhaustion
-is `policy_hold`, not a below-floor fallback or paid call. The report identifies missing capacity,
-identity evidence and disagreement separately. Update `REMEDY_VERSION` to reflect prompt/schema
-changes only; state explicitly that no audio/stage pipeline version or catalog backfill is changed.
+**P3 implementation and acceptance:** add a structured review decision containing both stage
+results, exact evidence/provenance, validator output, and `pr_candidate|issue_candidate|policy_hold`
+disposition. Reuse existing routing/quota controls; no direct JEV client, fallback, automatic
+retry, feed mutation, or auto-merge. Tests cover exact normalized agreement, action/owner/feed
+mismatches, deterministic-policy failures despite consensus, one and only one adjudication round,
+JEV A/B/C/D semantics, route unavailability, transport/schema/identity failure, uncertainty,
+sparse legitimate bodies, quota exhaustion, checkbox issue generation, and human-only PR merge.
+Keep unrelated P4/P5 controls, historical coverage, and stage/pipeline versions unchanged.
 
-JEV is optional shadow work. Until review/49 exposes a merged documented dispatch judgment API
-and an admitted remedy-specific claim evaluation, record `shadow_unavailable` and do not submit
-JEV jobs. A direct client copied from the pilot is forbidden. The later JEV adapter needs its own
-scoped spec naming that real API and `BEATAPI_API_KEY` dispatch credential integration; it cannot
-block or authorize feed mutations in P3. This is an explicit dependency gate, not an open choice
-for the implementing agent. No automatic JEV promotion is authorized.
-
-P3 tests: blind input has no proposer data; different actual families, even under logical aliases;
-missing evidence despite agreement; incorrect district/city; unavailable stronger route; exactly one
-semantic escalation; transport/schema failure; explicit uncertainty; sparse legitimate body;
-quota exhaustion; optional shadow absence changes no accepted outcome.
-Exit: independent verdicts and exact grounded evidence precede every PR candidate.
+**Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
+three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
+correctly on 52/60 cases, had zero shared wrong agreements, and disagreed on 8. The disagreement
+follow-up in `evals/remedy/results/disagreement-2026-10-14/` records the broader-context DeepSeek
+and JEV diagnostic for those eight cases. These reused challenge cases do not independently
+qualify routes or JEV. The maintainer's later feed-by-feed labels are recorded separately from
+frozen evaluation gold in `human-dispositions-2026-10-15.json`.
 
 ### P4 — bounded PRs, issue refinement and recovery
 

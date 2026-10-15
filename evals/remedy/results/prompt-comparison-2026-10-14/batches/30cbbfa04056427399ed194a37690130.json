@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission (Town of Addison, TX)"
+      }
+    ],
+    "case_id": "recording-b8889e50555726dfbb7f1a00",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is headed 'PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, November 16, 2021' at the Addison TreeHouse, Addison, Texas, posted by City Secretary Irma G. Parker, and the provider player (provider-player, recording 148373) titles the video 'Nov 16, 2021 Planning & Zoning Commission Work Session - Addison, TX' with matching chapters (native-source-chapters). The convened body is the Town of Addison Planning and Zoning Commission itself; a work session is a meeting format of that same commission, not a separate numbered board, so it maps to the existing configured feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison). The transcript's reference to City Council actions on planning cases is an informational status update only and does not prove City Council convened or participated in this meeting, so no joint-meeting assignment is made. Publication action is assign_existing; no body is unconfigured and no archival/exclusion rule applies."
+  },
+  "attempt_id": "d89d94c3db4547e59552118c6a7f413c",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-b8889e50555726dfbb7f1a00",
+  "case_input_hash": "6259eece37a05c73703d12ee53ac2b9633e80d0235a0ad575a1e92047bcd3d36",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 15.729006207999191
+    }
+  ],
+  "end_to_end_seconds": 17.271361457998864,
+  "finished_at": "2026-10-14T17:45:28.228608+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:45:10.957115+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "18abfec2e26c6fe00b8a98cef6858c18e561f6cecfae60cc1fce2bcfe0ecf869",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1093,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 741,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3735,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4828
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"recording-b8889e50555726dfbb7f1a00\", \"bodies\": [{\"name\": \"Addison Planning and Zoning Commission (Town of Addison, TX)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}], \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"], \"publication_action\": \"assign_existing\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"missing_evidence\": [], \"rationale\": \"The retained agenda (retained-agenda) is headed 'PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, November 16, 2021' at the Addison TreeHouse, Addison, Texas, posted by City Secretary Irma G. Parker, and the provider player (provider-player, recording 148373) titles the video 'Nov 16, 2021 Planning & Zoning Commission Work Session - Addison, TX' with matching chapters (native-source-chapters). The convened body is the Town of Addison Planning and Zoning Commission itself; a work session is a meeting format of that same commission, not a separate numbered board, so it maps to the existing configured feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison). The transcript's reference to City Council actions on planning cases is an informational status update only and does not prove City Council convened or participated in this meeting, so no joint-meeting assignment is made. Publication action is assign_existing; no body is unconfigured and no archival/exclusion rule applies.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: determine which municipal body/bodies this recording belongs to, based on official evidence.\n\nEvidence:\n- retained-agenda: Agenda for \"PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, November 16, 2021, Addison TreeHouse, Addison, TX\". Posted by Irma G. Parker, City Secretary. The meeting is the Planning and Zoning Commission Work Session for the Town of Addison.\n- provider-player: Swagit video titled \"Nov 16, 2021 Planning & Zoning Commission Work Session - Addison, TX\" recording_id 148373. Transcript mentions City Council actions but the meeting itself is the P&Z Commission work session.\n- native-source-chapters: chapters consistent.\n\nSo the convened body is the Addison Planning and Zoning Commission (work session). The body_label is \"Planning & Zoning Commission Work Session\". The work session is part of the Planning and Zoning Commission \u2014 it's the same body convening (a work session of the P&Z Commission), not a separate body. Feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison\"). Work sessions are meetings of the commission, so assign_existing with that feed slug.\n\nCity Council is mentioned only in the transcript as having acted on cases \u2014 not a participant in this meeting. So not a joint meeting.\n\nPublication action: assign_existing. Bodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}]. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nMissing evidence: none. Rationale: The agenda and Swagit recording both identify the meeting as the Planning and Zoning Commission Work Session of the Town of Addison; the work session is a convening of the P&Z Commission itself. References to City Council actions are informational and don't establish joint participation. Feed slug exists.\n\ncase_id: \"recording-b8889e50555726dfbb7f1a00\".\n\nReturn JSON only, matching schema. Note the system prompt says to end code block with \"```\" but also says return one JSON object only no Markdown. The schema output should be plain JSON. The instruction in system says output valid JSON; the user says \"Return one JSON object only (no Markdown or commentary)\". I'll return plain JSON without markdown fences. Actually the system prompt says \"Ensure you always end the code block with ```\" \u2014 implying code block. But user says no Markdown. Hmm. Conflict. The user instruction is more specific: \"Return one JSON object only (no Markdown or commentary)\". I'll follow the user and output raw JSON. Actually the system prompt says \"You should always follow instructions and output a valid JSON object... Ensure you always end the code block with ``` to indicate the end of the JSON object.\" This suggests using code fences. But the user says no Markdown. To satisfy both could be impossible; the safest is to output raw JSON only since the user explicitly says no Markdown. Hmm, the system message might be generic. I'll output raw JSON without fences, since the user's explicit schema instruction says one JSON object only. Actually, wait \u2014 the system says \"\u8bf7\u6839\u636e\u6307\u4ee4\u4f7f\u7528\u6307\u5b9a\u7684JSON\u5bf9\u8c61\u7ed3\u6784\" (use the specified JSON structure per instructions) and \"Ensure you always end the code block with ```\". If I use a code fence, it's Markdown. The user says no Markdown. I think raw JSON is best; the final answer should be valid JSON that parses. I'll go raw JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: determine which municipal body/bodies this recording belongs to, based on official evidence.\n\nEvidence:\n- retained-agenda: Agenda for \"PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, November 16, 2021, Addison TreeHouse, Addison, TX\". Posted by Irma G. Parker, City Secretary. The meeting is the Planning and Zoning Commission Work Session for the Town of Addison.\n- provider-player: Swagit video titled \"Nov 16, 2021 Planning & Zoning Commission Work Session - Addison, TX\" recording_id 148373. Transcript mentions City Council actions but the meeting itself is the P&Z Commission work session.\n- native-source-chapters: chapters consistent.\n\nSo the convened body is the Addison Planning and Zoning Commission (work session). The body_label is \"Planning & Zoning Commission Work Session\". The work session is part of the Planning and Zoning Commission \u2014 it's the same body convening (a work session of the P&Z Commission), not a separate body. Feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison\"). Work sessions are meetings of the commission, so assign_existing with that feed slug.\n\nCity Council is mentioned only in the transcript as having acted on cases \u2014 not a participant in this meeting. So not a joint meeting.\n\nPublication action: assign_existing. Bodies: [{\"name\": \"Addison Planning and Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}]. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nMissing evidence: none. Rationale: The agenda and Swagit recording both identify the meeting as the Planning and Zoning Commission Work Session of the Town of Addison; the work session is a convening of the P&Z Commission itself. References to City Council actions are informational and don't establish joint participation. Feed slug exists.\n\ncase_id: \"recording-b8889e50555726dfbb7f1a00\".\n\nReturn JSON only, matching schema. Note the system prompt says to end code block with \"```\" but also says return one JSON object only no Markdown. The schema output should be plain JSON. The instruction in system says output valid JSON; the user says \"Return one JSON object only (no Markdown or commentary)\". I'll return plain JSON without markdown fences. Actually the system prompt says \"Ensure you always end the code block with ```\" \u2014 implying code block. But user says no Markdown. Hmm. Conflict. The user instruction is more specific: \"Return one JSON object only (no Markdown or commentary)\". I'll follow the user and output raw JSON. Actually the system prompt says \"You should always follow instructions and output a valid JSON object... Ensure you always end the code block with ``` to indicate the end of the JSON object.\" This suggests using code fences. But the user says no Markdown. To satisfy both could be impossible; the safest is to output raw JSON only since the user explicitly says no Markdown. Hmm, the system message might be generic. I'll output raw JSON without fences, since the user's explicit schema instruction says one JSON object only. Actually, wait \u2014 the system says \"\u8bf7\u6839\u636e\u6307\u4ee4\u4f7f\u7528\u6307\u5b9a\u7684JSON\u5bf9\u8c61\u7ed3\u6784\" (use the specified JSON structure per instructions) and \"Ensure you always end the code block with ```\". If I use a code fence, it's Markdown. The user says no Markdown. I think raw JSON is best; the final answer should be valid JSON that parses. I'll go raw JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999927,
+    "id": "13ecbf0dae6d6b060243f8a46ff7ada0",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1093,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 741,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3735,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4828
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

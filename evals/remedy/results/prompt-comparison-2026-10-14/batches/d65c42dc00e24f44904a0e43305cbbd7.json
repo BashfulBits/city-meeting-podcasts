@@ -1,0 +1,130 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player"
+        ],
+        "name": "Addison City Council"
+      }
+    ],
+    "case_id": "recording-a9772c53bc450243748eccff",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "exclude_event",
+    "rationale": "The supplied provider player page (provider-player) for recording 56023 on Addison's official Swagit channel titles the recording 'City Council Swearing-in Ceremony - Addison, TX' dated May 26, 2009, establishing the Addison City Council as the body to which the recording pertains; no other body is named in the evidence. Per the approved publication rules, ceremonies are excluded from body feeds, so no feed slug is assigned \u2014 including the existing addison-tx-city-council feed, which is reserved for City Council meetings, not ceremonial events. No agenda or joint-participation evidence exists, and none is needed since the event is excluded; the recording is not treated as non-government."
+  },
+  "attempt_id": "e07c708a272b4013b2dc6e03128d90ca",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-a9772c53bc450243748eccff",
+  "case_input_hash": "a4ce97ef4ce467d2ba2422dc8943c20b5bfd04e06065b0486c5dca57a14a8d67",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.60546124999746
+    }
+  ],
+  "end_to_end_seconds": 20.257336957998632,
+  "finished_at": "2026-10-14T17:56:28.434055+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:56:08.176566+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "fea7896815aa3461b45b054faceae0cd80010fbc976595f8453d04cef5f82fec",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1488,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1262,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 1570,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3058
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"recording-a9772c53bc450243748eccff\", \"bodies\": [{\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"provider-player\"]}], \"feed_slugs\": [], \"publication_action\": \"exclude_event\", \"evidence_ref_ids\": [\"provider-player\"], \"missing_evidence\": [], \"rationale\": \"The supplied provider player page (provider-player) for recording 56023 on Addison's official Swagit channel titles the recording 'City Council Swearing-in Ceremony - Addison, TX' dated May 26, 2009, establishing the Addison City Council as the body to which the recording pertains; no other body is named in the evidence. Per the approved publication rules, ceremonies are excluded from body feeds, so no feed slug is assigned \u2014 including the existing addison-tx-city-council feed, which is reserved for City Council meetings, not ceremonial events. No agenda or joint-participation evidence exists, and none is needed since the event is excluded; the recording is not treated as non-government.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The case: a recording titled \"City Council Swearing-in Ceremony \u2013 May 26, 2009\" from Addison, TX. The body label says \"City Council Swearing-in Ceremony\". Evidence: the provider player page showing \"May 26, 2009 City Council Swearing-in Ceremony - Addison, TX\".\n\nI need to determine which municipal body this recording belongs to. The title says \"City Council Swearing-in Ceremony\" \u2014 this is a ceremony for the City Council. However, per the policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So the events rule says ceremonies are excluded from body feeds \u2014 exclude_event.\n\nBut wait \u2014 I need to determine the convening institution from supplied official evidence. The evidence is a Swagit player page for Addison, TX. The title is \"City Council Swearing-in Ceremony\". Is that sufficient proof that the City Council convened this? A swearing-in ceremony is an event; the convening body may be the City Council. The title explicitly names \"City Council\". Hmm \u2014 the policy says \"Use the convened body, not venue, topic or common members\". The title labels the body as \"City Council Swearing-in Ceremony\". The event is a swearing-in ceremony \u2014 presumably of the City Council. Is the body \"Addison City Council\"?\n\nThe instruction: \"Identify the actual body/program separately from its subscription grouping.\" and \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\"\n\nThe only evidence is the Swagit player title \"May 26, 2009 City Council Swearing-in Ceremony - Addison, TX\". This title includes \"City Council\". So the body name could be \"Addison City Council\" with evidence provider-player. But is that a topic word? The label is \"City Council Swearing-in Ceremony\" \u2014 the ceremony pertains to the City Council. The convening body for a swearing-in ceremony might be the City itself, or the City Council. There's no agenda, no official city document listing a convened meeting of the City Council. It's a ceremony, not a meeting.\n\nPublication action options: assign_existing, unconfigured_body, archive_only, archive_series, exclude_event, unresolved.\n\nPolicy events: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So a swearing-in ceremony is a ceremony \u2192 exclude_event.\n\nBut we also need to identify the body. Even though excluded, we can name the body proven by evidence: \"Addison City Council\" (the City Council). The evidence title says \"City Council Swearing-in Ceremony\" \u2014 this proves the ceremony concerns the City Council; whether the City Council is the convening body of the ceremony is plausible but the label strongly indicates the Council's swearing-in. Hmm.\n\nThe instruction says: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nIs ownership established? The title \"City Council Swearing-in Ceremony\" \u2014 the ceremony of the City Council. The recording is hosted on Addison's official Swagit channel (addisontx.new.swagit.com). The body label given: \"City Council Swearing-in Ceremony\".\n\nI think the best answer: bodies = [{\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"provider-player\"]}]. feed_slugs = [] (ceremonies excluded from body feeds, so don't assign addison-tx-city-council). publication_action = exclude_event.\n\nWait \u2014 but should we assign to addison-tx-city-council anyway? The policy says ceremonies are excluded from body feeds. exclude_event means excluded from body feeds. So feed_slugs should be empty.\n\nBut is the City Council actually proven as the convening body? The swearing-in ceremony could be convened by the City (e.g., City Secretary) rather than the Council itself. However, the title explicitly says \"City Council Swearing-in Ceremony\" \u2014 that's the official title, immutable. The ceremony is for the City Council's swearing-in. I'd say the body identified is the Addison City Council; the ceremony is associated with the Council. The evidence is the provider title. Given the label \"City Council Swearing-in Ceremony,\" the convened entity in the title is \"City Council\". I think naming \"Addison City Council\" is defensible.\n\nAlternatively, one could argue unresolved because a ceremony doesn't prove the Council convened; but the task says \"Missing ownership proof requires unresolved; it does not prove exclusion.\" Hmm \u2014 but we do have evidence of the body name in the title. The event excludes from body feeds anyway. The question asks \"Which municipal body or bodies does this recording belong to?\" \u2014 the City Council, as its swearing-in ceremony. I think the intended answer: body = Addison City Council; action = exclude_event (ceremonies excluded from body feeds); feed_slugs = [].\n\nActually, let me reconsider: exclude_event vs archive_only. Archive policy: \"Promotional/orientation films and economic-development luncheons are archive-only.\" A swearing-in ceremony is not promotional/orientation film nor luncheon. Events policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So exclude_event fits: ceremonies.\n\nFeed slugs: empty array since excluded.\n\nMissing evidence: none needed, or perhaps note that no agenda exists but not required. I'd put empty array or a note. The schema requires missing_evidence as array of strings; can be empty.\n\nRationale: The provider player page (provider-player) titles the recording \"City Council Swearing-in Ceremony \u2013 May 26, 2009\" on Addison's official Swagit channel, identifying the Addison City Council as the body whose swearing-in ceremony was recorded. Per the approved publication rules, ceremonies are excluded from body feeds, so no feed slug is assigned (including addison-tx-city-council). publication_action = exclude_event.\n\nEcho case_id: \"recording-a9772c53bc450243748eccff\".\n\nEvidence ref ids: [\"provider-player\"].\n\nReturn JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The case: a recording titled \"City Council Swearing-in Ceremony \u2013 May 26, 2009\" from Addison, TX. The body label says \"City Council Swearing-in Ceremony\". Evidence: the provider player page showing \"May 26, 2009 City Council Swearing-in Ceremony - Addison, TX\".\n\nI need to determine which municipal body this recording belongs to. The title says \"City Council Swearing-in Ceremony\" \u2014 this is a ceremony for the City Council. However, per the policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So the events rule says ceremonies are excluded from body feeds \u2014 exclude_event.\n\nBut wait \u2014 I need to determine the convening institution from supplied official evidence. The evidence is a Swagit player page for Addison, TX. The title is \"City Council Swearing-in Ceremony\". Is that sufficient proof that the City Council convened this? A swearing-in ceremony is an event; the convening body may be the City Council. The title explicitly names \"City Council\". Hmm \u2014 the policy says \"Use the convened body, not venue, topic or common members\". The title labels the body as \"City Council Swearing-in Ceremony\". The event is a swearing-in ceremony \u2014 presumably of the City Council. Is the body \"Addison City Council\"?\n\nThe instruction: \"Identify the actual body/program separately from its subscription grouping.\" and \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\"\n\nThe only evidence is the Swagit player title \"May 26, 2009 City Council Swearing-in Ceremony - Addison, TX\". This title includes \"City Council\". So the body name could be \"Addison City Council\" with evidence provider-player. But is that a topic word? The label is \"City Council Swearing-in Ceremony\" \u2014 the ceremony pertains to the City Council. The convening body for a swearing-in ceremony might be the City itself, or the City Council. There's no agenda, no official city document listing a convened meeting of the City Council. It's a ceremony, not a meeting.\n\nPublication action options: assign_existing, unconfigured_body, archive_only, archive_series, exclude_event, unresolved.\n\nPolicy events: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So a swearing-in ceremony is a ceremony \u2192 exclude_event.\n\nBut we also need to identify the body. Even though excluded, we can name the body proven by evidence: \"Addison City Council\" (the City Council). The evidence title says \"City Council Swearing-in Ceremony\" \u2014 this proves the ceremony concerns the City Council; whether the City Council is the convening body of the ceremony is plausible but the label strongly indicates the Council's swearing-in. Hmm.\n\nThe instruction says: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nIs ownership established? The title \"City Council Swearing-in Ceremony\" \u2014 the ceremony of the City Council. The recording is hosted on Addison's official Swagit channel (addisontx.new.swagit.com). The body label given: \"City Council Swearing-in Ceremony\".\n\nI think the best answer: bodies = [{\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"provider-player\"]}]. feed_slugs = [] (ceremonies excluded from body feeds, so don't assign addison-tx-city-council). publication_action = exclude_event.\n\nWait \u2014 but should we assign to addison-tx-city-council anyway? The policy says ceremonies are excluded from body feeds. exclude_event means excluded from body feeds. So feed_slugs should be empty.\n\nBut is the City Council actually proven as the convening body? The swearing-in ceremony could be convened by the City (e.g., City Secretary) rather than the Council itself. However, the title explicitly says \"City Council Swearing-in Ceremony\" \u2014 that's the official title, immutable. The ceremony is for the City Council's swearing-in. I'd say the body identified is the Addison City Council; the ceremony is associated with the Council. The evidence is the provider title. Given the label \"City Council Swearing-in Ceremony,\" the convened entity in the title is \"City Council\". I think naming \"Addison City Council\" is defensible.\n\nAlternatively, one could argue unresolved because a ceremony doesn't prove the Council convened; but the task says \"Missing ownership proof requires unresolved; it does not prove exclusion.\" Hmm \u2014 but we do have evidence of the body name in the title. The event excludes from body feeds anyway. The question asks \"Which municipal body or bodies does this recording belong to?\" \u2014 the City Council, as its swearing-in ceremony. I think the intended answer: body = Addison City Council; action = exclude_event (ceremonies excluded from body feeds); feed_slugs = [].\n\nActually, let me reconsider: exclude_event vs archive_only. Archive policy: \"Promotional/orientation films and economic-development luncheons are archive-only.\" A swearing-in ceremony is not promotional/orientation film nor luncheon. Events policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So exclude_event fits: ceremonies.\n\nFeed slugs: empty array since excluded.\n\nMissing evidence: none needed, or perhaps note that no agenda exists but not required. I'd put empty array or a note. The schema requires missing_evidence as array of strings; can be empty.\n\nRationale: The provider player page (provider-player) titles the recording \"City Council Swearing-in Ceremony \u2013 May 26, 2009\" on Addison's official Swagit channel, identifying the Addison City Council as the body whose swearing-in ceremony was recorded. Per the approved publication rules, ceremonies are excluded from body feeds, so no feed slug is assigned (including addison-tx-city-council). publication_action = exclude_event.\n\nEcho case_id: \"recording-a9772c53bc450243748eccff\".\n\nEvidence ref ids: [\"provider-player\"].\n\nReturn JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792000514,
+    "id": "aa7ae74167506003cb9e59a5a86e56a0",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1488,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1262,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 1570,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3058
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -1,0 +1,162 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Planning & Zoning Commission (P&Z)"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Comprehensive Plan Advisory Committee (CPAC)"
+      }
+    ],
+    "case_id": "recording-461fd764c77be280ae5b37a2",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-comprehensive-plan-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda and provider player/chapters identify this as Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. Each is called to order and quorum is announced, proving all three as convened participants rather than venue, topic, staff, or program references. Existing configured feeds directly match each proven body: addison-tx-city-council, addison-tx-planning-and-zoning-commission, and addison-tx-comprehensive-plan-advisory-committee. Under the joint-meeting rule, the same recording can be assigned to every proven participant's configured feed. No additional body or unconfigured body is proven."
+  },
+  "attempt_id": "cfdf6f8f952547caba39a817fbbdebe6",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-461fd764c77be280ae5b37a2",
+  "case_input_hash": "19c5d7c43835941303b2a730df317609a11d9d2770481146541c2589143d092e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.665553083003033
+    }
+  ],
+  "end_to_end_seconds": 27.267022542000632,
+  "finished_at": "2026-10-14T18:32:28.890803+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:32:01.623616+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "980434087ec086a5674cf578624a00086b9289e1d4ceb793dd04a143003ea38c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1134,
+    "completion_tokens": 1468,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1134,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3341,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3981,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5449
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-461fd764c77be280ae5b37a2\",\"bodies\":[{\"name\":\"Addison City Council\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Planning & Zoning Commission (P&Z)\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Comprehensive Plan Advisory Committee (CPAC)\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider player/chapters identify this as Joint Meeting #2 of the Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), and City Council. Each is called to order and quorum is announced, proving all three as convened participants rather than venue, topic, staff, or program references. Existing configured feeds directly match each proven body: addison-tx-city-council, addison-tx-planning-and-zoning-commission, and addison-tx-comprehensive-plan-advisory-committee. Under the joint-meeting rule, the same recording can be assigned to every proven participant's configured feed. No additional body or unconfigured body is proven.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal bodies/program from official evidence. Case recording joint CPAC, P&Z, City Council. Need identify all proven participants in joint meeting. Existing feeds: addison-tx-comprehensive-plan-advisory-committee, addison-tx-planning-and-zoning-commission, addison-tx-city-council. Joint policy: every proven participant can share same recording in configured feed. Publication action likely assign_existing. Need feed_slugs all appropriate existing. Bodies: Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), City Council of Addison? Need exact names. Evidence refs: retained-agenda, provider-player, native-source-chapters. Evidence establishes joint meeting #2 of CPAC, P&Z, City Council; calls to order each; quorums. Need maybe \"City Council\" and \"Planning & Zoning Commission\" and \"Comprehensive Plan Advisory Committee\". Is \"Addison City Council\" formal. Evidence says \"ADDISON CITY COUNCIL\" / \"Addison City Council\". P&Z \"Planning & Zoning Commission (P&Z)\" / \"Planning and Zoning Commission\". CPAC \"Comprehensive Plan Advisory Committee (CPAC)\". All proven participants.\n\nNeed consider \"actual body/program separately from subscription grouping.\" Feed slugs are grouping. All three feeds.\n\nNeed cite evidence IDs. Body names each evidence_ref_ids include all relevant. Maybe use retained-agenda, provider-player, native-source-chapters. Evidence for each body name and assignments. We can include all three.\n\nNeed missing_evidence maybe none? Could mention no missing evidence. But if schema expects array. Use [].\n\nRationale concise max 2000. Explain evidence-to-feed connection. Need not output hidden analysis.\n\nNeed publication_action \"assign_existing\" because existing feeds for all. feed_slugs max 15. Include all three.\n\nPotential issue: The recording belongs to \"Joint CPAC, P&Z, and City Council Meeting #2\". The body_label could be event. But bodies list should include three participants. Need no unconfigured. No archive_only etc.\n\nNeed ensure JSON only. No markdown.\n\nLet's craft.\n\nNeed case_id echo \"recording-461fd764c77be280ae5b37a2\".\n\nEvidence refs overall maybe all three IDs. Bodies:\n- Addison City Council? Official agenda says \"CITY COUNCIL\", \"Addison City Council\". Feed title \"Addison: City Council\", slug addison-tx-city-council. Name \"Addison City Council\". Evidence refs: retained-agenda, provider-player, native-source-chapters. \n- Planning & Zoning Commission? Official says \"PLANNING & ZONING COMMISSION (P&Z)\" and \"Planning & Zoning Commission\". Feed title \"Addison: Planning and Zoning Commission\". Name \"Planning & Zoning Commission (P&Z)\" or \"Planning and Zoning Commission\". Use official \"Planning & Zoning Commission\". \n- Comprehensive Plan Advisory Committee (CPAC). Official. Feed slug.\n\nMaybe body name \"Comprehensive Plan Advisory Committee (CPAC)\" exactly.\n\nPublication_action assign_existing.\n\nMissing evidence: []? Could there be no missing evidence for assignments. Use [].\n\nRationale: \"The retained agenda and provider player/chapters identify a joint meeting #2 of three bodies: Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee (CPAC), with each called to order and quorum announced. Each is a convened participant, not venue/topic/staff. Existing feeds directly match each body: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Under joints policy, the same recording can be assigned to every proven participant's configured feed. No additional body or unconfigured feed is proven.\"\n\nNeed maybe \"City Council\" feed existing. Good.\n\nDouble-check no \"Advance Addison 2050\" is program? The agenda includes update on Advance Addison 2050 public engagement. Is that a body/program? Prompt: Identify actual body/program separately from subscription grouping. \"Advance Addison 2050\" is comprehensive plan public engagement, not a municipal body? It's a program, but not a convening institution. The recording belongs to joint meeting of CPAC, P&Z, City Council. Should we include Advance Addison 2050 as program? The question: \"Which municipal body or bodies does this recording belong to? ... Identify the actual body/program separately from its subscription grouping.\" But \"bodies\" schema only IdentifiedBody. Need include only bodies proven participants. The \"program\" might be Advance Addison 2050? But the recording is a joint meeting of bodies, not program. \"Actual body/program\" maybe if a program convenes. Here no. The topic \"Advance Addison 2050 public engagement\" is not a convening body. Do not include. Good.\n\nNeed maybe \"Joint Meeting\" itself? No, joint meeting is event, not body.\n\nNeed include \"Addison City Council\" not \"Town of Addison\"? City of Addison? Evidence says Town of Addison accessible, Addison City Council. Use Addison City Council.\n\nPotential edge: P&Z feed title \"Planning and Zoning Commission\" but official title uses ampersand. Slug already. Fine.\n\nNeed ensure JSON valid. Use double quotes. No trailing commas.\n\nLet's final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal bodies/program from official evidence. Case recording joint CPAC, P&Z, City Council. Need identify all proven participants in joint meeting. Existing feeds: addison-tx-comprehensive-plan-advisory-committee, addison-tx-planning-and-zoning-commission, addison-tx-city-council. Joint policy: every proven participant can share same recording in configured feed. Publication action likely assign_existing. Need feed_slugs all appropriate existing. Bodies: Comprehensive Plan Advisory Committee (CPAC), Planning & Zoning Commission (P&Z), City Council of Addison? Need exact names. Evidence refs: retained-agenda, provider-player, native-source-chapters. Evidence establishes joint meeting #2 of CPAC, P&Z, City Council; calls to order each; quorums. Need maybe \"City Council\" and \"Planning & Zoning Commission\" and \"Comprehensive Plan Advisory Committee\". Is \"Addison City Council\" formal. Evidence says \"ADDISON CITY COUNCIL\" / \"Addison City Council\". P&Z \"Planning & Zoning Commission (P&Z)\" / \"Planning and Zoning Commission\". CPAC \"Comprehensive Plan Advisory Committee (CPAC)\". All proven participants.\n\nNeed consider \"actual body/program separately from subscription grouping.\" Feed slugs are grouping. All three feeds.\n\nNeed cite evidence IDs. Body names each evidence_ref_ids include all relevant. Maybe use retained-agenda, provider-player, native-source-chapters. Evidence for each body name and assignments. We can include all three.\n\nNeed missing_evidence maybe none? Could mention no missing evidence. But if schema expects array. Use [].\n\nRationale concise max 2000. Explain evidence-to-feed connection. Need not output hidden analysis.\n\nNeed publication_action \"assign_existing\" because existing feeds for all. feed_slugs max 15. Include all three.\n\nPotential issue: The recording belongs to \"Joint CPAC, P&Z, and City Council Meeting #2\". The body_label could be event. But bodies list should include three participants. Need no unconfigured. No archive_only etc.\n\nNeed ensure JSON only. No markdown.\n\nLet's craft.\n\nNeed case_id echo \"recording-461fd764c77be280ae5b37a2\".\n\nEvidence refs overall maybe all three IDs. Bodies:\n- Addison City Council? Official agenda says \"CITY COUNCIL\", \"Addison City Council\". Feed title \"Addison: City Council\", slug addison-tx-city-council. Name \"Addison City Council\". Evidence refs: retained-agenda, provider-player, native-source-chapters. \n- Planning & Zoning Commission? Official says \"PLANNING & ZONING COMMISSION (P&Z)\" and \"Planning & Zoning Commission\". Feed title \"Addison: Planning and Zoning Commission\". Name \"Planning & Zoning Commission (P&Z)\" or \"Planning and Zoning Commission\". Use official \"Planning & Zoning Commission\". \n- Comprehensive Plan Advisory Committee (CPAC). Official. Feed slug.\n\nMaybe body name \"Comprehensive Plan Advisory Committee (CPAC)\" exactly.\n\nPublication_action assign_existing.\n\nMissing evidence: []? Could there be no missing evidence for assignments. Use [].\n\nRationale: \"The retained agenda and provider player/chapters identify a joint meeting #2 of three bodies: Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee (CPAC), with each called to order and quorum announced. Each is a convened participant, not venue/topic/staff. Existing feeds directly match each body: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Under joints policy, the same recording can be assigned to every proven participant's configured feed. No additional body or unconfigured feed is proven.\"\n\nNeed maybe \"City Council\" feed existing. Good.\n\nDouble-check no \"Advance Addison 2050\" is program? The agenda includes update on Advance Addison 2050 public engagement. Is that a body/program? Prompt: Identify actual body/program separately from subscription grouping. \"Advance Addison 2050\" is comprehensive plan public engagement, not a municipal body? It's a program, but not a convening institution. The recording belongs to joint meeting of CPAC, P&Z, City Council. Should we include Advance Addison 2050 as program? The question: \"Which municipal body or bodies does this recording belong to? ... Identify the actual body/program separately from its subscription grouping.\" But \"bodies\" schema only IdentifiedBody. Need include only bodies proven participants. The \"program\" might be Advance Addison 2050? But the recording is a joint meeting of bodies, not program. \"Actual body/program\" maybe if a program convenes. Here no. The topic \"Advance Addison 2050 public engagement\" is not a convening body. Do not include. Good.\n\nNeed maybe \"Joint Meeting\" itself? No, joint meeting is event, not body.\n\nNeed include \"Addison City Council\" not \"Town of Addison\"? City of Addison? Evidence says Town of Addison accessible, Addison City Council. Use Addison City Council.\n\nPotential edge: P&Z feed title \"Planning and Zoning Commission\" but official title uses ampersand. Slug already. Fine.\n\nNeed ensure JSON valid. Use double quotes. No trailing commas.\n\nLet's final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002740,
+    "id": "40aa4f968b880890d21097931827acdc",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1134,
+      "completion_tokens": 1468,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1134,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3341,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3981,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5449
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

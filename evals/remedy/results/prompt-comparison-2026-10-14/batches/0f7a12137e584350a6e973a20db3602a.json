@@ -1,0 +1,159 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "League of Women Voters Candidate Forum"
+      }
+    ],
+    "case_id": "recording-3ded66d5b721c153da629b82",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "archive_series",
+    "rationale": "The official notice and recording metadata identify the April 14, 2022 program as the League of Women Voters Candidate Forum. The notice explicitly states that this is not a meeting of the governing body; possible attendance by a quorum of the Denton City Council does not establish Council ownership or a joint meeting. Under the supplied publication rule, candidate forums remain archival series rather than Council proceedings. No existing body feed is assigned."
+  },
+  "attempt_id": "f9402195a33e455e8bbdf10c7c92adea",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-3ded66d5b721c153da629b82",
+  "case_input_hash": "bb452caba88fe5d92843937552f3c96d4caa9f7d35d686ccce4fa8d8eb3c25d6",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.6052972079996835
+    }
+  ],
+  "end_to_end_seconds": 57.20064208399708,
+  "finished_at": "2026-10-14T22:51:58.028186+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T22:51:00.827243+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2c7600a571098066fc9f70a5f8a71f3fe2510d380f59f7e656e67a68df8aa4a7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2926,
+        "output_tokens": 219
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 219,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2926,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2926,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3145,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-3ded66d5b721c153da629b82\",\n  \"bodies\": [\n    {\n      \"name\": \"League of Women Voters Candidate Forum\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [],\n  \"publication_action\": \"archive_series\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official notice and recording metadata identify the April 14, 2022 program as the League of Women Voters Candidate Forum. The notice explicitly states that this is not a meeting of the governing body; possible attendance by a quorum of the Denton City Council does not establish Council ownership or a joint meeting. Under the supplied publication rule, candidate forums remain archival series rather than Council proceedings. No existing body feed is assigned.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792018317,
+    "id": "resp_0edaad649b2d0be6016ad007892f10819b870c6ce3fc05c301",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2926,
+          "output_tokens": 219
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 219,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2926,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2926,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3145,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

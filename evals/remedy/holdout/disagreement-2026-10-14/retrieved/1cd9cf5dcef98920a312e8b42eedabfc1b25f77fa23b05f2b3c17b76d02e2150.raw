@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council (Audio)</title>
+    <link>https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/</link>
+    <atom:link href="https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.</description>
+    <language>en-us</language>
+    <itunes:author>City of Fort Worth, TX</itunes:author>
+    <itunes:summary>Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Fort Worth, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/artwork.jpg</url>
+      <title>Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/</link>
+    </image>
+    <item>
+      <title>BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/497b3aa05255bfb9/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&amp;clip_id=2491">Agenda</a></li><li><a href="https://fortworthgov.granicus.com/MinutesViewer.php?view_id=9&amp;clip_id=2491&amp;doc_id=ad063da5-2d75-11e6-8170-f04da2064c47">Minutes</a></li><li><a href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&amp;clip_id=2491">Watch the video</a></li><li><a href="https://www.fortworthtexas.gov/departments/communications/fwtv">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/fort-worth-tx-emsisd-board-joint-meetings/chapters/497b3aa05255bfb9.json" type="application/json+chapters"/>
+      <pubDate>Mon, 25 Apr 2016 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">497b3aa05255bfb9</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/6540eef2dc2e/497b3aa05255bfb9-b5bda5fa12eb.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8099</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

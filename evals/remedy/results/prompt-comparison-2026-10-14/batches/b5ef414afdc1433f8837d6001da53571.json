@@ -1,0 +1,159 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "League of Women Voters Candidate Forum"
+      }
+    ],
+    "case_id": "recording-3ded66d5b721c153da629b82",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "archive_series",
+    "rationale": "The recording-specific notice and player identify the program as the League of Women Voters Candidate Forum on April 14, 2022. The notice explicitly states that this is not a meeting of the governing body; possible attendance by a City Council quorum does not establish Council convening or joint participation. The identified name is the forum program, not a proven municipal body. Under the approved rule that candidate forums remain archival series rather than Council proceedings, this recording belongs in an archival series. No supplied body feed applies, and the Public Info Meetings grouping is not established by the evidence."
+  },
+  "attempt_id": "a3b47cf00d5f4d4cb3e39b744f90f5f4",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-3ded66d5b721c153da629b82",
+  "case_input_hash": "bb452caba88fe5d92843937552f3c96d4caa9f7d35d686ccce4fa8d8eb3c25d6",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.404986166999151
+    }
+  ],
+  "end_to_end_seconds": 59.793740459004766,
+  "finished_at": "2026-10-14T22:53:00.094371+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T22:52:00.300324+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "161491da419d83c661510c42fc9409eb58d1bafe4f93ef52c49a20b0e8d7e146",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3111,
+        "output_tokens": 249
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 249,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3111,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3111,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3360,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-3ded66d5b721c153da629b82\",\n  \"bodies\": [\n    {\n      \"name\": \"League of Women Voters Candidate Forum\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [],\n  \"publication_action\": \"archive_series\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific notice and player identify the program as the League of Women Voters Candidate Forum on April 14, 2022. The notice explicitly states that this is not a meeting of the governing body; possible attendance by a City Council quorum does not establish Council convening or joint participation. The identified name is the forum program, not a proven municipal body. Under the approved rule that candidate forums remain archival series rather than Council proceedings, this recording belongs in an archival series. No supplied body feed applies, and the Public Info Meetings grouping is not established by the evidence.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792018379,
+    "id": "resp_03cf8b328b4b6389016ad007c5ad10819b99b59e3efd4fbc73",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3111,
+          "output_tokens": 249
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 249,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3111,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3111,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3360,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

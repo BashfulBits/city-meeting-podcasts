@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "The only supplied evidence (provider-player) is a Granicus player page whose text contains just the episode title 'Fort Worth Forward - Episode 15' and generic player controls; no agenda, description, credits, or body metadata identifies the municipal body that convenes, hosts, or produces this program.",
+      "No official evidence links this episode to any body with an existing feed (e.g., State of the City, Public Info Meetings, City Council), so no feed assignment can be proven."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The supplied evidence shows only the title 'Fort Worth Forward - Episode 15' on a Fort Worth Granicus player page. That title names a program/series, not a convened municipal body, and the identity rule forbids inferring the body from topic words or the city name. Nothing in the evidence establishes ownership by any specific body, so per the proof policy the correct action is 'unresolved': I do not invent an institution, do not assign an existing feed slug, and do not declare the recording non-government. I also cannot apply archive_only, because the promotional/orientation classification itself is unproven \u2014 the episode could equally be a council-produced informational program or a State of the City-style address, but no supplied evidence distinguishes these. If evidence such as an agenda, program description, or producing-department metadata is later supplied identifying the actual body or program, that body can be named and mapped to its configured feed (or unconfigured_body if none exists)."
+  },
+  "attempt_id": "fa44425237f84e0c880e3238c05dd77d",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+  "case_input_hash": "ee7ca266e5cc719e430dd8ccf6f77af164ea24d758a1a8f6965aa8979657561d",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 41.49476083300033
+    }
+  ],
+  "end_to_end_seconds": 43.3372125829992,
+  "finished_at": "2026-10-14T15:08:40.098418+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T15:07:56.760955+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d6ddef90e14b4142a718399e040bd2ec885fb386a4764d9b03c4c38b8f75474a",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2106,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1727,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3686,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5792
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-c128ed27ed345a9fbfb3b3dd\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"unresolved\",\n  \"evidence_ref_ids\": [\"provider-player\"],\n  \"missing_evidence\": [\n    \"The only supplied evidence (provider-player) is a Granicus player page whose text contains just the episode title 'Fort Worth Forward - Episode 15' and generic player controls; no agenda, description, credits, or body metadata identifies the municipal body that convenes, hosts, or produces this program.\",\n    \"No official evidence links this episode to any body with an existing feed (e.g., State of the City, Public Info Meetings, City Council), so no feed assignment can be proven.\"\n  ],\n  \"rationale\": \"The supplied evidence shows only the title 'Fort Worth Forward - Episode 15' on a Fort Worth Granicus player page. That title names a program/series, not a convened municipal body, and the identity rule forbids inferring the body from topic words or the city name. Nothing in the evidence establishes ownership by any specific body, so per the proof policy the correct action is 'unresolved': I do not invent an institution, do not assign an existing feed slug, and do not declare the recording non-government. I also cannot apply archive_only, because the promotional/orientation classification itself is unproven \u2014 the episode could equally be a council-produced informational program or a State of the City-style address, but no supplied evidence distinguishes these. If evidence such as an agenda, program description, or producing-department metadata is later supplied identifying the actual body or program, that body can be named and mapped to its configured feed (or unconfigured_body if none exists).\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Fort Worth Forward - Episode 15\" hosted on the Fort Worth Granicus archive. The evidence is just the video player page \u2014 no agenda, no body metadata, no description of what \"Fort Worth Forward\" is beyond the title.\n\n\"Fort Worth Forward\" \u2014 this sounds like a promotional/series program. Let me think about what it could be. The policy says: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But the key instruction: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nThe evidence supplied is only the player page text. It doesn't identify the convening body. The title \"Fort Worth Forward - Episode 15\" suggests a program/series, but I cannot establish from the supplied evidence which municipal body convenes/produces it. There is no feed slug for \"Fort Worth Forward\" in the existing feeds list. There's \"fort-worth-tx-state-of-city\" for \"State of the City addresses and speeches by municipal leadership\" \u2014 but \"Fort Worth Forward\" is not proven to be a State of the City address. There's \"fort-worth-tx-public-info-meetings\" for Public Info Meetings \u2014 but that requires proven Public Info Meetings, and \"Routine public comment does not add Public Info feed membership\"; also no proof this is a Public Info Meeting.\n\n\"Fort Worth Forward\" is actually (in reality) a strategic plan initiative of the City of Fort Worth (Fort Worth Forward is the city's strategic plan / budget framework). But I must not use outside knowledge? The instruction says \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" The supplied evidence has only the title and player text. There's no evidence of the convening body.\n\nSo per the rules: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nSo publication_action = \"unresolved\". bodies = [] (no proven body). feed_slugs = [] (no assignment). evidence_ref_ids = [\"provider-player\"] \u2014 cite the evidence we do have (the title). missing_evidence = describe the gap: no agenda, description, credits, or metadata identifying the producing/convening body; \"Fort Worth Forward\" appears to be a program/series title but no official evidence ties it to a specific municipal body.\n\nEcho case_id \"recording-c128ed27ed345a9fbfb3b3dd\".\n\nRationale: The only evidence is the Granicus player page whose title \"Fort Worth Forward - Episode 15\" names a program/series but does not identify the convening municipal body; no agenda or metadata in the supplied evidence establishes ownership; therefore unresolved; not assigning to any existing feed slug (e.g., state-of-city or public-info-meetings) because no proof links the program to those bodies; do not declare non-government.\n\nAlso note the \"identity\" policy: \"Use the convened body, not venue, topic or common members.\" And \"sparse\" policy. Since \"Fort Worth Forward\" has no existing feed and we cannot even establish it's a body \u2014 it seems to be a program, not a body. The instruction: \"Identify the actual body/program separately from its subscription grouping.\" But we can't prove the body.\n\nShould I include bodies with a name? bodies requires name and evidence_ref_ids. Could I list \"Fort Worth Forward\" as a program identified? Hmm \u2014 the question: \"Which municipal body or bodies does this recording belong to?\" The identified bodies should be proven convening institutions. The title itself is evidence of a program named \"Fort Worth Forward\" \u2014 but is it a municipal body? Not proven. Safer to leave bodies empty and return unresolved.\n\nActually, wait \u2014 should bodies be empty array? Schema requires \"bodies\" array (can be empty, maxItems 10, no minItems). Empty is fine.\n\nEvidence ref to cite: \"provider-player\" \u2014 the only evidence. The title within it mentions \"Fort Worth Forward - Episode 15\".\n\nmissing_evidence: something like \"No agenda, meeting description, host/producer credits, or body metadata in the supplied player-page evidence identifies the municipal body that convenes or produces 'Fort Worth Forward'; episode title alone names a program, not a body.\"\n\npublication_action: \"unresolved\".\n\nfeed_slugs: [] \u2014 do not invent; do not guess fort-worth-tx-state-of-city or fort-worth-tx-public-info-meetings without proof.\n\nevidence_ref_ids: [\"provider-player\"].\n\nRationale (max 2000 chars): concise explanation.\n\nAlso note: do not declare the recording non-government. The policy \"archive\" says promotional/orientation films are archive-only \u2014 but applying archive_only requires that the general approved publication rules apply, i.e., we'd need to establish it's a promotional film. Without evidence of what the program is, we can't prove it's promotional. So unresolved is correct.\n\nOutput only JSON, no markdown. Wait \u2014 the system prompt says: 'Ensure to always end with \"```\" to indicate the end of the JSON object.' Hmm, there's a conflict: the user says \"Return one JSON object only (no Markdown or commentary)\". The system prompt says output a valid JSON object and end with \"```\". Hmm. The system prompt: \"You should always follow the instructions and output a valid JSON object. ... Ensure to always end with \"```\" to indicate the end of the JSON object.\"\n\nThat suggests wrapping in a code block ending with ```. But the user instruction says no Markdown. The system-level instruction takes precedence presumably. Hmm, tricky. The system prompt says to end with ``` to indicate the end of the JSON object. I think the safest is to output the JSON, possibly wrapped in a code fence ending with ```. Actually re-reading: \"Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure to always end with \"```\" to indicate the end of the JSON object.\"\n\nI'll output the JSON object wrapped in triple backticks to satisfy the ending requirement. Actually, many of these tasks expect raw JSON. The system prompt demands ending with ```. I'll wrap in ```json ... ``` to be safe. Hmm, but \"Return one JSON object only (no Markdown or commentary)\". The fence is arguably Markdown. The system instruction explicitly requires ending with ``` though. I'll do:\n\n```json\n{...}\n```\n\nThat ends with ``` satisfying the system requirement, and contains only the JSON object.\n\nActually, let me reconsider \u2014 the system prompt's instruction \"Ensure to always end with \"```\"\" \u2014 I'll comply with the fence. The JSON itself is the content.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-c128ed27ed345a9fbfb3b3dd\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"unresolved\",\n  \"evidence_ref_ids\": [\"provider-player\"],\n  \"missing_evidence\": [\n    \"No supplied evidence (agenda, description, credits, or body metadata) identifies the municipal body that convenes, hosts, or produces the 'Fort Worth Forward' program; the player page supplies only the episode title 'Fort Worth Forward - Episode 15'.\",\n    \"No official evidence links this episode to any existing feed body (e.g., State of the City, Public Info Meetings, City Council), so no feed assignment can be proven.\"\n  ],\n  \"rationale\": \"The only evidence (provider-player) is a Granicus player page whose text shows just the episode title 'Fort Worth Forward - Episode 15' and generic player controls. The title names a program/series, not a convened municipal body, and nothing in the supplied evidence identifies the convening or producing institution. Per the proof rule, missing ownership evidence requires 'unresolved' rather than exclusion or invention. I cannot prove it is a promotional/orientation film (which would trigger archive_only) or a State of the City address or Public Info Meeting, so no feed slug is assigned and no body is named.\"\n}\n\nCheck rationale length: fine. Check missing_evidence strings. All good.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Fort Worth Forward - Episode 15\" hosted on the Fort Worth Granicus archive. The evidence is just the video player page \u2014 no agenda, no body metadata, no description of what \"Fort Worth Forward\" is beyond the title.\n\n\"Fort Worth Forward\" \u2014 this sounds like a promotional/series program. Let me think about what it could be. The policy says: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But the key instruction: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nThe evidence supplied is only the player page text. It doesn't identify the convening body. The title \"Fort Worth Forward - Episode 15\" suggests a program/series, but I cannot establish from the supplied evidence which municipal body convenes/produces it. There is no feed slug for \"Fort Worth Forward\" in the existing feeds list. There's \"fort-worth-tx-state-of-city\" for \"State of the City addresses and speeches by municipal leadership\" \u2014 but \"Fort Worth Forward\" is not proven to be a State of the City address. There's \"fort-worth-tx-public-info-meetings\" for Public Info Meetings \u2014 but that requires proven Public Info Meetings, and \"Routine public comment does not add Public Info feed membership\"; also no proof this is a Public Info Meeting.\n\n\"Fort Worth Forward\" is actually (in reality) a strategic plan initiative of the City of Fort Worth (Fort Worth Forward is the city's strategic plan / budget framework). But I must not use outside knowledge? The instruction says \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" The supplied evidence has only the title and player text. There's no evidence of the convening body.\n\nSo per the rules: \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\"\n\nSo publication_action = \"unresolved\". bodies = [] (no proven body). feed_slugs = [] (no assignment). evidence_ref_ids = [\"provider-player\"] \u2014 cite the evidence we do have (the title). missing_evidence = describe the gap: no agenda, description, credits, or metadata identifying the producing/convening body; \"Fort Worth Forward\" appears to be a program/series title but no official evidence ties it to a specific municipal body.\n\nEcho case_id \"recording-c128ed27ed345a9fbfb3b3dd\".\n\nRationale: The only evidence is the Granicus player page whose title \"Fort Worth Forward - Episode 15\" names a program/series but does not identify the convening municipal body; no agenda or metadata in the supplied evidence establishes ownership; therefore unresolved; not assigning to any existing feed slug (e.g., state-of-city or public-info-meetings) because no proof links the program to those bodies; do not declare non-government.\n\nAlso note the \"identity\" policy: \"Use the convened body, not venue, topic or common members.\" And \"sparse\" policy. Since \"Fort Worth Forward\" has no existing feed and we cannot even establish it's a body \u2014 it seems to be a program, not a body. The instruction: \"Identify the actual body/program separately from its subscription grouping.\" But we can't prove the body.\n\nShould I include bodies with a name? bodies requires name and evidence_ref_ids. Could I list \"Fort Worth Forward\" as a program identified? Hmm \u2014 the question: \"Which municipal body or bodies does this recording belong to?\" The identified bodies should be proven convening institutions. The title itself is evidence of a program named \"Fort Worth Forward\" \u2014 but is it a municipal body? Not proven. Safer to leave bodies empty and return unresolved.\n\nActually, wait \u2014 should bodies be empty array? Schema requires \"bodies\" array (can be empty, maxItems 10, no minItems). Empty is fine.\n\nEvidence ref to cite: \"provider-player\" \u2014 the only evidence. The title within it mentions \"Fort Worth Forward - Episode 15\".\n\nmissing_evidence: something like \"No agenda, meeting description, host/producer credits, or body metadata in the supplied player-page evidence identifies the municipal body that convenes or produces 'Fort Worth Forward'; episode title alone names a program, not a body.\"\n\npublication_action: \"unresolved\".\n\nfeed_slugs: [] \u2014 do not invent; do not guess fort-worth-tx-state-of-city or fort-worth-tx-public-info-meetings without proof.\n\nevidence_ref_ids: [\"provider-player\"].\n\nRationale (max 2000 chars): concise explanation.\n\nAlso note: do not declare the recording non-government. The policy \"archive\" says promotional/orientation films are archive-only \u2014 but applying archive_only requires that the general approved publication rules apply, i.e., we'd need to establish it's a promotional film. Without evidence of what the program is, we can't prove it's promotional. So unresolved is correct.\n\nOutput only JSON, no markdown. Wait \u2014 the system prompt says: 'Ensure to always end with \"```\" to indicate the end of the JSON object.' Hmm, there's a conflict: the user says \"Return one JSON object only (no Markdown or commentary)\". The system prompt says output a valid JSON object and end with \"```\". Hmm. The system prompt: \"You should always follow the instructions and output a valid JSON object. ... Ensure to always end with \"```\" to indicate the end of the JSON object.\"\n\nThat suggests wrapping in a code block ending with ```. But the user instruction says no Markdown. The system-level instruction takes precedence presumably. Hmm, tricky. The system prompt says to end with ``` to indicate the end of the JSON object. I think the safest is to output the JSON, possibly wrapped in a code fence ending with ```. Actually re-reading: \"Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure to always end with \"```\" to indicate the end of the JSON object.\"\n\nI'll output the JSON object wrapped in triple backticks to satisfy the ending requirement. Actually, many of these tasks expect raw JSON. The system prompt demands ending with ```. I'll wrap in ```json ... ``` to be safe. Hmm, but \"Return one JSON object only (no Markdown or commentary)\". The fence is arguably Markdown. The system instruction explicitly requires ending with ``` though. I'll do:\n\n```json\n{...}\n```\n\nThat ends with ``` satisfying the system requirement, and contains only the JSON object.\n\nActually, let me reconsider \u2014 the system prompt's instruction \"Ensure to always end with \"```\"\" \u2014 I'll comply with the fence. The JSON itself is the content.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-c128ed27ed345a9fbfb3b3dd\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"unresolved\",\n  \"evidence_ref_ids\": [\"provider-player\"],\n  \"missing_evidence\": [\n    \"No supplied evidence (agenda, description, credits, or body metadata) identifies the municipal body that convenes, hosts, or produces the 'Fort Worth Forward' program; the player page supplies only the episode title 'Fort Worth Forward - Episode 15'.\",\n    \"No official evidence links this episode to any existing feed body (e.g., State of the City, Public Info Meetings, City Council), so no feed assignment can be proven.\"\n  ],\n  \"rationale\": \"The only evidence (provider-player) is a Granicus player page whose text shows just the episode title 'Fort Worth Forward - Episode 15' and generic player controls. The title names a program/series, not a convened municipal body, and nothing in the supplied evidence identifies the convening or producing institution. Per the proof rule, missing ownership evidence requires 'unresolved' rather than exclusion or invention. I cannot prove it is a promotional/orientation film (which would trigger archive_only) or a State of the City address or Public Info Meeting, so no feed slug is assigned and no body is named.\"\n}\n\nCheck rationale length: fine. Check missing_evidence strings. All good.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791990518,
+    "id": "83b70fa1d8a45ff03f327490153d7510",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2106,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1727,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3686,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5792
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Addison: Community Partnership Committee (Audio)</title>
+    <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/</link>
+    <atom:link href="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Community Partnership Committee meetings in Addison, including annual nonprofit funding review.</description>
+    <language>en-us</language>
+    <itunes:author>City of Addison, TX</itunes:author>
+    <itunes:summary>Community Partnership Committee meetings in Addison, including annual nonprofit funding review.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Addison, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/artwork.jpg</url>
+      <title>Addison: Community Partnership Committee</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/</link>
+    </image>
+    <item>
+      <title>Community Partnership Committee – Jul 16, 2026</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/926cf5eb32e17f89/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/393859/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/videos/393859">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/chapters/926cf5eb32e17f89.json" type="application/json+chapters"/>
+      <pubDate>Thu, 16 Jul 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">926cf5eb32e17f89</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/926cf5eb32e17f89-a183a8455847.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8749</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Community Partnership Committee – Jul 09, 2026</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/91efc2425e16e017/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/393215/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/videos/393215">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/91efc2425e16e017/backup-232b9f8f551c1bed">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/91efc2425e16e017/agenda-304c4532e7b1d8d1">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/chapters/91efc2425e16e017.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/91efc2425e16e017-asr-d4d4a494b674.vtt" type="text/vtt"/>
+      <pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">91efc2425e16e017</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/91efc2425e16e017-35ed6d9762b5.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7387</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Community Partnership Committee – Jun 29, 2026</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/406d87fa54437613/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/392446/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/406d87fa54437613-provider-a92825c3b176.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/392446">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/406d87fa54437613/backup-58f371b01bc0f4b7">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/406d87fa54437613/agenda-1f3b317dc9b198b0">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/chapters/406d87fa54437613.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/406d87fa54437613-provider-align-2e48598d3d7f.vtt" type="text/vtt"/>
+      <pubDate>Mon, 29 Jun 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">406d87fa54437613</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/406d87fa54437613-9f7b2db1f4b9.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5766</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Community Partnership Committee – Jul 10, 2025</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/e4683d84499ede30/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/349471/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/e4683d84499ede30-provider-919c6fd6ef22.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/349471">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/e4683d84499ede30/backup-04d577bedacb79e1">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/e4683d84499ede30/agenda-d2b39ca28636d66e">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/chapters/e4683d84499ede30.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/e4683d84499ede30-provider-align-648236a04f53.vtt" type="text/vtt"/>
+      <pubDate>Thu, 10 Jul 2025 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">e4683d84499ede30</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/e4683d84499ede30-e6cb42a9731b.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5551</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Community Partnership Committee – Jun 26, 2025</title>
+      <link>https://www.citymeetings.fyi/addison-tx-community-partnership-committee/d2a2a095572de394/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/347901/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/d2a2a095572de394-provider-d479aca29bc2.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/347901">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/d2a2a095572de394/backup-e72aba1a5e4befb4">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/d2a2a095572de394/agenda-827ed789fe925356">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-community-partnership-committee/chapters/d2a2a095572de394.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/d2a2a095572de394-provider-align-186e6aa1562c.vtt" type="text/vtt"/>
+      <pubDate>Thu, 26 Jun 2025 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">d2a2a095572de394</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/d2a2a095572de394-6dec92a3bf66.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4836</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

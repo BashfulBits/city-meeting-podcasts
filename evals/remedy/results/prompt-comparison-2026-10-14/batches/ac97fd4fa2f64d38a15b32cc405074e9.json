@@ -1,0 +1,158 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "The League of Women Voters Candidate Forum"
+      }
+    ],
+    "case_id": "recording-799f0c547ee800a6268c4c67",
+    "evidence_ref_ids": [
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "archive_series",
+    "rationale": "The official player and native chapter identify recording 340514 as The League of Women Voters Candidate Forum on April 17, 2025. This establishes the recorded program, not a formal municipal convening body or Council proceeding. The approved series rule explicitly places candidate forums in archival series. No supplied evidence supports membership in any existing body feed or the Public Info Meetings grouping."
+  },
+  "attempt_id": "5a2cb547fe1445a3a3e951507c3214bc",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-799f0c547ee800a6268c4c67",
+  "case_input_hash": "7c771673f4bf961b540dd46a23ef9b5e291dad799fafc229855c4c470bf6f5c4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.643170375000409
+    }
+  ],
+  "end_to_end_seconds": 42.83314345799954,
+  "finished_at": "2026-10-14T14:22:12.530555+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T14:21:29.697147+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "c9877413deed51ab137463ccf35ccca26df9b49c8a0b84aefedb012aa0d1100e",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2729,
+        "output_tokens": 206
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 206,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2729,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2729,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 2935,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-799f0c547ee800a6268c4c67\",\"bodies\":[{\"name\":\"The League of Women Voters Candidate Forum\",\"evidence_ref_ids\":[\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[],\"publication_action\":\"archive_series\",\"evidence_ref_ids\":[\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The official player and native chapter identify recording 340514 as The League of Women Voters Candidate Forum on April 17, 2025. This establishes the recorded program, not a formal municipal convening body or Council proceeding. The approved series rule explicitly places candidate forums in archival series. No supplied evidence supports membership in any existing body feed or the Public Info Meetings grouping.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791987731,
+    "id": "resp_0d957fddfa7b4420016acf900b73688190bd3523eedc391b2b",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2729,
+          "output_tokens": 206
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 206,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2729,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2729,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 2935,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Denton City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Denton Library Board"
+      }
+    ],
+    "case_id": "recording-8301b65c359ede99eb3dc3df",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-city-council",
+      "denton-tx-library-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The posted agenda (retained-agenda) is a City of Denton City Council notice, certified by the City Secretary, stating that 'the City Council of the City of Denton, Texas will convene in a Joint Meeting with the Library Board' on March 3, 2014, to receive the Denton Public Library Annual Report and Strategic Plan. This proves two participants: the Denton City Council (convening body) and the Denton Library Board (named joint participant). The provider title 'Joint Luncheon with Library Board' (provider-player) and the chapter list matching the agenda items (native-source-chapters) confirm this recording is that joint meeting. Under the joints policy, every proven participant shares the recording in its configured feed, and both bodies have existing feeds (denton-tx-city-council, denton-tx-library-board). The 'luncheon' label does not trigger the archive-only rule, which covers economic-development luncheons; this is a working joint meeting with report, discussion, and staff direction, not a promotional/economic-development event or ceremony, so the events exclusion does not apply. Both body assignments rest on the official agenda text, not venue, topic, or shared members."
+  },
+  "attempt_id": "61595c348c064aada04d35d1f5ddc0c8",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-8301b65c359ede99eb3dc3df",
+  "case_input_hash": "f13c564c99f39df3adb6cb1d01a59b52a101e9f7f59f0bb3e57aad739ec6e9dc",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 30.931205666000096
+    }
+  ],
+  "end_to_end_seconds": 32.544086790998335,
+  "finished_at": "2026-10-14T15:09:15.390553+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T15:08:42.846248+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "b4543efeb437fab0814ba6d6b94a7d9d800aefcdf99f29aa704d4aa6cad06a3b",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1484,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1093,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4032,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5516
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\"], \"name\": \"Denton City Council\"}, {\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"], \"name\": \"Denton Library Board\"}], \"case_id\": \"recording-8301b65c359ede99eb3dc3df\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"feed_slugs\": [\"denton-tx-city-council\", \"denton-tx-library-board\"], \"missing_evidence\": [], \"publication_action\": \"assign_existing\", \"rationale\": \"The posted agenda (retained-agenda) is a City of Denton City Council notice, certified by the City Secretary, stating that 'the City Council of the City of Denton, Texas will convene in a Joint Meeting with the Library Board' on March 3, 2014, to receive the Denton Public Library Annual Report and Strategic Plan. This proves two participants: the Denton City Council (convening body) and the Denton Library Board (named joint participant). The provider title 'Joint Luncheon with Library Board' (provider-player) and the chapter list matching the agenda items (native-source-chapters) confirm this recording is that joint meeting. Under the joints policy, every proven participant shares the recording in its configured feed, and both bodies have existing feeds (denton-tx-city-council, denton-tx-library-board). The 'luncheon' label does not trigger the archive-only rule, which covers economic-development luncheons; this is a working joint meeting with report, discussion, and staff direction, not a promotional/economic-development event or ceremony, so the events exclusion does not apply. Both body assignments rest on the official agenda text, not venue, topic, or shared members.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Joint Luncheon with Library Board\" from Denton, TX, March 3, 2014, recording ID 13509.\n\nEvidence:\n- retained-agenda: The agenda says \"CITY OF DENTON CITY COUNCIL... After determining that a quorum is present, the City Council of the City of Denton, Texas will convene in a Joint Meeting with the Library Board on Monday, March 3, 2014 at 12:00 p.m. in the Council Work Session Room at City Hall...\" The agenda is a City Council agenda (posted by City Secretary), convening a Joint Meeting with the Library Board. The agenda includes the Joint Meeting items (Denton Public Library Annual Report and Strategic Plan), then a Closed Meeting and Open Session for the City Council (gas well ordinance matters).\n\n- provider-player: Title \"Joint Luncheon with Library Board - Denton, TX\" video from Swagit.\n\n- native-source-chapters: chapters matching the agenda.\n\nSo the participants: City Council of the City of Denton, Texas (Denton City Council) and the Denton Library Board. Both are proven participants of the joint meeting.\n\nPolicy: \"joints\": \"Every proven participant can share the same recording in its configured feed.\"\n\nExisting feeds include:\n- denton-tx-city-council (\"City Council meetings for Denton.\")\n- denton-tx-library-board (\"Meetings of the Denton Library Board.\")\n\nSo the publication action would be assign_existing with feed_slugs: [\"denton-tx-city-council\", \"denton-tx-library-board\"].\n\nWait \u2014 but need to check the \"events\" policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" A \"Joint Luncheon\" \u2014 is a luncheon a ceremony or economic-development luncheon? The archive policy: \"Promotional/orientation films and economic-development luncheons are archive-only.\" This is a \"Joint Luncheon with Library Board\" \u2014 but it's actually a working joint meeting per the agenda: call to order, quorum, receive a report, hold a discussion, give staff direction regarding the Denton Public Library Annual Report and Strategic Plan. So it's not an economic-development luncheon; it's a joint working meeting convened over lunch. The agenda calls it a \"Joint Meeting with the Library Board.\" So it should be assigned to both feeds.\n\nAlso note the agenda includes a Closed Meeting and Open Session that are City Council only (gas well ordinance standstill agreement). The recording's chapters include the Closed Meeting chapter? The native-source-chapters includes \"1. Closed Meeting:\" from 4069 to 39 (end less than start, maybe wrapping?). Actually end: 39, start: 4069 \u2014 seems like the last chapter, possibly duration oddity. The recording appears to include the closed meeting segment (though likely video ends before closed session content). Regardless, the joint meeting includes both City Council and Library Board; the closed meeting part is City Council only. But the recording as a whole is titled \"Joint Luncheon with Library Board\" and includes the joint items. Both bodies share the recording per the joints policy.\n\nThe instruction: \"Name every proven participant in a joint meeting.\" So bodies: \"Denton City Council\" (City Council of the City of Denton, Texas) and \"Denton Library Board\" (the Library Board). Evidence refs: retained-agenda for both; provider-player for title confirming.\n\nFeed slugs: denton-tx-city-council and denton-tx-library-board.\n\nPublication action: assign_existing.\n\nMissing evidence: none significant. Maybe note that the Library Board's official name \"Denton Library Board\" is matched by feed description \"Meetings of the Denton Library Board.\" The agenda says \"the Library Board\" \u2014 feed confirms it exists as configured. Should we cite the feed as evidence? Evidence refs should be the evidence IDs supplied (retained-agenda, provider-player, native-source-chapters). The feed slugs are from existing_feeds; that's part of the supplied data, fine.\n\nRationale: The agenda (retained-agenda) shows the City Council of the City of Denton convening a Joint Meeting with the Library Board; thus both are proven participants. Per joints policy, both share the recording in their configured feeds. The recording title (provider-player) matches. No archive/event exclusion applies since it's a working meeting with report/discussion/staff direction, not an economic-development luncheon or ceremony.\n\nMissing evidence: perhaps none; or note that we can't confirm whether the Library Board itself convened \u2014 but the joints policy says every proven participant shares the recording regardless of who convened. The convening institution: The City Council convened the joint meeting (the agenda is a City Council agenda, posted by the City Secretary). But the Library Board is a proven participant. Both get assigned.\n\ncase_id: recording-8301b65c359ede99eb3dc3df.\n\nevidence_ref_ids (top-level): [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 probably all used; at minimum retained-agenda and provider-player. I'll include all three since chapters corroborate.\n\nOutput JSON matching schema. Keep rationale concise and cited.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Joint Luncheon with Library Board\" from Denton, TX, March 3, 2014, recording ID 13509.\n\nEvidence:\n- retained-agenda: The agenda says \"CITY OF DENTON CITY COUNCIL... After determining that a quorum is present, the City Council of the City of Denton, Texas will convene in a Joint Meeting with the Library Board on Monday, March 3, 2014 at 12:00 p.m. in the Council Work Session Room at City Hall...\" The agenda is a City Council agenda (posted by City Secretary), convening a Joint Meeting with the Library Board. The agenda includes the Joint Meeting items (Denton Public Library Annual Report and Strategic Plan), then a Closed Meeting and Open Session for the City Council (gas well ordinance matters).\n\n- provider-player: Title \"Joint Luncheon with Library Board - Denton, TX\" video from Swagit.\n\n- native-source-chapters: chapters matching the agenda.\n\nSo the participants: City Council of the City of Denton, Texas (Denton City Council) and the Denton Library Board. Both are proven participants of the joint meeting.\n\nPolicy: \"joints\": \"Every proven participant can share the same recording in its configured feed.\"\n\nExisting feeds include:\n- denton-tx-city-council (\"City Council meetings for Denton.\")\n- denton-tx-library-board (\"Meetings of the Denton Library Board.\")\n\nSo the publication action would be assign_existing with feed_slugs: [\"denton-tx-city-council\", \"denton-tx-library-board\"].\n\nWait \u2014 but need to check the \"events\" policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" A \"Joint Luncheon\" \u2014 is a luncheon a ceremony or economic-development luncheon? The archive policy: \"Promotional/orientation films and economic-development luncheons are archive-only.\" This is a \"Joint Luncheon with Library Board\" \u2014 but it's actually a working joint meeting per the agenda: call to order, quorum, receive a report, hold a discussion, give staff direction regarding the Denton Public Library Annual Report and Strategic Plan. So it's not an economic-development luncheon; it's a joint working meeting convened over lunch. The agenda calls it a \"Joint Meeting with the Library Board.\" So it should be assigned to both feeds.\n\nAlso note the agenda includes a Closed Meeting and Open Session that are City Council only (gas well ordinance standstill agreement). The recording's chapters include the Closed Meeting chapter? The native-source-chapters includes \"1. Closed Meeting:\" from 4069 to 39 (end less than start, maybe wrapping?). Actually end: 39, start: 4069 \u2014 seems like the last chapter, possibly duration oddity. The recording appears to include the closed meeting segment (though likely video ends before closed session content). Regardless, the joint meeting includes both City Council and Library Board; the closed meeting part is City Council only. But the recording as a whole is titled \"Joint Luncheon with Library Board\" and includes the joint items. Both bodies share the recording per the joints policy.\n\nThe instruction: \"Name every proven participant in a joint meeting.\" So bodies: \"Denton City Council\" (City Council of the City of Denton, Texas) and \"Denton Library Board\" (the Library Board). Evidence refs: retained-agenda for both; provider-player for title confirming.\n\nFeed slugs: denton-tx-city-council and denton-tx-library-board.\n\nPublication action: assign_existing.\n\nMissing evidence: none significant. Maybe note that the Library Board's official name \"Denton Library Board\" is matched by feed description \"Meetings of the Denton Library Board.\" The agenda says \"the Library Board\" \u2014 feed confirms it exists as configured. Should we cite the feed as evidence? Evidence refs should be the evidence IDs supplied (retained-agenda, provider-player, native-source-chapters). The feed slugs are from existing_feeds; that's part of the supplied data, fine.\n\nRationale: The agenda (retained-agenda) shows the City Council of the City of Denton convening a Joint Meeting with the Library Board; thus both are proven participants. Per joints policy, both share the recording in their configured feeds. The recording title (provider-player) matches. No archive/event exclusion applies since it's a working meeting with report/discussion/staff direction, not an economic-development luncheon or ceremony.\n\nMissing evidence: perhaps none; or note that we can't confirm whether the Library Board itself convened \u2014 but the joints policy says every proven participant shares the recording regardless of who convened. The convening institution: The City Council convened the joint meeting (the agenda is a City Council agenda, posted by the City Secretary). But the Library Board is a proven participant. Both get assigned.\n\ncase_id: recording-8301b65c359ede99eb3dc3df.\n\nevidence_ref_ids (top-level): [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 probably all used; at minimum retained-agenda and provider-player. I'll include all three since chapters corroborate.\n\nOutput JSON matching schema. Keep rationale concise and cited.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791990551,
+    "id": "b95b79221ec23bd73595c0fa6b651a96",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1484,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1093,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4032,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5516
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

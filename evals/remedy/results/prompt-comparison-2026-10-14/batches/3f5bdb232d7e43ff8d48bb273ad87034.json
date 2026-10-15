@@ -1,0 +1,159 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Addison City Council"
+      }
+    ],
+    "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda identifies both the regular meeting and work session as proceedings of the City Council on October 8, 2013. The provider player for recording 55599 matches that date and the agenda's regular-meeting items. 'Combined Meeting' therefore refers to Council work-session and regular-meeting proceedings, not a proven joint meeting of separate bodies. Assign to the configured City Council feed only; the Planning and Zoning Commission is mentioned as the subject of an appointment item, not as a convening participant."
+  },
+  "attempt_id": "88468937c7a94a0b82815ae653a06acd",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+  "case_input_hash": "f22bcc7057bf769a80190d092bd15e2c2f49b4e458029b9b3a097f453f9d3d23",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.266374083999835
+    }
+  ],
+  "end_to_end_seconds": 46.92912841699945,
+  "finished_at": "2026-10-14T16:50:33.813926+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T16:49:46.884502+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5cab3ce9b0185e72c9a402b948e65966b0b33a30add2d28f5de4b28456e1d8c2",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2692,
+        "output_tokens": 199
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 199,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2692,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2692,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 2891,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-746f6b2f2c3ccc31bdc3c418\",\"bodies\":[{\"name\":\"Addison City Council\",\"evidence_ref_ids\":[\"retained-agenda\"]}],\"feed_slugs\":[\"addison-tx-city-council\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies both the regular meeting and work session as proceedings of the City Council on October 8, 2013. The provider player for recording 55599 matches that date and the agenda's regular-meeting items. 'Combined Meeting' therefore refers to Council work-session and regular-meeting proceedings, not a proven joint meeting of separate bodies. Assign to the configured City Council feed only; the Planning and Zoning Commission is mentioned as the subject of an appointment item, not as a convening participant.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791996633,
+    "id": "resp_095720121de4e814016acfb2d0bf2c8198b64ffcccf86d1e4d",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2692,
+          "output_tokens": 199
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 199,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2692,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2692,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 2891,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

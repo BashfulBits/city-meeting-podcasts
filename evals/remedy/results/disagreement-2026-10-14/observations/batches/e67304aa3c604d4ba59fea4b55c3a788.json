@@ -1,0 +1,116 @@
+{
+  "approval_ref": "maintainer chat2026-10-14 local JEV pilot fallback",
+  "attempt_id": "ca9176d0b88d4f149676aef3f66b0efa",
+  "binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "candidate": "jev",
+  "case_id": "recording-5dddfe1f523eeff020ce4343",
+  "elapsed_seconds": 1.955569124998874,
+  "end_to_end_seconds": 1.9555698330004816,
+  "finished_at": "2026-10-15T00:06:31.995164+00:00",
+  "http_status": 200,
+  "mode": "disagreement_adjudication",
+  "observed_at": "2026-10-15T00:06:30.039697+00:00",
+  "parsed": [
+    {
+      "confidence": 0.72,
+      "context_tier": "T3",
+      "evidence_digest": "139928660732c02f7c90947cea1c93e7",
+      "judge_model": "typesafe/jev-1.13",
+      "judge_role": "anchor",
+      "kind": "choose",
+      "packet_id": "judge-anchor-d0387ca378c7c665929661f0993a99c4",
+      "probabilities": {
+        "A": 0.16,
+        "B": 0.79,
+        "C": 0.04,
+        "D": 0.01
+      },
+      "prompt_version": "1",
+      "question_id": "choice",
+      "quote_valid": null,
+      "reason": null,
+      "sample": "routine",
+      "subject_id": "recording-5dddfe1f523eeff020ce4343",
+      "task": "remedy-adjudication-eval",
+      "value": "B"
+    },
+    {
+      "confidence": null,
+      "context_tier": "T3",
+      "evidence_digest": "139928660732c02f7c90947cea1c93e7",
+      "judge_model": "typesafe/jev-1.13",
+      "judge_role": "anchor",
+      "kind": "validate",
+      "packet_id": "judge-anchor-d0387ca378c7c665929661f0993a99c4",
+      "probabilities": null,
+      "prompt_version": "1",
+      "question_id": "supported_A",
+      "quote_valid": null,
+      "reason": null,
+      "sample": "routine",
+      "subject_id": "recording-5dddfe1f523eeff020ce4343",
+      "task": "remedy-adjudication-eval",
+      "value": 0.27
+    },
+    {
+      "confidence": null,
+      "context_tier": "T3",
+      "evidence_digest": "139928660732c02f7c90947cea1c93e7",
+      "judge_model": "typesafe/jev-1.13",
+      "judge_role": "anchor",
+      "kind": "validate",
+      "packet_id": "judge-anchor-d0387ca378c7c665929661f0993a99c4",
+      "probabilities": null,
+      "prompt_version": "1",
+      "question_id": "supported_B",
+      "quote_valid": null,
+      "reason": null,
+      "sample": "routine",
+      "subject_id": "recording-5dddfe1f523eeff020ce4343",
+      "task": "remedy-adjudication-eval",
+      "value": 0.7
+    }
+  ],
+  "provider_attempts": 1,
+  "provider_seconds": 0.9937610830020276,
+  "qualified": false,
+  "raw_response": {
+    "answers": {
+      "recording-5dddfe1f523eeff020ce4343:choice:T3": {
+        "choice": "B",
+        "confidence": 0.72,
+        "probabilities": {
+          "A": 0.16,
+          "B": 0.79,
+          "C": 0.04,
+          "D": 0.01
+        },
+        "type": "choice"
+      },
+      "recording-5dddfe1f523eeff020ce4343:supported_A:T3": {
+        "noul": 0.27,
+        "type": "noul"
+      },
+      "recording-5dddfe1f523eeff020ce4343:supported_B:T3": {
+        "noul": 0.7,
+        "type": "noul"
+      }
+    },
+    "id": "task_zLD5a2xmO5zPQ3z6R2mlM7Mi87aPTnfT",
+    "model": "jev-1.13-free",
+    "usage": {
+      "input_tokens": 24423,
+      "output_tokens": 160
+    }
+  },
+  "sizes": {
+    "questions": [
+      257,
+      220,
+      220
+    ],
+    "state": 18017
+  },
+  "status": "completed",
+  "transport": "existing_local_pilot"
+}

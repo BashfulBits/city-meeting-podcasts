@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "citizen-council-june2007"
+        ],
+        "name": "Citizen Advisory Committee"
+      }
+    ],
+    "case_id": "recording-4cbdc0f5678a5408279ffae1",
+    "evidence_ref_ids": [
+      "provider-player",
+      "citizen-council-june2007"
+    ],
+    "feed_slugs": [
+      "addison-tx-town-meetings"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official player identifies recording 56029 as the Jun 01, 2007 Citizen Advisory Committee recording. The City Secretary's Council record independently identifies the committee and its recommendations to Council. This historical citizen-advisory input belongs in the configured Public Input grouping, whose scope expressly includes historical citizen input; that subscription grouping does not rename the convening committee. The Council document discusses receiving committee recommendations, not Council participation in this recording, so it does not support a City Council assignment. No evidence establishes a bond, comprehensive-plan, or other separately configured committee identity."
+  },
+  "attempt_id": "7f6e478b415a4c34b57ca7975a7a3387",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-4cbdc0f5678a5408279ffae1",
+  "case_input_hash": "acbb6b342a73da3d589bb44d1fd64d8abca447cc7e0feb8d60622edf34a3eb83",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.852914625000267
+    }
+  ],
+  "end_to_end_seconds": 23.461597790999804,
+  "finished_at": "2026-10-14T13:57:07.608173+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T13:56:44.146390+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d04746ade2623f6fcc009cc8a31e192b7d6dc0539cde208c24ee3bf411ee6725",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2884,
+        "output_tokens": 292
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 292,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2884,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2884,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3176,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-4cbdc0f5678a5408279ffae1\",\"bodies\":[{\"name\":\"Citizen Advisory Committee\",\"evidence_ref_ids\":[\"provider-player\",\"citizen-council-june2007\"]}],\"feed_slugs\":[\"addison-tx-town-meetings\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"provider-player\",\"citizen-council-june2007\"],\"missing_evidence\":[],\"rationale\":\"The official player identifies recording 56029 as the Jun 01, 2007 Citizen Advisory Committee recording. The City Secretary's Council record independently identifies the committee and its recommendations to Council. This historical citizen-advisory input belongs in the configured Public Input grouping, whose scope expressly includes historical citizen input; that subscription grouping does not rename the convening committee. The Council document discusses receiving committee recommendations, not Council participation in this recording, so it does not support a City Council assignment. No evidence establishes a bond, comprehensive-plan, or other separately configured committee identity.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791986226,
+    "id": "resp_0aa448ba21a107b7016acf8a2759788193ba777e7de26c7051",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2884,
+          "output_tokens": 292
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 292,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2884,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2884,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3176,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

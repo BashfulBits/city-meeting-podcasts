@@ -1,0 +1,158 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Addison Economic Development Luncheon"
+      }
+    ],
+    "case_id": "recording-e477db971fbf392de8259408",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "archive_only",
+    "rationale": "The official agenda and provider player identify this recording as the Addison Economic Development Luncheon, an event/program rather than a proven municipal body. The approved policy expressly makes economic-development luncheons archive-only. The notice of a possible City Council quorum establishes only potential attendance, not a convened Council meeting or joint proceeding, so it does not support City Council feed membership. No supplied evidence establishes a separate public educational briefing or public-input meeting eligible for those broader feeds."
+  },
+  "attempt_id": "43eb4de229514906b9959973f09b211d",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-e477db971fbf392de8259408",
+  "case_input_hash": "5a8a22f6b2ea507180956ea7bc87c02be5cf7d42d8bc34f5f6b8bcc41f86d6d6",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.11636174999876
+    }
+  ],
+  "end_to_end_seconds": 39.86868895799853,
+  "finished_at": "2026-10-14T21:52:12.699208+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T21:51:32.830335+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5fc7fd273ef9ccfde5963fdc19de0989fc742cfbba29363ebcc44cb92d3b67ad",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2332,
+        "output_tokens": 176
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 176,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2332,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2332,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 2508,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-e477db971fbf392de8259408\",\"bodies\":[{\"name\":\"Addison Economic Development Luncheon\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[],\"publication_action\":\"archive_only\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official agenda and provider player identify this recording as the Addison Economic Development Luncheon, an event/program rather than a proven municipal body. The approved policy expressly makes economic-development luncheons archive-only. The notice of a possible City Council quorum establishes only potential attendance, not a convened Council meeting or joint proceeding, so it does not support City Council feed membership. No supplied evidence establishes a separate public educational briefing or public-input meeting eligible for those broader feeds.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792014731,
+    "id": "resp_0157d7ff5e079968016acff985652081998718c744aba6c164",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2332,
+          "output_tokens": 176
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 176,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2332,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2332,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 2508,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

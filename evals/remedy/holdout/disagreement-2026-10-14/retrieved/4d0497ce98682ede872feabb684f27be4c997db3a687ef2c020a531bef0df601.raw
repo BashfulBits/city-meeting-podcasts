@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2024 Bond Flood Control and Storm Drainage Subcommittee (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Dallas 2024 bond Flood Control and Storm Drainage subcommittee proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Dallas 2024 bond Flood Control and Storm Drainage subcommittee proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/artwork.jpg</url>
+      <title>Dallas: 2024 Bond Flood Control and Storm Drainage Subcommittee</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/</link>
+    </image>
+    <item>
+      <title>2024 Bond Flood Control &amp; Storm Drainage Meeting – Sep 05, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/9216aceed179c5ac/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/272235">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/9216aceed179c5ac.json" type="application/json+chapters"/>
+      <pubDate>Tue, 05 Sep 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">9216aceed179c5ac</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/9216aceed179c5ac-6d507c05ba3e.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5429</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Task Force Flood – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/8280ec97799c999e/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269612">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/8280ec97799c999e.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">8280ec97799c999e</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/8280ec97799c999e-a1f45d7e7d62.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8061</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting – Jul 20, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/f8e32377b5e2904c/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/272240">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/f8e32377b5e2904c.json" type="application/json+chapters"/>
+      <pubDate>Thu, 20 Jul 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">f8e32377b5e2904c</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/f8e32377b5e2904c-3ee9f5a3bb55.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4937</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Flood Control &amp; Storm Drainage Meeting – Jun 13, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/55d1d2e98461c212/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259832">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/55d1d2e98461c212.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/55d1d2e98461c212-asr-8515733e237f.vtt" type="text/vtt"/>
+      <pubDate>Tue, 13 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">55d1d2e98461c212</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/55d1d2e98461c212-f3731dc41042.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5291</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Flood Control &amp; Storm Drainage Meeting – May 25, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/471b177553b7748e/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/233029">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/471b177553b7748e.json" type="application/json+chapters"/>
+      <pubDate>Thu, 25 May 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">471b177553b7748e</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/471b177553b7748e-e71c3d311f9c.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5979</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Flood Control and Storm Drainage Meeting – May 11, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/8019458f0e0d03e3/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/230799">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/chapters/8019458f0e0d03e3.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/8019458f0e0d03e3-asr-a8e8b8db4636.vtt" type="text/vtt"/>
+      <pubDate>Thu, 11 May 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">8019458f0e0d03e3</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/8019458f0e0d03e3-42c31d4cb57e.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3846</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

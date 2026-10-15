@@ -1,0 +1,161 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "name": "2024 Bond Streets and Transportation Subcommittee"
+      }
+    ],
+    "case_id": "recording-0312d144c749c190446edfe0",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "dallas-tx-bond-program-meetings"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official Streets and Transportation Subcommittee archive identifies the August 22, 2023 recording as Meeting #6 within the 2024 Bond Program. The player title and transcript corroborate the convening subcommittee. This supports its dedicated feed and, under the configured bond-family publication rule, the broader Bond Program Meetings subscription grouping. That grouping is not a separate convening body. The transcript explicitly distinguishes this streets committee meeting from the overall Bond Task Force meeting starting afterward, so the Community Bond Task Force feed is not supported. Public Works and Transportation staff are presenters, not additional conveners; routine public comment does not establish Public Info feed membership."
+  },
+  "attempt_id": "ba93d88a0d994b2f8a002482833b2c94",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 13.452901667000333
+    }
+  ],
+  "end_to_end_seconds": 45.253652542000054,
+  "finished_at": "2026-10-14T13:00:08.169058+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T12:59:22.915030+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "3cc9910936429e047fc004d698694d35cb10dad49317048266213f07e9112c5f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 6012,
+        "output_tokens": 253
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 253,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 6012,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 6012,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 6265,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0312d144c749c190446edfe0\",\"bodies\":[{\"name\":\"2024 Bond Streets and Transportation Subcommittee\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"]}],\"feed_slugs\":[\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\"dallas-tx-bond-program-meetings\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"provider-player\",\"dallas-streets-archive\"],\"missing_evidence\":[],\"rationale\":\"The official Streets and Transportation Subcommittee archive identifies the August 22, 2023 recording as Meeting #6 within the 2024 Bond Program. The player title and transcript corroborate the convening subcommittee. This supports its dedicated feed and, under the configured bond-family publication rule, the broader Bond Program Meetings subscription grouping. That grouping is not a separate convening body. The transcript explicitly distinguishes this streets committee meeting from the overall Bond Task Force meeting starting afterward, so the Community Bond Task Force feed is not supported. Public Works and Transportation staff are presenters, not additional conveners; routine public comment does not establish Public Info feed membership.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791982807,
+    "id": "resp_0c963009a14f1f53016acf7ccf78d08193a9d50695b47ef0a1",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 6012,
+          "output_tokens": 253
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 253,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 6012,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 6012,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 6265,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

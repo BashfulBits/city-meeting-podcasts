@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2024 Community Bond Task Force (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Verified Dallas 2024 Community Bond Task Force proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Verified Dallas 2024 Community Bond Task Force proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/artwork.jpg</url>
+      <title>Dallas: 2024 Community Bond Task Force</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/</link>
+    </image>
+    <item>
+      <title>2024 Bond CBTF and Subcommittee Chairs Meeting – Nov 04, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/baa19208405acb22/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/280220/agenda">Agenda</a></li><li><a href="https://dallastx.new.swagit.com/videos/280220">Watch the video</a></li><li><a href="https://dallascityhall.com//government/Pages/Live.aspx">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/76869ed1994f/baa19208405acb22/backup-5c06432962f48f10">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/76869ed1994f/baa19208405acb22/agenda-85a528fa8d921cf9">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/baa19208405acb22.json" type="application/json+chapters"/>
+      <pubDate>Sat, 04 Nov 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">baa19208405acb22</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>15036</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF and Subcommittee Chairs Meeting – Oct 24, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/6a3caf1854bdd2cd/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/277589">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/6a3caf1854bdd2cd.json" type="application/json+chapters"/>
+      <pubDate>Tue, 24 Oct 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">6a3caf1854bdd2cd</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/6a3caf1854bdd2cd-6c4963b58623.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6396</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Program CBTF Meeting – Sep 19, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/eeca5aeceda62d39/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/272005">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/eeca5aeceda62d39.json" type="application/json+chapters"/>
+      <pubDate>Tue, 19 Sep 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">eeca5aeceda62d39</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/eeca5aeceda62d39-a8aa162b9ce4.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>12364</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF Meeting – Aug 22, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/cba1e023051d7c94/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269916">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/cba1e023051d7c94.json" type="application/json+chapters"/>
+      <pubDate>Tue, 22 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">cba1e023051d7c94</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6401</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Task Force Community Bond Task Force Meeting – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/130a7ebded8e0e1d/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269608">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/130a7ebded8e0e1d.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">130a7ebded8e0e1d</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8009</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF Meeting – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/aaf0ad8eaabe68a5/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269278">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/aaf0ad8eaabe68a5.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">aaf0ad8eaabe68a5</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8149</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF Meeting – Jun 20, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/96c10f4f75706719/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/246971">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/96c10f4f75706719.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/96c10f4f75706719-asr-22d9535d2ca8.vtt" type="text/vtt"/>
+      <pubDate>Tue, 20 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">96c10f4f75706719</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7129</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF Meeting – Jun 13, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/deb5a67aa9b6e8d1/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259822">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/deb5a67aa9b6e8d1.json" type="application/json+chapters"/>
+      <pubDate>Tue, 13 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">deb5a67aa9b6e8d1</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/deb5a67aa9b6e8d1-bccb6245c4f0.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8751</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond CBTF Meeting – May 25, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/84fcc0492e66906d/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/233037">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-community-bond-task-force/chapters/84fcc0492e66906d.json" type="application/json+chapters"/>
+      <pubDate>Thu, 25 May 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">84fcc0492e66906d</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/84fcc0492e66906d-dcb858cd97fb.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8006</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

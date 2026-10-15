@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Tax Increment Reinvestment Zone No. 2 Board"
+      }
+    ],
+    "case_id": "recording-c2104a6abb6a7a51f3876825",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-2-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) explicitly states that the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas convened a Special Called Meeting on Wednesday, January 13, 2021 at 11:00 a.m., with certification by the City Secretary, and the agenda items (TIRZ21-001 through TIRZ21-003) concern TIRZ No. 2 (Westpark TIRZ) business. The provider player (provider-player) and chapter data (native-source-chapters) tie recording ID 111521 to the same body label and date. This is a single convening body, not a joint meeting, so only one participant is proven. Per the identity policy, the Council Work Session Room venue and any shared membership with City Council do not reassign the recording; numbered boards differ, so the TIRZ No. 1 Board feed is not applicable. The existing feed slug denton-tx-tirz-2-board ('Meetings of Denton TIRZ No. 2 Board') matches the proven body exactly, so the action is assign_existing."
+  },
+  "attempt_id": "cd6d244e8b6049d0bc74104b94785bb6",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-c2104a6abb6a7a51f3876825",
+  "case_input_hash": "3fcaf9b983139e6bc11ef163a717b387b6daba1e278f211d10da8cad1b76dfab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.41425524999795
+    }
+  ],
+  "end_to_end_seconds": 7.779835458000889,
+  "finished_at": "2026-10-14T17:09:26.298434+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T17:09:18.518528+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "b4cc325cc117da6b432f85fb6276bebe110c41d8ad4482dd0c886026954d44cd",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 787,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 420,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4157,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4944
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\"case_id\": \"recording-c2104a6abb6a7a51f3876825\", \"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"name\": \"Tax Increment Reinvestment Zone No. 2 Board\"}], \"feed_slugs\": [\"denton-tx-tirz-2-board\"], \"publication_action\": \"assign_existing\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"missing_evidence\": [], \"rationale\": \"The retained agenda (retained-agenda) explicitly states that the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas convened a Special Called Meeting on Wednesday, January 13, 2021 at 11:00 a.m., with certification by the City Secretary, and the agenda items (TIRZ21-001 through TIRZ21-003) concern TIRZ No. 2 (Westpark TIRZ) business. The provider player (provider-player) and chapter data (native-source-chapters) tie recording ID 111521 to the same body label and date. This is a single convening body, not a joint meeting, so only one participant is proven. Per the identity policy, the Council Work Session Room venue and any shared membership with City Council do not reassign the recording; numbered boards differ, so the TIRZ No. 1 Board feed is not applicable. The existing feed slug denton-tx-tirz-2-board ('Meetings of Denton TIRZ No. 2 Board') matches the proven body exactly, so the action is assign_existing.\"}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is a Special Called Meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, on January 13, 2021. The agenda (retained-agenda) explicitly says \"Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting\". The provider player confirms the recording ID 111521 for the same body.\n\nExisting feeds include \"denton-tx-tirz-2-board\" \u2014 \"Meetings of Denton TIRZ No. 2 Board.\" So the body is TIRZ No. 2 Board, feed slug is denton-tx-tirz-2-board.\n\nThere's only one body \u2014 this is not a joint meeting. The venue is Council Work Session Room at City Hall, but per the identity policy, use the convened body, not venue. Members overlap with City Council possibly, but we don't assign to City Council feed. TIRZ No. 1 Board feed exists but this is No. 2, so numbered boards differ \u2014 do not assign TIRZ No. 1.\n\nPublication action: assign_existing.\n\nBodies: name \"Tax Increment Reinvestment Zone No. 2 Board\" with evidence refs: retained-agenda, provider-player (and native-source-chapters).\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none \u2014 empty array.\n\nRationale: cite that the agenda states the TIRZ No. 2 Board of the City of Denton convened a Special Called Meeting on Jan 13, 2021 at 11:00 a.m., recording ID 111521 matches, feed denton-tx-tirz-2-board exists. Not a joint meeting \u2014 single convening body. Venue is Council Work Session Room but that doesn't make it a City Council meeting.\n\nCase id: recording-c2104a6abb6a7a51f3876825.\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is a Special Called Meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, on January 13, 2021. The agenda (retained-agenda) explicitly says \"Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting\". The provider player confirms the recording ID 111521 for the same body.\n\nExisting feeds include \"denton-tx-tirz-2-board\" \u2014 \"Meetings of Denton TIRZ No. 2 Board.\" So the body is TIRZ No. 2 Board, feed slug is denton-tx-tirz-2-board.\n\nThere's only one body \u2014 this is not a joint meeting. The venue is Council Work Session Room at City Hall, but per the identity policy, use the convened body, not venue. Members overlap with City Council possibly, but we don't assign to City Council feed. TIRZ No. 1 Board feed exists but this is No. 2, so numbered boards differ \u2014 do not assign TIRZ No. 1.\n\nPublication action: assign_existing.\n\nBodies: name \"Tax Increment Reinvestment Zone No. 2 Board\" with evidence refs: retained-agenda, provider-player (and native-source-chapters).\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none \u2014 empty array.\n\nRationale: cite that the agenda states the TIRZ No. 2 Board of the City of Denton convened a Special Called Meeting on Jan 13, 2021 at 11:00 a.m., recording ID 111521 matches, feed denton-tx-tirz-2-board exists. Not a joint meeting \u2014 single convening body. Venue is Council Work Session Room but that doesn't make it a City Council meeting.\n\nCase id: recording-c2104a6abb6a7a51f3876825.\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791997765,
+    "id": "39d52c64921a1f2c9febe3a2dc02c319",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 787,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 420,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4157,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4944
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

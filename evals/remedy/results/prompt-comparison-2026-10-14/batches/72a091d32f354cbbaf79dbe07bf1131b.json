@@ -1,0 +1,156 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player"
+        ],
+        "name": "Minority Leaders and Citizen's Council"
+      }
+    ],
+    "case_id": "recording-76b77357565cdc16153f2a97",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "unconfigured_body",
+    "rationale": "The official recording-specific player identifies the proceeding as \"Minority Leaders and Citizen's Council.\" No existing feed is configured for that named body/program. The evidence does not establish Fort Worth City Council or any other body as a joint participant, nor does it establish membership in the Public Info Meetings grouping. Similar topic words do not justify assignment to the Minority and Women Business Enterprise Advisory Committee. No supplied evidence triggers an archival or exclusion rule."
+  },
+  "attempt_id": "296dfb903c8147aea8a07c9fbed0d776",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-76b77357565cdc16153f2a97",
+  "case_input_hash": "1c0613a698ec65fc7ce723efbda102edca87bd4bba33bd9f2282936e8742ecfa",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 14.148976833001143
+    }
+  ],
+  "end_to_end_seconds": 15.461632708000252,
+  "finished_at": "2026-10-14T13:36:31.335149+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T13:36:15.873354+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "1189c830ba3844ad55d973e2a5bfdca68f7c47a521f1bd230a48c6e228e701d9",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3546,
+        "output_tokens": 244
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 244,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3546,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3546,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3790,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-76b77357565cdc16153f2a97\",\"bodies\":[{\"name\":\"Minority Leaders and Citizen's Council\",\"evidence_ref_ids\":[\"provider-player\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official recording-specific player identifies the proceeding as \\\"Minority Leaders and Citizen's Council.\\\" No existing feed is configured for that named body/program. The evidence does not establish Fort Worth City Council or any other body as a joint participant, nor does it establish membership in the Public Info Meetings grouping. Similar topic words do not justify assignment to the Minority and Women Business Enterprise Advisory Committee. No supplied evidence triggers an archival or exclusion rule.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791984990,
+    "id": "resp_0257260d9a51bb00016acf85524b1081918fd7c427ed82d594",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3546,
+          "output_tokens": 244
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 244,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3546,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3546,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3790,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Community and Neighborhood Development Committee"
+      }
+    ],
+    "case_id": "recording-9bd0e85a0cb337726b421b81",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-community-and-neighborhood-development-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "retained-agenda is an official City of Arlington agenda identifying the COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON for June 23, 2020, and provider-player identifies the same recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is expressly described as meetings of Arlington's Community and Neighborhood Development Committee, so the recording is assigned there. No supplied evidence proves a joint meeting or any other convened municipal body; the general arlington-tx feed is described as Arlington City Council and Planning & Zoning recordings and is not supported for this committee recording."
+  },
+  "attempt_id": "ead2da0df0354152a7335539340426cf",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-9bd0e85a0cb337726b421b81",
+  "case_input_hash": "2c32b1b17a6e128279aab027a4ebe807ab484df1e7b0b609d7f0160f08964c5d",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.19845300000452
+    }
+  ],
+  "end_to_end_seconds": 61.74700279100216,
+  "finished_at": "2026-10-14T21:36:12.837311+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T21:35:11.089970+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "ced2386ac2efc73c8bdc669b93a05a44d74f61b6612c9286cdd5fbf318e1a1a8",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1227,
+    "completion_tokens": 1462,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1227,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 2529,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3169,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4631
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-9bd0e85a0cb337726b421b81\",\"bodies\":[{\"name\":\"Community and Neighborhood Development Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-community-and-neighborhood-development-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"retained-agenda is an official City of Arlington agenda identifying the COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON for June 23, 2020, and provider-player identifies the same recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is expressly described as meetings of Arlington's Community and Neighborhood Development Committee, so the recording is assigned there. No supplied evidence proves a joint meeting or any other convened municipal body; the general arlington-tx feed is described as Arlington City Council and Planning & Zoning recordings and is not supported for this committee recording.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Need select all appropriate existing feed slugs under rules. Evidence provided.\n\nWe have case_id recording-9bd0e85a0cb337726b421b81. Body label: Community and Neighborhood Development Committee. City arlington-tx. Evidence refs: retained-agenda source span shows official agenda: \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON TELEPHONE MEETING ... JUNE 23, 2020 8:30 A.M.\" It's a meeting of Community and Neighborhood Development Committee. Provider-player title \"Community and Neighborhood Development Committee Video Player and Subtitles...\" Recording title \"Community and Neighborhood Development Committee\". Existing feeds include slug arlington-tx-community-and-neighborhood-development-committee description \"Meetings of Arlington's Community and Neighborhood Development Committee.\" So assign existing feed. Also maybe arlington-tx \"Arlington \u2014 All Meetings\" as broader subscription grouping? Need think. Policy: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" If there's a general all meetings feed arlington-tx \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Description says Arlington City Council and Planning & Zoning meetings. Not for CNDC. So no. Could there be council? No, it's committee, not city council. Could joint? No evidence of joint participants? The prompt asks \"Name every proven participant in a joint meeting.\" This is not joint? The agenda says Committee members join by phone. No other body participants. Need bodies list include Community and Neighborhood Development Committee. Maybe also City of Arlington? But schema bodies are identified bodies, probably body/program separately from subscription grouping. \"Identify actual body/program separately from its subscription grouping.\" So body name \"Community and Neighborhood Development Committee\" (municipal committee). Feed slug \"arlington-tx-community-and-neighborhood-development-committee\". Maybe \"Arlington: Community and Neighborhood Development Committee\" title. Only that.\n\nNeed publication_action assign_existing. Evidence ref ids: retained-agenda, provider-player perhaps. Bodies: name and evidence_ref_ids. Need include evidence_ref_ids at top maybe both. Missing_evidence maybe empty? Need check if evidence sufficient for body and feed. It is. Maybe missing evidence for exact roster? The prompt says \"Name every proven participant in a joint meeting.\" Not a joint meeting, no participant names needed. Missing evidence: none or maybe \"No roster of individual attendees in supplied evidence\" but not needed. Should we mention gap? For joint meeting no. But instructions: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" There is no other suspected participant. Missing_evidence can be empty. But perhaps \"None\" not allowed? Empty array.\n\nNeed ensure JSON only. Rationale max 2000. Cite evidence. Need maybe explain not selecting arlington-tx. Evidence refs only supplied IDs. Use \"retained-agenda\" and \"provider-player\".\n\nLet's parse evidence: retained-agenda source_span contains \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". It is official agenda. Provider-player title. So body name proven. Existing feed slug description exactly. Publication action assign_existing.\n\nCould there be issue with \"Community and Neighborhood Development Committee\" abbreviated CND Committee in agenda. Yes.\n\nNeed output JSON object matching schema. Fields:\ncase_id\nbodies: array of IdentifiedBody {name, evidence_ref_ids}\nfeed_slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"]\npublication_action: \"assign_existing\"\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"]? Top-level evidence refs perhaps all used.\nmissing_evidence: []\nrationale: concise.\n\nNeed consider if \"arlington-tx\" all meetings feed is appropriate? The existing feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" This recording is not Council or P&Z. So not. The prompt says \"Consider broader subscription groupings independently of who convened the recording.\" Hmm \"broader subscription groupings\" could include arlington-tx all meetings. But feed description specifically says City Council and Planning & Zoning. So not all Arlington meetings despite title \"Arlington \u2014 All Meetings\". Publication rules: do not invent. Select all appropriate existing feed slugs. Does \"arlington-tx\" apply? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Not CNDC. So no.\n\nWhat about Economic Development Committee? Topic includes CARES Act, community development, emergency solutions, child care. Not economic development committee. No.\n\nWhat about Council? The agenda is from Office of City Manager, committee. No.\n\nPotential joint? No.\n\nNeed perhaps \"bodies\" only one. If actual body/program separately from subscription grouping: \"Community and Neighborhood Development Committee\" is actual body. Subscription grouping is feed slug. Good.\n\nNeed no Markdown. Return only JSON.\n\nLet's craft rationale:\n\"retained-agenda is an official City of Arlington agenda titled 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON' for June 23, 2020, and provider-player identifies the same recording as that committee. Existing feed arlington-tx-community-and-neighborhood-development-committee is described as meetings of Arlington's Community and Neighborhood Development Committee, so the recording is assigned there. No evidence proves a joint meeting or another convened body; the general arlington-tx feed is described as Council and Planning & Zoning recordings and is not supported.\"\n\nMissing evidence empty.\n\nShould evidence_ref_ids top-level include both? Yes. Maybe bodies evidence_ref_ids include both. Feed_slugs only the one.\n\nEnsure valid JSON. No extra.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Need select all appropriate existing feed slugs under rules. Evidence provided.\n\nWe have case_id recording-9bd0e85a0cb337726b421b81. Body label: Community and Neighborhood Development Committee. City arlington-tx. Evidence refs: retained-agenda source span shows official agenda: \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON TELEPHONE MEETING ... JUNE 23, 2020 8:30 A.M.\" It's a meeting of Community and Neighborhood Development Committee. Provider-player title \"Community and Neighborhood Development Committee Video Player and Subtitles...\" Recording title \"Community and Neighborhood Development Committee\". Existing feeds include slug arlington-tx-community-and-neighborhood-development-committee description \"Meetings of Arlington's Community and Neighborhood Development Committee.\" So assign existing feed. Also maybe arlington-tx \"Arlington \u2014 All Meetings\" as broader subscription grouping? Need think. Policy: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" If there's a general all meetings feed arlington-tx \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Description says Arlington City Council and Planning & Zoning meetings. Not for CNDC. So no. Could there be council? No, it's committee, not city council. Could joint? No evidence of joint participants? The prompt asks \"Name every proven participant in a joint meeting.\" This is not joint? The agenda says Committee members join by phone. No other body participants. Need bodies list include Community and Neighborhood Development Committee. Maybe also City of Arlington? But schema bodies are identified bodies, probably body/program separately from subscription grouping. \"Identify actual body/program separately from its subscription grouping.\" So body name \"Community and Neighborhood Development Committee\" (municipal committee). Feed slug \"arlington-tx-community-and-neighborhood-development-committee\". Maybe \"Arlington: Community and Neighborhood Development Committee\" title. Only that.\n\nNeed publication_action assign_existing. Evidence ref ids: retained-agenda, provider-player perhaps. Bodies: name and evidence_ref_ids. Need include evidence_ref_ids at top maybe both. Missing_evidence maybe empty? Need check if evidence sufficient for body and feed. It is. Maybe missing evidence for exact roster? The prompt says \"Name every proven participant in a joint meeting.\" Not a joint meeting, no participant names needed. Missing evidence: none or maybe \"No roster of individual attendees in supplied evidence\" but not needed. Should we mention gap? For joint meeting no. But instructions: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" There is no other suspected participant. Missing_evidence can be empty. But perhaps \"None\" not allowed? Empty array.\n\nNeed ensure JSON only. Rationale max 2000. Cite evidence. Need maybe explain not selecting arlington-tx. Evidence refs only supplied IDs. Use \"retained-agenda\" and \"provider-player\".\n\nLet's parse evidence: retained-agenda source_span contains \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". It is official agenda. Provider-player title. So body name proven. Existing feed slug description exactly. Publication action assign_existing.\n\nCould there be issue with \"Community and Neighborhood Development Committee\" abbreviated CND Committee in agenda. Yes.\n\nNeed output JSON object matching schema. Fields:\ncase_id\nbodies: array of IdentifiedBody {name, evidence_ref_ids}\nfeed_slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"]\npublication_action: \"assign_existing\"\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"]? Top-level evidence refs perhaps all used.\nmissing_evidence: []\nrationale: concise.\n\nNeed consider if \"arlington-tx\" all meetings feed is appropriate? The existing feed description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" This recording is not Council or P&Z. So not. The prompt says \"Consider broader subscription groupings independently of who convened the recording.\" Hmm \"broader subscription groupings\" could include arlington-tx all meetings. But feed description specifically says City Council and Planning & Zoning. So not all Arlington meetings despite title \"Arlington \u2014 All Meetings\". Publication rules: do not invent. Select all appropriate existing feed slugs. Does \"arlington-tx\" apply? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Not CNDC. So no.\n\nWhat about Economic Development Committee? Topic includes CARES Act, community development, emergency solutions, child care. Not economic development committee. No.\n\nWhat about Council? The agenda is from Office of City Manager, committee. No.\n\nPotential joint? No.\n\nNeed perhaps \"bodies\" only one. If actual body/program separately from subscription grouping: \"Community and Neighborhood Development Committee\" is actual body. Subscription grouping is feed slug. Good.\n\nNeed no Markdown. Return only JSON.\n\nLet's craft rationale:\n\"retained-agenda is an official City of Arlington agenda titled 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON' for June 23, 2020, and provider-player identifies the same recording as that committee. Existing feed arlington-tx-community-and-neighborhood-development-committee is described as meetings of Arlington's Community and Neighborhood Development Committee, so the recording is assigned there. No evidence proves a joint meeting or another convened body; the general arlington-tx feed is described as Council and Planning & Zoning recordings and is not supported.\"\n\nMissing evidence empty.\n\nShould evidence_ref_ids top-level include both? Yes. Maybe bodies evidence_ref_ids include both. Feed_slugs only the one.\n\nEnsure valid JSON. No extra.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792013764,
+    "id": "cf50994840b5f6dd29b3a071c94d6929",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1227,
+      "completion_tokens": 1462,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1227,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 2529,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3169,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4631
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Addison: Comprehensive Plan Advisory Committee (Audio)</title>
+    <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/</link>
+    <atom:link href="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Comprehensive Plan Advisory Committee meetings for Addison.</description>
+    <language>en-us</language>
+    <itunes:author>City of Addison, TX</itunes:author>
+    <itunes:summary>Comprehensive Plan Advisory Committee meetings for Addison.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Addison, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/artwork.jpg</url>
+      <title>Addison: Comprehensive Plan Advisory Committee</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/</link>
+    </image>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Apr 30, 2025</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/c399c3954ecc92d8/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/341468/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/c399c3954ecc92d8-provider-5f5fefa919f7.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/341468">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/c399c3954ecc92d8/backup-e158c3b9eb0132cc">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/c399c3954ecc92d8/agenda-fda252dbc9b9872a">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/c399c3954ecc92d8.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/c399c3954ecc92d8-provider-align-250684da35ef.vtt" type="text/vtt"/>
+      <pubDate>Wed, 30 Apr 2025 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">c399c3954ecc92d8</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/c399c3954ecc92d8-f6bc1e39d9b4.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>1982</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Mar 27, 2025</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/cc7bffba1e45b79a/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/338706/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5855&amp;rev=0&amp;ag=7438&amp;ln=37086&amp;nseq=5856&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://addisontx.new.swagit.com/videos/338706">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/cc7bffba1e45b79a/backup-63df09873eb0daf9">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/cc7bffba1e45b79a/agenda-fb9abfa8a0e100b4">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/cc7bffba1e45b79a.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/cc7bffba1e45b79a-asr-00f5ace8a998.vtt" type="text/vtt"/>
+      <pubDate>Thu, 27 Mar 2025 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">cc7bffba1e45b79a</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/cc7bffba1e45b79a-1c8e3117421d.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2784</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Feb 12, 2025</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/a793ac1067f4a1c6/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/334753/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5811&amp;rev=0&amp;ag=7424&amp;ln=36932&amp;nseq=5812&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a793ac1067f4a1c6-provider-4c62f5c731f7.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/334753">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a793ac1067f4a1c6/backup-beacb3bb3da0bbf5">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a793ac1067f4a1c6/agenda-8e9c3a19eca73e4a">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/a793ac1067f4a1c6.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a793ac1067f4a1c6-provider-align-4b6ac9507a7c.vtt" type="text/vtt"/>
+      <pubDate>Wed, 12 Feb 2025 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a793ac1067f4a1c6</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/a793ac1067f4a1c6-efb46039c72a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6007</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Nov 06, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/0874e7a777379e51/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/319446/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5749&amp;rev=0&amp;ag=7410&amp;ln=36780&amp;nseq=5750&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/0874e7a777379e51-provider-990784fffbb0.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/319446">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/0874e7a777379e51/backup-b0749cbe81c261ee">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/0874e7a777379e51/agenda-81cc75d3d4665a69">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/0874e7a777379e51.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/0874e7a777379e51-provider-align-c6c5e058556a.vtt" type="text/vtt"/>
+      <pubDate>Wed, 06 Nov 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">0874e7a777379e51</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/0874e7a777379e51-a36562842b3e.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3947</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ACP Vision Plan Meeting – Oct 03, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/ef599e5013273b7b/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/316743">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/ef599e5013273b7b-asr-308bdbbf6b9d.vtt" type="text/vtt"/>
+      <pubDate>Thu, 03 Oct 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">ef599e5013273b7b</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/ef599e5013273b7b-94447661e0a8.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4582</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Aug 08, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/a73f93f4338bfcdd/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/311944/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5639&amp;rev=0&amp;ag=7364&amp;ln=36307&amp;nseq=5640&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a73f93f4338bfcdd-provider-39fbd9c6e8ac.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/311944">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a73f93f4338bfcdd/backup-e97f4d4968be70e0">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a73f93f4338bfcdd/agenda-d11ad004ef33e336">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/a73f93f4338bfcdd.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a73f93f4338bfcdd-provider-align-30eaac2b33ef.vtt" type="text/vtt"/>
+      <pubDate>Thu, 08 Aug 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a73f93f4338bfcdd</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/a73f93f4338bfcdd-18597afa283f.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2968</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Joint CPAC, P&amp;Z, and City Council Meeting #2 – Jul 11, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/c95af66385f6cf31/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/310072/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/c95af66385f6cf31-provider-fa309cdf8fd6.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/310072">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/c95af66385f6cf31/backup-659d1a2490d1fdcf">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/c95af66385f6cf31/agenda-805f31cdd5965230">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/c95af66385f6cf31.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/c95af66385f6cf31-provider-align-21b8ef9cb313.vtt" type="text/vtt"/>
+      <pubDate>Thu, 11 Jul 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">c95af66385f6cf31</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/c95af66385f6cf31-6e6391313539.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7837</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ACP Community Meeting – Jun 19, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/f146260101e90a36/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/308431">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/f146260101e90a36-asr-6ea1ec434401.vtt" type="text/vtt"/>
+      <pubDate>Wed, 19 Jun 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">f146260101e90a36</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/f146260101e90a36-e905a8f42721.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2202</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ACP Vision Plan Meeting – Jun 17, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/d34728e281cb3b65/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/308092">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/d34728e281cb3b65-asr-08925da448cd.vtt" type="text/vtt"/>
+      <pubDate>Mon, 17 Jun 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">d34728e281cb3b65</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/d34728e281cb3b65-e1717f5dbe58.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2828</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – May 30, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/9897aec29b433b8a/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/306716/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5473&amp;rev=0&amp;ag=7338&amp;ln=35965&amp;nseq=5474&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://addisontx.new.swagit.com/videos/306716">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/9897aec29b433b8a/backup-78eb74bc90b9191e">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/9897aec29b433b8a/agenda-12a16512b80eef42">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/9897aec29b433b8a-asr-93044fc9f911.vtt" type="text/vtt"/>
+      <pubDate>Thu, 30 May 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">9897aec29b433b8a</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/9897aec29b433b8a-1dbf756c886d.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4046</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – May 09, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/a4efe895ebf91bb5/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/304809/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5374&amp;rev=0&amp;ag=7309&amp;ln=35772&amp;nseq=5375&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a4efe895ebf91bb5-provider-944015ab233c.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/304809">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a4efe895ebf91bb5/backup-e439732b37fd1449">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/a4efe895ebf91bb5/agenda-415ba636d5645f44">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/a4efe895ebf91bb5.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/a4efe895ebf91bb5-provider-align-189d76440037.vtt" type="text/vtt"/>
+      <pubDate>Thu, 09 May 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a4efe895ebf91bb5</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/a4efe895ebf91bb5-25e9ea82bb25.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4614</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Apr 18, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/cab5de58cacfc1f1/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/303204/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5358&amp;rev=0&amp;ag=7300&amp;ln=35662&amp;nseq=5368&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/cab5de58cacfc1f1-provider-4a0359fb2e54.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/303204">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/cab5de58cacfc1f1/backup-187b74cd2391b075">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/cab5de58cacfc1f1/agenda-7e50ac7895e8b895">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/cab5de58cacfc1f1.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/cab5de58cacfc1f1-provider-align-c407aa489d38.vtt" type="text/vtt"/>
+      <pubDate>Thu, 18 Apr 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">cab5de58cacfc1f1</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/cab5de58cacfc1f1-16bd10a2edd7.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6907</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ACP Advisory Committee – Apr 15, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/9078066c2305c226/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/302676">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/9078066c2305c226-asr-c8bedddc7212.vtt" type="text/vtt"/>
+      <pubDate>Mon, 15 Apr 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">9078066c2305c226</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/9078066c2305c226-a59e9a2c41a1.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5006</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Mar 20, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/2e32f08097596c94/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/300434/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5336&amp;rev=0&amp;ag=7294&amp;ln=35554&amp;nseq=5337&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/2e32f08097596c94-provider-7004f04e5afb.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/300434">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/2e32f08097596c94/backup-c00192f395138e5d">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/2e32f08097596c94/agenda-6ddd2088ef6aa144">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/2e32f08097596c94.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/2e32f08097596c94-provider-align-c88f87dfe0ac.vtt" type="text/vtt"/>
+      <pubDate>Wed, 20 Mar 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">2e32f08097596c94</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/2e32f08097596c94-3a69f3ca0b84.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7346</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Feb 21, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/6629f8f3e9a78230/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/298095/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5276&amp;rev=0&amp;ag=7252&amp;ln=34929&amp;nseq=5277&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/6629f8f3e9a78230-provider-f293f5190582.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/298095">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/6629f8f3e9a78230/backup-7ed4e35b6913cb9d">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/6629f8f3e9a78230/agenda-cf9adcb097778677">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/6629f8f3e9a78230.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/6629f8f3e9a78230-provider-align-d7d6f2eb4558.vtt" type="text/vtt"/>
+      <pubDate>Wed, 21 Feb 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">6629f8f3e9a78230</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/6629f8f3e9a78230-4f015c69a706.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7491</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Joint CPAC, P&amp;Z, and City Council Meeting #1 – Jan 24, 2024</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/fcc9bde16c7f47fe/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/295839/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/fcc9bde16c7f47fe-provider-3ddfa57eb203.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/295839">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/fcc9bde16c7f47fe/backup-0239bd2236cc0926">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/fcc9bde16c7f47fe/agenda-f020f789db2eeb28">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/fcc9bde16c7f47fe.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/fcc9bde16c7f47fe-asr-5584dcb7dcfa.vtt" type="text/vtt"/>
+      <pubDate>Wed, 24 Jan 2024 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">fcc9bde16c7f47fe</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/fcc9bde16c7f47fe-fc3322c4ce9a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4851</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Dec 14, 2023</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/15bbe10aaa52d0f4/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/291484/agenda">Agenda</a></li><li><a href="https://addisontx.new.swagit.com/agenda_publish.cfm?id=&amp;mt=ALL&amp;fp=swagit&amp;get_month=8&amp;get_year=2026&amp;dsp=agm&amp;seq=5232&amp;rev=0&amp;ag=7239&amp;ln=34753&amp;nseq=5233&amp;nrev=0&amp;pseq=&amp;prev=">Minutes</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/15bbe10aaa52d0f4-provider-0aa970de4be1.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/291484">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/15bbe10aaa52d0f4/backup-a9ecaeefbab597de">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/15bbe10aaa52d0f4/agenda-7d533f18e120b2fc">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/15bbe10aaa52d0f4.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/15bbe10aaa52d0f4-provider-align-fe0b79d2847c.vtt" type="text/vtt"/>
+      <pubDate>Thu, 14 Dec 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">15bbe10aaa52d0f4</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/15bbe10aaa52d0f4-a26b5735b7d5.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7626</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Comprehensive Plan Advisory Committee – Nov 01, 2023</title>
+      <link>https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/1606f23aff6e7ab7/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://addisontx.new.swagit.com/videos/277899/agenda">Agenda</a></li><li><a href="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/1606f23aff6e7ab7-provider-f6ae8dc92274.txt">Original city-provided transcript</a></li><li><a href="https://addisontx.new.swagit.com/videos/277899">Watch the video</a></li><li><a href="https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/1606f23aff6e7ab7/backup-08a6ef0549fe4bb8">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/abbf5e25e078/1606f23aff6e7ab7/agenda-5c248e331d7562bf">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/addison-tx-comprehensive-plan-advisory-committee/chapters/1606f23aff6e7ab7.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/abbf5e25e078/1606f23aff6e7ab7-provider-align-5c76132c350a.vtt" type="text/vtt"/>
+      <pubDate>Wed, 01 Nov 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">1606f23aff6e7ab7</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/abbf5e25e078/1606f23aff6e7ab7-028fff36d520.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>4868</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

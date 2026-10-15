@@ -1,0 +1,2100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+        <title>Environmental Task Force Meeting</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        
+        <meta name="description" content="Live and Recorded Public meetings of Environmental Task Force Meeting for City of Arlington, Texas" />
+        <meta name="keywords" content="City of Arlington, Texas, Environmental Task Force Meeting, live, video, meeting, public, recorded, events, city, state, federal transparency, freedom of information, FOIA, agenda, minutes" />
+
+        <style type="text/css">
+    /**
+     * normalize.css v8.0.0 | MIT License | github.com/necolas/normalize.css
+     *
+     * https://github.com/necolas/normalize.css/blob/master/LICENSE.md
+     */
+
+    html {
+      line-height: 1.15;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 2em;
+      margin: 0.67em 0;
+    }
+
+    hr {
+      box-sizing: content-box;
+      height: 0;
+      overflow: visible;
+    }
+
+    pre {
+      font-family: monospace, monospace;
+      font-size: 1em;
+    }
+
+    a {
+      background-color: transparent;
+    }
+
+    abbr[title] {
+      border-bottom: none;
+      text-decoration: underline;
+      text-decoration: underline dotted;
+    }
+
+    b,
+    strong {
+      font-weight: bolder;
+    }
+
+    code,
+    kbd,
+    samp {
+      font-family: monospace, monospace;
+      font-size: 1em;
+    }
+
+    small {
+      font-size: 80%;
+    }
+
+    sub,
+    sup {
+      font-size: 75%;
+      line-height: 0;
+      position: relative;
+      vertical-align: baseline;
+    }
+
+    sub {
+      bottom: -0.25em;
+    }
+
+    sup {
+      top: -0.5em;
+    }
+
+    img {
+      border-style: none;
+    }
+
+    button,
+    input,
+    optgroup,
+    select,
+    textarea {
+      font-family: inherit;
+      font-size: 100%;
+      line-height: 1.15;
+      margin: 0;
+    }
+
+    button,
+    input {
+      overflow: visible;
+    }
+
+    button,
+    select {
+      text-transform: none;
+    }
+
+    button,
+    [type="button"],
+    [type="reset"],
+    [type="submit"] {
+      -webkit-appearance: button;
+    }
+
+    button::-moz-focus-inner,
+    [type="button"]::-moz-focus-inner,
+    [type="reset"]::-moz-focus-inner,
+    [type="submit"]::-moz-focus-inner {
+      border-style: none;
+      padding: 0;
+    }
+
+    button:-moz-focusring,
+    [type="button"]:-moz-focusring,
+    [type="reset"]:-moz-focusring,
+    [type="submit"]:-moz-focusring {
+      outline: 1px dotted ButtonText;
+    }
+
+    fieldset {
+      padding: 0.35em 0.75em 0.625em;
+    }
+
+    legend {
+      box-sizing: border-box;
+      color: inherit;
+      display: table;
+      max-width: 100%;
+      padding: 0;
+      white-space: normal;
+    }
+
+    progress {
+      vertical-align: baseline;
+    }
+
+    textarea {
+      overflow: auto;
+    }
+
+    [type="checkbox"],
+    [type="radio"] {
+      box-sizing: border-box;
+      padding: 0;
+    }
+
+    [type="number"]::-webkit-inner-spin-button,
+    [type="number"]::-webkit-outer-spin-button {
+      height: auto;
+    }
+
+    [type="search"] {
+      -webkit-appearance: textfield;
+      outline-offset: -2px;
+    }
+
+    [type="search"]::-webkit-search-decoration {
+      -webkit-appearance: none;
+    }
+
+    ::-webkit-file-upload-button {
+      -webkit-appearance: button;
+      font: inherit;
+    }
+
+    details {
+      display: block;
+    }
+
+    summary {
+      display: list-item;
+    }
+
+    template {
+      display: none;
+    }
+
+    [hidden] {
+      display: none;
+    }
+</style>
+
+                    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+            <link href="//fonts.googleapis.com/css?family=Lato:300|Open+Sans:300" rel="stylesheet">
+            <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+
+            <style type="text/css">
+    *, *:before, *:after {
+        box-sizing: inherit;
+    }
+
+    html {
+        font-family: 'Open Sans', sans-serif;
+        font-size: 62.5%;
+        font-weight: 300;
+        font-style: normal;
+        font-stretch: 100%;
+        box-sizing: border-box;
+    }
+
+    html, body {
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Lato', sans-serif;
+        margin: 0;
+        padding: 0;
+    }
+
+    h1 {
+        line-height: 250%;
+    }
+
+    h2 {
+        line-height: 225%;
+    }
+
+    h3 {
+        line-height: 200%;
+    }
+
+    h4 {
+        line-height: 175%;
+    }
+
+    h5 {
+        line-height: 150%;
+    }
+
+    h6 {
+        line-height: 125%;
+    }
+
+    p {
+        margin: 0 0 15px;
+    }
+
+    p, span {
+        font-size: 1.6rem;
+        line-height: 2.4rem;
+    }
+
+    body > div.grid {
+        display: -ms-grid;
+        -ms-grid-columns: 50vw 50vw;
+        -ms-grid-rows: fit-content(75px) auto 75px 1fr;
+        display: grid;
+        grid-template-columns: 50vw 50vw;
+        grid-template-rows: fit-content(75px) auto 75px 1fr;
+        grid-template-areas:
+            "index-header      index-documents"
+            "index-video       index-documents"
+            "index-navigation  index-documents"
+            "index-content     index-documents";
+    }
+
+    #captions {
+        display: none;
+        min-height: 88px;
+        background-color: black;
+        padding: 5px 0;
+        text-align: center;
+    }
+
+    .captions-line {
+        font-weight:bold;
+        line-height: normal;
+        color: white;
+        font-size: 15px;
+        margin: 5px 0 5px 0;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: left;
+    }
+
+    .center-center {
+        text-align: center;
+        line-height: 100%;
+    }
+
+    .documents-toolbar-item {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        min-width: 125px;
+        max-width: 235px;
+        height: 55px;
+        font-size: 14px;
+        line-height: 16px;
+        letter-spacing: 1.2%;
+        padding: 0px 15px;
+        cursor: pointer;
+    }
+
+    .documents-toolbar-icon {
+        margin-right: 15px;
+    }
+
+    .documents-default-document {
+        height: 100%;
+        background-color: #fff;
+    }
+
+    #documents-viewer-iframe {
+        height: 100%;
+        width: 100%;
+    }
+
+    #documents {
+        -ms-grid-column: 1;
+        -ms-grid-row: 1;
+        grid-area: documents-index;
+        overflow-y: scroll;
+    }
+
+    #download {
+        -ms-grid-column: 1;
+        -ms-grid-row: 4;
+        grid-area: index-content;
+        background-image: linear-gradient(to bottom, #2e2e30, #1f1f1f);
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        color: white;
+        overflow-y: scroll;
+    }
+
+    #download-info-desktop {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        margin: 25px;
+        font-size: 15px;
+    }
+
+    .download-links {
+        color: #848484
+    }
+
+    #download-options {
+        grid-area: download-options;
+        margin: 0px 15px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-evenly;
+        align-content: center;
+        max-height: 250px;
+        padding-top: 20px;
+    }
+
+    .download-option {
+        text-decoration: none;
+        margin: 30px;
+        color: #848484;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .download-type {
+        color: #D4D4D4;
+        margin-top: 20px;
+    }
+
+    #email {
+        color: #848484;
+    }
+
+    #embed {
+        -ms-grid-column: 1;
+        -ms-grid-row: 4;
+        grid-area: index-content;
+        background-image: linear-gradient(to bottom, #2e2e30, #1f1f1f);
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        color: white;
+        overflow-y: scroll;
+    }
+
+    #embed-autoplay {
+        margin-left: 10px;
+    }
+
+    #embed-height {
+        display: flex;
+        justify-content: flex-start;
+        margin: 10px;
+        font-size: 15px;
+    }
+
+    #embed-height-input {
+        margin-left: 10px;
+    }
+
+    #embed-info-desktop {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        margin: 5px;
+        font-size: 15px;
+    }
+
+    #embed-link-desktop {
+        margin: 10px;
+        padding: 10px 10px 0px 10px;
+        background-color: #e6e5e5;
+        border-radius: 5px;
+        color: black;
+        min-width: 500px;
+    }
+
+    #embed-link-desktop > input {
+        width: 95%;
+        margin: 10px;
+    }
+
+    #embed-mobile-document {
+        display:none;
+    }
+
+    #embed-slider-display {
+        text-align: center;
+        margin-top: 10px;
+    }
+
+    #embed-slider {
+        margin-top: 10px;
+    }
+
+    #embed-width {
+        display: flex;
+        justify-content: flex-start;
+        margin: 10px;
+        font-size: 15px;
+    }
+
+    #embed-width-label {
+        padding-right:4px;
+    }
+
+    #embed-width-input {
+        margin-left: 10px;
+    }
+
+    #embed-time {
+        margin-top: 5px;
+    }
+
+    .embed-time-box {
+        display: flex;
+        justify-content: flex-start;
+        margin: 10px;
+        font-size: 15px;
+    }
+
+    #embed-end-time-label {
+        padding-right:4px;
+    }
+
+    .embed-duration-input {
+        margin-left: 10px;
+    }
+
+    #facebook,
+    #facebook-mobile {
+        color: #3d5a96;
+    }
+
+    .fp-captions {
+        display: none;
+    }
+    /*  To control display of captions on flowplayer_native
+        you can use .fp-captions .fp-cue {}
+     */
+    .flex-col-center {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    #google {
+      color: #dd4d42;
+    }
+
+    .grid {
+        display: flex;
+        overflow: hidden;
+        height: 100%;
+    }
+
+    #header {
+        min-height: 75px;
+        -ms-grid-column: 1;
+        -ms-grid-row: 1;
+        grid-area: index-header;
+    }
+
+    #header h1 {
+        line-height: 7.5rem;
+    }
+
+    #index {
+        grid-area: index-content;
+        -ms-grid-column: 1;
+        -ms-grid-row: 4;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+
+    #index .current-item {
+        min-height: 44px;
+        text-align: left;
+        border-bottom: 1px solid #333333;
+        background-color: #FFFFFF;
+        font-size: 16px;
+        line-height: 22px;
+        letter-spacing: 5%;
+        color: #000000;
+        padding: 20px 5px 20px 30px;
+    }
+
+    #index .current-item-label {
+        font-size: 80%;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+
+    .index-content {
+        display: none;
+    }
+
+    .index-content-visible {
+        -ms-grid-column: 1;
+        -ms-grid-row: 4;
+        grid-area: index-content;
+        display: flex;
+    }
+
+    #index-documents {
+        -ms-grid-column: 2;
+        -ms-grid-row: 1;
+        -ms-grid-row-span: 4;
+        grid-area: index-documents;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+
+    #index-documents-toolbar {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        background-color: #30343A;
+        min-height: 55px;
+    }
+
+    .index-point,
+    .index-point:visited,
+    .index-point.selected {
+        cursor: pointer;
+        text-align: left;
+        border-bottom: 1px solid #333333;
+        background-color: #FFFFFF;
+        font-size: 16px;
+        line-height: 22px;
+        letter-spacing: 5%;
+        color: #23527c;
+        padding: 10px 15px;
+        display: block;
+    }
+
+    .index-point:active {
+        background-color: #F2F2F2;
+    }
+
+    .index-point:hover {
+        text-decoration: underline;
+        background-color: #F2F2F2;
+    }
+    .index-point.selected {
+        background-color: #23527c;
+        color: #ffffff;
+    }
+
+    /* Hide Player controls on Live Streams */
+    .is-live .fp-player .fp-ui .fp-controls .fp-playbtn,
+    .is-live .fp-player .fp-ui .fp-controls .seek-backward,
+    .is-live .fp-player .fp-ui .fp-controls .seek-forward{
+        display: none;
+    }
+
+    .k-widget .k-tooltip .k-slider-tooltip {
+        display: block;
+        position:absolute;
+        top:50%;
+    }
+
+    #linked-in,
+    #linked-in-mobile {
+      color: #0077b5;
+    }
+
+    #navigation {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: center;
+        margin: 0;
+        padding: 0;
+        min-height: 75px;
+        max-height: 75px;
+        background-color: #f6f6f6;
+        border-top: 1px solid #d0d0d0;
+        -ms-grid-column: 1;
+        -ms-grid-row: 3;
+        grid-area: index-navigation;
+    }
+
+    .navigation-element {
+        align-items: center;
+        height: 75px;
+        font-size: 14px;
+        line-height: 16px;
+        letter-spacing: 1.2%;
+        border-right: 2px solid #f2f2f2;
+        padding: 0px 20px;
+        display: flex;
+        flex-grow: 1;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 50px;
+        color: #23527c;
+        cursor: pointer;
+        text-decoration: none;
+        background-color: inherit;
+    }
+
+    .navigation-element.selected {
+        color: #ffffff;
+        background-color: #23527c;
+    }
+
+    /* GUB-65731 Added support tab css when page is in zoom, 
+        will remain hidden when page is not zoomed above 150% 
+    */
+    #navigation-mobile-display-agenda,
+    #navigation-mobile-display-minutes,
+    #navigation-mobile-display-documents,
+    #navigation-mobile-display-streaming-video-support {
+        display: none;
+    }
+
+    .document-group {
+        display: none;
+    }
+
+    .overflow-ellipsis {
+      text-overflow: ellipsis;
+    }
+
+    #player-error {
+        align-items: center;
+        justify-content: center;
+        background: black;
+        min-height: 400px;
+        color: white;
+        display: flex;
+        padding: 20px;
+        text-align: center;
+    }
+
+    #player-error span {
+        display: inline-block;
+        font-size: 26px;
+        line-height: 40px;
+    }
+
+    .selected-document {
+        background-color: #484F5A;
+    }
+
+    #share {
+        -ms-grid-column: 1;
+        -ms-grid-row: 4;
+        grid-area: index-content;
+        background-image: linear-gradient(to bottom, #2e2e30, #1f1f1f);
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        color: white;
+        overflow-y: scroll;
+    }
+
+    #share-info-desktop {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        margin: 5px;
+        font-size: 15px;
+    }
+
+    .share-info-item {
+        margin: 5px;
+    }
+
+    .share-info-item > input {
+        margin: 0px 5px;
+    }
+
+    #share-link-desktop {
+        margin: 5px;
+        padding: 5px 5px 0px 5px;
+        background-color: #e6e5e5;
+        border-radius: 5px;
+        color: black;
+        min-width: 500px;
+    }
+
+    #share-link-desktop > input {
+        width: 95%;
+        margin: 10px;
+    }
+
+    .share-provider {
+        text-decoration: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-top: 20px;
+    }
+
+    #share-providers {
+        grid-area: share-providers;
+        margin: 0px 15px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-evenly;
+        align-content: center;
+        max-height: 250px;
+    }
+
+    .share-provider-name {
+        color: #D4D4D4;
+        margin-top: 20px;
+        font-size: 15px;
+        text-align: center; /* Fixes IE styling */
+    }
+
+    .sliding-pane {
+        display: none;
+    }
+
+    .sliding-pane-visible {
+        display: block;
+    }
+
+    #twitter {
+        color: #2aa3ef;
+    }
+
+    #video {
+        -ms-grid-column: 1;
+        -ms-grid-row: 2;
+        grid-area: index-video;
+    }
+
+    #video-name {
+        padding-left: 16px;
+        background-color: #f8f8f8;
+        height: 50px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 16px;
+        line-height: 22px;
+        letter-spacing: 5%;
+        color: #4F4F4F;
+    }
+    /* 
+        GUB-69585 changed forward & backward icon from span to button, css added.  
+    */
+    .fp-custom-button.fp-seek-button {
+        margin: 0px 2px 0px 2px;
+        height: 50px;
+    }
+
+    /* IE Hacky Stuff */
+    @media  all and (-ms-high-contrast: none), (-ms-high-contrast: active) {
+
+
+
+    }
+
+    /* GUB-65731 handled overflow when page is in zoom state, 
+        when page is zoom over 150%
+    */
+    @media  all and (max-width: 1023px) {
+        body > div.grid {
+            display: -ms-grid;
+            -ms-grid-columns: 100%;
+            -ms-grid-rows: 0px auto 1fr 75px;
+            display: grid;
+            height: 100vh;
+            grid-template-rows: fit-content(40vh) minmax(100px, 1fr) 75px;
+            grid-template-columns: 100%;
+            grid-template-areas:
+                "index-video"
+                "index-content"
+                "index-navigation";
+            max-height: 100%;
+            overflow: auto;
+        }
+
+        #share, #embed, #download, #index {
+            -ms-grid-column: 1;
+            -ms-grid-row: 3;
+        }
+
+        #share, #embed {
+            position: relative;
+        }
+
+        #share-content, #embed-content {
+            position: absolute;
+            top: 0;
+        }
+
+        #content-documents .grid {
+            -ms-grid-column: 1;
+            -ms-grid-row: 3;
+            grid-area: index-content;
+            display: -ms-grid;
+            -ms-grid-columns: 100%;
+            -ms-grid-rows: 1fr;
+            display: grid;
+            grid-template-columns: 100%;
+            grid-template-rows: 1fr;
+            grid-template-areas:
+                "documents-index";
+            width: 100%;
+            background-color: white;
+        }
+
+        #content-index .grid {
+            display: -ms-grid;
+            -ms-grid-columns: 100%;
+            -ms-grid-rows: 75px auto 1fr 75px;
+            display: grid;
+            height: 100vh;
+            grid-template-columns: 100%;
+            grid-template-rows: 75px auto minmax(100px, 1fr) 75px;
+            grid-template-areas:
+                "index-header"
+                "index-video"
+                "index-content";
+            max-height: 100%;
+        }
+
+        .document {
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            padding-left: 16px;
+            border-top: 1px solid #f2f2f2;
+        }
+
+        .document-group {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            text-decoration: none;
+            cursor: pointer;
+            color: #4F4F4F;
+        }
+
+
+        .document-icon-blue,
+        .document-icon-gray,
+        .document-icon-green,
+        .document-icon-red {
+            max-height: 42px;
+            max-width: 42px;
+            border-radius: 9px;
+            background-color: #f39797;
+            flex-grow: 1;
+            font-size: 11px;
+            line-height: 22px;
+            letter-spacing: 8%;
+            margin-top: 16.5px;
+            color: #ffffff;
+        }
+
+        .document-icon-blue {
+            background-color: #6fa1dd;
+        }
+
+        .document-icon-gray {
+            background-color: #828282;
+        }
+        .document-icon-green {
+            background-color: #6fcf97;
+        }
+
+        .document-label {
+            min-height: 25px;
+            background-color: #f5f5f5;
+            text-align: left;
+            padding-left: 16px;
+            font-size: 12px;
+            line-height: 22px;
+            letter-spacing: 5%;
+        }
+
+        .document-text {
+            flex-grow: 4;
+            min-height: 75px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: left;
+            font-size: 12px;
+            line-height: 22px;
+            letter-spacing: 9%;
+            padding-left: 20px;
+        }
+
+        .documents-toolbar-icon {
+            margin-right: 0px;
+        }
+
+        #download,
+        #embed,
+        #index,
+        #share {
+            -ms-grid-column: 1;
+            -ms-grid-row: 3;
+        }
+
+        #embed-mobile-document {
+            -ms-grid-column: 1;
+            -ms-grid-row: 1;
+            -ms-grid-row-span: 3;
+            grid-column-start: 1;
+            grid-column-end: 1;
+            grid-row-start: 1;
+            grid-row-end: 3;
+            z-index: 1000;
+            background-color: white;
+            width: 100%;
+            height: 100%;
+            overflow: scroll;
+            position: relative;
+            display: block;
+        }
+
+        .grid .column {
+            flex: 0 0 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        #header {
+            display: none;
+        }
+
+        #index {
+          display: block;
+        }
+
+        #index-documents {
+            display: none;
+        }
+
+        .index-content-visible {
+          z-index: 1000;
+          -ms-grid-column: 1;
+          -ms-grid-row: 3;
+        }
+
+        #navigation {
+            -ms-grid-column: 1;
+            -ms-grid-row: 4;
+            grid-area: index-navigation;
+        }
+
+        /* GUB-65731 Added support tab css,
+            which makes support tab visible only when page is zoomed beyond certain limit 
+        */
+        #navigation-mobile-display-agenda,
+        #navigation-mobile-display-minutes,
+        #navigation-mobile-display-documents,
+        #navigation-mobile-display-streaming-video-support {
+            display: flex;
+        }
+
+        #navigation-display-download,
+        #navigation-display-clip {
+            display: none;
+        }
+
+        #share {
+          justify-content: center;
+        }
+
+        #share-info-desktop {
+            width: 100%;
+            margin: 10px;
+            padding: 0px 5px;
+        }
+
+        #share-link-desktop {
+            min-width: auto;
+        }
+
+        .share-provider {
+            margin: 0px;
+        }
+
+        #share-providers {
+            margin: 0px;
+            padding: 5px;
+        }
+    }
+
+    @media  all and (max-width: 1199px) {
+
+    }
+
+</style>
+
+                            <style>
+
+</style>
+            
+            <style type="text/css">
+            html {
+            background-color: #ececec;
+        }
+    
+            #header {
+            background: url('/core/Handlers/media/attachmentdisplay.ashx?guid=39cf0767-ccee-4536-a33f-8c0eb2ecf274') no-repeat center center;
+            background-size: contain;
+        }
+    
+        }
+</style>
+        
+       
+        <script>video_url="https://archive-stream.granicus.com/OnDemand/_definst_/mp4:archive/arlingtontx/arlingtontx_b3b5fc1a-679f-438e-853a-e61abbe752a5.mp4/playlist.m3u8"</script>
+<script src="//code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+<script src="/js/moment.min.js"></script>
+<!-- slider -->
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+<!-- jQuery ui touch plugin for slider -->
+<script type="text/javascript" src="/js/jqueryui-touch-plugin.js"></script>
+<!-- inputMask GUB-67653 -->
+<script src="/js/jquery.inputmask.min.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BNTPCVGGK0"></script>
+
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-BNTPCVGGK0', { 'request_origin':'external' });
+</script>
+
+
+         
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/0.12.0/hls.min.js"></script>
+            <script type="text/javascript" src="//d1rw50yn65615p.cloudfront.net/b7a83b5b6c9052aff5aba4c2a012c9870926b3d9/assets/flowplayer/flowplayer.js"></script>
+            <script type="text/javascript" src="//d1rw50yn65615p.cloudfront.net/b7a83b5b6c9052aff5aba4c2a012c9870926b3d9/assets/flowplayer/custom-flowplayer-event-listeners.js"></script>
+                             
+            <link rel="stylesheet" href="//d1rw50yn65615p.cloudfront.net/b7a83b5b6c9052aff5aba4c2a012c9870926b3d9/assets/flowplayer/skin/skin.css">
+            <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+        
+        
+        <style>
+             
+                strong.fp-cc {
+                    display: initial;
+                }
+            
+            .flowplayer {
+                /* overrides flowplayer css to prevent scrollbar in player */
+                display: block;
+                max-width: 100%;
+                max-height: 100%;
+            }
+                    </style>
+    </head>
+<body granicus-app="mediamanager">
+        
+                    <div class="grid">
+                <header id="header"></header>
+
+                <label id="video-section-label" style="display: none;">Video Player and Subtitles</label>
+<section id="video" aria-labelledby="video-section-label">
+    <div class="responsive-error" id="player-error" style="display: none;"><span></span></div>
+
+     
+        <div class="flowplayer fp-full fp-edgy fp-mute" data-key="$256026924867230" preload="true">
+            <video>
+                <source type="application/x-mpegurl" src="https://archive-stream.granicus.com/OnDemand/_definst_/mp4:archive/arlingtontx/arlingtontx_b3b5fc1a-679f-438e-853a-e61abbe752a5.mp4/playlist.m3u8">
+                <track kind="captions" srclang="en" label="On" src="/videos/3454/captions.vtt">
+            </video>
+        </div>
+        <div id="granicus-controls" style="display: none;">
+                            <div class="seek-backward">
+                    <i class="fa fa-backward" aria-hidden="true"></i>
+                </div>
+
+                <div class="seek-forward">
+                    <i class="fa fa-forward" aria-hidden="true"></i>
+                </div>
+            
+            <i class="fa fa-expand" aria-hidden="true"></i>
+        </div>
+    
+    
+    </section>
+ 
+                <label id="navigation-label-desktop" style="display: none;">Navigation</label>
+<section id="navigation" aria-labelledby="navigation-label-desktop" class="center-center column navigation-desktop" role="tablist">
+          <a id="navigation-display-index"
+        tabindex="0"
+         class="navigation-element selected"
+         href="javascript:swapIndexContent('index');"
+         title="Index"
+         role="tab"
+         aria-selected="true">
+          <span class="fa fa-list navigation-icon fa-lg"></span>
+          <div class="navigation-text">Index</div>
+      </a>
+    
+          <a id="navigation-mobile-display-agenda"
+      tabindex="0"
+         class="navigation-element"
+         title="Agenda"
+         href="javascript:void(0);"
+         data-url="/AgendaViewer.php?clip_id=3454&amp;view_id=2&amp;redirect=true&amp;embedded=1"
+         role="tab"
+         aria-selected="false">
+          <span class="fa fa-file navigation-icon fa-lg"></span>
+          <div class="navigation-text">
+              Agenda
+          </div>
+      </a>
+    
+    
+          <a id="navigation-mobile-display-documents"
+      tabindex="0"
+         class="navigation-element"
+         href="javascript:swapIndexContent('content-documents');"
+         title="Documents"
+         role="tab"
+         aria-selected="false">
+          <span class="fa fa-paperclip navigation-icon fa-lg"></span>
+          <div class="navigation-text">Documents</div>
+      </a>
+    
+          <a class="navigation-element"
+      tabindex="0"
+         href="javascript:swapIndexContent('share');"
+         title="Share"
+         role="tab"
+         aria-selected="false">
+          <span class="fa fa-share-square navigation-icon fa-lg"></span>
+          <div class="navigation-text">Share</div>
+      </a>
+    
+          <a id="navigation-display-download"
+      tabindex="0"
+         class="navigation-element" title="Download"
+         href="javascript:swapIndexContent('download');"
+         role="tab"
+         aria-selected="false">
+          <span class="fa fa-download navigation-icon fa-lg"></span>
+          <div class="navigation-text">Download</div>
+      </a>
+    
+    
+            <a id="navigation-display-clip"
+        tabindex="0"
+           class="navigation-element" title="Embed"
+           href="javascript:swapIndexContent('embed');"
+           role="tab"
+           aria-selected="false">
+            <span class="fa fa-exchange navigation-icon fa-lg"></span>
+            <div class="navigation-text">Embed</div>
+        </a>
+        
+    <a id="navigation-mobile-display-streaming-video-support"
+    tabindex="0"
+      class="navigation-element" title="Streaming Video Support"
+      href="javascript:void(0);"
+      aria-description="(This link will open in new tab)"
+      onclick="window.open('//support.granicus.com/s/article/Public-Help-Video-Streaming');"
+      data-url="//support.granicus.com/s/article/Public-Help-Video-Streaming"
+      role="tab"
+      aria-selected="false">
+      <span class="fa fa-question-circle streaming-video-support-icon fa-lg"></span>
+      <div class="navigation-text">Streaming Video Support</div>
+    </a>
+</section>
+
+                <label id="index-section-label" style="display: none;">Video Indices</label>
+
+    <section id="index" aria-labelledby="index-section-label" class="index-content index-content-visible">
+        
+                                </section>
+
+                    <section id="download" class="index-content">
+        <div id="download-info-desktop">
+            <div id="download-options">
+                                    
+                    <a tabindex="0" href="https://archive-video.granicus.com/arlingtontx/arlingtontx_b3b5fc1a-679f-438e-853a-e61abbe752a5.mp4"
+                       class="download-option flex-col-center" target="_blank">
+                         
+                        <span class="fa-stack fa-4x">
+                                <i class="fa fa-circle fa-stack-2x download-links"></i>
+                                <i class="fa fa-file-video-o fa-stack-1x fa-inverse" aria-hidden="true"></i>
+                            </span>
+                                                <div class="download-type">
+                            Video Download
+                        </div>
+                    </a>
+                                                    
+                    <a tabindex="0" href="https://archive-video.granicus.com/arlingtontx/arlingtontx_b3b5fc1a-679f-438e-853a-e61abbe752a5.mp3"
+                       class="download-option flex-col-center" target="_blank">
+                         
+                        <span class="fa-stack fa-4x">
+                                <i class="fa fa-circle fa-stack-2x download-links"></i>
+                                <i class="fa fa-file-audio-o fa-stack-1x fa-inverse" aria-hidden="true"></i>
+                            </span>
+                                                <div class="download-type">
+                            Audio Download
+                        </div>
+                    </a>
+                                            </div>
+        </div>
+    </section>
+                <section id="embed" class="index-content">
+        <div id="embed-content">
+            <div id="embed-info-desktop">
+                <div id="embed-size">
+                    <div id="embed-width">
+                        <label id="embed-width-label">Player Width (px):</label>
+                        <input id="embed-width-input" tabindex="0" type="text" title="Set Custom Player Width"
+                               aria-labelledby="embed-width-label" value="320"
+                               onChange="updateEmbedCodeOnChange();" size="4"/>
+                    </div>
+                    <div id="embed-height">
+                        <label id="embed-height-label">Player Height (px):</label>
+                        <input id="embed-height-input" tabindex="0" type="text" title="Set Custom Player Height"
+                               aria-labelledby="embed-height-label" value="240"
+                               onChange="updateEmbedCodeOnChange();" size="4"/>
+                    </div>
+                </div>
+                <div id="embed-autoplay">
+                    <input id="embed-autostart-checkbox" tabindex="0" type="checkbox" title="Embed Autoplay"
+                           aria-labelledby="embed-autostart-checkbox" onChange="updateEmbedCodeOnChange();">
+                        Start playing automatically when loaded
+                    </input>
+                </div>
+                
+                <div id="embed-time">
+                    <div class="embed-time-box" id="embed-start-time">
+                        <label id="embed-start-time-label">Entry Time:</label>
+                        <input class="embed-duration-input" tabindex="0" id="embed-start-time-input" type="text" title="Set Entry Time"
+                               aria-labelledby="embed-start-time-label" aria-describedby="start-time-validation-desc" onchange="changeDuration($(this))" value="00:00:00"
+                        />
+                        <span id="start-time-validation-desc" style="display: none;">Should be less than Stop Time</span>
+                    </div>
+                    <div class="embed-time-box" id="embed-end-time">
+                        <label id="embed-end-time-label">Stop Time:</label>
+                        <input class="embed-duration-input" tabindex="0" id="embed-end-time-input" type="text" title="Set Stop Time"
+                               aria-labelledby="embed-end-time-label" aria-describedby="end-time-validation-desc" onchange="changeDuration($(this))"
+                        />
+                        <span id="end-time-validation-desc" style="display: none;">Should be less than Video Length & greater than Entry Time</span>
+                    </div>
+                </div>
+                <div id="embed-link-desktop">
+                    <label id="embed-link-desktop-label">
+                        Copy this html to embed into your page
+                    </label>
+                    <br>
+                    <input id="embed-link-desktop-input" tabindex="0" type="text" title="Link to Video"
+                           aria-labelledby="embed-link-desktop-label" readonly></input>
+                </div>
+            </div>
+        </div>
+    </section>
+
+<!-- <script src="/js/moment.min.js"></script> -->
+<!-- slider -->
+<!-- <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script> -->
+<!-- jQuery ui touch plugin for slider -->
+<!-- <script type="text/javascript" src="/js/jqueryui-touch-plugin.js"></script> -->
+
+                <section id="share" class="index-content">
+        <div id="share-content">
+            <div id="share-info-desktop">
+                <label id="share-item-label">Share the current item or the full video:</label>
+                <div class="share-info-item">
+                    <input type="radio" id="start-from-current-item-option" tabindex="0" title="Start from Current Item" aria-labelledby="start-from-current-item-option" onClick="setShareLinkAndCheckRadio(true, this)">Start From Current Item</input>
+                </div>
+                <div class="share-info-item">
+                    <input type="radio" id="full-video-option" tabindex="0" title="Full Video" aria-labelledby="full-video-option" checked="checked" onClick="setShareLinkAndCheckRadio(false, this)">Full Video</input>
+                </div>
+                <div id="share-link-desktop">
+                    <label id="share-link-desktop-label">
+                        Copy this link to send this event to your friends:
+                    </label>
+                    <br>
+                    <input type="text" tabindex="0" title="Link to Video" aria-labelledby="share-link-desktop-label" readonly></input>
+                </div>
+            </div>
+             
+            <div id="share-providers">
+                <a target="_blank" class="share-provider flex-col-center" href="mailto:example@email.com?body=https://arlingtontx.granicus.com/player/clip/3454">
+                        <span class="fa-stack fa-4x">
+                            <span class="fa fa-circle fa-stack-2x" id="email"></span>
+                            <span class="fa fa-envelope-o fa-stack-1x fa-inverse"></span>
+                        </span>
+                    <div class="share-provider-name">
+                        Email
+                    </div>
+                </a>
+                <a target="_blank" class="share-provider flex-col-center" href="https://www.facebook.com/sharer/sharer.php?u=https://arlingtontx.granicus.com/player/clip/3454&amp;amp;t=Environmental Task Force Meeting">
+
+                        <span class="fa-stack fa-4x">
+                            <span class="fa fa-circle fa-stack-2x" id="facebook"></span>
+                            <span class="fa fa-facebook fa-stack-1x fa-inverse"></span>
+                        </span>
+                    <div class="share-provider-name">
+                        Facebook
+                    </div>
+                </a>
+                <a target="_blank" class="share-provider flex-col-center" href="https://www.linkedin.com/shareArticle?mini=true&amp;amp;url=https://arlingtontx.granicus.com/player/clip/3454&amp;amp;title=Environmental Task Force Meeting&amp;amp;source=https://arlingtontx.granicus.com">
+                        <span class="fa-stack fa-4x">
+                            <span class="fa fa-circle fa-stack-2x" id="linked-in"></span>
+                            <span class="fa fa-linkedin fa-stack-1x fa-inverse"></span>
+                        </span>
+                    <div class="share-provider-name">
+                        LinkedIn
+                    </div>
+                </a>
+                <a target="_blank" class="share-provider flex-col-center" href="https://www.twitter.com/intent/tweet?url=https://arlingtontx.granicus.com/player/clip/3454&amp;amp;text=Environmental Task Force Meeting">
+                        <span class="fa-stack fa-4x">
+                            <span class="fa fa-circle fa-stack-2x" id="twitter"></span>
+                            <span class="fa fa-twitter fa-stack-1x fa-inverse"></span>
+                        </span>
+                    <div class="share-provider-name">
+                        Twitter
+                    </div>
+                </a>
+            </div>
+                    </div>
+    </section>
+                <section id="index-documents" role="tabpanel">
+        <div id="index-documents-toolbar" role="tablist">
+            
+
+            
+                            <div id="desktop-agenda" class="documents-toolbar-item" role="tab" aria-selected="false" tabindex="0" data-url="/AgendaViewer.php?clip_id=3454&amp;view_id=2&amp;redirect=true&amp;embedded=1">
+                    <div class="documents-toolbar-icon fa fa-file-text fa-lg"></div>
+                                    <div class="documents-toolbar-text">Agenda</div>
+                </div>
+            
+            
+            
+                            <div class="documents-toolbar-item" id="desktop-default-document" role="tab" tabindex="0" aria-selected="false" data-url="https://www.arlingtontx.gov/city_hall/departments/action_center">
+                    <div class="documents-toolbar-icon fa fa-file fa-lg"></div>
+                    <div class="documents-toolbar-text">Default Document</div>
+                </div>
+            
+            <div class="documents-toolbar-item streaming-help" aria-description="(This link will open in new tab)" role="tab" tabindex="0" aria-selected="false" data-url="//support.granicus.com/s/article/Public-Help-Video-Streaming">
+                <div class="documents-toolbar-icon fa fa-question-circle fa-lg"></div>
+                <div class="documents-toolbar-text">Streaming Video Support</div>
+            </div>
+        </div>
+
+        
+                    <div class="documents-default-document" data-url="/AgendaViewer.php?clip_id=3454&amp;view_id=2&amp;redirect=true&amp;embedded=1"
+                 data-selected="desktop-agenda"></div>
+            </section>
+                <div id="content-documents" class="index-content">
+    <div class="grid">
+        <label id="documents-section-label" style="display: none;">Documents</label>
+        <section id="documents" aria-labelledby="documents-section-label" class="center-center">
+            
+            
+                            <a class="document-group">
+                    <div class="document-label flex-col-center">Default Document</div>
+
+                    <div class="document" data-url="https://www.arlingtontx.gov/city_hall/departments/action_center">
+                        <div class="document-icon-green flex-col-center">
+                            <div class="documents-toolbar-icon fa fa-file fa-lg"></div>
+                                </div>
+
+                        <div class="document-text">Default Document</div>
+                    </div>
+                </a>
+            
+            
+            
+            
+                    </section>
+    </div>
+</div>
+            </div>
+
+                        <script type="text/javascript">
+$(document).ready( function() {
+    var embedded = true;
+
+            embedded = false;
+    
+    captionsArray = [];
+
+    if (flowplayer != null && (flowplayer.instances == null)) {
+        flowplayer().on('captions-enabled', function(e, data) {
+            $('.flow-captions').addClass('fp-shown');
+
+            /*
+             * If video is fullscreen && should be displaying Granicus Captions
+             * display them.
+             */
+            if ($('#video>.is-fullscreen').length > 0 && isGranicusCaptions()) {
+                // If Phone, Tablet, IE, or Edge use iframe instead of embed
+                                    showEmbeddedGranicusCaptions();
+                            }
+
+            if (embedded) {
+                if (isGranicusCaptions()) {
+                                            showEmbeddedGranicusCaptions();
+                                    } else {
+                    $(".fp-captions").show();
+                }
+            } else {
+                                    $("#captions").show();
+                            }
+        });
+
+        flowplayer().on('fullscreen', function(e, data){
+
+            if (isGranicusCaptions()) {
+                /*
+                 * If granicus captions are already turned on before going to full screen,
+                 * we need to turn them on when going to fullscreen as well.
+                */
+                if (($('.flow-captions>embed').length > 0 && $('.flow-captions>embed').is('visible')) ||
+                        $('.fp-captions>iframe').length > 0) {
+                    // If Phone, Tablet, IE, or Edge use iframe instead of embed
+                                            showEmbeddedGranicusCaptions();
+                                    }
+            }
+        });
+
+        flowplayer().on('captions-disabled', function(e, data) {
+            $('.fp-captions').removeClass('fp-shown');
+
+            if (embedded) {
+                $(".fp-captions").hide();
+                $('.fp-captions').removeClass('fp-shown');
+            } else {
+                                    $("#captions").hide();
+                            }
+        });
+
+                    flowplayer().on('cuepoint', function(e, data, cuepoint) {
+                if (cuepoint.subtitle){
+                    pushCaption(cuepoint.subtitle.text);
+                    renderCaptions();
+                }
+            });
+
+            flowplayer().on('seek ', function(e, data, position) {
+                clearCaptions();
+                fillCaptionsArray(position);
+            });
+
+            // Pushes the next caption onto the captionsArray and removes the oldest item.
+            var pushCaption = function(text) {
+                for (var i = 1; i < 3; i++) {
+                    var swapText = captionsArray[i];
+                    captionsArray[i-1] = swapText;
+                }
+
+                captionsArray[2] = text;
+            };
+
+            // Renders the captionsArray to the user.
+            var renderCaptions = function() {
+                for (var i = 1; i <= 3; i++) {
+                    $('div#captions-line-'+i).html(captionsArray[i-1]);
+                }
+            };
+
+            // Clears the captionsArray.
+            var clearCaptions = function() {
+                // Loop through array to clear it out.
+                for (var i = 0; i < 3; i++) {
+                    captionsArray[i] = "";
+                }
+
+                // Render the blank captions array to clear out the UI.
+                renderCaptions();
+            };
+
+            // Fills the captionsArray with the last captions.
+            var fillCaptionsArray = function(position) {
+                var subtitlesArray = flowplayer().subtitles;
+                var nextIndex = searchSubtitleArray(subtitlesArray, position);
+
+                if (nextIndex != -1) {
+                    // Fill the captions with the last 3 subtitles. if we're past 3 subtitles.
+                    if (nextIndex < 3) {
+                        for (var i = 0; i < nextIndex; i++) {
+                            pushCaption(subtitlesArray[i].text);
+                        }
+                    } else {
+                        // else grab the last 3 captions.
+                        pushCaption(subtitlesArray[nextIndex - 3].text);
+                        pushCaption(subtitlesArray[nextIndex - 2].text);
+                        pushCaption(subtitlesArray[nextIndex - 1].text);
+                    }
+
+                    renderCaptions();
+                }
+            };
+
+            // Searches the subtitle array for the index of the next subtitle.
+            // Returns -1 if it cannot locate the next index.
+            var searchSubtitleArray = function(subtitleArray, position) {
+                for (var i = 0; i < subtitleArray.length; i++) {
+                    if (position < subtitleArray[i].startTime) {
+                        return i;
+                    }
+                }
+
+                return -1;
+            };
+        
+
+        /*
+         * Granicus Captions for desktop devices
+         */
+        var showEmbeddedGranicusCaptions = function () {
+            removeEmbedGranicusCaptions();
+            $(".fp-captions").show();
+            $('.fp-captions').append('<embed width="80%" height="90" style="border: none;" ' +
+                                        'src="Caption URL"/>');
+        }
+
+        /*
+         * Granicus Captions for mobile devices
+         * (uses iframe instead of embed for scrolling purposes in IOS)
+         */
+        var showMobileGranicusCaptions = function () {
+            removeEmbedGranicusCaptions();
+            $(".fp-captions").show();
+            $('.fp-captions').append('<iframe id="fullscreenCaptionsSpan" width="80%" height="90" style="border: none;" ' +
+                                        'src="Caption URL"/>');
+        }
+
+        /*
+         * Clears any existing Granicus Caption boxes.
+         */
+        var removeEmbedGranicusCaptions = function () {
+            $('.fp-captions>embed').remove();
+            $('.fp-captions>iframe').remove();
+        }
+
+        /*
+         * Determines if the player template should be displaying Granicus Captions
+         */
+        var isGranicusCaptions = function () {
+                            return false;
+                    }
+    }
+});
+</script>
+        <script type="text/javascript">
+            // Set up video and player template values
+                            var isLive = false;
+            
+                            var shouldAutoplay = true;
+            
+                            var captionsEnabled = true;
+            
+                            var granicusCaptions = false;
+            
+            // Configure flowplayer-7-only variables and functions
+             
+                /* var fpEngine = (/rv:11.0/i.test(navigator.userAgent)) && isLive ? "flash" : "html5"; */
+                var fpEngine = (/rv:11.0/i.test(navigator.userAgent)) && isLive ? "flash" : /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent) ? "html5" : "hlsjs";
+                var showCaptions = function() {
+                    var captions = $('#captions');
+
+                    if (captions.css('display') === 'none') {
+                        var title = $('.title');
+                        var menu = $('.menu');
+                        var content_pane = $('#content-pane');
+
+                        captions.css('display', 'block');
+                        title.css('top', title.position().top + captions.height());
+                        menu.css('top', menu.position().top + captions.height());
+                        content_pane.css('top', content_pane.position().top + captions.height());
+                    }
+                }
+                var hideCaptions = function() {
+                    var captions = $('#captions');
+
+                    if (captions.css('display') !== 'none') {
+                        var title = $('.title');
+                        var menu = $('.menu');
+                        var content_pane = $('#content-pane');
+
+                        captions.css('display', 'none');
+                        title.css('top', title.position().top - captions.height());
+                        menu.css('top', menu.position().top - captions.height());
+                        content_pane.css('top', content_pane.position().top - captions.height());
+                    }
+                }
+                var pushCaption = function(text) {
+                    for (var i = 1; i < 3; i++) {
+                        captionsArray[i-1] = captionsArray[i];
+                    }
+
+                    captionsArray[2] = text;
+                }
+                var renderCaptions = function() {
+                    for (var i = 1; i <= 3; i++) {
+                        $('div#captions-line-'+i).html(captionsArray[i-1]);
+                    }
+                }
+                var clearCaptions = function() {
+                    captionsArray = ['', '', ''];
+                    renderCaptions();
+                }
+
+                // Configuring flowplayer 7 options
+                flowplayer.conf = {
+                    engine: fpEngine,
+                    swf: "//d1rw50yn65615p.cloudfront.net/b7a83b5b6c9052aff5aba4c2a012c9870926b3d9/assets/flowplayer/flowplayer.swf",
+                    swfHls: "//d1rw50yn65615p.cloudfront.net/b7a83b5b6c9052aff5aba4c2a012c9870926b3d9/assets/flowplayer/flowplayerhls.swf",
+                    hlsjs: {
+                        safari: true,
+                        chrome: true
+                    },
+                    mutedAutoplay: false,
+                    native_fullscreen: true,
+                    fullscreen: true,
+                    share: false,
+                    splash: window.splash_image,
+                    live: isLive,
+                    autoplay: shouldAutoplay,
+                    cuepoints: [],
+                    volume: 1
+                };
+
+                function SetPlayerPosition(time) {
+                    return flowplayer().seek(time.replace(":", ''));
+                }
+
+                document.addEventListener("DOMContentLoaded", function() {
+                    flowplayer(function(api, root) {
+                        
+                                            });
+                });
+            
+            
+            var clearErrorMessages = function() {
+                $('.fp-message').hide();
+                $('.responsive-error span').text('');
+                $('.flowplayer').show();
+                $('.responsive-error').hide();
+            }
+
+            var showErrorMessage = function(errorMessage) {
+                $('.responsive-error span').text(errorMessage);
+                $('.flowplayer').hide();
+                $('.responsive-error').show();
+            }
+
+            var setEmbedCode = function(code) {
+                $('#embed-code').val(code);
+            }
+
+            var setCurrentItem = function(item) {
+                $('#current-index-title').html(item);
+            }
+
+            document.addEventListener("DOMContentLoaded", function() {
+                flowplayer(function(api, root) {
+                    api.on('ready', function(){
+                        clearErrorMessages();
+                    });
+
+                    api.on('error', function (e, api, err) {
+                        var errorMessage = null;
+
+                        if (/rv:11.0/i.test(navigator.userAgent)) {
+                            // Use built in Flowplayer errors for IE.
+                        } else {
+                            if (err.code == 4) {
+                                errorMessage = "This video file was not found, please try again later.";
+                            } else if (err.code == 2) {
+                                errorMessage = "Network error occurred, please refresh the page and try again.";
+                            } else {
+                                errorMessage = $('.fp-message').text();
+                            }
+
+                            showErrorMessage(errorMessage);
+                        }
+                    });
+                });
+            })
+        </script>
+    <script type="text/javascript">
+    function swapIndexContent(targetID) {
+        var visibleIndexContentClass = 'index-content-visible';
+        $('.' + visibleIndexContentClass).removeClass(visibleIndexContentClass);
+        $('#' + targetID).addClass(visibleIndexContentClass);
+    }
+
+    function slidePane(targetPane) {
+        var visibleSlidePaneClass = 'sliding-pane-visible';
+        document.getElementsByClassName(visibleSlidePaneClass)[0].classList.remove(visibleSlidePaneClass);
+        document.getElementById(targetPane).classList.add(visibleSlidePaneClass);
+    }
+
+    $('#navigation > .navigation-element').on("click", function() {
+        $('#embed-mobile-document').remove();
+        $('#ios-mobile-document').remove();
+        cycleMenuHighlighting('.navigation-element.', 'selected', $(this));
+        $('#navigation > .navigation-element').attr('aria-selected', 'false');
+        $(this).attr('aria-selected', 'true');
+    });
+</script>
+    <script type="text/javascript">
+
+        const recordedItems = document.querySelectorAll('.index-point[role="link"]');
+        recordedItems.forEach(recordedItem => {
+            recordedItem.addEventListener('keydown', indexItemClickHandler);
+        });
+        function indexItemClickHandler(event) {
+            const key = event.key;
+            const targetPoint = event.currentTarget;
+            switch (key) {
+                case 'Enter':
+                targetPoint.click();
+                    break;
+                default:
+                    return;
+            }
+        }
+        $('.index-point').on("click", function() {
+            var that = $(this);
+
+                            flowplayer().seek(that.attr("time"));
+            
+            cycleMenuHighlighting('.index-point.', 'selected', that);
+        });
+    </script>
+    <script>
+    var lastSliderStart = 0;
+    var lastSliderStop = null;
+
+    $(document).ready(function(){
+        // Display Embed Code on page load | KS | CSI-321
+        updateEmbedCodeOnChange();
+    });
+
+    function setEmbedCode(width, height, startTime, stopTime, autoStart)
+    {
+        var autoStartCode = '&autostart=' + (autoStart ? 1 : 0);
+        var startCode = '', embedCode = '';
+        width = width + 'px';
+        height = height + 'px';
+                  if(startTime !== null && startTime !== 0)
+          {
+            startCode = '&entrytime=' + startTime;
+          }
+
+          var stopCode = '';
+          if(stopTime !== null)
+          {
+            stopCode = '&stoptime=' + stopTime;
+          }
+          embedCode = '<embed width="' + width + '" height="' + height + '" '
+                        + 'frameborder="0" allowfullscreen="true" src="'
+                        + window.location.href.substring(window.location.protocol.length) 
+                        + startCode + stopCode + autoStartCode +'&embed=1"></embed>';
+        
+        $('#embed-link-desktop-input').val(embedCode);
+    }
+    function updateEmbedCodeOnChange()
+    {
+                    var start = "", stop = "";
+                            var sliderValue = $( "#durationSlider" ).slider( "values", 0 );
+                start = convertHHMMSSToSeconds($( "#embed-start-time-input" ).val());
+                stop = convertHHMMSSToSeconds($( "#embed-end-time-input" ).val());
+                        var width = $('#embed-width-input')[0].value;
+            var height = $('#embed-height-input')[0].value;
+            var autostart = $('#embed-autostart-checkbox')[0].checked
+            setEmbedCode(width, height, start, stop, autostart);
+            }
+
+    // Removed slider & added inputs for entry & stop time, ticket no. GUB-67653
+            $("#embed-end-time-input").val(convertSecondsToHHMMSS(1850));
+        function convertSecondsToHHMMSS(totalSeconds){
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            const formattedHours = String(hours).padStart(2, '0');
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            const formattedSeconds = String(seconds).padStart(2, '0');
+
+            return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+        }
+        function convertHHMMSSToSeconds(duration){
+            if(duration == "" || duration == null || duration == undefined){
+                return 0;
+            }
+            var time = duration;
+            var parts = time.split(':');
+            return (parseInt(parts[0]) * 3600) + (parseInt(parts[1]) * 60) + parseInt(parts[2]);
+        }
+        function changeDuration(durationInput){
+            const id = durationInput.attr('id');
+            let durationInputInSecs = convertHHMMSSToSeconds(durationInput.val());
+
+            let minValInSec = 0;
+            let maxValInSec = 1850;
+
+            if(id == "embed-start-time-input"){
+                maxValInSec = convertHHMMSSToSeconds($("#embed-end-time-input").val());
+                if(durationInputInSecs > maxValInSec){
+                    durationInput.val(convertSecondsToHHMMSS(maxValInSec));
+                }
+                if(durationInputInSecs < minValInSec){
+                    durationInput.val(convertSecondsToHHMMSS(minValInSec));
+                }
+            } else if(id == "embed-end-time-input"){
+                minValInSec = convertHHMMSSToSeconds($("#embed-start-time-input").val());
+                if(durationInputInSecs < minValInSec){
+                    durationInput.val(convertSecondsToHHMMSS(minValInSec));
+                }
+                if(durationInputInSecs > maxValInSec){
+                    durationInput.val(convertSecondsToHHMMSS(maxValInSec));
+                }
+            }
+            let start = convertHHMMSSToSeconds($( "#embed-start-time-input" ).val());
+            let stop = convertHHMMSSToSeconds($( "#embed-end-time-input" ).val());
+            if(lastSliderStart != start)
+            {
+                                    flowplayer().seek(start);
+                                lastSliderStart = start;
+            } else if(lastSliderStop != stop)
+            {
+                                    flowplayer().seek(stop);
+                                lastSliderStop = stop;
+            }
+            updateEmbedCodeOnChange();
+        }
+        $(".embed-duration-input").inputmask(
+            "99:59:59", 
+            {
+                placeholder: "00:00:00",
+                insertMode: false,
+                showMaskOnHover: false,
+                definitions: {
+                    '5': {
+                        validator: "[0-5]",
+                        cardinality: 1
+                    },
+                }
+            }
+        );
+    
+    </script>
+                <script type="text/javascript">
+                    function createDesktopDocument(slideLink) {
+                        var documentToolbarItem     = createDiv({ class: 'documents-toolbar-item', "data-url": slideLink }),
+                            documentToolbarItemIcon = createDiv({ class: 'documents-toolbar-icon fa fa-file fa-lg' }),
+                            documentToolbarItemText = createDiv({ class: 'documents-toolbar-text', text: 'Slide'});
+
+                        $('#index-documents-toolbar').append(documentToolbarItem);
+                        documentToolbarItem.append(documentToolbarItemIcon);
+                        documentToolbarItem.append(documentToolbarItemText);
+                        documentToolbarItem.on("click", setDocumentsToolbarItemListener);
+                        documentToolbarItem.trigger('click');
+                    }
+
+                    function createDiv(divProperties) {
+                    return $('<div/>', divProperties);
+                    }
+
+                    function createMobileDocument(slideLink) {
+                    var documentGroup          = $('<a/>', { class: 'document-group' }),
+                        documentIconBackground = createDiv({ class: 'document-icon-gray flex-col-center' }),
+                        documentIcon           = createDiv({ class: 'documents-toolbar-icon fa fa-file fa-lg' }),
+                        documentLabel          = createDiv({ class: 'document-label flex-col-center', text: 'Slide' }),
+                        documentLink           = createDiv({ class: 'document', 'data-url': slideLink }),
+                        documentText           = createDiv({ class: 'document-text', text: 'Slide' }),
+                        mobileDocumentList     = $('#documents');
+                    mobileDocumentList.prepend(documentGroup);
+                    documentGroup.append(documentLabel);
+                    documentGroup.append(documentLink);
+                    documentLink.append(documentIconBackground);
+                    documentIconBackground.append(documentIcon);
+                    documentLink.append(documentText);
+                    documentLink.on("click", setDocumentsToolbarItemListener);
+                    var noDocumentsMessage = $('#no-documents-available');
+                    if (noDocumentsMessage.length) {
+                        noDocumentsMessage.remove();
+                    }
+                    }
+
+                    function cycleDocumentView(url, mobile, target) {
+
+                        var isIphone = navigator.userAgent.indexOf("iPhone") != -1 ;
+                        var isIpod = navigator.userAgent.indexOf("iPod") != -1 ;
+                        var isIpad = navigator.userAgent.indexOf("iPad") != -1 ;
+                        // now set one variable for all iOS devices
+                        var isIos = isIphone || isIpod || isIpad ;
+                        if (mobile) {
+                            if (isIos) {
+                                loadIOSEmbed(url, target, true);
+                            } else {
+                                loadEmbed(url, target, true);
+                            }
+                        } else {
+                            target.empty();
+                            loadEmbed(url, target, false);
+                        }
+                    }
+
+                    function cycleMenuHighlighting(elementClass, selectedElementClass, selectedElement) {
+                        $(elementClass + selectedElementClass).removeClass(selectedElementClass);
+                        selectedElement.addClass(selectedElementClass);
+                    }
+
+                    function loadEmbed(url, target, insertBefore) {
+                        var identifier   = insertBefore ? target : 'documents-viewer-iframe',
+                            embedElement = $('<embed>', { src: url,
+                                                        id:  identifier,
+                                                        type: 'text/html' });
+                        insertBefore ? embedElement.insertBefore('#navigation') : embedElement.appendTo(target);
+                    }
+
+                    function loadIOSEmbed(url,target,insertBefore){
+                        window.open(url, "_blank");
+                    }
+
+                    function markCurrentIndexItem(cuepoint) {
+                    if (cuepoint.type == "Document") {
+                        var slideLink     = location.protocol + "//" + location.host + '/MetaViewer.php?meta_id=' + cuepoint.id;
+
+                        if ($('.documents-default-document').is(":visible")) {
+                            var existingSlide = $('.documents-toolbar-item > .documents-toolbar-text:contains("Slide")');
+                            if (existingSlide.length) {
+                                existingSlide.parent().remove();
+                            }
+                            createDesktopDocument(slideLink);
+                        } else {
+                            var existingSlide = $('.document > .document-text:contains("Slide")');
+                            if (existingSlide.length) {
+                                existingSlide.parent().parent().remove()
+                            }
+                            createMobileDocument(slideLink);
+                        }
+                    }
+                    var indexPoints = $('.index-point');
+                    indexPoints.each(function(index, element) {
+                        if (cuepoint.time >= element.attributes.time.value &&
+                            (index == indexPoints.length - 1 || cuepoint.time < indexPoints[index + 1].attributes.time.value)) {
+                            cycleMenuHighlighting('.index-point.', 'selected', $(element));
+                        }
+                    });
+                    }
+
+                    function setDocumentsToolbarItemListener() {
+                        var that                   = $(this),
+                            documentURL            = that.data('url'),
+                            mobileDocumentDisplay  = 'embed-mobile-document',
+                            desktopDisplay         = $('.documents-default-document');
+
+                        if (that.hasClass('streaming-help')){
+                            window.open(that.data('url'));
+                        } else if (desktopDisplay.is(":visible")) {
+                            cycleMenuHighlighting('.documents-toolbar-item.', 'selected-document', that);
+                            cycleDocumentView(documentURL, false, desktopDisplay);
+                        } else {
+                            cycleDocumentView(documentURL, true, mobileDocumentDisplay);
+                        }
+                    }
+
+                    function setShareLinkAndCheckRadio(currentItem, that) {
+                        $('.share-info-item > input:checked').prop('checked', false);
+                        var currentSelectedItemID = $('.index-point.selected').data('id');
+                        var currentLocation = location.protocol + '//' + location.host + location.pathname;
+                        if (currentItem && currentSelectedItemID) {
+                            var shareLink = currentLocation + '?meta_id=' + currentSelectedItemID;
+                        } else {
+                            var shareLink = currentLocation;
+                        }
+                        $('#share-link-desktop > input').val(shareLink);
+                        $(that).prop('checked', true);
+                    }
+
+                    
+                    $(document).ready(function() {
+                        
+                    
+                    if ($('documents-default-document'))
+
+                    $('.document, .documents-toolbar-item, #navigation-mobile-display-agenda, #navigation-mobile-display-minutes').on("click", setDocumentsToolbarItemListener);
+
+                    var currentLocation = location.protocol + '//' + location.host + location.pathname;
+                    $('#share-link-desktop > input').val(currentLocation);
+
+                    if (flowplayer != null && (flowplayer.instances == null))
+                    {
+                        flowplayer().on('cuepoint', function(e, api, cuepoint) {
+                            markCurrentIndexItem(cuepoint);
+                        });
+
+                        flowplayer().on('seek', function(e, api, time) {
+                            markCurrentIndexItem({ time: time, type: "Seek" });
+                        });
+
+                        flowplayer().on('fullscreen', function(e, data){
+                        var desktopDocument = $('.documents-default-document');
+                        if (desktopDocument.is(':visible')) {
+                            desktopDocument.hide();
+                        }
+                        });
+
+                        flowplayer().on('fullscreen-exit', function(e, api) {
+                        var desktopDocumentToolbar = $('#index-documents-toolbar');
+                        if (desktopDocumentToolbar.is(':visible')) {
+                            $('.documents-default-document').show();
+                        }
+                        });
+                    }
+
+                    
+                    const tabs = document.querySelectorAll('.documents-toolbar-item[role="tab"]');
+                    if (tabs.length > 0) {
+                        if(!tabs[0].classList.contains('streaming-help')){
+                            tabs[0].setAttribute('aria-selected', 'true');
+                        }
+                    }
+                    tabs.forEach(tab => {
+                        tab.addEventListener('focus', (event) => {
+                            tab.addEventListener('keydown', (event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    const previouslySelectedTab = document.querySelector('.documents-toolbar-item[aria-selected="true"]');
+                                    if (previouslySelectedTab) {
+                                        previouslySelectedTab.setAttribute('aria-selected', 'false');
+                                    }
+                                    tab.click();
+                                    tab.attributes['aria-selected'].value = true;
+                                }
+                            });
+                        });
+                    });
+
+                    });
+                </script>
+            </body>
+</html>

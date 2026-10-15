@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2024 Bond Critical Facilities Subcommittee (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Dallas 2024 bond Critical Facilities subcommittee proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Dallas 2024 bond Critical Facilities subcommittee proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/artwork.jpg</url>
+      <title>Dallas: 2024 Bond Critical Facilities Subcommittee</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/</link>
+    </image>
+    <item>
+      <title>2024 Bond Critical Facilities Subcommittee Meeting – Oct 30, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/34db2abe446959c8/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/277833">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/chapters/34db2abe446959c8.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/34db2abe446959c8-asr-b9049e523fb9.vtt" type="text/vtt"/>
+      <pubDate>Mon, 30 Oct 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">34db2abe446959c8</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/34db2abe446959c8-ec4b04a90821.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3742</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Critical Facilities Subcommittee Meeting – Oct 25, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/17a33e59725e970a/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/277831">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/chapters/17a33e59725e970a.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/17a33e59725e970a-asr-392bfdba473e.vtt" type="text/vtt"/>
+      <pubDate>Wed, 25 Oct 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">17a33e59725e970a</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/17a33e59725e970a-b279bea94cff.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3251</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Critical Facilities Subcommittee – Aug 29, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/8e43703d6210901d/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/272227">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/chapters/8e43703d6210901d.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/8e43703d6210901d-asr-6c5c455b5e8d.vtt" type="text/vtt"/>
+      <pubDate>Tue, 29 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">8e43703d6210901d</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/8e43703d6210901d-c30bddcb1049.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3132</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Critical Facilities Subcommittee – Aug 22, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/38d57c2ae015044d/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/270972">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/chapters/38d57c2ae015044d.json" type="application/json+chapters"/>
+      <pubDate>Tue, 22 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">38d57c2ae015044d</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/38d57c2ae015044d-d982f0b670ef.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6036</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Task Force Critical Facilities Subcommittee Meeting – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/977d943cea00258e/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269611">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-critical-facilities-subcommittee/chapters/977d943cea00258e.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">977d943cea00258e</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/977d943cea00258e-a1ac62b8f46e.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6800</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

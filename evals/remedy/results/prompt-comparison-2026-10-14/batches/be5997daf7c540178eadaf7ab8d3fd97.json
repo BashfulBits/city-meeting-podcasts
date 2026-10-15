@@ -1,0 +1,159 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player"
+        ],
+        "name": "Fort Worth Forward"
+      }
+    ],
+    "case_id": "recording-f67233b1ddc3faf3e51bb9ff",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "Official evidence identifying the institution responsible for Fort Worth Forward or a body convened for Episode 19.",
+      "Recording-specific evidence establishing whether this episode is a proceeding, promotional/orientation film, or another program type covered by the publication rules."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The official player identifies the program as Fort Worth Forward - Episode 19, but supplies no agenda, substantive index, or ownership information establishing a convening municipal body. Fort Worth Forward is identified here as the program, not as a proven municipal board or committee. No evidence connects this episode to any configured subscription grouping, including Public Info Meetings or City Council. The title alone also does not establish that the archive-only or exclusion rules apply. Ownership and publication classification therefore remain unresolved."
+  },
+  "attempt_id": "2ed83d7fafd34e39bafd74723c4032d8",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-f67233b1ddc3faf3e51bb9ff",
+  "case_input_hash": "d7de74f2e5886c6849b7f8b2f948e26126e95f458b8afecf2432232f3ddb6799",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 7.468826333002653
+    }
+  ],
+  "end_to_end_seconds": 8.822899124999822,
+  "finished_at": "2026-10-14T22:31:58.768532+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T22:31:49.945557+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "cf38fd9488ac09eb78263c5da701010387b9a6e32d1fcd6a422f5bee09f5618e",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3554,
+        "output_tokens": 216
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 216,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3554,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3554,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3770,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-f67233b1ddc3faf3e51bb9ff\",\"bodies\":[{\"name\":\"Fort Worth Forward\",\"evidence_ref_ids\":[\"provider-player\"]}],\"feed_slugs\":[],\"publication_action\":\"unresolved\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"Official evidence identifying the institution responsible for Fort Worth Forward or a body convened for Episode 19.\",\"Recording-specific evidence establishing whether this episode is a proceeding, promotional/orientation film, or another program type covered by the publication rules.\"],\"rationale\":\"The official player identifies the program as Fort Worth Forward - Episode 19, but supplies no agenda, substantive index, or ownership information establishing a convening municipal body. Fort Worth Forward is identified here as the program, not as a proven municipal board or committee. No evidence connects this episode to any configured subscription grouping, including Public Info Meetings or City Council. The title alone also does not establish that the archive-only or exclusion rules apply. Ownership and publication classification therefore remain unresolved.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792017117,
+    "id": "resp_072c4e4b32428665016ad002d8e4b48198ae42e804783d162f",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3554,
+          "output_tokens": 216
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 216,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3554,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3554,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3770,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

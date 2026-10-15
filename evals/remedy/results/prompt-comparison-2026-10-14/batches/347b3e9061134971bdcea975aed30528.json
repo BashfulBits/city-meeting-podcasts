@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Community and Neighborhood Development Committee"
+      }
+    ],
+    "case_id": "recording-05315b3b1cfb9d029ee8ed70",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-community-and-neighborhood-development-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "retained-agenda identifies the convened body as the Community and Neighborhood Development Committee, City of Arlington, for the June 9, 2020 telephone meeting. provider-player titles the recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is the configured feed for that body. No evidence proves any joint participant or another municipal body. The arlington-tx all-meetings feed description is limited to Council and Planning & Zoning meetings, so it is not selected."
+  },
+  "attempt_id": "ebf6326501d1421c91be66cc7587fa6d",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-05315b3b1cfb9d029ee8ed70",
+  "case_input_hash": "fb98c25956f5fe9e3f9ae8929c899cb69a72a7c7fb421f5e53d2b513d0aa6756",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.533448375001171
+    }
+  ],
+  "end_to_end_seconds": 61.404090459000145,
+  "finished_at": "2026-10-14T19:59:21.876669+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T19:58:20.472402+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "ca468da461e3f322767e4a5d2f2ccf453a72987900885a35e928f1d048547de6",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 2049,
+    "completion_tokens": 2257,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 2049,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 1651,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 2291,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4548
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-05315b3b1cfb9d029ee8ed70\",\"bodies\":[{\"name\":\"Community and Neighborhood Development Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-community-and-neighborhood-development-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"retained-agenda identifies the convened body as the Community and Neighborhood Development Committee, City of Arlington, for the June 9, 2020 telephone meeting. provider-player titles the recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is the configured feed for that body. No evidence proves any joint participant or another municipal body. The arlington-tx all-meetings feed description is limited to Council and Planning & Zoning meetings, so it is not selected.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies. We have evidence: retained agenda shows \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" telephone meeting June 9 2020. Provider-player title same. Existing feeds include arlington-tx-community-and-neighborhood-development-committee. So body is Community and Neighborhood Development Committee. Publication action assign_existing. Feed slug that. Also consider broader feed arlington-tx All Meetings? The policy says select ALL appropriate existing feed slugs under supplied publication rules. Need decide whether to include arlington-tx (All Meetings) too? Existing feeds include \"Arlington \u2014 All Meetings\" slug arlington-tx description \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Wait description says Arlington City Council and Planning & Zoning meetings, not all bodies. It's broader subscription grouping? User asks \"Identify actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" If body-specific feed exists, likely include it. Should we include arlington-tx? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" This committee is not Council or P&Z. So not appropriate. But user says \"Consider broader subscription groupings independently of who convened.\" However description limits to Council and P&Z. So no.\n\nNeed maybe bodies includes actual body \"Community and Neighborhood Development Committee\" and maybe City of Arlington? The title says CITY OF ARLINGTON, Office of City Manager. But convened body is committee. Need identify municipal body. Evidence refs for body: retained-agenda and provider-player. Feed slug. Publication action assign_existing. Evidence ref ids overall maybe both. Missing evidence? Any joint meeting? Agenda only committee, no proven participants. Need name every proven participant in joint meeting. Not joint. Bodies array only the committee.\n\nCould there be issue: Existing feed \"arlington-tx-community-and-neighborhood-development-committee\" title \"Arlington: Community and Neighborhood Development Committee\". Good.\n\nPublication action assign_existing.\n\nCase_id echo.\n\nRationale concise with cited evidence. Missing evidence maybe empty array. But need mention no joint participants? Missing evidence array could be empty. But schema requires missing_evidence. We can put [] if none.\n\nNeed ensure JSON valid.\n\nBut let's thoroughly analyze per instructions.\n\nEvidence:\n- retained-agenda: source_span includes Office of City Manager, \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\", telephone meeting June 9 2020 9:15 A.M. Agenda items CDBG CV CARES Act Applications, HOME Waivers for COVID-19. This proves body.\n- provider-player: title \"Community and Neighborhood Development Committee Video Player and Subtitles...\" and recording ID. Proves recording belongs to that committee.\n\nExisting feeds:\n- arlington-tx-community-and-neighborhood-development-committee matches body.\n- arlington-tx All Meetings description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Does it encompass all? The slug \"arlington-tx\" and title \"Arlington \u2014 All Meetings\" maybe a generic feed. But description says Council and P&Z. The user says \"Identify the actual body/program separately from its subscription grouping\" and \"Select ALL appropriate existing feed slugs under supplied publication rules.\" \"Consider broader subscription groupings independently of who convened the recording.\" Hmm, maybe if there is an all meetings feed, any Arlington meeting could belong? But the description specifically: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Not all city bodies. The title says All Meetings but description narrows. Which controls? The publication rules? It says existing feeds. We need not invent. \"arlington-tx\" slug might be a general feed. But \"All Meetings\" could include all Arlington meetings. However description says only Council and P&Z. The instructions: \"Identify the actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" This might mean if a body has a feed and also a broader city feed, include both? The provided existing feeds include \"Arlington \u2014 All Meetings\" with slug arlington-tx. But its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So not all meetings despite title. The committee meeting is neither Council nor P&Z. So should not select arlington-tx. If the description were \"All public meetings\", then include. Here not. So only specific feed.\n\nCould there be another body: \"Office of the City Manager\" is not a municipal body? It's an office. The agenda is issued by Office of City Manager, but convened body is committee. We should not include City Manager as body.\n\nCould there be \"City of Arlington\" as municipal body? The committee is a city committee. The body name in existing feed is \"Community and Neighborhood Development Committee\". That's sufficient. The schema bodies: IdentifiedBody name. Could include \"City of Arlington Community and Neighborhood Development Committee\"? But feed title says \"Arlington: Community and Neighborhood Development Committee\". The agenda says \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". We can name exactly \"Community and Neighborhood Development Committee\". That matches feed.\n\nNeed maybe include \"City of Arlington\" as parent? The question: \"Which municipal body or bodies does this recording belong to?\" Could be the committee. \"Determine the convening institution from supplied official evidence\". The convening institution is City of Arlington? But body is committee. The feed is committee. The schema bodies likely the specific body. We can include one body.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\"].\n\nMissing evidence: [] maybe. But if no missing evidence, empty. However the instructions say \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected other. So empty.\n\nRationale: \"retained-agenda identifies the convened body as the Community and Neighborhood Development Committee, City of Arlington, June 9, 2020, telephone meeting. provider-player titles the recording as Community and Neighborhood Development Committee. existing feed arlington-tx-community-and-neighborhood-development-committee matches this body. No evidence of joint participation; arlington-tx all-meetings feed is described for Council and Planning & Zoning, so not selected.\"\n\nNeed ensure rationale maxLength 2000. Good.\n\nBut let's consider if there is any possibility that \"Community and Neighborhood Development Committee\" is not a municipal body but a committee of City Council? It is a committee. Existing feed. So assign.\n\nCould there be \"Housing Finance Corporation\" because CDBG/HOME? No, agenda items are CDBG and HOME waivers. But the body is committee. The Housing Finance Corporation is separate. Not proven.\n\nCould there be \"Economic Development Committee\"? No.\n\nCould there be \"Planning and Zoning Commission\"? No.\n\nCould there be \"Arlington Tomorrow Foundation\"? No.\n\nSo final JSON.\n\nNeed output only JSON. Ensure no markdown.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-05315b3b1cfb9d029ee8ed70\",\n  \"bodies\": [\n    {\n      \"name\": \"Community and Neighborhood Development Committee\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-community-and-neighborhood-development-committee\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"retained-agenda shows the convened body as the Community and Neighborhood Development Committee, City of Arlington, for a June 9, 2020 telephone meeting. provider-player titles the same recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is the configured feed for that body. No evidence proves any joint participant or another municipal body; the arlington-tx all-meetings feed description is limited to Council and Planning & Zoning and is not selected.\"\n}\n\nCheck if \"arlington-tx all-meetings feed\" description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Yes.\n\nShould we include \"City of Arlington\" in body name? The body is \"Community and Neighborhood Development Committee\". The agenda says \"CITY OF ARLINGTON\" above. Could body be \"City of Arlington Community and Neighborhood Development Committee\"? The feed title is \"Arlington: Community and Neighborhood Development Committee\". The schema name max 300. Either is fine. But to match feed, use \"Community and Neighborhood Development Committee\". The evidence supports that. Maybe include \"City of Arlington\" to disambiguate? The feed slug already. The question asks municipal body. The body is the committee of City of Arlington. The name in agenda: \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". I can name \"Community and Neighborhood Development Committee, City of Arlington\". But feed title is \"Arlington: Community and Neighborhood Development Committee\". The IdentifiedBody name should be the body. \"Community and Neighborhood Development Committee\" is fine. If I add City of Arlington, it's still accurate. But schema likely expects exact body. I'll use \"Community and Neighborhood Development Committee\" to match feed.\n\nEvidence_ref_ids: include both. For bodies, evidence_ref_ids both. Overall both.\n\nMissing evidence: empty array. Is there a need to mention no joint meeting? Not missing. Could put [] .\n\nPublication action: assign_existing.\n\nFeed slugs: one.\n\nReturn only JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies. We have evidence: retained agenda shows \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" telephone meeting June 9 2020. Provider-player title same. Existing feeds include arlington-tx-community-and-neighborhood-development-committee. So body is Community and Neighborhood Development Committee. Publication action assign_existing. Feed slug that. Also consider broader feed arlington-tx All Meetings? The policy says select ALL appropriate existing feed slugs under supplied publication rules. Need decide whether to include arlington-tx (All Meetings) too? Existing feeds include \"Arlington \u2014 All Meetings\" slug arlington-tx description \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Wait description says Arlington City Council and Planning & Zoning meetings, not all bodies. It's broader subscription grouping? User asks \"Identify actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" If body-specific feed exists, likely include it. Should we include arlington-tx? It says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" This committee is not Council or P&Z. So not appropriate. But user says \"Consider broader subscription groupings independently of who convened.\" However description limits to Council and P&Z. So no.\n\nNeed maybe bodies includes actual body \"Community and Neighborhood Development Committee\" and maybe City of Arlington? The title says CITY OF ARLINGTON, Office of City Manager. But convened body is committee. Need identify municipal body. Evidence refs for body: retained-agenda and provider-player. Feed slug. Publication action assign_existing. Evidence ref ids overall maybe both. Missing evidence? Any joint meeting? Agenda only committee, no proven participants. Need name every proven participant in joint meeting. Not joint. Bodies array only the committee.\n\nCould there be issue: Existing feed \"arlington-tx-community-and-neighborhood-development-committee\" title \"Arlington: Community and Neighborhood Development Committee\". Good.\n\nPublication action assign_existing.\n\nCase_id echo.\n\nRationale concise with cited evidence. Missing evidence maybe empty array. But need mention no joint participants? Missing evidence array could be empty. But schema requires missing_evidence. We can put [] if none.\n\nNeed ensure JSON valid.\n\nBut let's thoroughly analyze per instructions.\n\nEvidence:\n- retained-agenda: source_span includes Office of City Manager, \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\", telephone meeting June 9 2020 9:15 A.M. Agenda items CDBG CV CARES Act Applications, HOME Waivers for COVID-19. This proves body.\n- provider-player: title \"Community and Neighborhood Development Committee Video Player and Subtitles...\" and recording ID. Proves recording belongs to that committee.\n\nExisting feeds:\n- arlington-tx-community-and-neighborhood-development-committee matches body.\n- arlington-tx All Meetings description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Does it encompass all? The slug \"arlington-tx\" and title \"Arlington \u2014 All Meetings\" maybe a generic feed. But description says Council and P&Z. The user says \"Identify the actual body/program separately from its subscription grouping\" and \"Select ALL appropriate existing feed slugs under supplied publication rules.\" \"Consider broader subscription groupings independently of who convened the recording.\" Hmm, maybe if there is an all meetings feed, any Arlington meeting could belong? But the description specifically: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Not all city bodies. The title says All Meetings but description narrows. Which controls? The publication rules? It says existing feeds. We need not invent. \"arlington-tx\" slug might be a general feed. But \"All Meetings\" could include all Arlington meetings. However description says only Council and P&Z. The instructions: \"Identify the actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" This might mean if a body has a feed and also a broader city feed, include both? The provided existing feeds include \"Arlington \u2014 All Meetings\" with slug arlington-tx. But its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So not all meetings despite title. The committee meeting is neither Council nor P&Z. So should not select arlington-tx. If the description were \"All public meetings\", then include. Here not. So only specific feed.\n\nCould there be another body: \"Office of the City Manager\" is not a municipal body? It's an office. The agenda is issued by Office of City Manager, but convened body is committee. We should not include City Manager as body.\n\nCould there be \"City of Arlington\" as municipal body? The committee is a city committee. The body name in existing feed is \"Community and Neighborhood Development Committee\". That's sufficient. The schema bodies: IdentifiedBody name. Could include \"City of Arlington Community and Neighborhood Development Committee\"? But feed title says \"Arlington: Community and Neighborhood Development Committee\". The agenda says \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". We can name exactly \"Community and Neighborhood Development Committee\". That matches feed.\n\nNeed maybe include \"City of Arlington\" as parent? The question: \"Which municipal body or bodies does this recording belong to?\" Could be the committee. \"Determine the convening institution from supplied official evidence\". The convening institution is City of Arlington? But body is committee. The feed is committee. The schema bodies likely the specific body. We can include one body.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\"].\n\nMissing evidence: [] maybe. But if no missing evidence, empty. However the instructions say \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected other. So empty.\n\nRationale: \"retained-agenda identifies the convened body as the Community and Neighborhood Development Committee, City of Arlington, June 9, 2020, telephone meeting. provider-player titles the recording as Community and Neighborhood Development Committee. existing feed arlington-tx-community-and-neighborhood-development-committee matches this body. No evidence of joint participation; arlington-tx all-meetings feed is described for Council and Planning & Zoning, so not selected.\"\n\nNeed ensure rationale maxLength 2000. Good.\n\nBut let's consider if there is any possibility that \"Community and Neighborhood Development Committee\" is not a municipal body but a committee of City Council? It is a committee. Existing feed. So assign.\n\nCould there be \"Housing Finance Corporation\" because CDBG/HOME? No, agenda items are CDBG and HOME waivers. But the body is committee. The Housing Finance Corporation is separate. Not proven.\n\nCould there be \"Economic Development Committee\"? No.\n\nCould there be \"Planning and Zoning Commission\"? No.\n\nCould there be \"Arlington Tomorrow Foundation\"? No.\n\nSo final JSON.\n\nNeed output only JSON. Ensure no markdown.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-05315b3b1cfb9d029ee8ed70\",\n  \"bodies\": [\n    {\n      \"name\": \"Community and Neighborhood Development Committee\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"arlington-tx-community-and-neighborhood-development-committee\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"retained-agenda shows the convened body as the Community and Neighborhood Development Committee, City of Arlington, for a June 9, 2020 telephone meeting. provider-player titles the same recording as Community and Neighborhood Development Committee. The existing feed arlington-tx-community-and-neighborhood-development-committee is the configured feed for that body. No evidence proves any joint participant or another municipal body; the arlington-tx all-meetings feed description is limited to Council and Planning & Zoning and is not selected.\"\n}\n\nCheck if \"arlington-tx all-meetings feed\" description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Yes.\n\nShould we include \"City of Arlington\" in body name? The body is \"Community and Neighborhood Development Committee\". The agenda says \"CITY OF ARLINGTON\" above. Could body be \"City of Arlington Community and Neighborhood Development Committee\"? The feed title is \"Arlington: Community and Neighborhood Development Committee\". The schema name max 300. Either is fine. But to match feed, use \"Community and Neighborhood Development Committee\". The evidence supports that. Maybe include \"City of Arlington\" to disambiguate? The feed slug already. The question asks municipal body. The body is the committee of City of Arlington. The name in agenda: \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". I can name \"Community and Neighborhood Development Committee, City of Arlington\". But feed title is \"Arlington: Community and Neighborhood Development Committee\". The IdentifiedBody name should be the body. \"Community and Neighborhood Development Committee\" is fine. If I add City of Arlington, it's still accurate. But schema likely expects exact body. I'll use \"Community and Neighborhood Development Committee\" to match feed.\n\nEvidence_ref_ids: include both. For bodies, evidence_ref_ids both. Overall both.\n\nMissing evidence: empty array. Is there a need to mention no joint meeting? Not missing. Could put [] .\n\nPublication action: assign_existing.\n\nFeed slugs: one.\n\nReturn only JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792007950,
+    "id": "4cbb16d6f96631088b58ebdda3d21809",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 2049,
+      "completion_tokens": 2257,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 2049,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 1651,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 2291,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4548
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

@@ -1,0 +1,133 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-98b938d821e0d41caa8a48a6",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No supplied evidence identifies a convened municipal body, board, commission, or committee; the only official evidence (provider-player) is a video-player page whose title/index text names a school dedication ceremony, not a governing body or its membership."
+    ],
+    "publication_action": "exclude_event",
+    "rationale": "Official evidence provider-player shows the recording is 'George Herbert Walker Bush Elementary Dedication' (Addison, TX, 2011-12-09), i.e., a dedication ceremony. Under the supplied publication policy, ceremonies and dedications are excluded from body feeds, so publication_action is exclude_event and no existing feed slug is applicable. No convened body or participant can be proven from the supplied evidence: the title names an event, not a body, and there is no agenda, roster, minutes, or motion evidence establishing ownership by any municipal body or program (the identity rule forbids inferring a body from venue, topic words, or city name). Because the policy explicitly excludes dedications, this is a policy-based exclusion rather than an ownership gap requiring unresolved; the remaining gap (no proof of any convening body or joint participants) is recorded in missing_evidence."
+  },
+  "attempt_id": "e447425ed9a04ceb8701cd1748de0c69",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-98b938d821e0d41caa8a48a6",
+  "case_input_hash": "a10eb51712e2c12d131352b20e6c5209701725bd3fd7f897c35a577544688925",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.174292000003334
+    }
+  ],
+  "end_to_end_seconds": 46.05692858299881,
+  "finished_at": "2026-10-14T20:58:40.802699+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T20:57:54.745479+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2591bdc5e0d1e6c8749fb899e8495f5db530452dacee473828232e327af89139",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 200,
+    "completion_tokens": 487,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 200,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 1250,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 1634,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 2121
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-98b938d821e0d41caa8a48a6\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"exclude_event\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"No supplied evidence identifies a convened municipal body, board, commission, or committee; the only official evidence (provider-player) is a video-player page whose title/index text names a school dedication ceremony, not a governing body or its membership.\"],\"rationale\":\"Official evidence provider-player shows the recording is 'George Herbert Walker Bush Elementary Dedication' (Addison, TX, 2011-12-09), i.e., a dedication ceremony. Under the supplied publication policy, ceremonies and dedications are excluded from body feeds, so publication_action is exclude_event and no existing feed slug is applicable. No convened body or participant can be proven from the supplied evidence: the title names an event, not a body, and there is no agenda, roster, minutes, or motion evidence establishing ownership by any municipal body or program (the identity rule forbids inferring a body from venue, topic words, or city name). Because the policy explicitly excludes dedications, this is a policy-based exclusion rather than an ownership gap requiring unresolved; the remaining gap (no proof of any convening body or joint participants) is recorded in missing_evidence.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is a dedication ceremony. Policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So publication_action = exclude_event.\n\nBodies: The recording is a dedication of an elementary school. Is there a convened municipal body? No proven body. Evidence is only the title. Ownership cannot be established for a body \u2014 but the policy says dedications are excluded. Should we return exclude_event with empty bodies? The question says \"If ownership cannot be established, return unresolved...\" But the policy explicitly excludes ceremonies/dedications. The recording is clearly a dedication event, not a meeting of a municipal body. Policy applies \u2192 exclude_event.\n\nBodies: none proven. Actually the school dedication \u2014 the body might be Addison? But no evidence of a municipal body convening. I'd return bodies: [] and feed_slugs: [] and publication_action: exclude_event.\n\nMissing evidence: evidence establishing a convened municipal body.\n\nRationale citing policy events rule.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is a dedication ceremony. Policy: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So publication_action = exclude_event.\n\nBodies: The recording is a dedication of an elementary school. Is there a convened municipal body? No proven body. Evidence is only the title. Ownership cannot be established for a body \u2014 but the policy says dedications are excluded. Should we return exclude_event with empty bodies? The question says \"If ownership cannot be established, return unresolved...\" But the policy explicitly excludes ceremonies/dedications. The recording is clearly a dedication event, not a meeting of a municipal body. Policy applies \u2192 exclude_event.\n\nBodies: none proven. Actually the school dedication \u2014 the body might be Addison? But no evidence of a municipal body convening. I'd return bodies: [] and feed_slugs: [] and publication_action: exclude_event.\n\nMissing evidence: evidence establishing a convened municipal body.\n\nRationale citing policy events rule.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792011516,
+    "id": "f53ccdacfeff8abb6be52b8e5d8995ed",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 200,
+      "completion_tokens": 487,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 200,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 1250,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 1634,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 2121
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

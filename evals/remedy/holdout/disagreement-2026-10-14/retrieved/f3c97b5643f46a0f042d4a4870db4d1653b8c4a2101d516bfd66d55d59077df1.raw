@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2024 Bond Streets and Transportation Subcommittee (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Dallas 2024 bond Streets and Transportation subcommittee proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Dallas 2024 bond Streets and Transportation subcommittee proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/artwork.jpg</url>
+      <title>Dallas: 2024 Bond Streets and Transportation Subcommittee</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/</link>
+    </image>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Subcommittee Meeting – Oct 27, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/8578348e702caf35/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/277830">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/8578348e702caf35.json" type="application/json+chapters"/>
+      <pubDate>Fri, 27 Oct 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">8578348e702caf35</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6068</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Subcommittee Meeting – Oct 26, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/b0471f29622b8165/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/277827">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/b0471f29622b8165.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.vtt" type="text/vtt"/>
+      <pubDate>Thu, 26 Oct 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">b0471f29622b8165</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>7238</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets &amp; Transportation Subcommittee Meeting – Aug 22, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/16300c982b358fe9/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/270975">Watch the video</a></li></ul>]]></content:encoded>
+      <pubDate>Tue, 22 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">16300c982b358fe9</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8538</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets &amp; Transportation Subcommittee Meeting – Aug 15, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/427b4f7de9ec3a32/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269609">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/427b4f7de9ec3a32.json" type="application/json+chapters"/>
+      <pubDate>Tue, 15 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">427b4f7de9ec3a32</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8673</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Subcommittee Meeting – Aug 10, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/2d2bc233efd9bf97/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269407">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/2d2bc233efd9bf97.json" type="application/json+chapters"/>
+      <pubDate>Thu, 10 Aug 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">2d2bc233efd9bf97</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6421</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Bond Task Force Streets and Transportation Subcommittee – Jul 17, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/78173acda7f7efea/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/269613">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/78173acda7f7efea.json" type="application/json+chapters"/>
+      <pubDate>Mon, 17 Jul 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">78173acda7f7efea</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6332</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Subcommittee Meeting – Jun 28, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/fe0b7e556c694307/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259827">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/fe0b7e556c694307.json" type="application/json+chapters"/>
+      <pubDate>Wed, 28 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">fe0b7e556c694307</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>8685</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Meeting – Jun 20, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/ae8f0826293006f0/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259823">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/ae8f0826293006f0.json" type="application/json+chapters"/>
+      <pubDate>Tue, 20 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">ae8f0826293006f0</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>6480</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Meeting – Jun 13, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/2b172a76868ad86c/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/259821">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/2b172a76868ad86c.json" type="application/json+chapters"/>
+      <pubDate>Tue, 13 Jun 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">2b172a76868ad86c</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5575</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Meeting – May 25, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/2bc4c440c974dba8/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/233032">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/2bc4c440c974dba8.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/2bc4c440c974dba8-asr-238d7e1368c0.vtt" type="text/vtt"/>
+      <pubDate>Thu, 25 May 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">2bc4c440c974dba8</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/2bc4c440c974dba8-9785d0dc5d82.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3070</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2024 Capital Bond Streets and Transportation Meeting – May 11, 2023</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/ffd212474f9b51ad/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/232343">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2024-bond-streets-and-transportation-subcommittee/chapters/ffd212474f9b51ad.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/76869ed1994f/ffd212474f9b51ad-asr-d1e0abf59631.vtt" type="text/vtt"/>
+      <pubDate>Thu, 11 May 2023 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">ffd212474f9b51ad</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3078</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

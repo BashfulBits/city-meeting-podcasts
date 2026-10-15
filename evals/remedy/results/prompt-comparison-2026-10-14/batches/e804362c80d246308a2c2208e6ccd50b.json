@@ -1,0 +1,128 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-0f3acb8e63bc7affb3b03495",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No agenda, minutes, or event metadata supplied for clip_id=585 that names a convened body.",
+      "The only evidence (provider-player) contains Granicus player-interface boilerplate ('City Page Update Video Player and Subtitles... Navigation Index Documents Share Download Embed...') with no body name, participants, or event description.",
+      "No evidence confirms 'City Page Update' is a promotional/orientation film (which would trigger archive_only) or any other classifiable event type.",
+      "No evidence links this recording to any existing Fort Worth feed or to any real municipal body, configured or unconfigured."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The recording titled 'City Page Update' (2009-08-23, clip_id=585) cannot be attributed to any municipal body from the supplied evidence. The sole evidence ref (provider-player) shows only Granicus video-player UI text and contains no body name, agenda, participants, or event description; 'City Page Update' is a scraped label, not a proven convened body, and matches no existing feed slug. Because ownership cannot be established, the required action is unresolved per the proof rule (missing ownership proof requires unresolved; it does not prove exclusion, and empty feeds alone do not indicate a non-meeting). It is not declared non-government, and archive_only is not applied because no supplied evidence establishes it as a promotional/orientation film. If 'City Page Update' corresponds to a real body or program, no existing feed matches it and the body remains unnamed absent further evidence; no feed slug was invented."
+  },
+  "attempt_id": "729805f5de534bd58cc0e7ae106df273",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-0f3acb8e63bc7affb3b03495",
+  "case_input_hash": "a6d2a30cc6e86ae69c16f7f0d2281449fc9d937528cd2b880f69d578448b8141",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.459934417001932
+    }
+  ],
+  "end_to_end_seconds": 13.981646958000056,
+  "finished_at": "2026-10-14T19:08:42.975975+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T19:08:28.994216+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "30df22198ecba71af51512080644ba6aa05fb755a456041a1747228d6f7b1dc3",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 995,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 632,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3601,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4596
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0f3acb8e63bc7affb3b03495\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"unresolved\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"No agenda, minutes, or event metadata supplied for clip_id=585 that names a convened body.\",\"The only evidence (provider-player) contains Granicus player-interface boilerplate ('City Page Update Video Player and Subtitles... Navigation Index Documents Share Download Embed...') with no body name, participants, or event description.\",\"No evidence confirms 'City Page Update' is a promotional/orientation film (which would trigger archive_only) or any other classifiable event type.\",\"No evidence links this recording to any existing Fort Worth feed or to any real municipal body, configured or unconfigured.\"],\"rationale\":\"The recording titled 'City Page Update' (2009-08-23, clip_id=585) cannot be attributed to any municipal body from the supplied evidence. The sole evidence ref (provider-player) shows only Granicus video-player UI text and contains no body name, agenda, participants, or event description; 'City Page Update' is a scraped label, not a proven convened body, and matches no existing feed slug. Because ownership cannot be established, the required action is unresolved per the proof rule (missing ownership proof requires unresolved; it does not prove exclusion, and empty feeds alone do not indicate a non-meeting). It is not declared non-government, and archive_only is not applied because no supplied evidence establishes it as a promotional/orientation film. If 'City Page Update' corresponds to a real body or program, no existing feed matches it and the body remains unnamed absent further evidence; no feed slug was invented.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"City Page Update\" from Fort Worth, TX, dated 2009-08-23. The only evidence is the Granicus MediaPlayer page for clip_id=585, which just shows the video player UI text (\"City Page Update Video Player and Subtitles... Navigation Index Documents Share Download Embed Streaming Video Support...\"). There's no agenda, no body name, no description of what \"City Page Update\" is.\n\nThe body_label is \"City Page Update City Page Update\" \u2014 this looks like a scraped title, not a real municipal body name.\n\nThe evidence span only contains player UI boilerplate. There is no proven convened body. \"City Page Update\" doesn't match any of the existing feed slugs. It could be a promotional/orientation video about the city's web page (\"City Page\" might be Fort Worth's city website or a newsletter?), but we have no evidence of that.\n\nPer the policy:\n- proof: \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n- archive: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But we don't know it's a promotional film \u2014 we can't assume. Archive_only applies \"when the general approved publication rules apply\" \u2014 but we don't have evidence that this is a promotional/orientation film. The title \"City Page Update\" could suggest it's an update video about the City Page (Fort Worth's employee newsletter is called \"City Page\"? Actually, Fort Worth has a publication called \"City Page\" \u2014 I recall it might be an employee newsletter). But we cannot use outside knowledge; we must only use supplied evidence.\n\nSo ownership cannot be established. Return unresolved, cite the gap, do not invent an institution or declare non-government.\n\nBodies: The identified body \u2014 since we cannot establish ownership, bodies should be empty? The schema requires bodies array (can be empty, maxItems 10). Since no body is proven, bodies: [].\n\nFeed slugs: empty, since no assignment. Publication action: unresolved.\n\nEvidence ref ids: [\"provider-player\"].\n\nMissing evidence: describe the gap \u2014 no agenda, no metadata identifying the convened body; the player page contains only UI boilerplate; no description confirming \"City Page Update\" is a promotional film or a body meeting.\n\nRationale: The recording \"City Page Update\" (2009-08-23, clip_id=585) lacks any evidence identifying a convened municipal body. The only evidence (provider-player) contains Granicus player interface text with no body name, agenda, or event description. The title does not match any existing feed and cannot be attributed to a body. Per the proof rule, missing ownership proof requires unresolved; it does not prove exclusion, and it cannot be confirmed as an archive-only promotional film. Echo case_id: recording-0f3acb8e63bc7affb3b03495.\n\nNote: \"Empty feeds alone do not mean a non-meeting\" and we shouldn't declare it non-government. So unresolved.\n\nReturn JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"City Page Update\" from Fort Worth, TX, dated 2009-08-23. The only evidence is the Granicus MediaPlayer page for clip_id=585, which just shows the video player UI text (\"City Page Update Video Player and Subtitles... Navigation Index Documents Share Download Embed Streaming Video Support...\"). There's no agenda, no body name, no description of what \"City Page Update\" is.\n\nThe body_label is \"City Page Update City Page Update\" \u2014 this looks like a scraped title, not a real municipal body name.\n\nThe evidence span only contains player UI boilerplate. There is no proven convened body. \"City Page Update\" doesn't match any of the existing feed slugs. It could be a promotional/orientation video about the city's web page (\"City Page\" might be Fort Worth's city website or a newsletter?), but we have no evidence of that.\n\nPer the policy:\n- proof: \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n- archive: \"Promotional/orientation films and economic-development luncheons are archive-only.\" But we don't know it's a promotional film \u2014 we can't assume. Archive_only applies \"when the general approved publication rules apply\" \u2014 but we don't have evidence that this is a promotional/orientation film. The title \"City Page Update\" could suggest it's an update video about the City Page (Fort Worth's employee newsletter is called \"City Page\"? Actually, Fort Worth has a publication called \"City Page\" \u2014 I recall it might be an employee newsletter). But we cannot use outside knowledge; we must only use supplied evidence.\n\nSo ownership cannot be established. Return unresolved, cite the gap, do not invent an institution or declare non-government.\n\nBodies: The identified body \u2014 since we cannot establish ownership, bodies should be empty? The schema requires bodies array (can be empty, maxItems 10). Since no body is proven, bodies: [].\n\nFeed slugs: empty, since no assignment. Publication action: unresolved.\n\nEvidence ref ids: [\"provider-player\"].\n\nMissing evidence: describe the gap \u2014 no agenda, no metadata identifying the convened body; the player page contains only UI boilerplate; no description confirming \"City Page Update\" is a promotional film or a body meeting.\n\nRationale: The recording \"City Page Update\" (2009-08-23, clip_id=585) lacks any evidence identifying a convened municipal body. The only evidence (provider-player) contains Granicus player interface text with no body name, agenda, or event description. The title does not match any existing feed and cannot be attributed to a body. Per the proof rule, missing ownership proof requires unresolved; it does not prove exclusion, and it cannot be confirmed as an archive-only promotional film. Echo case_id: recording-0f3acb8e63bc7affb3b03495.\n\nNote: \"Empty feeds alone do not mean a non-meeting\" and we shouldn't declare it non-government. So unresolved.\n\nReturn JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792004854,
+    "id": "a544b06db5da7377ec3e7aa4ac964198",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 995,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 632,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3601,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4596
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -1,0 +1,151 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-76b77357565cdc16153f2a97",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "Recording-specific official evidence identifying the municipal convening institution and clarifying whether \"Minority Leaders and Citizen's Council\" names a formal body, a program, or multiple joint participants."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The supplied official player labels the recording \"Minority Leaders and Citizen's Council\" but provides no agenda, convening statement, or institutional identification. That title alone does not establish a formal municipal body or joint meeting. It does not support assignment to City Council, the Minority and Women Business Enterprise Advisory Committee, or the Public Info Meetings grouping merely through shared words or a possible public-information purpose. No existing feed membership is proven, and the evidence is insufficient to identify a real unconfigured body. Missing ownership proof requires unresolved rather than archival treatment or exclusion."
+  },
+  "attempt_id": "5d1498ff36124a0292f228edf50c5798",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-76b77357565cdc16153f2a97",
+  "case_input_hash": "1c0613a698ec65fc7ce723efbda102edca87bd4bba33bd9f2282936e8742ecfa",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.771439374999318
+    }
+  ],
+  "end_to_end_seconds": 50.40030329199908,
+  "finished_at": "2026-10-14T13:31:51.927415+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T13:31:01.526730+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "c917f411da1882dab48c70404baef33d2643332e20b4e0a74e475bc232609ec3",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3731,
+        "output_tokens": 203
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 203,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3731,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3731,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3934,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-76b77357565cdc16153f2a97\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"unresolved\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"Recording-specific official evidence identifying the municipal convening institution and clarifying whether \\\"Minority Leaders and Citizen's Council\\\" names a formal body, a program, or multiple joint participants.\"],\"rationale\":\"The supplied official player labels the recording \\\"Minority Leaders and Citizen's Council\\\" but provides no agenda, convening statement, or institutional identification. That title alone does not establish a formal municipal body or joint meeting. It does not support assignment to City Council, the Minority and Women Business Enterprise Advisory Committee, or the Public Info Meetings grouping merely through shared words or a possible public-information purpose. No existing feed membership is proven, and the evidence is insufficient to identify a real unconfigured body. Missing ownership proof requires unresolved rather than archival treatment or exclusion.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791984711,
+    "id": "resp_0cc568c5712169a9016acf843d0ff8819d945801796be07ec7",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3731,
+          "output_tokens": 203
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 203,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3731,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3731,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3934,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

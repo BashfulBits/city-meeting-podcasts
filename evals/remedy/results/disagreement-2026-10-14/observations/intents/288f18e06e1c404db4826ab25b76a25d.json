@@ -1,0 +1,18 @@
+{
+  "attempt_id": "288f18e06e1c404db4826ab25b76a25d",
+  "binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "candidate": "jev",
+  "case_id": "recording-76b77357565cdc16153f2a97",
+  "mode": "disagreement_adjudication",
+  "observed_at": "2026-10-14T23:45:17.742635+00:00",
+  "qualified": false,
+  "recipe_hash": "remedy-disagreement-809b76e2feb7514ce1bda3022d1a5abdfedce4a86b3d9f0a8f3dd480cfc8ae8f",
+  "sizes": {
+    "questions": [
+      257,
+      220,
+      220
+    ],
+    "state": 4779
+  }
+}

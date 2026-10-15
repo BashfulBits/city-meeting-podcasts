@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Addison City Council"
+      }
+    ],
+    "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is headed 'REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL' for the Town of Addison, posted by Chris Terry for October 8, 2013 at Town Hall, 5300 Belt Line Rd. The provider player (provider-player) for recording 55599 titles the same proceedings 'Oct 08, 2013 Combined Meeting - Addison, TX' and lists items R1-R5 matching the agenda. The 'Combined Meeting' label therefore denotes the combination of the 6:00 PM work session and 7:30 PM regular meeting of a single body, the Addison City Council - not a joint meeting of multiple bodies. Item R4 is the Council appointing a member TO the Planning and Zoning Commission, so that commission is not a proven participant, and no other body convenes here. The existing feed addison-tx-city-council ('City Council meetings for Addison') matches the proven convened body, so the recording is assigned to that feed."
+  },
+  "attempt_id": "de4895460ed44c97a93d06ecddbe52d4",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+  "case_input_hash": "f22bcc7057bf769a80190d092bd15e2c2f49b4e458029b9b3a097f453f9d3d23",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.832974458004173
+    }
+  ],
+  "end_to_end_seconds": 13.171102207998047,
+  "finished_at": "2026-10-14T21:14:11.236697+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T21:13:58.065484+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5cab3ce9b0185e72c9a402b948e65966b0b33a30add2d28f5de4b28456e1d8c2",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1105,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 759,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2736,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3841
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-746f6b2f2c3ccc31bdc3c418\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-city-council\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda) is headed 'REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL' for the Town of Addison, posted by Chris Terry for October 8, 2013 at Town Hall, 5300 Belt Line Rd. The provider player (provider-player) for recording 55599 titles the same proceedings 'Oct 08, 2013 Combined Meeting - Addison, TX' and lists items R1-R5 matching the agenda. The 'Combined Meeting' label therefore denotes the combination of the 6:00 PM work session and 7:30 PM regular meeting of a single body, the Addison City Council - not a joint meeting of multiple bodies. Item R4 is the Council appointing a member TO the Planning and Zoning Commission, so that commission is not a proven participant, and no other body convenes here. The existing feed addison-tx-city-council ('City Council meetings for Addison') matches the proven convened body, so the recording is assigned to that feed.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nCase ID: recording-746f6b2f2c3ccc31bdc3c418\nCity: addison-tx\nRecording: \"Combined Meeting \u2013 Oct 08, 2013\", recording_id 55599\n\nEvidence:\n1. \"retained-agenda\" - The agenda shows: \"AGENDA REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL, 6:00 PM, October 8, 2013, TOWN HALL, 5300 BELT LINE RD., ADDISON, TX 75254, 6:00PM WORK SESSION; 7:30PM REGULAR MEETING\". Work session discusses Town's Airport Strategic Plan. Regular meeting includes consent agenda, appointments to Planning and Zoning Commission (R4), budget amendments, etc.\n\n2. \"provider-player\" - Swagit player page: \"Oct 08, 2013 Combined Meeting - Addison, TX Video index...\" showing items R1 through R5 matching the agenda.\n\nSo the convened body is the Addison City Council (Regular Meeting of the City Council and/or Work Session of the City Council). The body label \"Combined Meeting\" refers to the combination of work session + regular meeting, both of the City Council. Not a joint meeting of different bodies \u2014 it's one body (City Council) meeting in work session and regular session.\n\nThe body name: \"Addison City Council\" \u2014 evidence: agenda header \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" plus the Town of Addison address. The city is Addison, TX. The agenda is from the Town of Addison (Post Office Box 9010 Addison, Texas). So the body is the Addison City Council (Town of Addison City Council).\n\nFeed slugs: \"addison-tx-city-council\" - \"City Council meetings for Addison.\" That matches.\n\nShould the appointment item R4 (Appointment of a Member to the Planning and Zoning Commission) mean the Planning and Zoning Commission is a participant? No \u2014 the Council appoints a member to the P&Z Commission; the P&Z Commission itself is not convening/participating in this meeting. Per policy \"identity: Use the convened body, not venue, topic or common members\". So only the City Council.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"addison-tx-city-council\"].\n\nBodies: [{\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids overall: [\"retained-agenda\", \"provider-player\"]\n\nMissing evidence: none. Perhaps note that the P&Z Commission isn't a participant \u2014 but that's rationale, not missing evidence. Missing evidence: empty array.\n\nRationale: The agenda (retained-agenda) is for the \"Regular Meeting of the City Council and/or Work Session of the City Council\" of the Town of Addison, dated October 8, 2013, at Town Hall; the provider player (provider-player) lists the same items under \"Oct 08, 2013 Combined Meeting - Addison, TX\" (recording 55599). \"Combined Meeting\" refers to the combined work session and regular meeting of the same body, the Addison City Council \u2014 not a joint meeting of multiple bodies. Item R4 is an appointment TO the Planning and Zoning Commission by the Council; the P&Z Commission is not a proven participant. Assign to existing feed addison-tx-city-council.\n\nEcho case_id. Return JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nCase ID: recording-746f6b2f2c3ccc31bdc3c418\nCity: addison-tx\nRecording: \"Combined Meeting \u2013 Oct 08, 2013\", recording_id 55599\n\nEvidence:\n1. \"retained-agenda\" - The agenda shows: \"AGENDA REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL, 6:00 PM, October 8, 2013, TOWN HALL, 5300 BELT LINE RD., ADDISON, TX 75254, 6:00PM WORK SESSION; 7:30PM REGULAR MEETING\". Work session discusses Town's Airport Strategic Plan. Regular meeting includes consent agenda, appointments to Planning and Zoning Commission (R4), budget amendments, etc.\n\n2. \"provider-player\" - Swagit player page: \"Oct 08, 2013 Combined Meeting - Addison, TX Video index...\" showing items R1 through R5 matching the agenda.\n\nSo the convened body is the Addison City Council (Regular Meeting of the City Council and/or Work Session of the City Council). The body label \"Combined Meeting\" refers to the combination of work session + regular meeting, both of the City Council. Not a joint meeting of different bodies \u2014 it's one body (City Council) meeting in work session and regular session.\n\nThe body name: \"Addison City Council\" \u2014 evidence: agenda header \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" plus the Town of Addison address. The city is Addison, TX. The agenda is from the Town of Addison (Post Office Box 9010 Addison, Texas). So the body is the Addison City Council (Town of Addison City Council).\n\nFeed slugs: \"addison-tx-city-council\" - \"City Council meetings for Addison.\" That matches.\n\nShould the appointment item R4 (Appointment of a Member to the Planning and Zoning Commission) mean the Planning and Zoning Commission is a participant? No \u2014 the Council appoints a member to the P&Z Commission; the P&Z Commission itself is not convening/participating in this meeting. Per policy \"identity: Use the convened body, not venue, topic or common members\". So only the City Council.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"addison-tx-city-council\"].\n\nBodies: [{\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids overall: [\"retained-agenda\", \"provider-player\"]\n\nMissing evidence: none. Perhaps note that the P&Z Commission isn't a participant \u2014 but that's rationale, not missing evidence. Missing evidence: empty array.\n\nRationale: The agenda (retained-agenda) is for the \"Regular Meeting of the City Council and/or Work Session of the City Council\" of the Town of Addison, dated October 8, 2013, at Town Hall; the provider player (provider-player) lists the same items under \"Oct 08, 2013 Combined Meeting - Addison, TX\" (recording 55599). \"Combined Meeting\" refers to the combined work session and regular meeting of the same body, the Addison City Council \u2014 not a joint meeting of multiple bodies. Item R4 is an appointment TO the Planning and Zoning Commission by the Council; the P&Z Commission is not a proven participant. Assign to existing feed addison-tx-city-council.\n\nEcho case_id. Return JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792012383,
+    "id": "a67da9b688586a054d0435ac4c960f4a",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1105,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 759,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2736,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3841
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

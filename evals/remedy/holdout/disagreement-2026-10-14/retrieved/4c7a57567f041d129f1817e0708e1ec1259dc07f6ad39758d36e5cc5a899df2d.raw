@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Arlington: Zoning Board of Adjustment (Audio)</title>
+    <link>https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/</link>
+    <atom:link href="https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Public meeting recordings of the Zoning Board of Adjustment in Arlington.</description>
+    <language>en-us</language>
+    <itunes:author>City of Arlington, TX</itunes:author>
+    <itunes:summary>Public meeting recordings of the Zoning Board of Adjustment in Arlington.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Arlington, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/artwork.jpg</url>
+      <title>Arlington: Zoning Board of Adjustment</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/</link>
+    </image>
+    <item>
+      <title>ZBA Regular Session</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/97655ff1190b7f0e/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=1069">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=1069">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/chapters/97655ff1190b7f0e.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/97655ff1190b7f0e-asr-86e5ef3509ea.vtt" type="text/vtt"/>
+      <pubDate>Thu, 31 May 2012 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">97655ff1190b7f0e</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/97655ff1190b7f0e-7e29400252e6.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>1026</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

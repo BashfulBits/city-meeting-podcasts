@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Town of Addison Tax Increment Reinvestment Zone #1 Board of Directors"
+      }
+    ],
+    "case_id": "recording-e85c0b9a114463b03d60a457",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "addison-tx-tif"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda expressly convenes the Town of Addison Tax Increment Reinvestment Zone #1 Board of Directors, and the recording's call to order confirms that identity. Assign to the configured TIF family feed under the publication rule for proven reinvestment-zone boards; the actual body remains the numbered TIRZ #1 Board, not the subscription grouping. City Council is not established as a joint convening body: shared membership and the agenda's closed-meeting boilerplate do not establish a separate Council meeting, and the agenda distinguishes the Board's recommendation from subsequent Council approval."
+  },
+  "attempt_id": "3181e8e17cca4f72b25a7b590c2e1f49",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-e85c0b9a114463b03d60a457",
+  "case_input_hash": "6326d624b7509e80f3cbcc6dd84035cbedb603fb98408e9babb26f1da6bc2062",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.851705667002534
+    }
+  ],
+  "end_to_end_seconds": 38.01884904199687,
+  "finished_at": "2026-10-14T22:03:11.905094+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T22:02:33.886016+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "49091254f03f94ebc53edd28d1dc6661f14acff44f447d70783fd9d503378284",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3769,
+        "output_tokens": 216
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 216,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3769,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3769,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3985,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-e85c0b9a114463b03d60a457\",\"bodies\":[{\"name\":\"Town of Addison Tax Increment Reinvestment Zone #1 Board of Directors\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"addison-tx-tif\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official agenda expressly convenes the Town of Addison Tax Increment Reinvestment Zone #1 Board of Directors, and the recording's call to order confirms that identity. Assign to the configured TIF family feed under the publication rule for proven reinvestment-zone boards; the actual body remains the numbered TIRZ #1 Board, not the subscription grouping. City Council is not established as a joint convening body: shared membership and the agenda's closed-meeting boilerplate do not establish a separate Council meeting, and the agenda distinguishes the Board's recommendation from subsequent Council approval.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792015391,
+    "id": "resp_03d83ff7b291bc55016acffc1a70c08199a4a89d7de88ed3b5",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3769,
+          "output_tokens": 216
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 216,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3769,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3769,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3985,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
