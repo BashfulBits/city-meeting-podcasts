@@ -651,18 +651,9 @@ def build_runtime_report(
         {"slug": row["slug"], "title": row.get("podcast_title") or row["slug"]}
         for row in evidence.get("existing_feeds", [])
     ]
-    feed_slugs = {feed["slug"] for feed in feeds}
-    extra_slugs = set()
-    if adjudication and adjudication.deepseek:
-        extra_slugs.update(adjudication.deepseek.decision.target_feeds)
-        new_feed_slug = adjudication.deepseek.decision.new_feed_slug
-        if new_feed_slug:
-            extra_slugs.add(new_feed_slug)
-    candidates = sorted(
-        feed_slugs | {slug for vote in initial for slug in vote.decision.target_feeds} | extra_slugs
-    )
-    labels = {row["slug"]: row["title"] for row in feeds}
-    feeds = [*feeds, *[{"slug": slug, "title": slug} for slug in candidates if slug not in labels]]
+    # Manual disposition must let a maintainer choose any feed on this source, including a
+    # reasonable target omitted by every model. These options come from local evidence, never
+    # model-supplied slugs.
     report_input = P3ReportInput(
         schema_version=1,
         finding_id=finding_id,

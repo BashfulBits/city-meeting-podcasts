@@ -27,7 +27,6 @@ import itertools
 import json
 import re
 import subprocess
-import textwrap
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -393,9 +392,8 @@ def format_p3_manual_issue(
         rows.append(f"### `{slug}`\n\n{safe_label}\n\n")
         rows.extend(
             [
-                f"- [ ] Correct / include `{slug}`\n",
-                f"- [ ] Possible / hold `{slug}`\n",
-                f"- [ ] Incorrect / exclude `{slug}`\n\n",
+                f"- [ ] Include `{slug}`\n",
+                f"- [ ] Exclude `{slug}`\n\n",
             ]
         )
     body = (
@@ -404,7 +402,7 @@ def format_p3_manual_issue(
         f"Policy SHA-256: `{decision.policy_hash}`\n\n"
         f"Reason: {html.escape(decision.reason)}\n\n"
         "Evidence summary (quoted as data):\n\n"
-        f"{textwrap.indent(evidence_markdown.strip(), '    ', predicate=lambda _: True)}\n\n"
+        f"<pre>{html.escape(evidence_markdown.strip(), quote=False)}</pre>\n\n"
         "## Feed-by-feed disposition\n\n"
         + ("".join(rows) if rows else "No candidate feeds were supplied.\n\n")
         + "## Overall disposition\n\n"
@@ -1443,6 +1441,7 @@ def write_evidence_file(
     ]
     payload = {
         "schema_version": 1,
+        "collected_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "sources": bundles,
         "digest": sha256(json.dumps(bundles, sort_keys=True, default=str).encode()).hexdigest(),
     }

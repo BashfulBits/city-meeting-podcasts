@@ -1,9 +1,9 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evidence accepted for implementation; P2 integration and P3 daily
-Worker caller are in progress; route activation and P4–P5 remain gated.**
-**Revised:** 2026-10-15 after the P3 daily caller and append-only observation log were added in
-PR #2447.
+**Status: P0 complete; P1 evidence accepted for implementation; P2/P3 GitHub handoff in progress;
+route activation and P4–P5 remain gated.**
+**Revised:** 2026-10-15 after the daily caller (#2447) and bounded publication/P2 command handoff
+were added in PR #2449.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -1371,10 +1371,11 @@ routes or change production behavior.
    proposal and PR candidate, still requiring human review and merge.
 5. **Manual disposition:** if adjudicators disagree, either abstains, selects “neither proposal” or
    “insufficient evidence,” fails transport/schema/identity checks, or deterministic validation
-   fails, create a GitHub issue with the evidence and explicit option checkboxes for each feed and
-   disposition. For every candidate feed, offer `correct/include`, `possible/hold`, and
-   `incorrect/exclude` boxes, plus overall `no feed assignment` and `hold for future evidence`
-   choices. A human selects the disposition; do not retry the semantic escalation.
+   fails, create a GitHub issue with the evidence and explicit include/exclude checkboxes for each
+   candidate feed, plus overall `no feed assignment` and `hold for future evidence` choices. A
+   human decides what goes in and out; there is no per-feed “possible” disposition. A human may
+   defer the whole finding while waiting for additional meetings or other material evidence. Do
+   not retry the semantic escalation.
 
 JEV's bounded choice is A, B, neither complete proposal, or insufficient evidence; it also returns
 independent support probabilities for A/B. “Neither” and “insufficient evidence” are safe holds,
@@ -1389,10 +1390,12 @@ default-effort evaluation coverage, and JEV's pilot-versus-dispatch distinction 
 the evaluation records. It does not change `config/remedy.yml`, enable runtime routing, publish
 feeds, or merge PRs.
 
-**Remaining production gates:** reconcile exact route catalog entries; complete any remaining
-durable P2 policy, evidence and decision-ledger contracts; and implement JEV through the documented
-review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy that integration
-gate. Until these gates pass, production publication remains manual.
+**Maintainer acceptance update (2026-10-15):** the evidence and methods already preserved under
+`evals/remedy/` satisfy the P1 evaluation acceptance criterion. Do not block P3 on another model
+comparison or completion of review/49's separate weekly judge league. P3 reuses the merged review/49
+Worker and JEV adapter. This changes the implementation gate only; runtime verification of exact
+physical route, serving identity, reasoning controls, and current admission remains required. The
+production remedy configuration remains shadowed until those checks pass.
 
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
@@ -1429,7 +1432,7 @@ Worker handles. Stable recipe hashes make enqueue/reconciliation idempotent acro
 runs. A terminal failure or missing/unknown result cannot be promoted to a vote. Append P2 decision
 events only for human dispositions; those events may reference the P3 report artifact.
 
-**P3 daily caller implementation (PR #2447, not yet merged):** `scripts/remedy_p3_daily.py` runs
+**P3 daily caller implementation (PR #2447, merged 2026-10-15):** `scripts/remedy_p3_daily.py` runs
 from a dedicated daily GitHub Actions workflow. `citypods.remedy_p3_runner` submits the initial
 Sol/GLM Flash pair, then one DeepSeek/JEV adjudication round only after a recorded disagreement;
 subsequent daily invocations reconcile the existing Worker handle by its stable recipe hash and
@@ -1439,13 +1442,13 @@ model and exact route ID before they enter the separate observation log. JEV use
 `JevBackend` wire adapter, with explicit A/B/C/D options and strict expected-question matching;
 malformed choices or probabilities remain raw evidence and resolve to the manual issue candidate.
 
-The scheduled caller currently writes an exclusive Actions report artifact and has no feed-file,
-GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed
-or exact route admissions/effort controls fail validation. This implementation PR advances the
-daily dispatch and persistence stage; it does not claim P3 is operationally complete. Remaining P3
-work is to bind consensus candidates to the bounded proposal/issue publication contract and finish
-the durable P2 review/ledger connection, then exercise the enabled schedule only after exact route
-admissions and JEV dispatch qualification are available. No provider calls were made by this PR.
+The merged scheduled caller writes an exclusive Actions report artifact and has no feed-file,
+GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed or
+exact route admissions/effort controls fail validation. P1 acceptance removes the need for another
+comparison; it does not establish unobserved serving-family identity or effort controls. PR #2449
+implements the bounded proposal/issue publisher and P2 human-disposition command. After that PR
+merges, P3 implementation is complete; operational completion still requires authorized runtime
+admissions and a monitored end-to-end cycle. No provider calls were made by PR #2447 or #2449.
 
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
@@ -1458,8 +1461,10 @@ candidate requires the initial validated agreement, or a selected A/B proposal t
 matches DeepSeek and all validators pass. C/D, missing results, mismatches, and validation failure
 cannot produce a PR candidate. Missing route admission returns a policy hold.
 
-`format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, and per-feed
-correct/include, possible/hold, and incorrect/exclude checkboxes plus the two overall hold choices.
+`format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, per-feed include/exclude
+checkboxes, and the two overall hold choices. “Hold for future evidence” is a finding-level defer,
+not a per-feed quality rating; subsequent related meetings or material evidence can renew review
+under the existing P2 `watch`/`blocked` disposition. An unchanged scan does not re-open it.
 It does not write to GitHub. The caller must supply feed names/slugs from locally validated
 evidence. The pure P3 decision engine and local report remain provider-free. A separate daily
 caller uses the review/49 Worker dispatch stack and P3 observation log; it may open proposal PRs or
@@ -1502,9 +1507,36 @@ the production P3 dispatch integration.
 Tests must cover strict input validation, empty-admission holds, exact consensus and adjudication
 replay, manual checkbox output, no input/output overwrite, and proof that CLI execution makes no
 network or GitHub calls. The report must retain the original route/model/reasoning provenance and
-raw response hashes from each vote. The remaining dispatch integration stays gated on separately
-approved route admissions, dispatch-bound JEV qualification, and the still-gated P2 workflow
-connection.
+raw response hashes from each vote.
+
+`citypods.remedy_p3_publication.validated_p3_plan` is the report-to-feed mutation boundary. It
+accepts only a `pr_candidate` with passing deterministic validators, binds it to the exact current
+source evidence hash, recomputes the consensus from route-bound votes using trusted runtime
+admissions, resolves episode IDs locally, and re-runs `validate_proposals` against the current feed
+catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
+and create a human-review PR; it must never push to main or merge. Manual issues must preserve
+per-feed options for every locally configured same-source feed, even when no model suggested it,
+and provide a structured `/body-disposition` action. The command accepts LF or CRLF between the
+command and JSON. The issue must be opened by `github-actions[bot]`; the command must authenticate
+a repository writer, read checked boxes only from the generated issue section, bind the action to
+the exact issue/evidence and current ledger parents, and use `record_decision_action` so the human
+outcome is appended under the remedy lease. Evidence freshness is measured from collection time,
+and stale submissions tell maintainers to wait for refreshed evidence. Model votes remain in the
+P3 observation log and never become P2 decisions.
+
+PR #2449 implements bounded GitHub publication and the P2 issue-command handoff. A separate,
+least-privileged publisher job receives only the current run's short-retention report/evidence
+artifact and can create proposal PRs only from the revalidated mutation plan and
+human-disposition issues with stable finding/evidence keys; issue refresh preserves maintainer notes
+and checked choices only while the evidence binding is unchanged. `/body-disposition` reuses the
+existing issue-comment permission check and command recorder, validates every candidate feed
+checkbox, and appends typed include/exclude choices under the remedy lease. Legacy events omit the
+additive `feed_dispositions` field and retain their prior event IDs. Proposal PRs remain
+human-reviewed; terminal human dispositions close the issue, while a future-evidence hold remains
+open and its checked hold is preserved across ledger-parent refreshes. No publisher merges or writes
+feed files directly on main. Runtime activation
+remains separately gated on exact route admissions, serving identity, and verified reasoning
+controls. A monitored authorized production cycle remains the final operational completion check.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
@@ -3405,8 +3437,10 @@ Verify reports on frozen local fixtures before proposing any scheduled alert act
 
 #### P2c2b exact callable contract, approved transport
 
-Command body is exactly `/citypods-decision` followed by a newline and one JSON object containing
-only the action fields listed above. Reject duplicate JSON keys. No free-form prose parsing.
+Command body is exactly `/body-disposition`, one LF or CRLF newline, and one JSON object
+containing only the action fields listed above. Reject duplicate JSON keys. No free-form prose
+parsing. The target issue must have been opened by `github-actions[bot]`; parse the checked choices
+only inside its generated section.
 The action field `expected_parent_event_ids` becomes the existing event parent list. Provenance is
 empty for a human-only action. `reopen` must use proposed state and null disposition; a terminal
 history can only leave its existing outcome through this explicit action. Diagnostic/conflicting

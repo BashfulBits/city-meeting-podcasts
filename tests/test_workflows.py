@@ -1925,3 +1925,19 @@ def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports
     assert "R2_SECRET_ACCESS_KEY" in run["env"]
     upload = next(step for step in job["steps"] if step.get("name") == "Upload P3 run report")
     assert upload["if"] == "always()"
+    publication_upload = next(
+        step for step in job["steps"] if step.get("name") == "Upload publication inputs"
+    )
+    assert publication_upload["if"] == "steps.p3.outputs.report_ready_count != '0'"
+    publish = workflow["jobs"]["publish"]
+    assert publish["needs"] == "p3"
+    assert job["outputs"]["report_ready_count"] == "${{ steps.p3.outputs.report_ready_count }}"
+    assert publish["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "write",
+    }
+    assert "needs.p3.outputs.report_ready_count != '0'" in publish["if"]
+    assert any(
+        step.get("name") == "Download current-run publication inputs" for step in publish["steps"]
+    )

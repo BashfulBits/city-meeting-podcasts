@@ -19,6 +19,7 @@ from citypods.audit import UnexpectedBodyEvidence, collect_unexpected_bodies
 from citypods.audit_remedy import (
     DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
+    P3_INITIAL_ROUTES,
     REMEDY_CONTRACT,
     BodyDecision,
     BodyDecisions,
@@ -49,10 +50,14 @@ from citypods.audit_remedy import (
     verify_remedy_mutations,
     write_evidence_file,
 )
+from citypods.audit_remedy_report import P3ReportInput, build_p3_report
 from citypods.compute.base import JobResult
 from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
+from citypods.remedy_p3_publication import validated_p3_plan
+from citypods.remedy_p3_runner import P3_ROUTES
+from citypods.remedy_policy import canonical_hash
 
 
 def make_city(slug, body, **source_extra):
@@ -181,6 +186,79 @@ def p3_votes(*, glm_feeds=None):
         p3_vote("beatapi_gpt_6_1_sol_free"),
         p3_vote("orcarouter_zai_glm_5_3_flash_free", target_feeds=glm_feeds),
     ]
+
+
+def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
+    source = {**evidence, "unexpected_findings": [evidence["unexpected_findings"][0]]}
+    finding_id = "finding-1"
+    evidence_hash = canonical_hash(source)
+    policy_hash = "b" * 64
+    votes = [
+        P3Vote(
+            route_id=route,
+            upstream_model="test/upstream",
+            reasoning_level="high",
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            response_hash="c" * 64,
+            decision=BodyDecision(
+                finding_id=finding_id,
+                action="union",
+                target_feeds=["test-city-council"],
+                rationale="Recurring council meetings match the configured feed.",
+            ),
+        )
+        for route in P3_INITIAL_ROUTES
+    ]
+    record = P3ReportInput(
+        schema_version=1,
+        finding_id=finding_id,
+        evidence_hash=evidence_hash,
+        policy_hash=policy_hash,
+        evidence_summary="Recurring council meetings.",
+        feeds=[
+            {"slug": row["slug"], "title": row["podcast_title"]} for row in source["existing_feeds"]
+        ],
+        initial_votes=votes,
+        initial_validators={route: True for route in P3_INITIAL_ROUTES},
+    )
+    report = build_p3_report(record, admitted_routes=set(P3_ROUTES.values()))
+
+    plan, paths = validated_p3_plan(
+        report,
+        source,
+        repo_root=repo,
+        admitted_routes=set(P3_ROUTES.values()),
+    )
+
+    assert report["decision"]["disposition"] == "pr_candidate"
+    assert len(plan.accepted) == 1
+    assert not plan.rejected
+    assert set(paths) >= {"test-city-council", "test-city-library-board"}
+
+    # A feed can disappear or be renamed after the report was built. Revalidation must use
+    # the current repository catalog, even when the report and original evidence are unchanged.
+    paths["test-city-council"].unlink()
+    with pytest.raises(ValueError, match="have no file under config/feeds"):
+        validated_p3_plan(
+            report,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
+
+    forged = {**report, "proposal_candidate": dict(report["proposal_candidate"])}
+    forged["proposal_candidate"]["assignment"] = {
+        **forged["proposal_candidate"]["assignment"],
+        "target_feeds": ["test-city-library-board"],
+    }
+    with pytest.raises(ValueError, match="differs from the agreed route-bound assignment"):
+        validated_p3_plan(
+            forged,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
 
 
 # --- evidence -----------------------------------------------------------------------------
@@ -874,6 +952,7 @@ def test_write_evidence_file_writes_bundle_and_returns_count(repo):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert len(payload["sources"]) == 1
     assert payload["sources"][0]["source_key"] == "test-source"
     assert len(payload["digest"]) == 64
@@ -904,6 +983,7 @@ def test_write_evidence_file_empty_list(tmp_path):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert payload["sources"] == []
     assert isinstance(payload["digest"], str)
     assert len(payload["digest"]) == 64
@@ -1433,15 +1513,15 @@ def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
             ("test-city-library-board", "<b>Library</b>"),
             ("test-city-council", "Duplicate is removed"),
         ],
-        evidence_markdown="## Evidence\n\nLocally prepared source summary.",
+        evidence_markdown='## Evidence\n\nQuoted "text" & <markup>.',
     )
-    assert body.count("Correct / include") == 2
-    assert body.count("Possible / hold") == 2
-    assert body.count("Incorrect / exclude") == 2
+    assert body.count("Include `") == 2
+    assert body.count("Exclude `") == 2
+    assert "Possible / hold" not in body
     assert "No feed assignment" in body
     assert "Hold for future evidence" in body
     assert "&lt;b&gt;Library&lt;/b&gt;" in body
-    assert "    ## Evidence\n    \n    Locally prepared source summary." in body
+    assert '<pre>## Evidence\n\nQuoted "text" &amp; &lt;markup&gt;.</pre>' in body
 
     with pytest.raises(ValueError, match="invalid candidate feed slug"):
         format_p3_manual_issue(

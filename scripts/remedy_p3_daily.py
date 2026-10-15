@@ -39,7 +39,13 @@ def _collect_evidence(repo_root: Path, path: Path) -> None:
     subprocess.run(command, cwd=repo_root, check=True, timeout=3600)
 
 
-def run_daily(*, repo_root: Path, output: Path, evidence_file: Path | None = None) -> dict:
+def run_daily(
+    *,
+    repo_root: Path,
+    output: Path,
+    evidence_file: Path | None = None,
+    evidence_output: Path | None = None,
+) -> dict:
     site_config = load_site_config(repo_root / "config/site_config.yml")
     remedy_config = RemedyConfig.model_validate(
         yaml.safe_load((repo_root / "config/remedy.yml").read_text(encoding="utf-8"))
@@ -68,6 +74,8 @@ def run_daily(*, repo_root: Path, output: Path, evidence_file: Path | None = Non
     sources = payload.get("sources") if isinstance(payload, dict) else None
     if not isinstance(sources, list):
         raise ValueError("unexpected-body evidence file must contain a sources array")
+    if evidence_output is not None:
+        _write_exclusive(evidence_output, payload)
 
     def lease_factory():
         return acquire(
@@ -111,11 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--evidence-file", type=Path)
+    parser.add_argument("--evidence-output", type=Path)
     args = parser.parse_args(argv)
     result = run_daily(
         repo_root=args.repo_root.resolve(),
         output=args.output.resolve(),
         evidence_file=args.evidence_file.resolve() if args.evidence_file else None,
+        evidence_output=args.evidence_output.resolve() if args.evidence_output else None,
     )
     print(
         json.dumps(

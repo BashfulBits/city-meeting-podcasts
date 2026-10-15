@@ -242,10 +242,18 @@ and the maintainer accepted the gathered P1 evaluation evidence as sufficient to
 implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
 production route configuration remains unchanged. P3's pure consensus decision engine and manual
 issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
-the local replay tool and daily Worker caller/append-only observation log are in PR #2447. The daily
-caller remains report-artifact-only and closed by shadow mode or missing exact route/effort
-admissions. P3 still needs bounded GitHub proposal/issue publication and its durable P2 workflow
-connection before it is operationally complete; serving-family, effort and JEV dispatch gates remain
+manual issues use binary include/exclude choices per feed, with deferral only at the finding level
+through “hold for future evidence” and the existing P2 watch/blocked disposition.
+The local replay tool and daily Worker caller/append-only observation log shipped in
+[PR #2447](https://github.com/BashfulBits/city-meeting-podcasts/pull/2447), merged 2026-10-15.
+The daily caller remains report-artifact-only and closed by shadow mode or missing exact
+route/effort admissions. The maintainer accepted the existing `evals/remedy/` evidence for the P1
+evaluation criterion; a second broad comparison and review/49's weekly league are not P3
+prerequisites. PR #2449 implements bounded GitHub proposal/issue publication and the P2
+human-disposition command: proposal candidates are revalidated before a human-review PR; manual
+issues bind checked include/exclude choices to typed append-only P2 events. After merge, remaining
+P3 completion is authorized route/effort admission and a monitored end-to-end cycle; production
+behavior stays fail-closed until then. Serving-family, effort and runtime admission checks remain
 explicit. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
@@ -1246,11 +1254,20 @@ repository-wide completeness audit or permission to activate probes.
 
 **2026-10-15 verification record — P3 daily caller PR #2447:** VISION and the Phase-H roadmap
 ordering are unchanged. The P3 catalog narrative matches review/51: the Worker caller and separate
-observation log are in an unmerged PR, while GitHub publication, P2 connection, exact route
-admissions and JEV dispatch qualification remain open; no Shipped status is claimed. The
+observation log shipped in merged #2447, while GitHub publication and the P2 connection remained
+open at that point; exact route admissions and JEV dispatch qualification remained open. No Shipped
+status was claimed for the not-yet-merged items. The
 `changelog.d/p3-daily-worker.md` fragment describes the same scope, and ARCHITECTURE records the
 report-only artifact boundary. Checked 280 Markdown links in this document; all local targets
 resolve. This is a scoped status check, not approval to enable the daily workflow.
+
+**2026-10-15 verification record — P3 GitHub handoff PR #2449:** this entry supersedes the earlier
+#2447 record for current implementation status. PR #2447 is merged; #2449 adds bounded proposal
+PRs, manual issues, and typed P2 feed dispositions using the existing issue reconciliation path.
+PR #2449 remains under review, so no Shipped status is claimed. Production stays shadowed until the
+four exact route/effort admissions pass and a monitored end-to-end cycle completes. Changelog
+content is kept in fragments, with no direct CHANGELOG.md edit. Ruff, formatting, targeted tests,
+and the full local suite passed. This scoped verification does not authorize activation.
 
 ---
 

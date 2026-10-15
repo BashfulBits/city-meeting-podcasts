@@ -118,8 +118,9 @@ def test_report_renders_manual_issue_only_for_failed_consensus():
         admitted_routes=routes,
     )
     assert report["decision"]["disposition"] == "issue_candidate"
-    assert "Correct / include `test-city-council`" in report["manual_issue_candidate"]
-    assert "Possible / hold `test-city-library-board`" in report["manual_issue_candidate"]
+    assert "Include `test-city-council`" in report["manual_issue_candidate"]
+    assert "Exclude `test-city-library-board`" in report["manual_issue_candidate"]
+    assert "Possible / hold" not in report["manual_issue_candidate"]
 
 
 def test_input_rejects_unknown_admission_claim_and_duplicate_feed():

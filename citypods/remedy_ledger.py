@@ -24,6 +24,8 @@ FIELDS = frozenset(
     "recording_refs provenance rationale artifact_ref approval_ref "
     "external_delivery_id disposition".split()
 )
+LEGACY_FIELDS = FIELDS
+FEED_DISPOSITIONS = frozenset({"include", "exclude"})
 
 
 def _text(value: Any, name: str, nullable: bool = False) -> str | None:
@@ -64,7 +66,9 @@ def decision_id(city: str, source_key: str, policy_id: str, label: str) -> str:
 
 def _canonical(payload: dict) -> dict:
     result = {key: value for key, value in payload.items() if key != "event_id"}
-    for name in ("parent_event_ids", "recording_refs", "provenance"):
+    for name in ("parent_event_ids", "recording_refs", "provenance", "feed_dispositions"):
+        if name not in result or result[name] is None:
+            continue
         result[name] = sorted(result[name], key=canonical_hash)
     return result
 
@@ -87,6 +91,12 @@ class Provenance:
     model_family: str
     reasoning_level: str
     report_hash: str
+
+
+@dataclass(frozen=True)
+class FeedDisposition:
+    feed_slug: str
+    disposition: str
 
 
 @dataclass(frozen=True)
@@ -113,18 +123,28 @@ class RemedyEvent:
     approval_ref: str | None
     external_delivery_id: str | None
     disposition: str | None
+    feed_dispositions: tuple[FeedDisposition, ...] | None = None
 
     def payload(self) -> dict:
         from dataclasses import asdict
 
-        return asdict(self)
+        payload = asdict(self)
+        # Preserve the canonical bytes and event IDs of all pre-field schema-v1 records.
+        if self.feed_dispositions is None:
+            payload.pop("feed_dispositions")
+        return payload
 
 
 def parse_event(payload: dict) -> RemedyEvent:
     """Validate declarations only; never authenticate a caller or fetch a reference."""
-    if not isinstance(payload, dict) or set(payload) != FIELDS:
+    if not isinstance(payload, dict) or frozenset(payload) not in {
+        FIELDS,
+        FIELDS | {"feed_dispositions"},
+    }:
         raise ValueError("event: missing or unknown fields")
     p = dict(payload)
+    if "feed_dispositions" not in p:
+        p["feed_dispositions"] = None
     if type(p["schema_version"]) is not int or p["schema_version"] != 1:
         raise ValueError("schema_version: expected integer 1")
     for name in ("city", "source_key", "policy_id", "normalized_label", "actor_id", "rationale"):
@@ -181,11 +201,37 @@ def parse_event(payload: dict) -> RemedyEvent:
             _hash(entry[name], name) if name == "report_hash" else _text(entry[name], name)
         provenance.append(Provenance(**entry))
     p["provenance"] = tuple(sorted(provenance, key=lambda item: canonical_hash(item.__dict__)))
+    outcome = p["disposition"]
+    feed_dispositions = p["feed_dispositions"]
+    if feed_dispositions is not None:
+        parsed_feed_dispositions = []
+        for entry in _sequence(feed_dispositions, "feed_dispositions"):
+            if not isinstance(entry, dict) or set(entry) != {"feed_slug", "disposition"}:
+                raise ValueError("feed_dispositions: invalid fields")
+            slug = _text(entry["feed_slug"], "feed_slug")
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+                raise ValueError("feed_dispositions: invalid feed slug")
+            value = entry["disposition"]
+            if value not in FEED_DISPOSITIONS:
+                raise ValueError("feed_dispositions: expected include or exclude")
+            parsed_feed_dispositions.append(FeedDisposition(slug, value))
+        slugs = [item.feed_slug for item in parsed_feed_dispositions]
+        if len(slugs) != len(set(slugs)):
+            raise ValueError("feed_dispositions: feed slugs must be unique")
+        if not parsed_feed_dispositions and not (
+            (p["state"] == "blocked" and outcome == "watch")
+            or (p["state"] == "excluded" and outcome == "not_pursued")
+        ):
+            raise ValueError(
+                "feed_dispositions: empty choices require a terminal hold/no-assignment"
+            )
+        p["feed_dispositions"] = tuple(
+            sorted(parsed_feed_dispositions, key=lambda item: item.feed_slug)
+        )
     for name in ("artifact_ref", "approval_ref", "external_delivery_id"):
         _text(p[name], name, True)
         if name != "external_delivery_id" and p[name] is not None:
             _policy_approval(p[name])
-    outcome = p["disposition"]
     if (
         p["state"] in {"covered", "excluded"}
         or outcome in {"assigned", "excluded", "not_pursued", "watch"}
