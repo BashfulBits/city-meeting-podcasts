@@ -3474,6 +3474,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             row.state === "completed"
               ? modelForRouteId(row.lease_route_id, dispatchLimits)
               : null,
+          route_id: row.state === "completed" ? row.lease_route_id : null,
         });
       }
     }

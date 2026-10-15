@@ -1372,6 +1372,7 @@ class LiteLLMBackend(Backend):
         output: Any,
         structured_output: str | None,
         model: str | None = None,
+        route_id: str | None = None,
     ) -> JobResult:
         """Validate and normalize a terminal Worker response from either POST or poll."""
         if not isinstance(output, Mapping):
@@ -1382,7 +1383,13 @@ class LiteLLMBackend(Backend):
         # be persisted/acknowledged as a genuine successful completion.
         self._raise_if_upstream_passthrough(output)
         self._validate_reconciled(output, structured_output)
-        return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
+        return JobResult(
+            task=task,
+            recipe_hash=recipe_hash,
+            output=output,
+            model=model,
+            route_id=route_id,
+        )
 
     def _deferred_handle(
         self,
@@ -2555,7 +2562,12 @@ class LiteLLMBackend(Backend):
         results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
 
-        def _resolve_completed(h: JobHandle, result_key: str, completed_model: str | None = None):
+        def _resolve_completed(
+            h: JobHandle,
+            result_key: str,
+            completed_model: str | None = None,
+            completed_route_id: str | None = None,
+        ):
             """Fetch, validate and persist one completed job's result.
 
             Runs on a worker thread. Each handle touches only keys derived from its own
@@ -2588,7 +2600,15 @@ class LiteLLMBackend(Backend):
                     output=output,
                     structured_output=h.structured_output,
                     model=completed_model or h.model,
+                    route_id=completed_route_id,
                 )
+                if completed_route_id:
+                    route = ROUTE_REGISTRY.get(completed_route_id)
+                    if route is not None:
+                        res = replace(
+                            res,
+                            upstream_model=route.upstream_model or None,
+                        )
                 write_deferred(storage, h.recipe_hash, res)
             except LLMBackendError as exc:
                 return "error", exc
@@ -2611,7 +2631,7 @@ class LiteLLMBackend(Backend):
 
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
         # is pure bookkeeping over the already-fetched statuses.
-        completed: list[tuple[JobHandle, str, str | None]] = []
+        completed: list[tuple[JobHandle, str, str | None, str | None]] = []
         payload_keys: dict[str, str | None] = {}
         for h in v2_handles:
             st = statuses.get(h.ref)
@@ -2625,7 +2645,13 @@ class LiteLLMBackend(Backend):
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
-                completed.append((h, st["result_key"], st.get("model")))
+                route_id = st.get("route_id")
+                if route_id is not None and not isinstance(route_id, str):
+                    results[h.ref] = LLMBackendError(
+                        "LLM dispatch v2 poll-batch returned malformed route identity"
+                    )
+                    continue
+                completed.append((h, st["result_key"], st.get("model"), route_id))
                 payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
@@ -2649,12 +2675,14 @@ class LiteLLMBackend(Backend):
                     outcomes = list(pool.map(lambda item: _resolve_completed(*item), completed))
             else:
                 outcomes = [_resolve_completed(*item) for item in completed]
-            for (h, _key, _model), (kind, value) in zip(completed, outcomes, strict=True):
+            for (h, _key, _model, _route_id), (kind, value) in zip(
+                completed, outcomes, strict=True
+            ):
                 resolved.append((h, kind, value))
 
         acked_refs: list[str] = []
         consumed: list[tuple[str, str, str | None]] = []
-        result_keys = {h.ref: key for h, key, _model in completed}
+        result_keys = {h.ref: key for h, key, _model, _route_id in completed}
         for h, kind, value in resolved:
             if kind == "done":
                 results[h.ref] = value

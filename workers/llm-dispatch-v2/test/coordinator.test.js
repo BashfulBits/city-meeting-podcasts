@@ -723,6 +723,7 @@ test("pollBatch reports the model the completed route actually served, not just 
 
   const pollRes = await coordinator.pollBatch(["j1"]);
   assert.equal(pollRes.statuses[0].model, "backup/model");
+  assert.equal(pollRes.statuses[0].route_id, "backup-route");
 });
 
 test("terminalFeed is keyset paginated and cancelBatch removes queued work from dispatch", async () => {

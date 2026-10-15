@@ -726,6 +726,7 @@ def test_poll_batch_fetches_completed_results_from_b2():
                     "id": "j1",
                     "state": "completed",
                     "result_key": "results/j1/lt1.json",
+                    "route_id": "gemini_3_flash_preview_primary",
                     "attempts": 1,
                 },
                 {"id": "j2", "state": "queued", "result_key": None, "attempts": 0},
@@ -745,6 +746,8 @@ def test_poll_batch_fetches_completed_results_from_b2():
     poll_results = backend.poll_batch([h1, h2])
     assert "j1" in poll_results
     assert isinstance(poll_results["j1"], JobResult)
+    assert poll_results["j1"].route_id == "gemini_3_flash_preview_primary"
+    assert poll_results["j1"].upstream_model == "gemini-3-flash-preview"
     assert poll_results["j1"].output == {"choices": [{"message": {"content": "completed result"}}]}
     assert poll_results["j2"] is None
 

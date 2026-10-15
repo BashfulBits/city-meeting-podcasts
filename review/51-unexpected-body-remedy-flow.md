@@ -1,8 +1,9 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evidence accepted by maintainer for P3 implementation; P2 integration,
-P3 dispatch integration, and P4–P5 remain gated.**
-**Revised:** 2026-10-14 after P3 consensus-routing decision and evaluation capture.
+**Status: P0 complete; P1 evidence accepted for implementation; P2 integration and P3 daily
+Worker caller are in progress; route activation and P4–P5 remain gated.**
+**Revised:** 2026-10-15 after the P3 daily caller and append-only observation log were added in
+PR #2447.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
@@ -1427,6 +1428,24 @@ observations only in this log; the existing deferred registry remains authoritat
 Worker handles. Stable recipe hashes make enqueue/reconciliation idempotent across daily GitHub
 runs. A terminal failure or missing/unknown result cannot be promoted to a vote. Append P2 decision
 events only for human dispositions; those events may reference the P3 report artifact.
+
+**P3 daily caller implementation (PR #2447, not yet merged):** `scripts/remedy_p3_daily.py` runs
+from a dedicated daily GitHub Actions workflow. `citypods.remedy_p3_runner` submits the initial
+Sol/GLM Flash pair, then one DeepSeek/JEV adjudication round only after a recorded disagreement;
+subsequent daily invocations reconcile the existing Worker handle by its stable recipe hash and
+never create a second submission for a pending job. Every request is queue-only, free-route only,
+and pinned to its configured physical route. Completed results must echo both the expected logical
+model and exact route ID before they enter the separate observation log. JEV uses the review/49
+`JevBackend` wire adapter, with explicit A/B/C/D options and strict expected-question matching;
+malformed choices or probabilities remain raw evidence and resolve to the manual issue candidate.
+
+The scheduled caller currently writes an exclusive Actions report artifact and has no feed-file,
+GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed
+or exact route admissions/effort controls fail validation. This implementation PR advances the
+daily dispatch and persistence stage; it does not claim P3 is operationally complete. Remaining P3
+work is to bind consensus candidates to the bounded proposal/issue publication contract and finish
+the durable P2 review/ledger connection, then exercise the enabled schedule only after exact route
+admissions and JEV dispatch qualification are available. No provider calls were made by this PR.
 
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round

@@ -1077,8 +1077,16 @@ content-addressed objects under `state/remedy/p3-observations/<source>/`. Append
 use the shared remedy maintenance lease and verify the object after writing. Repeated collection of
 the same recipe/role is idempotent; a conflicting result is rejected. Pending Worker handles stay
 in the existing deferred-request registry. P3 votes remain separate from
-`citypods.remedy_ledger`'s human dispositions. This storage contract is implemented, while the
-daily Worker caller and scheduled workflow remain pending.
+`citypods.remedy_ledger`'s human dispositions. The daily Worker caller and scheduled workflow are
+implemented in PR #2447: it submits or reconciles stable recipe hashes, pins all four physical
+routes, validates completed route identity, and emits report artifacts without activating the
+current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
+Deployment remains fail-closed until exact routes have valid runtime admissions and reasoning
+controls; the P1 evidence decision allowed implementation, not activation. The caller does not
+mutate feed files, open GitHub issues/PRs, or record model responses as human P2 dispositions.
+Its current output is an Actions report artifact; automatic proposal/issue publication and the P2
+human-disposition connection remain unfinished. No P3 calls are enabled by the repository's
+current shadow configuration.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same

@@ -1910,3 +1910,18 @@ def test_discovery_has_bounded_weekly_and_manual_time_without_extending_ordinary
     assert "inputs.discovery_enabled == true" in timeout
     assert "180 || 120" in timeout
     assert "&& 300 ||" in timeout
+
+
+def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports():
+    workflow, job = _job("remedy-p3-daily.yml", "p3")
+    assert set(_on(workflow)) == {"schedule", "workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert "github.ref == 'refs/heads/main'" in job["if"]
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    run = next(step for step in job["steps"] if step.get("name") == "Run fail-closed daily P3 pass")
+    assert run["env"]["AUDIO_STORAGE_BACKEND"] == "routing"
+    assert "LLM_DISPATCH_V2_URL" in run["env"]
+    assert "B2_APP_KEY" in run["env"]
+    assert "R2_SECRET_ACCESS_KEY" in run["env"]
+    upload = next(step for step in job["steps"] if step.get("name") == "Upload P3 run report")
+    assert upload["if"] == "always()"

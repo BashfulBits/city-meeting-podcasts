@@ -133,6 +133,21 @@
       "reasoning": {},
       "write_units_per_job": 12
     },
+    "remedy:p3": {
+      "reserved_write_units": 0,
+      "daily_write_units": 800,
+      "models": [
+        "openai/gpt-6.1-sol",
+        "zai/glm-5.3-flash",
+        "deepseek/deepseek-v4.1-flash",
+        "typesafe/jev-1.13"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "per_model",
+      "reasoning": {},
+      "write_units_per_job": 4
+    },
     "topic-tags:prelabeler": {
       "reserved_write_units": 1860,
       "daily_write_units": 9600,
