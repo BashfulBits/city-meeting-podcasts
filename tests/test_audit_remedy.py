@@ -235,6 +235,18 @@ def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
     assert len(plan.accepted) == 1
     assert not plan.rejected
     assert set(paths) >= {"test-city-council", "test-city-library-board"}
+
+    # A feed can disappear or be renamed after the report was built. Revalidation must use
+    # the current repository catalog, even when the report and original evidence are unchanged.
+    paths["test-city-council"].unlink()
+    with pytest.raises(ValueError, match="have no file under config/feeds"):
+        validated_p3_plan(
+            report,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
+
     forged = {**report, "proposal_candidate": dict(report["proposal_candidate"])}
     forged["proposal_candidate"]["assignment"] = {
         **forged["proposal_candidate"]["assignment"],
