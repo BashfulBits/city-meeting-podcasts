@@ -1509,8 +1509,9 @@ raw response hashes from each vote.
 
 `citypods.remedy_p3_publication.validated_p3_plan` is the report-to-feed mutation boundary. It
 accepts only a `pr_candidate` with passing deterministic validators, binds it to the exact current
-source evidence hash, resolves episode IDs locally, and re-runs `validate_proposals` against the
-current feed catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
+source evidence hash, recomputes the consensus from route-bound votes using trusted runtime
+admissions, resolves episode IDs locally, and re-runs `validate_proposals` against the current feed
+catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
 and create a human-review PR; it must never push to main or merge. Manual issues must preserve the
 per-feed options and provide a structured `/citypods-decision` action. The issue command must
 authenticate a repository writer, bind the action to the exact issue/evidence and current ledger

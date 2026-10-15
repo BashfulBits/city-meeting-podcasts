@@ -224,12 +224,29 @@ def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
     )
     report = build_p3_report(record, admitted_routes=set(P3_ROUTES.values()))
 
-    plan, paths = validated_p3_plan(report, source, repo_root=repo)
+    plan, paths = validated_p3_plan(
+        report,
+        source,
+        repo_root=repo,
+        admitted_routes=set(P3_ROUTES.values()),
+    )
 
     assert report["decision"]["disposition"] == "pr_candidate"
     assert len(plan.accepted) == 1
     assert not plan.rejected
     assert set(paths) >= {"test-city-council", "test-city-library-board"}
+    forged = {**report, "proposal_candidate": dict(report["proposal_candidate"])}
+    forged["proposal_candidate"]["assignment"] = {
+        **forged["proposal_candidate"]["assignment"],
+        "target_feeds": ["test-city-library-board"],
+    }
+    with pytest.raises(ValueError, match="differs from the agreed route-bound assignment"):
+        validated_p3_plan(
+            forged,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
 
 
 # --- evidence -----------------------------------------------------------------------------

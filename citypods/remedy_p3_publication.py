@@ -12,17 +12,24 @@ from typing import Any
 from citypods.audit_remedy import (
     BodyDecision,
     BodyDecisions,
+    P3ReviewDecision,
     RemedyPlan,
     _compact_evidence,
     _resolve_decisions,
+    build_p3_review_decision,
     feed_paths_by_slug,
     validate_proposals,
 )
+from citypods.audit_remedy_report import _selected_proposal
 from citypods.remedy_policy import canonical_hash
 
 
 def validated_p3_plan(
-    report: dict[str, Any], evidence: dict[str, Any], *, repo_root: str | Path
+    report: dict[str, Any],
+    evidence: dict[str, Any],
+    *,
+    repo_root: str | Path,
+    admitted_routes: set[str] | frozenset[str],
 ) -> tuple[RemedyPlan, dict[str, Path]]:
     """Revalidate one report-ready consensus against the current local feed catalog.
 
@@ -36,10 +43,25 @@ def validated_p3_plan(
         raise ValueError("P3 report is not a proposal candidate")
     if decision.get("validator_passed") is not True:
         raise ValueError("P3 consensus did not pass deterministic validation")
-    if canonical_hash(evidence) != decision.get("evidence_hash"):
-        raise ValueError("P3 report does not bind the publication evidence")
     if not isinstance(candidate, dict) or not isinstance(candidate.get("assignment"), dict):
         raise ValueError("P3 report has no complete selected assignment")
+    if canonical_hash(evidence) != decision.get("evidence_hash"):
+        raise ValueError("P3 report does not bind the publication evidence")
+    parsed_decision = P3ReviewDecision.model_validate(decision)
+    recomputed = build_p3_review_decision(
+        finding_id=parsed_decision.finding_id,
+        evidence_hash=parsed_decision.evidence_hash,
+        policy_hash=parsed_decision.policy_hash,
+        initial_votes=parsed_decision.initial_votes,
+        initial_validators={vote.route_id: True for vote in parsed_decision.initial_votes},
+        adjudication=parsed_decision.adjudication,
+        adjudication_validator_passed=True,
+        admitted_routes=admitted_routes,
+    )
+    if recomputed != parsed_decision:
+        raise ValueError("P3 decision does not recompute from its route-bound votes")
+    if candidate != _selected_proposal(parsed_decision):
+        raise ValueError("P3 proposal candidate differs from the agreed route-bound assignment")
 
     assignment = BodyDecision.model_validate(candidate["assignment"])
     findings = evidence.get("unexpected_findings")

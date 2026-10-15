@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from citypods.remedy_p3_publication import validated_p3_plan
+from citypods.remedy_p3_runner import P3_ROUTES
 from citypods.remedy_policy import canonical_hash
 
 
@@ -30,6 +31,7 @@ def test_p3_publication_rejects_non_consensus_reports(decision, candidate, messa
             {"decision": decision, "proposal_candidate": candidate},
             evidence,
             repo_root=tmp_path,
+            admitted_routes=set(P3_ROUTES.values()),
         )
 
 
@@ -45,4 +47,9 @@ def test_p3_publication_binds_report_to_exact_evidence(tmp_path):
     }
 
     with pytest.raises(ValueError, match="does not bind the publication evidence"):
-        validated_p3_plan(report, evidence, repo_root=tmp_path)
+        validated_p3_plan(
+            report,
+            evidence,
+            repo_root=tmp_path,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
