@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **P3 consensus decision engine.** Adds an offline engine for the approved Sol/GLM Flash
+  initial score and single DeepSeek/JEV adjudication. It binds votes to evidence and policy
+  hashes, fails closed when routes are not admitted, and renders per-feed manual-disposition
+  checkboxes. It does not enable production routing, call providers, create GitHub issues or
+  PRs, mutate feeds, or change stored meeting records.
+
 - **Review/48 automatic input discovery.** The weekly catalog workflow now searches input capacity
   for newly found free routes after reachability and structured-output checks, when their AA score
   is strictly above GPT-OSS-120B. Provider parsing, v2 pause and finite quotas remain required;
