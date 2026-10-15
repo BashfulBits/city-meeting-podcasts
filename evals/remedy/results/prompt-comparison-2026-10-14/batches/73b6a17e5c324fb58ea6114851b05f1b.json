@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Environmental Task Force"
+      }
+    ],
+    "case_id": "recording-64905d6e32cae3a0ec5a7070",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda identifies the convening body as the Environmental Task Force, City of Arlington, for April 28, 2020, and includes call to order, new business and adjournment. The provider player corroborates the meeting identity. Assign to the configured Environmental Task Force feed. References to earlier City Council proceedings and to Council and Planning & Zoning in presentation materials do not establish joint participation. The Arlington \u2014 All Meetings subscription grouping is described as covering City Council and Planning & Zoning recordings, so it does not apply to this Task Force meeting."
+  },
+  "attempt_id": "d4aed01438104eb58bae0cde0a4a513a",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-64905d6e32cae3a0ec5a7070",
+  "case_input_hash": "39dc3170370c5d22ac275dad71010ea7dff88c21156d46eb2a7c25663190a6ab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.23856304200308
+    }
+  ],
+  "end_to_end_seconds": 60.38509300000078,
+  "finished_at": "2026-10-14T20:09:18.658248+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T20:08:18.272800+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "3503c90acbeb5ac14ea3997a3aa2957cec719f998e74cebe869b93ea4a71f5a8",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2757,
+        "output_tokens": 211
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 211,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2757,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2757,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 2968,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-64905d6e32cae3a0ec5a7070\",\"bodies\":[{\"name\":\"Environmental Task Force\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-environmental-task-force\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies the convening body as the Environmental Task Force, City of Arlington, for April 28, 2020, and includes call to order, new business and adjournment. The provider player corroborates the meeting identity. Assign to the configured Environmental Task Force feed. References to earlier City Council proceedings and to Council and Planning & Zoning in presentation materials do not establish joint participation. The Arlington \u2014 All Meetings subscription grouping is described as covering City Council and Planning & Zoning recordings, so it does not apply to this Task Force meeting.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792008557,
+    "id": "resp_0efcc8c941276912016acfe166a7588199909c7a8eaf8d3fd4",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2757,
+          "output_tokens": 211
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 211,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2757,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2757,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 2968,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

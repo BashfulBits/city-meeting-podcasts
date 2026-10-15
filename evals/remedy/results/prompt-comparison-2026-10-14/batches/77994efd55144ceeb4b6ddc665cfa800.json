@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-ad36bcef14d1a3ef3e4d7813",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "All three supplied evidence refs identify the convened body as the Planning and Zoning Commission of the Town of Addison: the retained agenda header reads 'PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, JANUARY 18, 2022,' the provider player title is 'Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX,' and the native source chapters list agenda items explicitly tied to the 'Planning and Zoning Commission' (status update on Planning and Zoning Commission cases, discussion of the January 18, 2022 Planning and Zoning Commission Regular Meeting agenda, 2021 Planning and Zoning Commission Annual Report). The body is determined by the convened body named in the official agenda and recording title, not by venue (Addison TreeHouse), topic words, or city name. This is a work session of the same commission, so the existing configured feed 'addison-tx-planning-and-zoning-commission' ('Planning and Zoning Commission meetings for Addison') applies; assign_existing is therefore the correct action. No joint meeting is proven: the agenda and chapters show only Planning and Zoning Commission business (staff status update by the Director of Planning and Development, and discussion of the Regular Meeting agenda), with no second body, board, or committee named as a convening participant, so no additional body or shared feed is asserted. No archive_only, archive_series, exclude_event, unconfigured_body, or unresolved condition applies."
+  },
+  "attempt_id": "8951b9e4a70c4d2590a2fd451b53903f",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-ad36bcef14d1a3ef3e4d7813",
+  "case_input_hash": "02219867e8995d1cbf2c5f8cffaa803a0daf5f04f6823e02a5440c07f7689f75",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 4.669761832999939
+    }
+  ],
+  "end_to_end_seconds": 54.53828787499879,
+  "finished_at": "2026-10-14T15:53:47.253151+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T15:52:52.714547+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2e01663b1fa4b349c57157ee0e3b0b147bb499b31d5c0f47f38446c7c662f644",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 113,
+    "completion_tokens": 534,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 113,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 3358,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3742,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4276
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-ad36bcef14d1a3ef3e4d7813\",\"bodies\":[{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"All three supplied evidence refs identify the convened body as the Planning and Zoning Commission of the Town of Addison: the retained agenda header reads 'PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, JANUARY 18, 2022,' the provider player title is 'Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX,' and the native source chapters list agenda items explicitly tied to the 'Planning and Zoning Commission' (status update on Planning and Zoning Commission cases, discussion of the January 18, 2022 Planning and Zoning Commission Regular Meeting agenda, 2021 Planning and Zoning Commission Annual Report). The body is determined by the convened body named in the official agenda and recording title, not by venue (Addison TreeHouse), topic words, or city name. This is a work session of the same commission, so the existing configured feed 'addison-tx-planning-and-zoning-commission' ('Planning and Zoning Commission meetings for Addison') applies; assign_existing is therefore the correct action. No joint meeting is proven: the agenda and chapters show only Planning and Zoning Commission business (staff status update by the Director of Planning and Development, and discussion of the Regular Meeting agenda), with no second body, board, or committee named as a convening participant, so no additional body or shared feed is asserted. No archive_only, archive_series, exclude_event, unconfigured_body, or unresolved condition applies.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is a Planning & Zoning Commission Work Session for Addison, TX. The body is the Planning and Zoning Commission. Feed slug: addison-tx-planning-and-zoning-commission.\n\nBodies: Planning and Zoning Commission. Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"]\n\nNo joint meeting proven. Missing evidence: none relevant? Maybe note that no joint participants proven.\n\nLet me construct JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is a Planning & Zoning Commission Work Session for Addison, TX. The body is the Planning and Zoning Commission. Feed slug: addison-tx-planning-and-zoning-commission.\n\nBodies: Planning and Zoning Commission. Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nPublication action: assign_existing.\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"]\n\nNo joint meeting proven. Missing evidence: none relevant? Maybe note that no joint participants proven.\n\nLet me construct JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791993223,
+    "id": "fa0b077480171ea7ed7077f36e265ed2",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 113,
+      "completion_tokens": 534,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 113,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 3358,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3742,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4276
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

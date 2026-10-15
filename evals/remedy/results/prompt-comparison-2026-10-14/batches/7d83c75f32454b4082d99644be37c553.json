@@ -1,0 +1,137 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "dallas-cbtf-aug15",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Community Bond Task Force (2024 Bond Task Force)"
+      }
+    ],
+    "case_id": "recording-eef10050e298d3758921b67a",
+    "evidence_ref_ids": [
+      "dallas-cbtf-aug15",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-community-bond-task-force",
+      "dallas-tx-bond-program-meetings"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official minutes (dallas-cbtf-aug15) from Dallas Bond and Construction Management identify the convened body as the Community Bond Task Force / 2024 Bond Task Force, meeting August 15, 2023, 6:30-8:48 PM, with chair Arun Agrawal and listed members; the minutes repeatedly reference 'CBTF' convening and acting. The player page (provider-player) and native chapters (native-source-chapters) carry the matching title '2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023,' confirming the same recording. The body is assigned to its dedicated feed dallas-tx-2024-community-bond-task-force, and additionally to the broader bond-family grouping feed dallas-tx-bond-program-meetings per the families policy (use configured bond family feeds for proven bond bodies); this grouping assignment does not assert a separate committee convened it. Andrea Giles (Planning and Urban Design) was a presenting staff member on ForwardDallas, not a convener, so no planning-body feed is assigned; the ForwardDallas topic does not match any 2024 bond subcommittee feed, and this was the full task force, not a subcommittee session. Routine public comment (Item C) does not add a Public Info feed membership, and the 2017 Citizens Bond Task Force feed is a different numbered body."
+  },
+  "attempt_id": "97d76bdd89f24ed398e10c2a4bbd13fe",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-eef10050e298d3758921b67a",
+  "case_input_hash": "191a05aa56575049b735cd85159c95ae9c3f4bea3af5c489c55d1be9c485e607",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.28503291599918
+    }
+  ],
+  "end_to_end_seconds": 19.67845645899797,
+  "finished_at": "2026-10-14T16:55:48.999270+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T16:55:29.320677+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "0bd42dd5be8ef3eeee1823aa5ed891ce4ee6cf0c1536b32eed6d7ae3a9a47d4d",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2419,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1985,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 6340,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 8759
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"dallas-cbtf-aug15\", \"provider-player\", \"native-source-chapters\"], \"name\": \"Community Bond Task Force (2024 Bond Task Force)\"}], \"case_id\": \"recording-eef10050e298d3758921b67a\", \"evidence_ref_ids\": [\"dallas-cbtf-aug15\", \"provider-player\", \"native-source-chapters\"], \"feed_slugs\": [\"dallas-tx-2024-community-bond-task-force\", \"dallas-tx-bond-program-meetings\"], \"missing_evidence\": [], \"publication_action\": \"assign_existing\", \"rationale\": \"The official minutes (dallas-cbtf-aug15) from Dallas Bond and Construction Management identify the convened body as the Community Bond Task Force / 2024 Bond Task Force, meeting August 15, 2023, 6:30-8:48 PM, with chair Arun Agrawal and listed members; the minutes repeatedly reference 'CBTF' convening and acting. The player page (provider-player) and native chapters (native-source-chapters) carry the matching title '2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023,' confirming the same recording. The body is assigned to its dedicated feed dallas-tx-2024-community-bond-task-force, and additionally to the broader bond-family grouping feed dallas-tx-bond-program-meetings per the families policy (use configured bond family feeds for proven bond bodies); this grouping assignment does not assert a separate committee convened it. Andrea Giles (Planning and Urban Design) was a presenting staff member on ForwardDallas, not a convener, so no planning-body feed is assigned; the ForwardDallas topic does not match any 2024 bond subcommittee feed, and this was the full task force, not a subcommittee session. Routine public comment (Item C) does not add a Public Info feed membership, and the 2017 Citizens Bond Task Force feed is a different numbered body.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this.\n\nThe recording: \"2024 Bond Task Force Community Bond Task Force Meeting - Aug 15, 2023\" \u2014 Dallas, TX, Swagit video 269608.\n\nEvidence:\n1. provider-player: transcript showing \"WE CONVENE OUR DALLAS TASK FORCE MEETING TO ORDER\" and a briefing from ForwardDallas by Andrea Giles of Planning and Urban Design. The player title says \"2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023.\"\n2. native-source-chapters: chapter title \"2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023.\"\n3. dallas-cbtf-aug15: Official meeting minutes PDF from dallascityhall.com (Bond and Construction Management department) for the \"Community Bond Task Force / 2024 Bond Task Force\" meeting on August 15, 2023, convened 6:30PM, adjourned 8:48PM. Lists committee members present: Arun Agrawal, Chair; Ann Margolin; Charles Cox; Lane Conner; Sam Coats; Scott Goldstein; Courtney Spellicy; Randall Bryant; Tiffinni A. Young; Tim Dickey; Priscilla Rice; Vana Hammond; Corky Sherman. Absent: Gunnar Rawlings, Deborah Crudup. Staff present: Atalia Anaya, Candi Green, Jennifer Nicewander, Robert Perez, Maranda Speller, Arnelle Woods (all Bond and Construction Management), Robert Perez (City Manager's Office), Andrea Giles (Planning and Urban Design). Agenda items: Call to Order; A. Review/Approval of Meeting Minutes; B. ForwardDallas (Andrea Giles briefing); C. Speakers (public comment); D. Conclude.\n\nThe convening body: \"Community Bond Task Force\" (also called \"2024 Bond Task Force\"). The minutes header says \"Community Bond Task Force / 2024 Bond Task Force\". The minutes text says \"Staff briefed the Community Bond Task Force (CBTF) on the ForwardDallas plan...\" So the convened body is the Community Bond Task Force (2024 Bond Task Force), a Dallas body under Bond and Construction Management.\n\nNow the feeds. Existing feeds include:\n- \"dallas-tx-2024-community-bond-task-force\" \u2014 \"Verified Dallas 2024 Community Bond Task Force proceedings.\" This is the direct match. The body is the 2024 Community Bond Task Force. Strong match.\n- \"dallas-tx-bond-program-meetings\" \u2014 \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" This seems like a broader grouping feed for bond program meetings. The task at hand: \"A feed can be a broader subscription grouping rather than an institution. A grouping assignment does not assert that its named committee jointly convened the recording. A real body with no dedicated feed may still fit an existing publication grouping if its scope and approved policy support it.\"\n\nPolicy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" The bond program meetings feed is a bond-family grouping. The Community Bond Task Force is a bond body. Should I include both slugs? The dedicated feed is dallas-tx-2024-community-bond-task-force. The bond-program-meetings feed is a broader subscription grouping for bond program meetings \u2014 CBTF meetings relate to the 2024 Capital Bond Program. The minutes mention \"the proposed 2024 proposed Capital Bond Program.\" Hmm.\n\nThe instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" So if both fit, include both. The bond-program-meetings feed description says \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" That is plausibly the umbrella feed for bond-related meetings including the task force. The policy families rule says to use configured bond family feeds for proven bodies. So the CBTF, a proven bond body, could be assigned to both the dedicated feed and the bond family grouping feed.\n\nHowever, one caution: is the CBTF meeting a \"Bond Program Meeting\"? The task force was convened to develop recommendations for the 2024 bond program. The minutes reference the \"proposed 2024 proposed Capital Bond Program.\" The feed \"Bond Program Meetings\" is a grouping. I think including it is defensible. But is it appropriate? Let me think about \"A grouping assignment does not assert that its named committee jointly convened the recording.\" So assigning to a grouping feed is okay even if the feed's named committee (none here\u2014Bond Program Meetings isn't a committee name) differs.\n\nActually \"Bond Program Meetings\" is a generic grouping, not a committee. It seems designed to capture bond program-related meetings. The CBTF is the 2024 bond task force; its meetings are bond program meetings. I'll include both.\n\nWhat about other feeds?\n- \"dallas-tx-2017-citizens-bond-task-force\" \u2014 that's the 2017 Citizens Bond Task Force, a different numbered body. Policy identity: \"numbered boards differ.\" Not appropriate.\n- 2024 bond subcommittee feeds (Critical Facilities, Economic Development, Flood Control, Streets and Transportation) \u2014 these are subcommittees of the 2024 bond task force presumably. This recording is the full CBTF meeting, not a subcommittee meeting. The ForwardDallas briefing is a land-use topic; but there's no land use subcommittee listed here (the listed subcommittees: Critical Facilities; Economic Development, Housing and Homeless Solutions; Flood Control and Storm Drainage; Streets and Transportation). ForwardDallas is a comprehensive land use plan; not matching any of these subcommittees' scope directly. Do not assign subcommittee feeds based on topic. The meeting is the full task force.\n- \"dallas-tx-public-info-meetings\" \u2014 Public Info Meetings; policy says routine public comment does not add Public Info feed membership. Item C was public comment, but that's routine. Not assigned.\n- \"dallas-tx-city-council\" \u2014 no.\n\nSo publication_action: assign_existing. Bodies: the convening body \u2014 \"Community Bond Task Force (2024 Bond Task Force)\" with evidence refs: dallas-cbtf-aug15 (minutes header), provider-player (player title), native-source-chapters. Feed slugs: dallas-tx-2024-community-bond-task-force, dallas-tx-bond-program-meetings.\n\nHmm, should I include bond-program-meetings? Let me re-read: \"Assess every plausible supplied feed against its title and description. A feed can be a broader subscription grouping rather than an institution... A real body with no dedicated feed may still fit an existing publication grouping if its scope and approved policy support it.\" The CBTF has a dedicated feed, but that doesn't preclude also belonging to a broader grouping. The instruction says \"Return all supported memberships.\" The families policy: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" The bond-program-meetings feed is the bond family feed. So yes, include it.\n\nEvidence for the bond-program-meetings connection: minutes item B mentions \"the proposed 2024 proposed Capital Bond Program\"; staff from Bond and Construction Management; the body is a bond task force. The feed description \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" Hmm, \"Bond Program Meetings\" \u2014 the CBTF meeting is a meeting about the bond program. I think it's supported by policy families plus the minutes evidence.\n\nActually, wait \u2014 could \"Bond Program Meetings\" be intended for meetings of the bond program itself (e.g., staff briefings) rather than task force? The description is generic: \"Bond Program Meetings recordings.\" Given the \"families\" policy explicitly says to use configured bond family feeds for proven bodies, and the CBTF is a proven bond body, I'll include it. The dedicated feed is the primary.\n\nMissing evidence: none significant. Perhaps note that no evidence indicates any subcommittee meeting or joint meeting. The participants: the task force members and staff are all listed in minutes; this is a single-body meeting, not a joint meeting. So no joint participant listing needed beyond naming the body.\n\nShould I name the body as \"Community Bond Task Force (2024 Bond Task Force)\"? The minutes header lists both: \"Community Bond Task Force / 2024 Bond Task Force\". The recording title: \"2024 Bond Task Force Community Bond Task Force Meeting\". I'll name it \"Community Bond Task Force (2024 Bond Task Force)\".\n\nBodies array: one body with evidence_ref_ids [\"dallas-cbtf-aug15\", \"provider-player\", \"native-source-chapters\"].\n\nevidence_ref_ids at top level: all used: provider-player, native-source-chapters, dallas-cbtf-aug15.\n\nmissing_evidence: empty array \u2014 ownership is established. Maybe note that no separate subcommittee evidence exists but that's not \"missing evidence\" for this assignment. Keep empty.\n\nrationale: concise \u2014 minutes from Dallas Bond and Construction Management identify the convened body as the Community Bond Task Force (2024 Bond Task Force) meeting Aug 15, 2023, matching player title and chapters; assigned to dedicated 2024 CBTF feed and the bond program meetings grouping feed per families policy; ForwardDallas presentation was by Planning and Urban Design staff (presenter, not convener); public comment item does not add Public Info feed; 2017 task force feed is a different numbered body.\n\nPublication action: assign_existing.\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this.\n\nThe recording: \"2024 Bond Task Force Community Bond Task Force Meeting - Aug 15, 2023\" \u2014 Dallas, TX, Swagit video 269608.\n\nEvidence:\n1. provider-player: transcript showing \"WE CONVENE OUR DALLAS TASK FORCE MEETING TO ORDER\" and a briefing from ForwardDallas by Andrea Giles of Planning and Urban Design. The player title says \"2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023.\"\n2. native-source-chapters: chapter title \"2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023.\"\n3. dallas-cbtf-aug15: Official meeting minutes PDF from dallascityhall.com (Bond and Construction Management department) for the \"Community Bond Task Force / 2024 Bond Task Force\" meeting on August 15, 2023, convened 6:30PM, adjourned 8:48PM. Lists committee members present: Arun Agrawal, Chair; Ann Margolin; Charles Cox; Lane Conner; Sam Coats; Scott Goldstein; Courtney Spellicy; Randall Bryant; Tiffinni A. Young; Tim Dickey; Priscilla Rice; Vana Hammond; Corky Sherman. Absent: Gunnar Rawlings, Deborah Crudup. Staff present: Atalia Anaya, Candi Green, Jennifer Nicewander, Robert Perez, Maranda Speller, Arnelle Woods (all Bond and Construction Management), Robert Perez (City Manager's Office), Andrea Giles (Planning and Urban Design). Agenda items: Call to Order; A. Review/Approval of Meeting Minutes; B. ForwardDallas (Andrea Giles briefing); C. Speakers (public comment); D. Conclude.\n\nThe convening body: \"Community Bond Task Force\" (also called \"2024 Bond Task Force\"). The minutes header says \"Community Bond Task Force / 2024 Bond Task Force\". The minutes text says \"Staff briefed the Community Bond Task Force (CBTF) on the ForwardDallas plan...\" So the convened body is the Community Bond Task Force (2024 Bond Task Force), a Dallas body under Bond and Construction Management.\n\nNow the feeds. Existing feeds include:\n- \"dallas-tx-2024-community-bond-task-force\" \u2014 \"Verified Dallas 2024 Community Bond Task Force proceedings.\" This is the direct match. The body is the 2024 Community Bond Task Force. Strong match.\n- \"dallas-tx-bond-program-meetings\" \u2014 \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" This seems like a broader grouping feed for bond program meetings. The task at hand: \"A feed can be a broader subscription grouping rather than an institution. A grouping assignment does not assert that its named committee jointly convened the recording. A real body with no dedicated feed may still fit an existing publication grouping if its scope and approved policy support it.\"\n\nPolicy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" The bond program meetings feed is a bond-family grouping. The Community Bond Task Force is a bond body. Should I include both slugs? The dedicated feed is dallas-tx-2024-community-bond-task-force. The bond-program-meetings feed is a broader subscription grouping for bond program meetings \u2014 CBTF meetings relate to the 2024 Capital Bond Program. The minutes mention \"the proposed 2024 proposed Capital Bond Program.\" Hmm.\n\nThe instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" So if both fit, include both. The bond-program-meetings feed description says \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" That is plausibly the umbrella feed for bond-related meetings including the task force. The policy families rule says to use configured bond family feeds for proven bodies. So the CBTF, a proven bond body, could be assigned to both the dedicated feed and the bond family grouping feed.\n\nHowever, one caution: is the CBTF meeting a \"Bond Program Meeting\"? The task force was convened to develop recommendations for the 2024 bond program. The minutes reference the \"proposed 2024 proposed Capital Bond Program.\" The feed \"Bond Program Meetings\" is a grouping. I think including it is defensible. But is it appropriate? Let me think about \"A grouping assignment does not assert that its named committee jointly convened the recording.\" So assigning to a grouping feed is okay even if the feed's named committee (none here\u2014Bond Program Meetings isn't a committee name) differs.\n\nActually \"Bond Program Meetings\" is a generic grouping, not a committee. It seems designed to capture bond program-related meetings. The CBTF is the 2024 bond task force; its meetings are bond program meetings. I'll include both.\n\nWhat about other feeds?\n- \"dallas-tx-2017-citizens-bond-task-force\" \u2014 that's the 2017 Citizens Bond Task Force, a different numbered body. Policy identity: \"numbered boards differ.\" Not appropriate.\n- 2024 bond subcommittee feeds (Critical Facilities, Economic Development, Flood Control, Streets and Transportation) \u2014 these are subcommittees of the 2024 bond task force presumably. This recording is the full CBTF meeting, not a subcommittee meeting. The ForwardDallas briefing is a land-use topic; but there's no land use subcommittee listed here (the listed subcommittees: Critical Facilities; Economic Development, Housing and Homeless Solutions; Flood Control and Storm Drainage; Streets and Transportation). ForwardDallas is a comprehensive land use plan; not matching any of these subcommittees' scope directly. Do not assign subcommittee feeds based on topic. The meeting is the full task force.\n- \"dallas-tx-public-info-meetings\" \u2014 Public Info Meetings; policy says routine public comment does not add Public Info feed membership. Item C was public comment, but that's routine. Not assigned.\n- \"dallas-tx-city-council\" \u2014 no.\n\nSo publication_action: assign_existing. Bodies: the convening body \u2014 \"Community Bond Task Force (2024 Bond Task Force)\" with evidence refs: dallas-cbtf-aug15 (minutes header), provider-player (player title), native-source-chapters. Feed slugs: dallas-tx-2024-community-bond-task-force, dallas-tx-bond-program-meetings.\n\nHmm, should I include bond-program-meetings? Let me re-read: \"Assess every plausible supplied feed against its title and description. A feed can be a broader subscription grouping rather than an institution... A real body with no dedicated feed may still fit an existing publication grouping if its scope and approved policy support it.\" The CBTF has a dedicated feed, but that doesn't preclude also belonging to a broader grouping. The instruction says \"Return all supported memberships.\" The families policy: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" The bond-program-meetings feed is the bond family feed. So yes, include it.\n\nEvidence for the bond-program-meetings connection: minutes item B mentions \"the proposed 2024 proposed Capital Bond Program\"; staff from Bond and Construction Management; the body is a bond task force. The feed description \"Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries.\" Hmm, \"Bond Program Meetings\" \u2014 the CBTF meeting is a meeting about the bond program. I think it's supported by policy families plus the minutes evidence.\n\nActually, wait \u2014 could \"Bond Program Meetings\" be intended for meetings of the bond program itself (e.g., staff briefings) rather than task force? The description is generic: \"Bond Program Meetings recordings.\" Given the \"families\" policy explicitly says to use configured bond family feeds for proven bodies, and the CBTF is a proven bond body, I'll include it. The dedicated feed is the primary.\n\nMissing evidence: none significant. Perhaps note that no evidence indicates any subcommittee meeting or joint meeting. The participants: the task force members and staff are all listed in minutes; this is a single-body meeting, not a joint meeting. So no joint participant listing needed beyond naming the body.\n\nShould I name the body as \"Community Bond Task Force (2024 Bond Task Force)\"? The minutes header lists both: \"Community Bond Task Force / 2024 Bond Task Force\". The recording title: \"2024 Bond Task Force Community Bond Task Force Meeting\". I'll name it \"Community Bond Task Force (2024 Bond Task Force)\".\n\nBodies array: one body with evidence_ref_ids [\"dallas-cbtf-aug15\", \"provider-player\", \"native-source-chapters\"].\n\nevidence_ref_ids at top level: all used: provider-player, native-source-chapters, dallas-cbtf-aug15.\n\nmissing_evidence: empty array \u2014 ownership is established. Maybe note that no separate subcommittee evidence exists but that's not \"missing evidence\" for this assignment. Keep empty.\n\nrationale: concise \u2014 minutes from Dallas Bond and Construction Management identify the convened body as the Community Bond Task Force (2024 Bond Task Force) meeting Aug 15, 2023, matching player title and chapters; assigned to dedicated 2024 CBTF feed and the bond program meetings grouping feed per families policy; ForwardDallas presentation was by Planning and Urban Design staff (presenter, not convener); public comment item does not add Public Info feed; 2017 task force feed is a different numbered body.\n\nPublication action: assign_existing.\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791996875,
+    "id": "6b1ab57e360c59502ec38d21f017d928",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2419,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1985,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 6340,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 8759
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

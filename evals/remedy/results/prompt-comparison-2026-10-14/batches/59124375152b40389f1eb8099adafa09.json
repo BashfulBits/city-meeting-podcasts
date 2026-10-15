@@ -1,0 +1,133 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Library Board of the City of Denton, Texas"
+      }
+    ],
+    "case_id": "recording-437f59fb8fa29939ebe0e94d",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "denton-tx-library-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (recording 118306) contains an explicit convening clause: 'the Library Board of the City of Denton, Texas will convene in a Regular Meeting on Thursday, April 8, 2021, at 3:30 p.m. in the Council Work Session Room at City Hall.' The same agenda interchangeably uses 'Library Advisory Board' in its registration guidelines, confirming both labels refer to this one body; the 'Council Work Session Room' is only the venue, not a City Council work session. All seven named participants (President Kate Margolis, Vice President Jean Greenlaw, Laura Cantu, Vicki Byrd, Jim Owen, Benjamin Huttash, Ling Jeng) are Library Board members participating via video/teleconference, so no joint convening body is proven and none is asserted. The provider player title 'Library Board on 2021-04-08 3:30 PM - Denton, TX' corroborates the recording's date and body label. The existing feed 'denton-tx-library-board' is described as 'Meetings of the Denton Library Board,' a direct title-and-scope match to the convened body, so assign_existing is used. Routine public comment procedures do not add Public Info feed membership, and no other feed's scope (Airport Advisory, Parks, etc.) matches this body."
+  },
+  "attempt_id": "8ef5987768da4a7a81e95e2bc151dc36",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-437f59fb8fa29939ebe0e94d",
+  "case_input_hash": "32602acc0dccbcbd00774c10d19e6ed8d7ff791d63c9b651a2ea12129807903c",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 21.54530429100123
+    }
+  ],
+  "end_to_end_seconds": 23.450546249998297,
+  "finished_at": "2026-10-14T19:06:45.654411+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T19:06:22.203714+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "a8627b72053163072939a3e0a05d79e9c4606daa4e8f41a6f65afeaf3a178e5e",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1750,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1349,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3698,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5448
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\"],\n      \"name\": \"Library Board of the City of Denton, Texas\"\n    }\n  ],\n  \"case_id\": \"recording-437f59fb8fa29939ebe0e94d\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"feed_slugs\": [\"denton-tx-library-board\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained agenda (recording 118306) contains an explicit convening clause: 'the Library Board of the City of Denton, Texas will convene in a Regular Meeting on Thursday, April 8, 2021, at 3:30 p.m. in the Council Work Session Room at City Hall.' The same agenda interchangeably uses 'Library Advisory Board' in its registration guidelines, confirming both labels refer to this one body; the 'Council Work Session Room' is only the venue, not a City Council work session. All seven named participants (President Kate Margolis, Vice President Jean Greenlaw, Laura Cantu, Vicki Byrd, Jim Owen, Benjamin Huttash, Ling Jeng) are Library Board members participating via video/teleconference, so no joint convening body is proven and none is asserted. The provider player title 'Library Board on 2021-04-08 3:30 PM - Denton, TX' corroborates the recording's date and body label. The existing feed 'denton-tx-library-board' is described as 'Meetings of the Denton Library Board,' a direct title-and-scope match to the convened body, so assign_existing is used. Routine public comment procedures do not add Public Info feed membership, and no other feed's scope (Airport Advisory, Parks, etc.) matches this body.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this.\n\nThe recording: \"Library Board on 2021-04-08 3:30 PM\", recording ID 118306, Denton, TX.\n\nEvidence:\n1. `retained-agenda`: The agenda document. Header says \"Library Board, City of Denton, Meeting Agenda, City Hall... Council Work Session Room, 3:30 PM Thursday, April 8, 2021\". It mentions \"Library Advisory Board\" in the registration guidelines section, and then \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting on Thursday, April 8, 2021, at 3:30 p.m. in the Council Work Session Room at City Hall\". It also says \"REGISTRATION GUIDELINES FOR ADDRESSING THE LIBRARY BOARD detailed at the beginning of this agenda.\"\n\nSo the convening body is the Library Board of the City of Denton, Texas (also referred to as Library Advisory Board \u2014 the agenda uses both terms; \"Library Advisory Board\" appears in the registration guidelines, and \"Library Board\" convenes). The body label says \"Library Board on 2021-04-08 3:30 PM\".\n\n2. `provider-player`: Swagit video player, title \"Apr 08, 2021 Library Board on 2021-04-08 3:30 PM - Denton, TX\". Player title alone doesn't establish formal body, but the agenda does.\n\nExisting feeds: there is `denton-tx-library-board` \u2014 \"Meetings of the Denton Library Board.\" That matches.\n\nSo:\n- bodies: [{\"name\": \"Library Board of the City of Denton, Texas\", \"evidence_ref_ids\": [\"retained-agenda\"]}] \u2014 the agenda says \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\". The agenda also references \"Library Advisory Board\" \u2014 but these appear to be the same body (Denton's Library Board is officially the \"Library Board\"; the agenda text uses \"Library Advisory Board\" interchangeably in the registration guidelines section). I should name the body as proven: \"Library Board of the City of Denton, Texas\". Possibly mention \"Library Advisory Board\" as an alternate name used in the same agenda. I'll include the name as \"Library Board of the City of Denton, Texas (Library Advisory Board)\"? Better to keep the proven name: \"Library Board of the City of Denton, Texas\". Evidence: retained-agenda.\n\n- feed_slugs: [\"denton-tx-library-board\"] \u2014 matches \"Meetings of the Denton Library Board.\"\n\n- publication_action: \"assign_existing\" \u2014 the body has an existing feed.\n\n- evidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 provider-player confirms recording title/date; the agenda is the body-establishing evidence. Include both since they're cited. Actually, evidence_ref_ids is the top-level list of evidence used. I'll include both.\n\n- missing_evidence: [] \u2014 none needed; ownership is established.\n\n- rationale: The agenda header and convening clause state the Library Board of the City of Denton, Texas will convene a Regular Meeting on April 8, 2021 at 3:30 p.m. in the Council Work Session Room; the same agenda uses \"Library Advisory Board\" interchangeably in registration guidelines, but the convening body is the Library Board. The feed \"denton-tx-library-board\" is titled \"Denton: Library Board\" with description \"Meetings of the Denton Library Board,\" matching. No joint participants proven \u2014 all seven named individuals are Library Board members participating via video/teleconference; no other body convened. Public comment guidelines don't trigger Public Info feed. Not a work session of Council; venue \"Council Work Session Room\" is just a room name.\n\nNote: members listed: President Kate Margolis, VP Jean Greenlaw, Laura Cantu, Vicki Byrd, Jim Owen, Benjamin Huttash, Ling Jeng \u2014 these are Library Board members (per note \"will be participating in the meeting via video/teleconference\"). No joint meeting with another body.\n\nShould the body name include \"Library Advisory Board\"? The task says \"give evidence for body names\". The agenda title: \"Library Board\". The convening sentence: \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\". The registration guidelines: \"ADDRESSING THE LIBRARY ADVISORY BOARD\" and \"members of the Library Advisory Board\". Denton's official body is the \"Library Board\" per city code, but agenda uses both. I'll name it \"Library Board of the City of Denton, Texas\" and note the agenda also refers to it as the Library Advisory Board. The body name field is just the name; I can note the alias in the rationale.\n\nJSON output:\n\n{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\"],\n      \"name\": \"Library Board of the City of Denton, Texas\"\n    }\n  ],\n  \"case_id\": \"recording-437f59fb8fa29939ebe0e94d\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"feed_slugs\": [\"denton-tx-library-board\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"...\"\n}\n\nRationale (concise): The retained agenda's convening clause states \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\" on April 8, 2021 at 3:30 p.m. in the Council Work Session Room, City Hall; the same agenda interchangeably calls it the Library Advisory Board in its registration guidelines, and all seven named participants (Margolis, Greenlaw, Cantu, Byrd, Owen, Huttash, Jeng) are Library Board members, so no joint convening body is proven. The provider player title (\"Library Board on 2021-04-08 3:30 PM \u2013 Denton, TX\", recording 118306) matches. The existing feed denton-tx-library-board (\"Meetings of the Denton Library Board\") directly matches this convened body, so assign_existing. Venue (\"Council Work Session Room\") and public-comment procedures do not imply City Council or Public Info membership. No gaps.\n\nEnsure no hidden analysis; keep under 2000 chars. Output only JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this.\n\nThe recording: \"Library Board on 2021-04-08 3:30 PM\", recording ID 118306, Denton, TX.\n\nEvidence:\n1. `retained-agenda`: The agenda document. Header says \"Library Board, City of Denton, Meeting Agenda, City Hall... Council Work Session Room, 3:30 PM Thursday, April 8, 2021\". It mentions \"Library Advisory Board\" in the registration guidelines section, and then \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting on Thursday, April 8, 2021, at 3:30 p.m. in the Council Work Session Room at City Hall\". It also says \"REGISTRATION GUIDELINES FOR ADDRESSING THE LIBRARY BOARD detailed at the beginning of this agenda.\"\n\nSo the convening body is the Library Board of the City of Denton, Texas (also referred to as Library Advisory Board \u2014 the agenda uses both terms; \"Library Advisory Board\" appears in the registration guidelines, and \"Library Board\" convenes). The body label says \"Library Board on 2021-04-08 3:30 PM\".\n\n2. `provider-player`: Swagit video player, title \"Apr 08, 2021 Library Board on 2021-04-08 3:30 PM - Denton, TX\". Player title alone doesn't establish formal body, but the agenda does.\n\nExisting feeds: there is `denton-tx-library-board` \u2014 \"Meetings of the Denton Library Board.\" That matches.\n\nSo:\n- bodies: [{\"name\": \"Library Board of the City of Denton, Texas\", \"evidence_ref_ids\": [\"retained-agenda\"]}] \u2014 the agenda says \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\". The agenda also references \"Library Advisory Board\" \u2014 but these appear to be the same body (Denton's Library Board is officially the \"Library Board\"; the agenda text uses \"Library Advisory Board\" interchangeably in the registration guidelines section). I should name the body as proven: \"Library Board of the City of Denton, Texas\". Possibly mention \"Library Advisory Board\" as an alternate name used in the same agenda. I'll include the name as \"Library Board of the City of Denton, Texas (Library Advisory Board)\"? Better to keep the proven name: \"Library Board of the City of Denton, Texas\". Evidence: retained-agenda.\n\n- feed_slugs: [\"denton-tx-library-board\"] \u2014 matches \"Meetings of the Denton Library Board.\"\n\n- publication_action: \"assign_existing\" \u2014 the body has an existing feed.\n\n- evidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 provider-player confirms recording title/date; the agenda is the body-establishing evidence. Include both since they're cited. Actually, evidence_ref_ids is the top-level list of evidence used. I'll include both.\n\n- missing_evidence: [] \u2014 none needed; ownership is established.\n\n- rationale: The agenda header and convening clause state the Library Board of the City of Denton, Texas will convene a Regular Meeting on April 8, 2021 at 3:30 p.m. in the Council Work Session Room; the same agenda uses \"Library Advisory Board\" interchangeably in registration guidelines, but the convening body is the Library Board. The feed \"denton-tx-library-board\" is titled \"Denton: Library Board\" with description \"Meetings of the Denton Library Board,\" matching. No joint participants proven \u2014 all seven named individuals are Library Board members participating via video/teleconference; no other body convened. Public comment guidelines don't trigger Public Info feed. Not a work session of Council; venue \"Council Work Session Room\" is just a room name.\n\nNote: members listed: President Kate Margolis, VP Jean Greenlaw, Laura Cantu, Vicki Byrd, Jim Owen, Benjamin Huttash, Ling Jeng \u2014 these are Library Board members (per note \"will be participating in the meeting via video/teleconference\"). No joint meeting with another body.\n\nShould the body name include \"Library Advisory Board\"? The task says \"give evidence for body names\". The agenda title: \"Library Board\". The convening sentence: \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\". The registration guidelines: \"ADDRESSING THE LIBRARY ADVISORY BOARD\" and \"members of the Library Advisory Board\". Denton's official body is the \"Library Board\" per city code, but agenda uses both. I'll name it \"Library Board of the City of Denton, Texas\" and note the agenda also refers to it as the Library Advisory Board. The body name field is just the name; I can note the alias in the rationale.\n\nJSON output:\n\n{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\"],\n      \"name\": \"Library Board of the City of Denton, Texas\"\n    }\n  ],\n  \"case_id\": \"recording-437f59fb8fa29939ebe0e94d\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"feed_slugs\": [\"denton-tx-library-board\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"...\"\n}\n\nRationale (concise): The retained agenda's convening clause states \"the Library Board of the City of Denton, Texas will convene in a Regular Meeting\" on April 8, 2021 at 3:30 p.m. in the Council Work Session Room, City Hall; the same agenda interchangeably calls it the Library Advisory Board in its registration guidelines, and all seven named participants (Margolis, Greenlaw, Cantu, Byrd, Owen, Huttash, Jeng) are Library Board members, so no joint convening body is proven. The provider player title (\"Library Board on 2021-04-08 3:30 PM \u2013 Denton, TX\", recording 118306) matches. The existing feed denton-tx-library-board (\"Meetings of the Denton Library Board\") directly matches this convened body, so assign_existing. Venue (\"Council Work Session Room\") and public-comment procedures do not imply City Council or Public Info membership. No gaps.\n\nEnsure no hidden analysis; keep under 2000 chars. Output only JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792004727,
+    "id": "cd7c28fb360871168af9b73c43507ffd",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1750,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1349,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3698,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5448
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

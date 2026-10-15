@@ -1,0 +1,162 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning & Zoning Commission"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Comprehensive Plan Advisory Committee"
+      }
+    ],
+    "case_id": "recording-161b45f0a9cde9b3077a0cdb",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-comprehensive-plan-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "Official agenda and provider player identify a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee. The joint-meeting policy allows every proven participant to use its configured feed, so assign all three existing body feeds. No other body is convened; topic and community-engagement content do not create a separate body feed."
+  },
+  "attempt_id": "967ae4673cdd49aab417595c0accd514",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-161b45f0a9cde9b3077a0cdb",
+  "case_input_hash": "caa313d2c318a9e836bc7195689d7786b33df0e38f75ea6c28704ef7dc35a776",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 13.238114167001186
+    }
+  ],
+  "end_to_end_seconds": 60.411660792000475,
+  "finished_at": "2026-10-14T17:41:14.223105+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T17:40:13.811085+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "f58dd3e84bb2a3dcf83a7036163bd960ae6e4a83d65fa3019b74c37018e7e5a8",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1835,
+    "completion_tokens": 2095,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1835,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3081,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3721,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5816
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-161b45f0a9cde9b3077a0cdb\",\"bodies\":[{\"name\":\"Addison City Council\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Planning & Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]},{\"name\":\"Addison Comprehensive Plan Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-city-council\",\"addison-tx-planning-and-zoning-commission\",\"addison-tx-comprehensive-plan-advisory-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"Official agenda and provider player identify a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee. The joint-meeting policy allows every proven participant to use its configured feed, so assign all three existing body feeds. No other body is convened; topic and community-engagement content do not create a separate body feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal bodies. We have evidence. Joint meeting of Addison City Council, Planning & Zoning Commission, Comprehensive Plan Advisory Committee. Need select all appropriate existing feed slugs under supplied publication rules. Existing feeds include city council, planning and zoning, comprehensive plan advisory committee. Also maybe town-meetings/public-input? Need decide. Policy joints: every proven participant can share same recording in configured feed. So feed slugs for three bodies likely: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Need consider broader subscription groupings independently. The recording is joint meeting of three bodies. Should we also include addison-tx-town-meetings? Description: Town halls, community meetings, open houses and historical citizen input. This is a joint meeting, not town hall? It includes interactive activities and community engagement tool. But convened body is three municipal bodies. Policy: use convened body, not venue, topic. So not public input feed unless routine public comment? Public_comment: Routine public comment does not add Public Info feed membership. Public briefings? No. Bond/TIF no. UDC no. Board of zoning no. Community partnership no. So likely three feed slugs. Publication action assign_existing. Bodies: three proven participants. Also maybe \"Joint Meeting\" as body? No, identify actual body/program separately from subscription grouping. The joint meeting itself isn't a separate municipal body. But schema bodies list IdentifiedBody. Should list the three bodies. Evidence IDs: retained-agenda and provider-player and native-source-chapters. Need cite evidence for body names and assignments. We can include all relevant evidence_ref_ids. Need case_id. Missing_evidence maybe empty? Or mention no evidence of other participants? There are no suspected other participants. The prompt says \"Name every proven participant in a joint meeting.\" We have three. \"If real body has no existing feed, return unconfigured_body and name it.\" All have feeds. \"If ownership cannot be established, return unresolved...\" Ownership established. So publication_action assign_existing. Feed slugs list three. Bodies list three with evidence refs. Evidence_ref_ids overall list all three? Could list retained-agenda, provider-player, native-source-chapters. Rationale concise. Missing_evidence maybe [] or note none. Need ensure JSON matches schema. No markdown. Max rationale 2000. Good.\n\nBut let's double-check nuances. The existing feed for Comprehensive Plan Advisory Committee: slug addison-tx-comprehensive-plan-advisory-committee. The body label says \"Joint CPAC, P&Z, and City Council Meeting #1\". CPAC = Comprehensive Plan Advisory Committee. Evidence source_span explicitly: \"Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee\". So yes.\n\nCould there be a \"City Council\" feed and \"Planning and Zoning Commission\" feed and \"Comprehensive Plan Advisory Committee\" feed. All proven participants. Should we include \"addison-tx-town-meetings\" because it's a joint meeting with interactive activities? The policy says use convened body, not venue, topic or common members. The body is joint meeting of three bodies. The town-meetings feed is for town halls, community meetings, open houses and historical citizen input. This is a formal joint meeting of municipal bodies, not a town hall. Also the agenda is a joint meeting, not a community meeting. The fact it includes interactive activities and community engagement tool is topic, not convening body. So omit. Also \"public-briefings\" no. \"public input\" no. \"unified development code advisory committee\" no.\n\nWhat about \"Addison: City Council\" feed description \"City Council meetings for Addison.\" Does a joint meeting count as City Council meeting? Policy joints: Every proven participant can share same recording in its configured feed. So yes.\n\nWhat about \"Addison: Planning and Zoning Commission\" feed. Yes.\n\nWhat about \"Addison: Comprehensive Plan Advisory Committee\" feed. Yes.\n\nPublication action assign_existing. If multiple feeds, assign_existing.\n\nNeed include evidence_ref_ids maybe all three. Bodies evidence_ref_ids can each cite retained-agenda and provider-player. Maybe native-source-chapters for call to order. We can include all three for each? The schema allows array. Let's include \"retained-agenda\", \"provider-player\", \"native-source-chapters\" for each body? But evidence for body names: retained-agenda has full names. provider-player has full names. native-source-chapters has title with abbreviations but also full names? It has \"Call Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting...\" Yes. So all three support.\n\nCould use evidence_ref_ids overall list all three. Missing evidence empty.\n\nNeed ensure no extra text. JSON only.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-161b45f0a9cde9b3077a0cdb\",\n  \"bodies\": [\n    {\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]},\n    {\"name\": \"Addison Planning & Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]},\n    {\"name\": \"Addison Comprehensive Plan Advisory Committee\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-city-council\",\n    \"addison-tx-planning-and-zoning-commission\",\n    \"addison-tx-comprehensive-plan-advisory-committee\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"Official agenda and player identify a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee. The joint-meeting policy allows every proven participant to use its configured feed, so assign all three existing body feeds. No other body is convened; topic/community engagement content does not create a separate body feed.\"\n}\n\nCheck schema: bodies maxItems 10. feed_slugs maxItems 15. evidence_ref_ids array. missing_evidence array. publication_action enum. Good.\n\nShould we include \"Addison: Public Input\" as broader subscription grouping? The instruction: \"Consider broader subscription groupings independently of who convened the recording.\" The existing feed addison-tx-town-meetings is \"Town halls, community meetings, open houses and historical citizen input.\" Is this a community meeting? It is a joint meeting of three bodies with interactive activities. But the feed is for public input, not formal joint meetings. The policy says \"Use the convened body, not venue, topic or common members\". So no.\n\nCould there be a \"public-briefings\" feed? No.\n\nWhat about \"addison-tx-public-briefings\" description: \"Verified public educational briefings for Addison, including the Homelessness Education Seminar.\" This is a joint meeting with progress update and interactive activities, but not a public educational briefing? The agenda item 1 is \"Present and discuss a progress update on the Advance Addison 2050 Comprehensive Plan.\" Item 3 is \"Present and discuss ... community engagement tool.\" But the convened body is three bodies. Public briefings feed likely for non-body public info sessions. Policy: families: Use configured bond/TIF/public-information family feeds for their proven bodies. But this isn't a public information family? The public-briefings feed is a feed for public educational briefings. Could this joint meeting be considered a public briefing? The policy says use convened body, not topic. So no.\n\nWhat about \"addison-tx-community-partnership-committee\"? No.\n\nThus final.\n\nDouble-check if body name should be \"Comprehensive Plan Advisory Committee\" or \"CPAC\"? Official title uses \"Comprehensive Plan Advisory Committee\". Use full. Planning & Zoning Commission or Planning and Zoning Commission? Agenda says \"Planning & Zoning Commission\". Feed title says \"Planning and Zoning Commission\". We can use official \"Planning & Zoning Commission\". The schema name max 300. Good.\n\nEvidence IDs: all three. Maybe \"retained-agenda\" alone sufficient. But include all.\n\nMissing evidence: Could mention \"No evidence of other joint participants; no missing evidence for the three identified bodies.\" But missing_evidence array is for genuine missing evidence. We can leave empty. The prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" There is no suspected participant. So empty.\n\nLet's ensure no extra whitespace? JSON only.\n\nFinal.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal bodies. We have evidence. Joint meeting of Addison City Council, Planning & Zoning Commission, Comprehensive Plan Advisory Committee. Need select all appropriate existing feed slugs under supplied publication rules. Existing feeds include city council, planning and zoning, comprehensive plan advisory committee. Also maybe town-meetings/public-input? Need decide. Policy joints: every proven participant can share same recording in configured feed. So feed slugs for three bodies likely: addison-tx-city-council, addison-tx-planning-and-zoning-commission, addison-tx-comprehensive-plan-advisory-committee. Need consider broader subscription groupings independently. The recording is joint meeting of three bodies. Should we also include addison-tx-town-meetings? Description: Town halls, community meetings, open houses and historical citizen input. This is a joint meeting, not town hall? It includes interactive activities and community engagement tool. But convened body is three municipal bodies. Policy: use convened body, not venue, topic. So not public input feed unless routine public comment? Public_comment: Routine public comment does not add Public Info feed membership. Public briefings? No. Bond/TIF no. UDC no. Board of zoning no. Community partnership no. So likely three feed slugs. Publication action assign_existing. Bodies: three proven participants. Also maybe \"Joint Meeting\" as body? No, identify actual body/program separately from subscription grouping. The joint meeting itself isn't a separate municipal body. But schema bodies list IdentifiedBody. Should list the three bodies. Evidence IDs: retained-agenda and provider-player and native-source-chapters. Need cite evidence for body names and assignments. We can include all relevant evidence_ref_ids. Need case_id. Missing_evidence maybe empty? Or mention no evidence of other participants? There are no suspected other participants. The prompt says \"Name every proven participant in a joint meeting.\" We have three. \"If real body has no existing feed, return unconfigured_body and name it.\" All have feeds. \"If ownership cannot be established, return unresolved...\" Ownership established. So publication_action assign_existing. Feed slugs list three. Bodies list three with evidence refs. Evidence_ref_ids overall list all three? Could list retained-agenda, provider-player, native-source-chapters. Rationale concise. Missing_evidence maybe [] or note none. Need ensure JSON matches schema. No markdown. Max rationale 2000. Good.\n\nBut let's double-check nuances. The existing feed for Comprehensive Plan Advisory Committee: slug addison-tx-comprehensive-plan-advisory-committee. The body label says \"Joint CPAC, P&Z, and City Council Meeting #1\". CPAC = Comprehensive Plan Advisory Committee. Evidence source_span explicitly: \"Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee\". So yes.\n\nCould there be a \"City Council\" feed and \"Planning and Zoning Commission\" feed and \"Comprehensive Plan Advisory Committee\" feed. All proven participants. Should we include \"addison-tx-town-meetings\" because it's a joint meeting with interactive activities? The policy says use convened body, not venue, topic or common members. The body is joint meeting of three bodies. The town-meetings feed is for town halls, community meetings, open houses and historical citizen input. This is a formal joint meeting of municipal bodies, not a town hall. Also the agenda is a joint meeting, not a community meeting. The fact it includes interactive activities and community engagement tool is topic, not convening body. So omit. Also \"public-briefings\" no. \"public input\" no. \"unified development code advisory committee\" no.\n\nWhat about \"Addison: City Council\" feed description \"City Council meetings for Addison.\" Does a joint meeting count as City Council meeting? Policy joints: Every proven participant can share same recording in its configured feed. So yes.\n\nWhat about \"Addison: Planning and Zoning Commission\" feed. Yes.\n\nWhat about \"Addison: Comprehensive Plan Advisory Committee\" feed. Yes.\n\nPublication action assign_existing. If multiple feeds, assign_existing.\n\nNeed include evidence_ref_ids maybe all three. Bodies evidence_ref_ids can each cite retained-agenda and provider-player. Maybe native-source-chapters for call to order. We can include all three for each? The schema allows array. Let's include \"retained-agenda\", \"provider-player\", \"native-source-chapters\" for each body? But evidence for body names: retained-agenda has full names. provider-player has full names. native-source-chapters has title with abbreviations but also full names? It has \"Call Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting...\" Yes. So all three support.\n\nCould use evidence_ref_ids overall list all three. Missing evidence empty.\n\nNeed ensure no extra text. JSON only.\n\nLet's craft:\n\n{\n  \"case_id\": \"recording-161b45f0a9cde9b3077a0cdb\",\n  \"bodies\": [\n    {\"name\": \"Addison City Council\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]},\n    {\"name\": \"Addison Planning & Zoning Commission\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]},\n    {\"name\": \"Addison Comprehensive Plan Advisory Committee\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-city-council\",\n    \"addison-tx-planning-and-zoning-commission\",\n    \"addison-tx-comprehensive-plan-advisory-committee\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"Official agenda and player identify a joint meeting of the Addison City Council, Planning & Zoning Commission, and Comprehensive Plan Advisory Committee. The joint-meeting policy allows every proven participant to use its configured feed, so assign all three existing body feeds. No other body is convened; topic/community engagement content does not create a separate body feed.\"\n}\n\nCheck schema: bodies maxItems 10. feed_slugs maxItems 15. evidence_ref_ids array. missing_evidence array. publication_action enum. Good.\n\nShould we include \"Addison: Public Input\" as broader subscription grouping? The instruction: \"Consider broader subscription groupings independently of who convened the recording.\" The existing feed addison-tx-town-meetings is \"Town halls, community meetings, open houses and historical citizen input.\" Is this a community meeting? It is a joint meeting of three bodies with interactive activities. But the feed is for public input, not formal joint meetings. The policy says \"Use the convened body, not venue, topic or common members\". So no.\n\nCould there be a \"public-briefings\" feed? No.\n\nWhat about \"addison-tx-public-briefings\" description: \"Verified public educational briefings for Addison, including the Homelessness Education Seminar.\" This is a joint meeting with progress update and interactive activities, but not a public educational briefing? The agenda item 1 is \"Present and discuss a progress update on the Advance Addison 2050 Comprehensive Plan.\" Item 3 is \"Present and discuss ... community engagement tool.\" But the convened body is three bodies. Public briefings feed likely for non-body public info sessions. Policy: families: Use configured bond/TIF/public-information family feeds for their proven bodies. But this isn't a public information family? The public-briefings feed is a feed for public educational briefings. Could this joint meeting be considered a public briefing? The policy says use convened body, not topic. So no.\n\nWhat about \"addison-tx-community-partnership-committee\"? No.\n\nThus final.\n\nDouble-check if body name should be \"Comprehensive Plan Advisory Committee\" or \"CPAC\"? Official title uses \"Comprehensive Plan Advisory Committee\". Use full. Planning & Zoning Commission or Planning and Zoning Commission? Agenda says \"Planning & Zoning Commission\". Feed title says \"Planning and Zoning Commission\". We can use official \"Planning & Zoning Commission\". The schema name max 300. Good.\n\nEvidence IDs: all three. Maybe \"retained-agenda\" alone sufficient. But include all.\n\nMissing evidence: Could mention \"No evidence of other joint participants; no missing evidence for the three identified bodies.\" But missing_evidence array is for genuine missing evidence. We can leave empty. The prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" There is no suspected participant. So empty.\n\nLet's ensure no extra whitespace? JSON only.\n\nFinal.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791999661,
+    "id": "36f4b044cbe6c14f5ff6a5f4d65c8b6c",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1835,
+      "completion_tokens": 2095,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1835,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3081,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3721,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5816
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

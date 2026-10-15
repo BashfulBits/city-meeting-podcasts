@@ -1,0 +1,168 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "prior-manual-opening-review"
+        ],
+        "name": "Fort Worth City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "prior-manual-opening-review"
+        ],
+        "name": "2008 Gas Drilling Task Force"
+      }
+    ],
+    "case_id": "recording-0594e78d397ac107f267d354",
+    "evidence_ref_ids": [
+      "provider-player",
+      "prior-manual-opening-review"
+    ],
+    "feed_slugs": [
+      "fort-worth-tx-city-council",
+      "fort-worth-tx-gas-drilling-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official player title identifies a City Council\u2013Gas Drilling Task Force workshop. The retained review of the official opening identifies Fort Worth City Council and the 2008 Gas Drilling Task Force as participants in the Joint Environmental Workshop on October 14, 2008. Under the joint-meeting rule, the whole recording belongs in both participants' configured feeds. The 2008 Gas Drilling Task Force is the actual body; its subscription grouping is the configured Gas Drilling Task Force feed, which expressly includes proven joint workshops with Council. The workshop wording does not independently establish City Council Worksession feed membership."
+  },
+  "attempt_id": "bb99babacfba4f4886ba3f4430337c44",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-0594e78d397ac107f267d354",
+  "case_input_hash": "5ff034fb3c93a50e53867ccd7c8b1ed274b7053e47290cfed7c8dc1455b426f8",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 13.243008958001155
+    }
+  ],
+  "end_to_end_seconds": 60.90399416600121,
+  "finished_at": "2026-10-14T16:29:11.439695+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T16:28:10.535341+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "1f75f1bf404cfefdbdaea7b7a57046b653a0f1b0499957e7938c55105349e368",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3824,
+        "output_tokens": 353
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 353,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3824,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3824,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4177,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-0594e78d397ac107f267d354\",\n  \"bodies\": [\n    {\n      \"name\": \"Fort Worth City Council\",\n      \"evidence_ref_ids\": [\n        \"provider-player\",\n        \"prior-manual-opening-review\"\n      ]\n    },\n    {\n      \"name\": \"2008 Gas Drilling Task Force\",\n      \"evidence_ref_ids\": [\n        \"provider-player\",\n        \"prior-manual-opening-review\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [\n    \"fort-worth-tx-city-council\",\n    \"fort-worth-tx-gas-drilling-task-force\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"provider-player\",\n    \"prior-manual-opening-review\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official player title identifies a City Council\u2013Gas Drilling Task Force workshop. The retained review of the official opening identifies Fort Worth City Council and the 2008 Gas Drilling Task Force as participants in the Joint Environmental Workshop on October 14, 2008. Under the joint-meeting rule, the whole recording belongs in both participants' configured feeds. The 2008 Gas Drilling Task Force is the actual body; its subscription grouping is the configured Gas Drilling Task Force feed, which expressly includes proven joint workshops with Council. The workshop wording does not independently establish City Council Worksession feed membership.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791995350,
+    "id": "resp_06d4ecf410518c9b016acfadcb2b54819b9aaf39567dd9c8a0",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3824,
+          "output_tokens": 353
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 353,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3824,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3824,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4177,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

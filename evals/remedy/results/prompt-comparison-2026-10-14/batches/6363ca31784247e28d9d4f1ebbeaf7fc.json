@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Animal Shelter Advisory Committee"
+      }
+    ],
+    "case_id": "recording-5fae14c06e8ceb8379204fb7",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No existing feed slug for the Animal Shelter Advisory Committee is supplied in existing_feeds."
+    ],
+    "publication_action": "unconfigured_body",
+    "rationale": "The official retained agenda identifies the convening body as the Animal Shelter Advisory Committee, City of Denton, meeting on July 23, 2020. The provider player and native source chapters match the same recording and agenda items. No supplied evidence proves any additional joint body or participant. Because the supplied existing_feeds list contains no feed slug for the Animal Shelter Advisory Committee, this real body is unconfigured rather than assignable to an existing feed; venue and topic do not justify substituting another feed."
+  },
+  "attempt_id": "f3d1cbecae1144c3a6199e11c59a7772",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-5fae14c06e8ceb8379204fb7",
+  "case_input_hash": "1a3e56528580d8d82a226fbab045a1e5f4d69bc4a121fd8866a33c2b82fe0d35",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.047681417001513
+    }
+  ],
+  "end_to_end_seconds": 53.96586874999957,
+  "finished_at": "2026-10-14T13:37:27.364870+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T13:36:33.401067+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "de237fa0c6d5f0ffef01ddf74a608485fd96201b7388b56dbaafbf51cba5c2d4",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 901,
+    "completion_tokens": 1119,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 901,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3220,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3860,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4979
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-5fae14c06e8ceb8379204fb7\",\"bodies\":[{\"name\":\"Animal Shelter Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[\"No existing feed slug for the Animal Shelter Advisory Committee is supplied in existing_feeds.\"],\"rationale\":\"The official retained agenda identifies the convening body as the Animal Shelter Advisory Committee, City of Denton, meeting on July 23, 2020. The provider player and native source chapters match the same recording and agenda items. No supplied evidence proves any additional joint body or participant. Because the supplied existing_feeds list contains no feed slug for the Animal Shelter Advisory Committee, this real body is unconfigured rather than assignable to an existing feed; venue and topic do not justify substituting another feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. We have case_id recording-5fae14c06e8ceb8379204fb7. Evidence: retained agenda title Animal Shelter Advisory Committee, City of Denton. Meeting agenda. Provider player. Existing feeds list. Need select all appropriate existing feed slugs. Is there feed for Animal Shelter Advisory Committee? List doesn't include denton-tx-animal-shelter-advisory-committee. So real body no existing feed -> publication_action unconfigured_body? Need name body. Also consider if belongs to any other body? It's Animal Shelter Advisory Committee. Is it a committee? Existing feeds include many. No Animal Shelter. So unconfigured_body. Need bodies: Animal Shelter Advisory Committee with evidence_ref_ids. Could there be joint meeting? Agenda says Chair, Vice-Chair and Members participating via video/teleconference. It's just ASAC. No other proven participants. Need perhaps City Council? No, venue Council Work Session Room but identity says use convened body, not venue. No.\n\nNeed feed_slugs: likely empty? Since no existing feed. If publication_action unconfigured_body, feed_slugs empty. But maybe should include no feed. Could it match \"denton-tx-public-info-meetings\"? No, that's for Public Info Meetings. Not applicable. Could be \"denton-tx-health-building-standards-commission\"? No. Animal Shelter Advisory Committee perhaps related to Health & Building Standards? But identity says not topic. No.\n\nNeed evidence_ref_ids: cite all supplied evidence? Probably include retained-agenda, provider-player, native-source-chapters. Rationale concise with cited evidence. Missing evidence: existing feed for Animal Shelter Advisory Committee not supplied. Also maybe no evidence of joint participants? The prompt says \"Name every proven participant in a joint meeting.\" No joint meeting. \"Determine convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" Evidence retained agenda is official agenda: \"Animal Shelter Advisory Committee, City of Denton... will convene...\" So body proven. Existing feed absent. \"If a real body has no existing feed, return unconfigured_body and name it.\" So publication_action unconfigured_body. Missing evidence: configured feed slug for Animal Shelter Advisory Committee. Maybe also missing official roster/attendance? Not needed. Could mention no configured feed for ASAC.\n\nNeed ensure JSON schema fields. bodies array IdentifiedBody: name, evidence_ref_ids. evidence_ref_ids top-level? Should include all evidence refs used. feed_slugs empty. missing_evidence array strings. rationale maxLength 2000. Case_id exact.\n\nLet's craft rationale: Official agenda (retained-agenda) identifies \"Animal Shelter Advisory Committee, City of Denton\" convening July 23 2020; provider-player and native-source-chapters title/recording match. No evidence of any other body or joint participant. No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds; therefore body is real but unconfigured. Do not assign City Council/venue/topic feed. Evidence IDs: retained-agenda, provider-player, native-source-chapters.\n\nNeed maybe include evidence_ref_ids top-level same. The bodies evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Good.\n\nMissing evidence: [\"No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds.\"] Maybe also \"No official evidence of a joint meeting or additional participating body.\" But if no joint, not missing. Could mention \"Configured publication feed for the Animal Shelter Advisory Committee\" as missing.\n\nNeed check if \"Animal Shelter Advisory Committee\" might be considered a board/committee with no feed. Yes.\n\nPotential nuance: The body_label says \"Animal Shelter Advisory Committee on 2020-07-23 2:00 PM\" maybe label includes date. But body name should be \"Animal Shelter Advisory Committee\". Evidence: retained agenda says \"Animal Shelter Advisory Committee\". Good.\n\nPublication_action: unconfigured_body. Since no feed. \"Use archive_only, archive_series or exclude_event only when general approved publication rules apply. Empty feeds alone do not mean a non-meeting.\" Not archive/event. So unconfigured_body.\n\nNeed return only JSON. Ensure valid JSON no markdown. Let's final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. We have case_id recording-5fae14c06e8ceb8379204fb7. Evidence: retained agenda title Animal Shelter Advisory Committee, City of Denton. Meeting agenda. Provider player. Existing feeds list. Need select all appropriate existing feed slugs. Is there feed for Animal Shelter Advisory Committee? List doesn't include denton-tx-animal-shelter-advisory-committee. So real body no existing feed -> publication_action unconfigured_body? Need name body. Also consider if belongs to any other body? It's Animal Shelter Advisory Committee. Is it a committee? Existing feeds include many. No Animal Shelter. So unconfigured_body. Need bodies: Animal Shelter Advisory Committee with evidence_ref_ids. Could there be joint meeting? Agenda says Chair, Vice-Chair and Members participating via video/teleconference. It's just ASAC. No other proven participants. Need perhaps City Council? No, venue Council Work Session Room but identity says use convened body, not venue. No.\n\nNeed feed_slugs: likely empty? Since no existing feed. If publication_action unconfigured_body, feed_slugs empty. But maybe should include no feed. Could it match \"denton-tx-public-info-meetings\"? No, that's for Public Info Meetings. Not applicable. Could be \"denton-tx-health-building-standards-commission\"? No. Animal Shelter Advisory Committee perhaps related to Health & Building Standards? But identity says not topic. No.\n\nNeed evidence_ref_ids: cite all supplied evidence? Probably include retained-agenda, provider-player, native-source-chapters. Rationale concise with cited evidence. Missing evidence: existing feed for Animal Shelter Advisory Committee not supplied. Also maybe no evidence of joint participants? The prompt says \"Name every proven participant in a joint meeting.\" No joint meeting. \"Determine convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" Evidence retained agenda is official agenda: \"Animal Shelter Advisory Committee, City of Denton... will convene...\" So body proven. Existing feed absent. \"If a real body has no existing feed, return unconfigured_body and name it.\" So publication_action unconfigured_body. Missing evidence: configured feed slug for Animal Shelter Advisory Committee. Maybe also missing official roster/attendance? Not needed. Could mention no configured feed for ASAC.\n\nNeed ensure JSON schema fields. bodies array IdentifiedBody: name, evidence_ref_ids. evidence_ref_ids top-level? Should include all evidence refs used. feed_slugs empty. missing_evidence array strings. rationale maxLength 2000. Case_id exact.\n\nLet's craft rationale: Official agenda (retained-agenda) identifies \"Animal Shelter Advisory Committee, City of Denton\" convening July 23 2020; provider-player and native-source-chapters title/recording match. No evidence of any other body or joint participant. No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds; therefore body is real but unconfigured. Do not assign City Council/venue/topic feed. Evidence IDs: retained-agenda, provider-player, native-source-chapters.\n\nNeed maybe include evidence_ref_ids top-level same. The bodies evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Good.\n\nMissing evidence: [\"No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds.\"] Maybe also \"No official evidence of a joint meeting or additional participating body.\" But if no joint, not missing. Could mention \"Configured publication feed for the Animal Shelter Advisory Committee\" as missing.\n\nNeed check if \"Animal Shelter Advisory Committee\" might be considered a board/committee with no feed. Yes.\n\nPotential nuance: The body_label says \"Animal Shelter Advisory Committee on 2020-07-23 2:00 PM\" maybe label includes date. But body name should be \"Animal Shelter Advisory Committee\". Evidence: retained agenda says \"Animal Shelter Advisory Committee\". Good.\n\nPublication_action: unconfigured_body. Since no feed. \"Use archive_only, archive_series or exclude_event only when general approved publication rules apply. Empty feeds alone do not mean a non-meeting.\" Not archive/event. So unconfigured_body.\n\nNeed return only JSON. Ensure valid JSON no markdown. Let's final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985038,
+    "id": "e1cf8f6c77743eb1fcebcc863693a702",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 901,
+      "completion_tokens": 1119,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 901,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3220,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3860,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4979
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

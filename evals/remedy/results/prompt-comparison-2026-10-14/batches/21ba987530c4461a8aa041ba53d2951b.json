@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Bond Advisory Committee (Town of Addison, TX)"
+      }
+    ],
+    "case_id": "recording-47a2043e1aa311edf6349cd3",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained-agenda evidence shows a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on Thursday, November 20, 2025, at Addison Town Hall, posted by the Town of Addison's Chief of Staff, establishing the convened body as Addison's Bond Advisory Committee (not merely a venue or topic label). The provider-player evidence for recording 361917 shows the same meeting title and agenda, including consideration of the October 30, 2025 Bond Advisory Committee minutes, and the native-source-chapters mirror the agenda items, confirming the recording belongs to that body's regular meeting. The existing feed 'addison-tx-bond-committees' is described as covering verified Addison bond-program committee meetings, including the Police and Courts facility Bond Advisory Committee, and the agenda's stated purpose includes a needs assessment for the Police and Courts facility, matching that feed's proven scope. This is a single-body meeting with no proven joint participants, so only one feed is selected. No archive or event disposition applies since this is a regular agenda-driven meeting of a real body with a configured feed."
+  },
+  "attempt_id": "0b2843b56dca4a4bb5d5592466806104",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-47a2043e1aa311edf6349cd3",
+  "case_input_hash": "00f5cd2e37557a40cce848f1021c43331ec94cf416d603cdc4592b4042bc78e5",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.108203499999945
+    }
+  ],
+  "end_to_end_seconds": 12.931140832999517,
+  "finished_at": "2026-10-14T15:05:18.293227+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T15:05:05.361970+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "82992bb94b908d58a11068abe05e7186df371b02ed951dca4c9456f8917c497c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 737,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 355,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3508,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4245
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\",\n        \"native-source-chapters\"\n      ],\n      \"name\": \"Bond Advisory Committee (Town of Addison, TX)\"\n    }\n  ],\n  \"case_id\": \"recording-47a2043e1aa311edf6349cd3\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-bond-committees\"\n  ],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained-agenda evidence shows a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on Thursday, November 20, 2025, at Addison Town Hall, posted by the Town of Addison's Chief of Staff, establishing the convened body as Addison's Bond Advisory Committee (not merely a venue or topic label). The provider-player evidence for recording 361917 shows the same meeting title and agenda, including consideration of the October 30, 2025 Bond Advisory Committee minutes, and the native-source-chapters mirror the agenda items, confirming the recording belongs to that body's regular meeting. The existing feed 'addison-tx-bond-committees' is described as covering verified Addison bond-program committee meetings, including the Police and Courts facility Bond Advisory Committee, and the agenda's stated purpose includes a needs assessment for the Police and Courts facility, matching that feed's proven scope. This is a single-body meeting with no proven joint participants, so only one feed is selected. No archive or event disposition applies since this is a regular agenda-driven meeting of a real body with a configured feed.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify the municipal body for this recording. The recording is \"Bond Advisory Committee \u2013 Nov 20, 2025\" in Addison, TX. Evidence: retained-agenda shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, THURSDAY, NOVEMBER 20, 2025, 6:00 PM, WORK SESSION ROOM, ADDISON TOWN HALL\" \u2014 posted by Sarah Kuechler, Chief of Staff, Town of Addison. Provider player confirms Swagit video for Addison, TX with the same agenda.\n\nExisting feeds include \"addison-tx-bond-committees\" \u2014 \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" The agenda topic includes \"Needs assessment for Police and Courts facility\" \u2014 matches. So the body is the Bond Advisory Committee (Town of Addison), and feed slug \"addison-tx-bond-committees\" is appropriate.\n\nPublication action: assign_existing.\n\nBodies: name \"Bond Advisory Committee\" (Town of Addison), evidence: retained-agenda, provider-player, native-source-chapters.\n\nNo joint participants. No missing evidence really. But should I note anything missing? The feed description says \"including the 2026 Police and Courts facility Bond Advisory Committee\" \u2014 this meeting is Nov 20, 2025, discussing the Police and Courts facility needs assessment, which aligns with that committee. The body label \"Bond Advisory Committee\" matches. Feed slug: addison-tx-bond-committees.\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters. All support.\n\nMissing evidence: none needed; maybe empty array.\n\nRationale: concise, cited.\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify the municipal body for this recording. The recording is \"Bond Advisory Committee \u2013 Nov 20, 2025\" in Addison, TX. Evidence: retained-agenda shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, THURSDAY, NOVEMBER 20, 2025, 6:00 PM, WORK SESSION ROOM, ADDISON TOWN HALL\" \u2014 posted by Sarah Kuechler, Chief of Staff, Town of Addison. Provider player confirms Swagit video for Addison, TX with the same agenda.\n\nExisting feeds include \"addison-tx-bond-committees\" \u2014 \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" The agenda topic includes \"Needs assessment for Police and Courts facility\" \u2014 matches. So the body is the Bond Advisory Committee (Town of Addison), and feed slug \"addison-tx-bond-committees\" is appropriate.\n\nPublication action: assign_existing.\n\nBodies: name \"Bond Advisory Committee\" (Town of Addison), evidence: retained-agenda, provider-player, native-source-chapters.\n\nNo joint participants. No missing evidence really. But should I note anything missing? The feed description says \"including the 2026 Police and Courts facility Bond Advisory Committee\" \u2014 this meeting is Nov 20, 2025, discussing the Police and Courts facility needs assessment, which aligns with that committee. The body label \"Bond Advisory Committee\" matches. Feed slug: addison-tx-bond-committees.\n\nEvidence ref IDs: retained-agenda, provider-player, native-source-chapters. All support.\n\nMissing evidence: none needed; maybe empty array.\n\nRationale: concise, cited.\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791990250,
+    "id": "9ba677f11c61cbaa604d8703c01e738a",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 737,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 355,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3508,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4245
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

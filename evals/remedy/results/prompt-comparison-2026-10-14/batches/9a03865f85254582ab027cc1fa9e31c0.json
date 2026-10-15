@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Health and Building Standards Commission"
+      }
+    ],
+    "case_id": "recording-8dd902e97939f88dfa43b299",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "denton-tx-health-building-standards-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda explicitly states that the Health and Building Standards Commission of the City of Denton will convene a Regular Meeting on June 3, 2021, at 3:00 p.m. The provider player for recording 122398 corroborates the commission, date, and agenda items. This directly matches the configured Health & Building Standards Commission feed. The Council Work Session Room is a venue, not evidence of City Council participation, and construction-code topics do not establish another convening body. No joint conveners or additional feed memberships are supported."
+  },
+  "attempt_id": "bc5f8e956466455e8549194687b5648c",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-8dd902e97939f88dfa43b299",
+  "case_input_hash": "ad20fb0146d9eb255ec24930716dd797fe3e89b35909ae60163492bc3161b52e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.359060959002818
+    }
+  ],
+  "end_to_end_seconds": 61.691172166996694,
+  "finished_at": "2026-10-14T21:02:44.228398+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T21:01:42.536870+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2c3ac99eb83217a6f89ccb806f02a5b5ac69a1404075ad4961652d9f6d764de7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4254,
+        "output_tokens": 210
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 210,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4254,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4254,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4464,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-8dd902e97939f88dfa43b299\",\"bodies\":[{\"name\":\"Health and Building Standards Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"denton-tx-health-building-standards-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda explicitly states that the Health and Building Standards Commission of the City of Denton will convene a Regular Meeting on June 3, 2021, at 3:00 p.m. The provider player for recording 122398 corroborates the commission, date, and agenda items. This directly matches the configured Health & Building Standards Commission feed. The Council Work Session Room is a venue, not evidence of City Council participation, and construction-code topics do not establish another convening body. No joint conveners or additional feed memberships are supported.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792011763,
+    "id": "resp_0d82211f054eb4b7016acfedeb87a48198a4b79f661603aafb",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4254,
+          "output_tokens": 210
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 210,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4254,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4254,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4464,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

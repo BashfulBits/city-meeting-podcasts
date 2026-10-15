@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Tax Increment Reinvestment Zone No. 2 Board"
+      }
+    ],
+    "case_id": "recording-c2104a6abb6a7a51f3876825",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-2-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda explicitly states that the Tax Increment Reinvestment Zone No. 2 Board will convene the January 13, 2021 special called meeting at 11:00 a.m.; the provider player confirms the same meeting and recording. The configured TIRZ No. 2 Board feed directly covers this body. City Council is referenced only as the recipient of a recommendation, not as a joint convener. No other feed membership is supported."
+  },
+  "attempt_id": "73fb7bcef09b4b708ad4e12995acdd84",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-c2104a6abb6a7a51f3876825",
+  "case_input_hash": "3fcaf9b983139e6bc11ef163a717b387b6daba1e278f211d10da8cad1b76dfab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.383903499998269
+    }
+  ],
+  "end_to_end_seconds": 56.5313815000045,
+  "finished_at": "2026-10-14T20:26:16.511739+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T20:25:19.980032+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "29bc0288cdefbae628964bf93a3d49d84d1cc6dcd0998ea6103b34bf86bf74c0",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4237,
+        "output_tokens": 196
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 196,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4237,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4237,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4433,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-c2104a6abb6a7a51f3876825\",\"bodies\":[{\"name\":\"Tax Increment Reinvestment Zone No. 2 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"denton-tx-tirz-2-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda explicitly states that the Tax Increment Reinvestment Zone No. 2 Board will convene the January 13, 2021 special called meeting at 11:00 a.m.; the provider player confirms the same meeting and recording. The configured TIRZ No. 2 Board feed directly covers this body. City Council is referenced only as the recipient of a recommendation, not as a joint convener. No other feed membership is supported.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792009575,
+    "id": "resp_090cf799f5045673016acfe563c02c819b854f8691c4fb435e",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4237,
+          "output_tokens": 196
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 196,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4237,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4237,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4433,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

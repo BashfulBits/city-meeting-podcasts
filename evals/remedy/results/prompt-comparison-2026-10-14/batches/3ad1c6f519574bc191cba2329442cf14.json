@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-ff5573e2e05ac6a223fa55a5",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No agenda, official notice, or participant roster in the supplied evidence identifies a convening municipal body (e.g., City Council) for the Jun 06, 2009 Beckert Park dedication ceremony",
+      "No evidence links the ceremony to any specific configured Addison body beyond the city-branded Swagit channel itself"
+    ],
+    "publication_action": "exclude_event",
+    "rationale": "The only supplied evidence (provider-player) shows the recording titled 'Beckert Park Dedication Ceremony \u2013 Jun 06, 2009' on Addison's Swagit channel. This identifies a dedication ceremony, not a convened municipal body; per the rules, a program/event label cannot establish a formal institution, and venue, topic, or city-name matches are disqualifying for body selection. The supplied general publication rules state that ceremonies and dedications are excluded from body feeds, which applies directly to this recording type regardless of which body may have hosted it. Therefore no feed slug is selected (City Council, Public Input, Public Briefings, etc. have no proven convening link), and no body is listed because none is proven. The convening-body gap is noted, but the action follows from the event-exclusion rule itself; the recording is not being declared non-government."
+  },
+  "attempt_id": "145ebf1715ea4e16842f20134595f237",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-ff5573e2e05ac6a223fa55a5",
+  "case_input_hash": "740a9d214597efead2cee12918a4c1519c40c575910ce1dd874af940f7798d01",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 33.735416457999236
+    }
+  ],
+  "end_to_end_seconds": 36.31040929200026,
+  "finished_at": "2026-10-14T18:38:43.361694+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T18:38:07.051050+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "f8e511b2a5fb4ef179046fac32e2e0b7150f0e04085bfef97b3769d4acffd43d",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1977,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1647,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 1803,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 3780
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-ff5573e2e05ac6a223fa55a5\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"exclude_event\",\n  \"evidence_ref_ids\": [\n    \"provider-player\"\n  ],\n  \"missing_evidence\": [\n    \"No agenda, official notice, or participant roster in the supplied evidence identifies a convening municipal body (e.g., City Council) for the Jun 06, 2009 Beckert Park dedication ceremony\",\n    \"No evidence links the ceremony to any specific configured Addison body beyond the city-branded Swagit channel itself\"\n  ],\n  \"rationale\": \"The only supplied evidence (provider-player) shows the recording titled 'Beckert Park Dedication Ceremony \u2013 Jun 06, 2009' on Addison's Swagit channel. This identifies a dedication ceremony, not a convened municipal body; per the rules, a program/event label cannot establish a formal institution, and venue, topic, or city-name matches are disqualifying for body selection. The supplied general publication rules state that ceremonies and dedications are excluded from body feeds, which applies directly to this recording type regardless of which body may have hosted it. Therefore no feed slug is selected (City Council, Public Input, Public Briefings, etc. have no proven convening link), and no body is listed because none is proven. The convening-body gap is noted, but the action follows from the event-exclusion rule itself; the recording is not being declared non-government.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Beckert Park Dedication Ceremony\" from June 6, 2009, in Addison, TX. The only evidence is the provider player page (Swagit video player) showing the title and date. There's no agenda, no body listing, no participants.\n\nPer the policy:\n- \"events\": \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" \u2014 This is a dedication ceremony, so it should be excluded from body feeds (exclude_event).\n- \"identity\": \"Use the convened body, not venue, topic or common members\" \u2014 We don't know which body convened this ceremony.\n- \"proof\": \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n\nHmm, the tension: the publication action options include \"exclude_event\" for ceremonies/dedications excluded from body feeds. But does exclude_event require knowing which body it belongs to? The policy says ceremonies/dedications are excluded from body feeds. The recording is clearly a dedication ceremony by title. So the general approved publication rules apply: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\"\n\nThe event policy says \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So this dedication ceremony should be excluded from body feeds \u2014 publication_action = \"exclude_event\".\n\nBut should the bodies list be empty? The bodies list should identify proven bodies. There's no evidence of a convened municipal body. The ceremony is a city event (Beckert Park is in Addison, the recording is on Addison's Swagit channel). But which municipal body convened it? Unknown \u2014 possibly the City Council, but no proof. Missing ownership proof requires unresolved \u2014 but that's for ownership. Here, though, the publication action can be exclude_event per general policy: ceremonies are excluded from body feeds regardless of body.\n\nWait \u2014 but the instruction says \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" However, it also says \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" The general approved publication rule for events: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This recording is a dedication ceremony, evidenced by the title in provider-player. So the general rule applies: exclude_event.\n\nThe distinction: \"unresolved\" is when we can't determine ownership and the recording is a meeting-type recording needing body assignment. Here, the recording type itself (ceremony) triggers the event exclusion rule, which applies regardless of body ownership. So exclude_event is appropriate, with no feed slugs, no bodies (or maybe no bodies since none proven).\n\nActually, should we include a body? The body_label is \"Beckert Park Dedication Ceremony\" \u2014 but that's not a municipal body; it's a program/event label. The instruction says \"Do not establish a formal municipal institution from a program label.\" So no body. bodies: [].\n\nfeed_slugs: [] \u2014 none apply. Could \"addison-tx-town-meetings\" (Public Input: town halls, community meetings, open houses and historical citizen input) apply? The description includes \"historical citizen input\" \u2014 a 2009 park dedication ceremony? Hmm. The policy explicitly says ceremonies and dedications are excluded from body feeds. The Public Input feed is a body feed (subscription grouping). The events rule excludes ceremonies/dedications from body feeds. So no.\n\nCould \"addison-tx-public-briefings\" apply? No \u2014 it's for educational briefings. No.\n\nSo publication_action: \"exclude_event\", bodies: [], feed_slugs: [], evidence_ref_ids: [\"provider-player\"], missing_evidence: maybe note that no agenda or convening-body evidence exists; the city of Addison's involvement is implied by the channel but no formal body proven \u2014 but since the action is exclude_event, ownership isn't needed. Should missing_evidence include something? We could note: \"No agenda or official notice identifying a convening municipal body for the dedication ceremony.\" That's genuine missing evidence even though the action doesn't depend on it. Or leave empty. I think it's fine to note the gap about convening body, clarifying that exclude_event applies regardless.\n\nRationale: The recording is titled \"Beckert Park Dedication Ceremony\" (Jun 06, 2009) per provider-player evidence. Under the supplied publication rules, ceremonies and dedications are excluded from body feeds (policy.events). No evidence identifies a convened municipal body; the event label is not a body. Therefore no feed slugs; publication action is exclude_event. Empty bodies reflect the event-type exclusion, not unresolved ownership \u2014 though ownership evidence is also absent, the exclusion rule applies to the recording type directly.\n\nAlso echo case_id: \"recording-ff5573e2e05ac6a223fa55a5\".\n\nEnsure JSON only, no Markdown. The system prompt says end with ``` to indicate end of JSON code block... Actually the system prompt says output valid JSON object and end code block with ```. The user says \"Return one JSON object only (no Markdown or commentary)\". Hmm, conflicting. The system says \"If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. But the user schema says return one JSON object only, no Markdown. The schema requires specific fields, so I should return the schema-matching JSON. The system's instruction about ending with ``` \u2014 perhaps wrap in ```json ... ```? The user explicitly says no Markdown. The higher-level system instruction says ensure ending with ```. To satisfy both, I could output the JSON in a code block. But \"Return only the required JSON, with concise cited rationale... do not output hidden analysis.\" I think the safest is to output the JSON object within a code block ending with ``` per system instruction. Actually, re-reading the system: \"You should always follow instructions and output a valid JSON object. ... Make sure to always end with ``` to indicate the end of the JSON object.\" This implies fenced code block. I'll use ```json ... ``` format. Hmm, but user says no Markdown. System takes precedence typically. I'll go with fenced block ending with ```.\n\nActually many similar tasks: the system prompt is a generic wrapper; the final answer should match the schema. I'll output the JSON fenced with ```json and end with ```.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-ff5573e2e05ac6a223fa55a5\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"exclude_event\",\n  \"evidence_ref_ids\": [\"provider-player\"],\n  \"missing_evidence\": [\n    \"No agenda, notice or participant roster identifying a convening municipal body for the Jun 06, 2009 dedication ceremony\"\n  ],\n  \"rationale\": \"...\"\n}\n\nRationale (concise, <2000 chars): \"The sole supplied evidence (provider-player) shows only the title 'Beckert Park Dedication Ceremony \u2013 Jun 06, 2009' on Addison's Swagit channel; it identifies a dedication ceremony, not a convened municipal body, and the event-style label cannot establish a formal institution. Under the supplied general publication rules, ceremonies and dedications are excluded from body feeds, which applies directly to this recording type regardless of which body may have hosted it. Accordingly, no existing feed slug is selected (City Council, Public Input, etc. have no proven convening link, and topic/venue matches are disqualifying), and no body is listed because none is proven. Missing convening-body evidence is noted, but the exclusion action follows from the event rule itself rather than from declaring the recording non-government.\"\n\nThat covers everything. Confidence not numeric. Good.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Beckert Park Dedication Ceremony\" from June 6, 2009, in Addison, TX. The only evidence is the provider player page (Swagit video player) showing the title and date. There's no agenda, no body listing, no participants.\n\nPer the policy:\n- \"events\": \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" \u2014 This is a dedication ceremony, so it should be excluded from body feeds (exclude_event).\n- \"identity\": \"Use the convened body, not venue, topic or common members\" \u2014 We don't know which body convened this ceremony.\n- \"proof\": \"Missing ownership proof requires unresolved; it does not prove exclusion.\"\n\nHmm, the tension: the publication action options include \"exclude_event\" for ceremonies/dedications excluded from body feeds. But does exclude_event require knowing which body it belongs to? The policy says ceremonies/dedications are excluded from body feeds. The recording is clearly a dedication ceremony by title. So the general approved publication rules apply: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\"\n\nThe event policy says \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So this dedication ceremony should be excluded from body feeds \u2014 publication_action = \"exclude_event\".\n\nBut should the bodies list be empty? The bodies list should identify proven bodies. There's no evidence of a convened municipal body. The ceremony is a city event (Beckert Park is in Addison, the recording is on Addison's Swagit channel). But which municipal body convened it? Unknown \u2014 possibly the City Council, but no proof. Missing ownership proof requires unresolved \u2014 but that's for ownership. Here, though, the publication action can be exclude_event per general policy: ceremonies are excluded from body feeds regardless of body.\n\nWait \u2014 but the instruction says \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" However, it also says \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" The general approved publication rule for events: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" This recording is a dedication ceremony, evidenced by the title in provider-player. So the general rule applies: exclude_event.\n\nThe distinction: \"unresolved\" is when we can't determine ownership and the recording is a meeting-type recording needing body assignment. Here, the recording type itself (ceremony) triggers the event exclusion rule, which applies regardless of body ownership. So exclude_event is appropriate, with no feed slugs, no bodies (or maybe no bodies since none proven).\n\nActually, should we include a body? The body_label is \"Beckert Park Dedication Ceremony\" \u2014 but that's not a municipal body; it's a program/event label. The instruction says \"Do not establish a formal municipal institution from a program label.\" So no body. bodies: [].\n\nfeed_slugs: [] \u2014 none apply. Could \"addison-tx-town-meetings\" (Public Input: town halls, community meetings, open houses and historical citizen input) apply? The description includes \"historical citizen input\" \u2014 a 2009 park dedication ceremony? Hmm. The policy explicitly says ceremonies and dedications are excluded from body feeds. The Public Input feed is a body feed (subscription grouping). The events rule excludes ceremonies/dedications from body feeds. So no.\n\nCould \"addison-tx-public-briefings\" apply? No \u2014 it's for educational briefings. No.\n\nSo publication_action: \"exclude_event\", bodies: [], feed_slugs: [], evidence_ref_ids: [\"provider-player\"], missing_evidence: maybe note that no agenda or convening-body evidence exists; the city of Addison's involvement is implied by the channel but no formal body proven \u2014 but since the action is exclude_event, ownership isn't needed. Should missing_evidence include something? We could note: \"No agenda or official notice identifying a convening municipal body for the dedication ceremony.\" That's genuine missing evidence even though the action doesn't depend on it. Or leave empty. I think it's fine to note the gap about convening body, clarifying that exclude_event applies regardless.\n\nRationale: The recording is titled \"Beckert Park Dedication Ceremony\" (Jun 06, 2009) per provider-player evidence. Under the supplied publication rules, ceremonies and dedications are excluded from body feeds (policy.events). No evidence identifies a convened municipal body; the event label is not a body. Therefore no feed slugs; publication action is exclude_event. Empty bodies reflect the event-type exclusion, not unresolved ownership \u2014 though ownership evidence is also absent, the exclusion rule applies to the recording type directly.\n\nAlso echo case_id: \"recording-ff5573e2e05ac6a223fa55a5\".\n\nEnsure JSON only, no Markdown. The system prompt says end with ``` to indicate end of JSON code block... Actually the system prompt says output valid JSON object and end code block with ```. The user says \"Return one JSON object only (no Markdown or commentary)\". Hmm, conflicting. The system says \"If unsure, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. But the user schema says return one JSON object only, no Markdown. The schema requires specific fields, so I should return the schema-matching JSON. The system's instruction about ending with ``` \u2014 perhaps wrap in ```json ... ```? The user explicitly says no Markdown. The higher-level system instruction says ensure ending with ```. To satisfy both, I could output the JSON in a code block. But \"Return only the required JSON, with concise cited rationale... do not output hidden analysis.\" I think the safest is to output the JSON object within a code block ending with ``` per system instruction. Actually, re-reading the system: \"You should always follow instructions and output a valid JSON object. ... Make sure to always end with ``` to indicate the end of the JSON object.\" This implies fenced code block. I'll use ```json ... ``` format. Hmm, but user says no Markdown. System takes precedence typically. I'll go with fenced block ending with ```.\n\nActually many similar tasks: the system prompt is a generic wrapper; the final answer should match the schema. I'll output the JSON fenced with ```json and end with ```.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-ff5573e2e05ac6a223fa55a5\",\n  \"bodies\": [],\n  \"feed_slugs\": [],\n  \"publication_action\": \"exclude_event\",\n  \"evidence_ref_ids\": [\"provider-player\"],\n  \"missing_evidence\": [\n    \"No agenda, notice or participant roster identifying a convening municipal body for the Jun 06, 2009 dedication ceremony\"\n  ],\n  \"rationale\": \"...\"\n}\n\nRationale (concise, <2000 chars): \"The sole supplied evidence (provider-player) shows only the title 'Beckert Park Dedication Ceremony \u2013 Jun 06, 2009' on Addison's Swagit channel; it identifies a dedication ceremony, not a convened municipal body, and the event-style label cannot establish a formal institution. Under the supplied general publication rules, ceremonies and dedications are excluded from body feeds, which applies directly to this recording type regardless of which body may have hosted it. Accordingly, no existing feed slug is selected (City Council, Public Input, etc. have no proven convening link, and topic/venue matches are disqualifying), and no body is listed because none is proven. Missing convening-body evidence is noted, but the exclusion action follows from the event rule itself rather than from declaring the recording non-government.\"\n\nThat covers everything. Confidence not numeric. Good.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792003089,
+    "id": "88e43b600f3ce9b724d3d3a83bc66858",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1977,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1647,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 1803,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 3780
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

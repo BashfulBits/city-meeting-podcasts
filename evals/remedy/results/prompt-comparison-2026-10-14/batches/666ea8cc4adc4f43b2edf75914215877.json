@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Community and Neighborhood Development Committee (City of Arlington)"
+      }
+    ],
+    "case_id": "recording-9bd0e85a0cb337726b421b81",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-community-and-neighborhood-development-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is headed 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON' for a telephone meeting on June 23, 2020 at 8:30 A.M., matching the recording date of 2020-06-23, and its recording_id matches this clip (arlingtontx.granicus.com MediaPlayer view_id=2 clip_id=3505). The provider's own player page (provider-player) labels the stream 'Community and Neighborhood Development Committee', independently confirming the convened body. Ownership is established by the convened body named on both the official agenda and the provider player, not by venue, topic, or shared members. An existing feed exactly matching this body is configured (arlington-tx-community-and-neighborhood-development-committee: 'Meetings of Arlington's Community and Neighborhood Development Committee'), so the recording is assigned there. The broad 'arlington-tx' feed is described as limited to City Council and Planning & Zoning meetings, so it does not apply. No joint participants appear in the evidence; agenda items are CDBG-CV and ESG-CV updates handled by this committee. No archive/series/exclusion rules are triggered, and no body lacks a configured feed."
+  },
+  "attempt_id": "16a0598c739b419eafec423753dc73dc",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-9bd0e85a0cb337726b421b81",
+  "case_input_hash": "2c32b1b17a6e128279aab027a4ebe807ab484df1e7b0b609d7f0160f08964c5d",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.298448749999807
+    }
+  ],
+  "end_to_end_seconds": 11.69653366700004,
+  "finished_at": "2026-10-14T18:03:39.489789+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:03:27.793151+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "f205725e797a553bb2e20c6158afdd839125a4b709e96459b4f652d5483d4093",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1160,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 781,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3043,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4203
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"recording-9bd0e85a0cb337726b421b81\", \"bodies\": [{\"name\": \"Community and Neighborhood Development Committee (City of Arlington)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}], \"feed_slugs\": [\"arlington-tx-community-and-neighborhood-development-committee\"], \"publication_action\": \"assign_existing\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"], \"missing_evidence\": [], \"rationale\": \"The retained agenda (retained-agenda) is headed 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON' for a telephone meeting on June 23, 2020 at 8:30 A.M., matching the recording date of 2020-06-23, and its recording_id matches this clip (arlingtontx.granicus.com MediaPlayer view_id=2 clip_id=3505). The provider's own player page (provider-player) labels the stream 'Community and Neighborhood Development Committee', independently confirming the convened body. Ownership is established by the convened body named on both the official agenda and the provider player, not by venue, topic, or shared members. An existing feed exactly matching this body is configured (arlington-tx-community-and-neighborhood-development-committee: 'Meetings of Arlington's Community and Neighborhood Development Committee'), so the recording is assigned there. The broad 'arlington-tx' feed is described as limited to City Council and Planning & Zoning meetings, so it does not apply. No joint participants appear in the evidence; agenda items are CDBG-CV and ESG-CV updates handled by this committee. No archive/series/exclusion rules are triggered, and no body lacks a configured feed.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is from Arlington, TX, on Granicus. The recording title is \"Community and Neighborhood Development Committee\", dated 2020-06-23.\n\nEvidence:\n1. \"retained-agenda\": The agenda document titled \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" with a telephone meeting on June 23, 2020, 8:30 A.M. The agenda covers Community Development Block Grant-CV Follow-up and Emergency Solutions Grant-CV Round 2. The recording_id matches \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505\". This ties the agenda to the recording.\n2. \"provider-player\": The Granicus MediaPlayer page showing \"Community and Neighborhood Development Committee Video Player and Subtitles\" \u2014 confirms the provider's own player labels the recording as belonging to the Community and Neighborhood Development Committee.\n\nExisting feeds include \"arlington-tx-community-and-neighborhood-development-committee\" \u2014 \"Meetings of Arlington's Community and Neighborhood Development Committee.\"\n\nSo the body is the Community and Neighborhood Development Committee of the City of Arlington. Publication action: assign_existing. Feed slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nShould I also include \"arlington-tx\" (All Meetings)? The rules say \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The \"arlington-tx\" feed is \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Hmm, that's described as City Council and Planning & Zoning meetings \u2014 not the CND Committee. So the general \"arlington-tx\" feed seems limited to Council and P&Z. Its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So CND Committee would not fit that description strictly. Hmm, but the title is \"Arlington \u2014 All Meetings\". The description limits it to Council and P&Z. I'll be cautious: the description is the governing text. CND Committee is neither Council nor Planning & Zoning. So exclude \"arlington-tx\".\n\nActually, wait \u2014 let me think. Many systems have a broad \"All Meetings\" feed that includes everything. But the description here explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So the committee doesn't match the description. I'll include only the committee feed.\n\nBody name: \"Community and Neighborhood Development Committee\" (City of Arlington). Evidence refs: retained-agenda, provider-player.\n\nMissing evidence: none needed. Publication action: assign_existing.\n\nRationale: The provider player page and retained agenda both label the recording as the Community and Neighborhood Development Committee of the City of Arlington; agenda dated June 23, 2020 matches recording date; the recording_id ties agenda to the clip. A matching configured feed exists.\n\nEcho case_id: \"recording-9bd0e85a0cb337726b421b81\".\n\nThe output should be a single JSON object matching the schema, no markdown. The system prompt said to end code block with ``` but the user says return one JSON object only, no markdown. The later, more specific instruction from the user says \"Return one JSON object only (no Markdown or commentary)\". I'll output plain JSON.\n\nBodies array: one entry: {\"name\": \"Community and Neighborhood Development Committee\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}.\n\nevidence_ref_ids top-level: [\"retained-agenda\", \"provider-player\"].\n\nfeed_slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nmissing_evidence: [].\n\npublication_action: \"assign_existing\".\n\nRationale within 2000 chars.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is from Arlington, TX, on Granicus. The recording title is \"Community and Neighborhood Development Committee\", dated 2020-06-23.\n\nEvidence:\n1. \"retained-agenda\": The agenda document titled \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" with a telephone meeting on June 23, 2020, 8:30 A.M. The agenda covers Community Development Block Grant-CV Follow-up and Emergency Solutions Grant-CV Round 2. The recording_id matches \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505\". This ties the agenda to the recording.\n2. \"provider-player\": The Granicus MediaPlayer page showing \"Community and Neighborhood Development Committee Video Player and Subtitles\" \u2014 confirms the provider's own player labels the recording as belonging to the Community and Neighborhood Development Committee.\n\nExisting feeds include \"arlington-tx-community-and-neighborhood-development-committee\" \u2014 \"Meetings of Arlington's Community and Neighborhood Development Committee.\"\n\nSo the body is the Community and Neighborhood Development Committee of the City of Arlington. Publication action: assign_existing. Feed slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nShould I also include \"arlington-tx\" (All Meetings)? The rules say \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The \"arlington-tx\" feed is \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" Hmm, that's described as City Council and Planning & Zoning meetings \u2014 not the CND Committee. So the general \"arlington-tx\" feed seems limited to Council and P&Z. Its description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So CND Committee would not fit that description strictly. Hmm, but the title is \"Arlington \u2014 All Meetings\". The description limits it to Council and P&Z. I'll be cautious: the description is the governing text. CND Committee is neither Council nor Planning & Zoning. So exclude \"arlington-tx\".\n\nActually, wait \u2014 let me think. Many systems have a broad \"All Meetings\" feed that includes everything. But the description here explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So the committee doesn't match the description. I'll include only the committee feed.\n\nBody name: \"Community and Neighborhood Development Committee\" (City of Arlington). Evidence refs: retained-agenda, provider-player.\n\nMissing evidence: none needed. Publication action: assign_existing.\n\nRationale: The provider player page and retained agenda both label the recording as the Community and Neighborhood Development Committee of the City of Arlington; agenda dated June 23, 2020 matches recording date; the recording_id ties agenda to the clip. A matching configured feed exists.\n\nEcho case_id: \"recording-9bd0e85a0cb337726b421b81\".\n\nThe output should be a single JSON object matching the schema, no markdown. The system prompt said to end code block with ``` but the user says return one JSON object only, no markdown. The later, more specific instruction from the user says \"Return one JSON object only (no Markdown or commentary)\". I'll output plain JSON.\n\nBodies array: one entry: {\"name\": \"Community and Neighborhood Development Committee\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}.\n\nevidence_ref_ids top-level: [\"retained-agenda\", \"provider-player\"].\n\nfeed_slugs: [\"arlington-tx-community-and-neighborhood-development-committee\"].\n\nmissing_evidence: [].\n\npublication_action: \"assign_existing\".\n\nRationale within 2000 chars.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792001010,
+    "id": "78a6fda2e797c8a0804cd41025d2baee",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1160,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 781,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3043,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4203
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

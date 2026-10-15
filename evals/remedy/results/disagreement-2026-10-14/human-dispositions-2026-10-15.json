@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "recorded_at": "2026-10-15",
+  "source": "Maintainer's feed-by-feed judgments in the Codex conversation",
+  "packet_binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "gold_is_modified": false,
+  "interpretation": "Only listed feed judgments are scored. Omitted feeds are unrated, not incorrect.",
+  "ratings": [
+    {
+      "case_id": "recording-0312d144c749c190446edfe0",
+      "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting – Aug 22, 2023",
+      "feed_ratings": [
+        {"feed_label": "Dallas: 2024 Bond Streets and Transportation Subcommittee", "feed_slug": "dallas-tx-2024-bond-streets-and-transportation-subcommittee", "rating": "correct"},
+        {"feed_label": "Dallas: Bond Program Meetings", "feed_slug": "dallas-tx-bond-program-meetings", "rating": "possible"}
+      ]
+    },
+    {
+      "case_id": "recording-0850ab9885c4b28efea3adfe",
+      "title": "2024 Capital Bond Streets and Transportation Meeting – May 25, 2023",
+      "feed_ratings": [
+        {"feed_label": "Dallas: 2024 Bond Streets and Transportation Subcommittee", "feed_slug": "dallas-tx-2024-bond-streets-and-transportation-subcommittee", "rating": "correct"},
+        {"feed_label": "Dallas: Bond Program Meetings", "feed_slug": "dallas-tx-bond-program-meetings", "rating": "possible"}
+      ]
+    },
+    {
+      "case_id": "recording-1fd48da636e2445a9d8ecebb",
+      "title": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council",
+      "feed_ratings": [
+        {"feed_label": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council", "feed_slug": "fort-worth-tx-emsisd-board-joint-meetings", "rating": "correct"},
+        {"feed_label": "Fort Worth: City Council", "feed_slug": "fort-worth-tx-city-council", "rating": "correct"},
+        {"feed_label": "Fort Worth — All Meetings", "feed_slug": "fort-worth-tx", "rating": "correct"}
+      ]
+    },
+    {
+      "case_id": "recording-4cbdc0f5678a5408279ffae1",
+      "title": "Addison: Public Input",
+      "feed_ratings": [
+        {"feed_label": "Addison: Public Input", "feed_slug": null, "rating": "correct"},
+        {"feed_label": "No feed assignment", "feed_slug": null, "rating": "possible"}
+      ],
+      "mapping_note": "The user-supplied Public Input label is preserved verbatim; no Addison feed slug was inferred."
+    },
+    {
+      "case_id": "recording-5dddfe1f523eeff020ce4343",
+      "title": "2024 Capital Bond Streets and Transportation Meeting – Jun 13, 2023",
+      "feed_ratings": [
+        {"feed_label": "Dallas: 2024 Bond Streets and Transportation Subcommittee", "feed_slug": "dallas-tx-2024-bond-streets-and-transportation-subcommittee", "rating": "correct"},
+        {"feed_label": "Dallas: Bond Program Meetings", "feed_slug": "dallas-tx-bond-program-meetings", "rating": "possible"}
+      ]
+    },
+    {
+      "case_id": "recording-64905d6e32cae3a0ec5a7070",
+      "title": "Arlington: Environmental Task Force",
+      "feed_ratings": [
+        {"feed_label": "Arlington: Environmental Task Force", "feed_slug": "arlington-tx-environmental-task-force", "rating": "correct"},
+        {"feed_label": "Arlington — All Meetings", "feed_slug": "arlington-tx", "rating": "possible"}
+      ]
+    },
+    {
+      "case_id": "recording-76b77357565cdc16153f2a97",
+      "title": "Fort Worth Minority Leaders and Citizen's Council",
+      "feed_ratings": [
+        {"feed_label": "No feed assignment", "feed_slug": null, "rating": "possible"}
+      ]
+    },
+    {
+      "case_id": "recording-eef10050e298d3758921b67a",
+      "title": "2024 Bond Task Force Community Bond Task Force Meeting – Aug 15, 2023",
+      "feed_ratings": [
+        {"feed_label": "Dallas: 2024 Community Bond Task Force", "feed_slug": "dallas-tx-2024-community-bond-task-force", "rating": "correct"},
+        {"feed_label": "Dallas: Bond Program Meetings", "feed_slug": "dallas-tx-bond-program-meetings", "rating": "possible"}
+      ]
+    }
+  ]
+}

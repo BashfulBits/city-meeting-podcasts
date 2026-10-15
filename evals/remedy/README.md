@@ -79,6 +79,22 @@ examples for source-local instantiation, topic negatives and an unseen-city tran
 are tested as policy contracts, not appended to the independent model-admission manifest or
 gold. Policy instantiation never reads this directory implicitly.
 
+### 2026-10-14 consensus-routing comparison
+
+`results/prompt-comparison-2026-10-14/` contains the immutable 540-job comparison of three prompt
+recipes across 60 recordings and Sol, GLM Flash, and DeepSeek V4.1 Flash. It includes the frozen
+scoring report, scripts, intents, and batches. The original-prompt Sol + GLM Flash pair agreed
+correctly on 52/60 and shared no wrong agreement; the remaining eight cases were sent through a
+separate broader-context adjudication diagnostic.
+
+`holdout/disagreement-2026-10-14/` contains the frozen eight-case packet and reproducibly selected
+context. `results/disagreement-2026-10-14/` contains DeepSeek and JEV pilot observations, scoring
+scripts, and the final diagnostic report. The maintainer's later per-feed labels are preserved in
+`human-dispositions-2026-10-15.json`, separately from frozen gold; unlisted feeds are unrated.
+These reused challenge results support the P3 workflow choice but are not independent model or
+route admission evidence. The adopted two-stage workflow and its remaining gates are in
+[`review/51`](../../review/51-unexpected-body-remedy-flow.md#p3--two-stage-consensus-and-bounded-adjudication).
+
 ### Resuming bounded local qualification
 
 Keep each raw result file immutable. Use `--checkpoint-dir /tmp/remedy-observations` to

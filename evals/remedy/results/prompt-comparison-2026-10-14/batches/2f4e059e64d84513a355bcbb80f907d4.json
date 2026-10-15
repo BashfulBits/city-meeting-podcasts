@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-ad36bcef14d1a3ef3e4d7813",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is headed 'PLANNING AND ZONING COMMISSION WORK SESSION' for Tuesday, January 18, 2022, posted by Addison's City Secretary and referencing Addison, Texas contacts and livestream, establishing the convened body as the Town of Addison Planning and Zoning Commission. The provider player page (provider-player) for recording 153032 is titled 'Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX' and repeats the same agenda, tying this recording to that body. Native chapters (native-source-chapters) mirror the P&Z agenda items. This is a work session of the same commission, not a joint meeting, so no other body is proven to participate; the Addison TreeHouse venue and planning topics do not indicate any additional body. The existing feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison) matches, so assign_existing applies."
+  },
+  "attempt_id": "2dd7242767fc4df0ad542f0cf3df0801",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-ad36bcef14d1a3ef3e4d7813",
+  "case_input_hash": "02219867e8995d1cbf2c5f8cffaa803a0daf5f04f6823e02a5440c07f7689f75",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 5.456507666000107
+    }
+  ],
+  "end_to_end_seconds": 6.811569124998641,
+  "finished_at": "2026-10-14T21:20:45.984511+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T21:20:39.172854+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2e01663b1fa4b349c57157ee0e3b0b147bb499b31d5c0f47f38446c7c662f644",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 619,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 309,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3747,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4366
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\":[{\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"name\":\"Addison Planning and Zoning Commission\"}],\"case_id\":\"recording-ad36bcef14d1a3ef3e4d7813\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"missing_evidence\":[],\"publication_action\":\"assign_existing\",\"rationale\":\"The retained agenda (retained-agenda) is headed 'PLANNING AND ZONING COMMISSION WORK SESSION' for Tuesday, January 18, 2022, posted by Addison's City Secretary and referencing Addison, Texas contacts and livestream, establishing the convened body as the Town of Addison Planning and Zoning Commission. The provider player page (provider-player) for recording 153032 is titled 'Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX' and repeats the same agenda, tying this recording to that body. Native chapters (native-source-chapters) mirror the P&Z agenda items. This is a work session of the same commission, not a joint meeting, so no other body is proven to participate; the Addison TreeHouse venue and planning topics do not indicate any additional body. The existing feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison) matches, so assign_existing applies.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify the municipal body for this recording. The evidence: agenda from retained-agenda shows \"PLANNING AND ZONING COMMISSION WORK SESSION\" for the Town of Addison, Texas, January 18, 2022. Provider player confirms recording ID 153032, Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX.\n\nThe body: Addison Planning and Zoning Commission (work session of the same body). Existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison.\").\n\nPublication action: assign_existing. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nEvidence ref ids: retained-agenda, provider-player. Maybe native-source-chapters too, since chapters list the agenda items. Include all that support: retained-agenda (body name, date), provider-player (recording tie to body). native-source-chapters confirms content.\n\nBodies: name \"Addison Planning and Zoning Commission\" with evidence refs.\n\nNo joint meeting \u2014 it's a work session of P&Z only. No other bodies.\n\nMissing evidence: none.\n\nRationale: cite agenda heading, work session of the P&Z Commission, recorded video matches. Work sessions are still meetings of the same body; feed covers \"Planning and Zoning Commission meetings for Addison.\"\n\nEcho case_id: recording-ad36bcef14d1a3ef3e4d7813.\n\nReturn JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify the municipal body for this recording. The evidence: agenda from retained-agenda shows \"PLANNING AND ZONING COMMISSION WORK SESSION\" for the Town of Addison, Texas, January 18, 2022. Provider player confirms recording ID 153032, Jan 18, 2022 Planning & Zoning Commission Work Session - Addison, TX.\n\nThe body: Addison Planning and Zoning Commission (work session of the same body). Existing feed: addison-tx-planning-and-zoning-commission (\"Planning and Zoning Commission meetings for Addison.\").\n\nPublication action: assign_existing. Feed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nEvidence ref ids: retained-agenda, provider-player. Maybe native-source-chapters too, since chapters list the agenda items. Include all that support: retained-agenda (body name, date), provider-player (recording tie to body). native-source-chapters confirms content.\n\nBodies: name \"Addison Planning and Zoning Commission\" with evidence refs.\n\nNo joint meeting \u2014 it's a work session of P&Z only. No other bodies.\n\nMissing evidence: none.\n\nRationale: cite agenda heading, work session of the P&Z Commission, recorded video matches. Work sessions are still meetings of the same body; feed covers \"Planning and Zoning Commission meetings for Addison.\"\n\nEcho case_id: recording-ad36bcef14d1a3ef3e4d7813.\n\nReturn JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792012841,
+    "id": "ee148f2ceaa22f7c1a0ce34f4ad50827",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 619,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 309,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3747,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4366
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

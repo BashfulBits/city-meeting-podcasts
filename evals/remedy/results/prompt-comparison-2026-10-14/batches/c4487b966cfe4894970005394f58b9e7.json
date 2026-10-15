@@ -1,0 +1,149 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-25b112118800868be51c169e",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "exclude_event",
+    "rationale": "The recording-specific official player identifies recording 56021 as the Sep 20, 2009 Spruill Park Dedication Ceremony. The approved event policy explicitly excludes ceremonies and dedications from body feeds. No convening municipal body is established by the player title, and none is inferred from the park name or location. Exclusion rests on the positively identified event type, not missing ownership evidence."
+  },
+  "attempt_id": "e4ddbeb290514a24b6502b537368a914",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-25b112118800868be51c169e",
+  "case_input_hash": "68e993f2c49924f66d04c27e2ee80cc2b5f3c748357f59b45ca38033ca46f8b1",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.80288416700023
+    }
+  ],
+  "end_to_end_seconds": 57.83013820800079,
+  "finished_at": "2026-10-14T14:09:03.900459+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T14:08:06.069965+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "0a094715afd824558bed7d8c0fbccc4b628fb754a2d2fe69373edccc81bab7ff",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 1758,
+        "output_tokens": 135
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 135,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 1758,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 1758,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 1893,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-25b112118800868be51c169e\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"exclude_event\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official player identifies recording 56021 as the Sep 20, 2009 Spruill Park Dedication Ceremony. The approved event policy explicitly excludes ceremonies and dedications from body feeds. No convening municipal body is established by the player title, and none is inferred from the park name or location. Exclusion rests on the positively identified event type, not missing ownership evidence.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791986942,
+    "id": "resp_0109c501d6e2d88e016acf8cf8f0d48194b388e5571af913bb",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 1758,
+          "output_tokens": 135
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 135,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 1758,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 1758,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 1893,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

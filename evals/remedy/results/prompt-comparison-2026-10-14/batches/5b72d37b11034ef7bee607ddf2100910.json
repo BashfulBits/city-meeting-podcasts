@@ -1,0 +1,158 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Animal Shelter Advisory Committee"
+      }
+    ],
+    "case_id": "recording-c3179aff49eb426e0d5ffd85",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "unconfigured_body",
+    "rationale": "The official agenda explicitly states that the Animal Shelter Advisory Committee will convene in a Regular Meeting on March 24, 2021, at 3:00 p.m. The provider player identifies recording 116744 as that committee meeting and lists matching agenda items. No existing feed is configured for this body, and no supplied publication rule assigns it to another subscription grouping. It is therefore an unconfigured municipal body, not an archival event or an unresolved recording."
+  },
+  "attempt_id": "ff859353c83740c68718c1d1d219ca6c",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-c3179aff49eb426e0d5ffd85",
+  "case_input_hash": "e71d27692d5a80e5188512b213e662892e944d1f254971d5d89d417ecdc81274",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 5.633880000001227
+    }
+  ],
+  "end_to_end_seconds": 54.37905829100055,
+  "finished_at": "2026-10-14T21:43:09.333656+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T21:42:14.954292+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "8b0425dca5c4ed956683756df66bb7c054f72f6126fb653f3224c98759e9e8ff",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4211,
+        "output_tokens": 177
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 177,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4211,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4211,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4388,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-c3179aff49eb426e0d5ffd85\",\"bodies\":[{\"name\":\"Animal Shelter Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official agenda explicitly states that the Animal Shelter Advisory Committee will convene in a Regular Meeting on March 24, 2021, at 3:00 p.m. The provider player identifies recording 116744 as that committee meeting and lists matching agenda items. No existing feed is configured for this body, and no supplied publication rule assigns it to another subscription grouping. It is therefore an unconfigured municipal body, not an archival event or an unresolved recording.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792014188,
+    "id": "resp_030636665093232d016acff7685b2c819990702622774c1d0e",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4211,
+          "output_tokens": 177
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 177,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4211,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4211,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4388,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

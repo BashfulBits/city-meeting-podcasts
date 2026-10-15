@@ -1,0 +1,145 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "prior-manual-opening-review",
+          "provider-player"
+        ],
+        "name": "Fort Worth City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "prior-manual-opening-review",
+          "provider-player"
+        ],
+        "name": "2008 Gas Drilling Task Force (Fort Worth)"
+      }
+    ],
+    "case_id": "recording-7ff26ff432860aa1dd1e09fd",
+    "evidence_ref_ids": [
+      "provider-player",
+      "prior-manual-opening-review"
+    ],
+    "feed_slugs": [
+      "fort-worth-tx-city-council",
+      "fort-worth-tx-gas-drilling-task-force",
+      "fort-worth-tx"
+    ],
+    "missing_evidence": [
+      "No agenda PDF or freshly captured opening frame is attached in this case (agenda_id null); joint convening rests on the retained recording-specific manual official-opening review (prior-manual-opening-review), which is sufficient to prove both participants but is not a fresh frame/byte-hash capture."
+    ],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official opening (prior-manual-opening-review) shows both exact official players identifying the event as Fort Worth City Council and 2008 Gas Drilling Task Force, Joint Environmental Workshop, Tuesday October 14, 2008, at Will Rogers Memorial Center; the Granicus player title (provider-player) corroborates a City Council - Gas Drilling Task Force Workshop. Venue, topic words, and shared membership were not used; both bodies are named by official on-recording evidence as joint conveners, so under the joints policy every proven participant shares the recording in its configured feed: fort-worth-tx-city-council (City Council meetings for Fort Worth) and fort-worth-tx-gas-drilling-task-force, whose description explicitly includes proven joint workshops with Fort Worth Council. The catch-all subscription grouping fort-worth-tx (Fort Worth \u2014 All Meetings) also applies since the Council is a proven participant in this city-produced archive recording. The fort-worth-tx-city-council-worksession feed is not assigned: the event is convened as a joint environmental workshop, not evidenced as a Council Worksession meeting, and topic/workshop wording alone does not establish that identity. Publication action is assign_existing; no unconfigured body or archival/exclusion rule applies."
+  },
+  "attempt_id": "f222908b55c442f1872e4ee98b6e2638",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-7ff26ff432860aa1dd1e09fd",
+  "case_input_hash": "635a9781821a4f6c5e36d997fb600ceed0597aaaeebb42338fc37b4c3cb3aa5d",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 19.085434333002922
+    }
+  ],
+  "end_to_end_seconds": 20.440254541998,
+  "finished_at": "2026-10-14T18:50:48.685106+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:50:28.244690+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2abff39cdb8cd2bb650121db1add9c32cc7b16159f0b5be617d5ee0f9882c955",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2575,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 2065,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 4177,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 6752
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-7ff26ff432860aa1dd1e09fd\",\n  \"bodies\": [\n    {\n      \"name\": \"Fort Worth City Council\",\n      \"evidence_ref_ids\": [\"prior-manual-opening-review\", \"provider-player\"]\n    },\n    {\n      \"name\": \"2008 Gas Drilling Task Force (Fort Worth)\",\n      \"evidence_ref_ids\": [\"prior-manual-opening-review\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"fort-worth-tx-city-council\",\n    \"fort-worth-tx-gas-drilling-task-force\",\n    \"fort-worth-tx\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"provider-player\", \"prior-manual-opening-review\"],\n  \"missing_evidence\": [\n    \"No agenda PDF or freshly captured opening frame is attached in this case (agenda_id null); joint convening rests on the retained recording-specific manual official-opening review (prior-manual-opening-review), which is sufficient to prove both participants but is not a fresh frame/byte-hash capture.\"\n  ],\n  \"rationale\": \"The recording-specific official opening (prior-manual-opening-review) shows both exact official players identifying the event as Fort Worth City Council and 2008 Gas Drilling Task Force, Joint Environmental Workshop, Tuesday October 14, 2008, at Will Rogers Memorial Center; the Granicus player title (provider-player) corroborates a City Council - Gas Drilling Task Force Workshop. Venue, topic words, and shared membership were not used; both bodies are named by official on-recording evidence as joint conveners, so under the joints policy every proven participant shares the recording in its configured feed: fort-worth-tx-city-council (City Council meetings for Fort Worth) and fort-worth-tx-gas-drilling-task-force, whose description explicitly includes proven joint workshops with Fort Worth Council. The catch-all subscription grouping fort-worth-tx (Fort Worth \u2014 All Meetings) also applies since the Council is a proven participant in this city-produced archive recording. The fort-worth-tx-city-council-worksession feed is not assigned: the event is convened as a joint environmental workshop, not evidenced as a Council Worksession meeting, and topic/workshop wording alone does not establish that identity. Publication action is assign_existing; no unconfigured body or archival/exclusion rule applies.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"City Council - Gas Drilling Task Force Workshop of October 14\" \u2014 a Fort Worth recording (clip_id=125 on Granicus).\n\nEvidence:\n1. `provider-player`: The Granicus player page for the recording, confirming the title \"City Council - Gas Drilling Task Force Workshop of October 14\" \u2014 this establishes the recording exists and its title.\n2. `prior-manual-opening-review`: A prior manual official-opening review (recorded 2026-10-06) states both exact official players show: \"Fort Worth City Council, 2008 Gas Drilling Task Force, Joint Environmental Workshop, Tuesday October 14, 2008, Will Rogers Memorial Center, Amon G. Carter Exhibit Hall Stagecoach Room, 3400 Burnett Tandy Drive. Opening frame 00:00; duration 2:35:00.\"\n\nSo the official opening frame identifies the convening bodies: Fort Worth City Council and the 2008 Gas Drilling Task Force \u2014 it's a Joint Environmental Workshop. This is recording-specific official evidence (from the official video's opening).\n\nNote the recording date in metadata says 2008-10-21 but the workshop is October 14, 2008. The meeting date is October 14, 2008 per the opening. Titles/dates are immutable; the official opening says Tuesday October 14, 2008. The posted date 2008-10-21 might be publication date. Doesn't matter for body identification.\n\nBodies identified:\n1. Fort Worth City Council \u2014 evidence: prior-manual-opening-review (official opening frame shows \"Fort Worth City Council\").\n2. 2008 Gas Drilling Task Force (Gas Drilling Task Force) \u2014 evidence: prior-manual-opening-review.\n\nThe workshop is a joint workshop between the City Council and the Gas Drilling Task Force. The title \"City Council - Gas Drilling Task Force Workshop\" indicates both participants. The prior manual review explicitly says \"Joint Environmental Workshop\" with both bodies named.\n\nNow feeds:\n- `fort-worth-tx-city-council` \u2014 \"City Council meetings for Fort Worth.\" The City Council convened/participated in this joint workshop. Per policy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So City Council feed applies.\n- `fort-worth-tx-gas-drilling-task-force` \u2014 \"Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.\" This feed explicitly includes proven joint workshops with Fort Worth Council. This recording is a proven joint workshop (official opening shows both bodies). So this feed applies.\n- `fort-worth-tx-city-council-worksession` \u2014 \"City Council Worksession meetings for Fort Worth.\" Is this a worksession? The event is a \"Workshop\" \u2014 joint environmental workshop. Workshops are not necessarily the Council's \"Worksession\" series (which is a specific named meeting type in Fort Worth). The title says \"Workshop,\" not \"Worksession.\" I should not stretch. The convening label is a joint workshop. I'd not assign the worksession feed since there's no evidence it's a Council Worksession meeting. Hmm \u2014 but one could argue a workshop is a type of work session. The policy says identity: use convened body, not venue/topic. The feed title is \"City Council Worksession\" \u2014 that's a specific body/meeting type. Without evidence that this workshop was convened as a Council Worksession, I shouldn't assign. I'll leave it out.\n\n- `fort-worth-tx` \u2014 \"Fort Worth \u2014 All Meetings\": \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Hmm, the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Is this a general \"All Meetings\" subscription grouping? The title says \"All Meetings\" but the description specifically says City Council meetings produced by FWTV. This could be a broader subscription grouping. The instruction says \"Assess every plausible supplied feed against its title and description. A feed can be a broader subscription grouping rather than an institution.\" The slug is `fort-worth-tx` with title \"Fort Worth \u2014 All Meetings\". This looks like the catch-all feed for the city. Given the title \"All Meetings,\" this recording (a Fort Worth meeting in the Granicus archive) likely belongs. However the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Hmm. This is ambiguous. The catch-all \"All Meetings\" feed \u2014 since the recording is a Fort Worth city meeting video in the city's Granicus archive, and the feed title is \"All Meetings,\" I think it's a reasonable subscription grouping assignment. Many of these datasets use the city slug as the \"all meetings\" feed. The description mentioning \"City Council meetings produced by FWTV\" might be stale or a generic description. Given the title is \"Fort Worth \u2014 All Meetings\", I'll include it as the subscription grouping. Actually, let me think \u2014 is it safe? The instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The all-meetings feed is a grouping that includes everything in the archive. The recording is a Fort Worth meeting recording hosted in the Granicus archive. I'll include `fort-worth-tx`.\n\nHmm, but caution: the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" If the feed is scoped to City Council meetings produced by FWTV, and this is a City Council joint workshop (City Council is a proven participant), then it would still fit even under the narrow description \u2014 the Council participated and it's a Council recording. Either way it fits. So include `fort-worth-tx`.\n\nWait \u2014 actually, is the recording produced by FWTV? Unknown. But since the Council is a proven participant of a joint workshop broadcast on the city's Granicus channel, the \"City Council meetings\" scope arguably covers it (Council convened jointly). I'll include it.\n\nNow, what about the EMSISD joint meetings feed? No \u2014 that's for EMSISD Board and Council joints; EMSISD is not a participant here.\n\nPublication action: assign_existing.\n\nBodies:\n1. \"Fort Worth City Council\" \u2014 evidence: prior-manual-opening-review (and provider-player title \"City Council - Gas Drilling Task Force Workshop\").\n2. \"Gas Drilling Task Force (2008)\" \u2014 the official opening says \"2008 Gas Drilling Task Force\". Name it \"2008 Gas Drilling Task Force\" or \"Gas Drilling Task Force\"? The feed is \"Gas Drilling Task Force\". The official evidence says \"2008 Gas Drilling Task Force\". I'll name it \"2008 Gas Drilling Task Force\" with evidence prior-manual-opening-review, and note the feed matches.\n\nEvidence ref IDs: provider-player, prior-manual-opening-review.\n\nMissing evidence: Possibly note that no agenda document was captured (agenda_id null), but the official opening frame review suffices. Maybe note: no separate agenda PDF; joint-participation evidence rests on the retained manual opening review rather than freshly captured frame. I could add a missing_evidence entry: \"No freshly captured opening frame or agenda document in this case; joint convening relies on retained manual official-opening review (prior-manual-opening-review).\" That's a fair gap citation but doesn't block assignment since the prior manual review is recording-specific official evidence with completeness \"recording-specific\".\n\nCase_id: recording-7ff26ff432860aa1dd1e09fd.\n\nPublication action: assign_existing.\n\nRationale: The official opening frame (prior manual review) shows Fort Worth City Council and 2008 Gas Drilling Task Force convening a Joint Environmental Workshop on Oct 14, 2008; player title corroborates a Council\u2013Gas Drilling Task Force workshop. Per joints policy, both proven participants share the recording: fort-worth-tx-city-council and fort-worth-tx-gas-drilling-task-force (whose description explicitly includes proven joint workshops with Council). All-meetings grouping fort-worth-tx also applies. Not worksession feed (no evidence of a Council Worksession convening).\n\nFeed slugs: [\"fort-worth-tx-city-council\", \"fort-worth-tx-gas-drilling-task-force\", \"fort-worth-tx\"].\n\nDouble-check: should I include fort-worth-tx? The description: \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" The title \"Fort Worth \u2014 All Meetings\" suggests catch-all. I'll include it; it's a subscription grouping. Yes.\n\nJSON schema requires fields: case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Output one JSON object only, no markdown. The system prompt says end with \"```\"? Wait \u2014 the system prompt says: \"Ensure that you end your answer with \"```\" to indicate the end of the JSON object.\" Hmm, but the user instruction says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". Conflict. The system prompt says to always output valid JSON and end with ``` to indicate end of JSON object. The user says no Markdown. The system prompt instruction: \"Ensure that you always conclude your answer with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. I'll follow the system prompt: output JSON in a code block ending with ```.\n\nActually, the system message says: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure that you always end your answer with \"```\" to indicate the end of the JSON object.\"\n\nI'll output the JSON fenced with ``` and end with ```. Format:\n\n```json\n{...}\n```\n\nThat ends with ```. Good.\n\nLet me write the final JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case carefully.\n\nThe recording is titled \"City Council - Gas Drilling Task Force Workshop of October 14\" \u2014 a Fort Worth recording (clip_id=125 on Granicus).\n\nEvidence:\n1. `provider-player`: The Granicus player page for the recording, confirming the title \"City Council - Gas Drilling Task Force Workshop of October 14\" \u2014 this establishes the recording exists and its title.\n2. `prior-manual-opening-review`: A prior manual official-opening review (recorded 2026-10-06) states both exact official players show: \"Fort Worth City Council, 2008 Gas Drilling Task Force, Joint Environmental Workshop, Tuesday October 14, 2008, Will Rogers Memorial Center, Amon G. Carter Exhibit Hall Stagecoach Room, 3400 Burnett Tandy Drive. Opening frame 00:00; duration 2:35:00.\"\n\nSo the official opening frame identifies the convening bodies: Fort Worth City Council and the 2008 Gas Drilling Task Force \u2014 it's a Joint Environmental Workshop. This is recording-specific official evidence (from the official video's opening).\n\nNote the recording date in metadata says 2008-10-21 but the workshop is October 14, 2008. The meeting date is October 14, 2008 per the opening. Titles/dates are immutable; the official opening says Tuesday October 14, 2008. The posted date 2008-10-21 might be publication date. Doesn't matter for body identification.\n\nBodies identified:\n1. Fort Worth City Council \u2014 evidence: prior-manual-opening-review (official opening frame shows \"Fort Worth City Council\").\n2. 2008 Gas Drilling Task Force (Gas Drilling Task Force) \u2014 evidence: prior-manual-opening-review.\n\nThe workshop is a joint workshop between the City Council and the Gas Drilling Task Force. The title \"City Council - Gas Drilling Task Force Workshop\" indicates both participants. The prior manual review explicitly says \"Joint Environmental Workshop\" with both bodies named.\n\nNow feeds:\n- `fort-worth-tx-city-council` \u2014 \"City Council meetings for Fort Worth.\" The City Council convened/participated in this joint workshop. Per policy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So City Council feed applies.\n- `fort-worth-tx-gas-drilling-task-force` \u2014 \"Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.\" This feed explicitly includes proven joint workshops with Fort Worth Council. This recording is a proven joint workshop (official opening shows both bodies). So this feed applies.\n- `fort-worth-tx-city-council-worksession` \u2014 \"City Council Worksession meetings for Fort Worth.\" Is this a worksession? The event is a \"Workshop\" \u2014 joint environmental workshop. Workshops are not necessarily the Council's \"Worksession\" series (which is a specific named meeting type in Fort Worth). The title says \"Workshop,\" not \"Worksession.\" I should not stretch. The convening label is a joint workshop. I'd not assign the worksession feed since there's no evidence it's a Council Worksession meeting. Hmm \u2014 but one could argue a workshop is a type of work session. The policy says identity: use convened body, not venue/topic. The feed title is \"City Council Worksession\" \u2014 that's a specific body/meeting type. Without evidence that this workshop was convened as a Council Worksession, I shouldn't assign. I'll leave it out.\n\n- `fort-worth-tx` \u2014 \"Fort Worth \u2014 All Meetings\": \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Hmm, the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Is this a general \"All Meetings\" subscription grouping? The title says \"All Meetings\" but the description specifically says City Council meetings produced by FWTV. This could be a broader subscription grouping. The instruction says \"Assess every plausible supplied feed against its title and description. A feed can be a broader subscription grouping rather than an institution.\" The slug is `fort-worth-tx` with title \"Fort Worth \u2014 All Meetings\". This looks like the catch-all feed for the city. Given the title \"All Meetings,\" this recording (a Fort Worth meeting in the Granicus archive) likely belongs. However the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" Hmm. This is ambiguous. The catch-all \"All Meetings\" feed \u2014 since the recording is a Fort Worth city meeting video in the city's Granicus archive, and the feed title is \"All Meetings,\" I think it's a reasonable subscription grouping assignment. Many of these datasets use the city slug as the \"all meetings\" feed. The description mentioning \"City Council meetings produced by FWTV\" might be stale or a generic description. Given the title is \"Fort Worth \u2014 All Meetings\", I'll include it as the subscription grouping. Actually, let me think \u2014 is it safe? The instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The all-meetings feed is a grouping that includes everything in the archive. The recording is a Fort Worth meeting recording hosted in the Granicus archive. I'll include `fort-worth-tx`.\n\nHmm, but caution: the description says \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" If the feed is scoped to City Council meetings produced by FWTV, and this is a City Council joint workshop (City Council is a proven participant), then it would still fit even under the narrow description \u2014 the Council participated and it's a Council recording. Either way it fits. So include `fort-worth-tx`.\n\nWait \u2014 actually, is the recording produced by FWTV? Unknown. But since the Council is a proven participant of a joint workshop broadcast on the city's Granicus channel, the \"City Council meetings\" scope arguably covers it (Council convened jointly). I'll include it.\n\nNow, what about the EMSISD joint meetings feed? No \u2014 that's for EMSISD Board and Council joints; EMSISD is not a participant here.\n\nPublication action: assign_existing.\n\nBodies:\n1. \"Fort Worth City Council\" \u2014 evidence: prior-manual-opening-review (and provider-player title \"City Council - Gas Drilling Task Force Workshop\").\n2. \"Gas Drilling Task Force (2008)\" \u2014 the official opening says \"2008 Gas Drilling Task Force\". Name it \"2008 Gas Drilling Task Force\" or \"Gas Drilling Task Force\"? The feed is \"Gas Drilling Task Force\". The official evidence says \"2008 Gas Drilling Task Force\". I'll name it \"2008 Gas Drilling Task Force\" with evidence prior-manual-opening-review, and note the feed matches.\n\nEvidence ref IDs: provider-player, prior-manual-opening-review.\n\nMissing evidence: Possibly note that no agenda document was captured (agenda_id null), but the official opening frame review suffices. Maybe note: no separate agenda PDF; joint-participation evidence rests on the retained manual opening review rather than freshly captured frame. I could add a missing_evidence entry: \"No freshly captured opening frame or agenda document in this case; joint convening relies on retained manual official-opening review (prior-manual-opening-review).\" That's a fair gap citation but doesn't block assignment since the prior manual review is recording-specific official evidence with completeness \"recording-specific\".\n\nCase_id: recording-7ff26ff432860aa1dd1e09fd.\n\nPublication action: assign_existing.\n\nRationale: The official opening frame (prior manual review) shows Fort Worth City Council and 2008 Gas Drilling Task Force convening a Joint Environmental Workshop on Oct 14, 2008; player title corroborates a Council\u2013Gas Drilling Task Force workshop. Per joints policy, both proven participants share the recording: fort-worth-tx-city-council and fort-worth-tx-gas-drilling-task-force (whose description explicitly includes proven joint workshops with Council). All-meetings grouping fort-worth-tx also applies. Not worksession feed (no evidence of a Council Worksession convening).\n\nFeed slugs: [\"fort-worth-tx-city-council\", \"fort-worth-tx-gas-drilling-task-force\", \"fort-worth-tx\"].\n\nDouble-check: should I include fort-worth-tx? The description: \"Video recordings of Fort Worth City Council meetings, produced by FWTV.\" The title \"Fort Worth \u2014 All Meetings\" suggests catch-all. I'll include it; it's a subscription grouping. Yes.\n\nJSON schema requires fields: case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Output one JSON object only, no markdown. The system prompt says end with \"```\"? Wait \u2014 the system prompt says: \"Ensure that you end your answer with \"```\" to indicate the end of the JSON object.\" Hmm, but the user instruction says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". Conflict. The system prompt says to always output valid JSON and end with ``` to indicate end of JSON object. The user says no Markdown. The system prompt instruction: \"Ensure that you always conclude your answer with ``` to indicate the end of the JSON object.\" That suggests wrapping in a code block. I'll follow the system prompt: output JSON in a code block ending with ```.\n\nActually, the system message says: \"You should always follow the instructions and output a valid JSON object. Please use the specified JSON object structure according to the instructions. If unsure, default to {\"answer\": \"$your_answer\"}. Ensure that you always end your answer with \"```\" to indicate the end of the JSON object.\"\n\nI'll output the JSON fenced with ``` and end with ```. Format:\n\n```json\n{...}\n```\n\nThat ends with ```. Good.\n\nLet me write the final JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792003847,
+    "id": "055754d17bfe856db11af13c4e63d28b",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2575,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 2065,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 4177,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 6752
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

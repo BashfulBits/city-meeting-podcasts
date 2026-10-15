@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Arlington: Environmental Task Force (Audio)</title>
+    <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/</link>
+    <atom:link href="https://www.citymeetings.fyi/arlington-tx-environmental-task-force/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Verified 2020 Arlington Environmental Task Force proceedings.</description>
+    <language>en-us</language>
+    <itunes:author>City of Arlington, TX</itunes:author>
+    <itunes:summary>Verified 2020 Arlington Environmental Task Force proceedings.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/arlington-tx-environmental-task-force/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Arlington, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/artwork.jpg</url>
+      <title>Arlington: Environmental Task Force</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/</link>
+    </image>
+    <item>
+      <title>Environmental Task Force Meeting</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/9b66e98b682a47f2/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3508">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3508">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/9b66e98b682a47f2/backup-13360dfb1a1f1b7e">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/9b66e98b682a47f2/agenda-d2b04dc26e89fb9c">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/9b66e98b682a47f2-asr-c9f49f9db836.vtt" type="text/vtt"/>
+      <pubDate>Tue, 30 Jun 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">9b66e98b682a47f2</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3564</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Environmental Task Force Meeting</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/25e9b8510b0a7a66/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3494">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3494">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/backup-86afd15d69becca1">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/agenda-326e3957aea95c2b">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/25e9b8510b0a7a66-asr-8298d94449a6.vtt" type="text/vtt"/>
+      <pubDate>Tue, 09 Jun 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">25e9b8510b0a7a66</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>1701</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Environmental Task Force Meeting</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/a683af6e13e2bd7a/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3479">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3479">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/a683af6e13e2bd7a/backup-997a955c652c4d0c">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/a683af6e13e2bd7a/agenda-3a5431516baaa224">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/a683af6e13e2bd7a-asr-ff814d6fe834.vtt" type="text/vtt"/>
+      <pubDate>Tue, 19 May 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a683af6e13e2bd7a</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>5152</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Environmental Task Force Meeting</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/2d5dc451df2da130/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3454">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3454">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/backup-ef905e99f775fa91">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/2d5dc451df2da130-asr-24e45c0a1457.vtt" type="text/vtt"/>
+      <pubDate>Tue, 28 Apr 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">2d5dc451df2da130</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>1849</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Environmental Task Force</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/1792515fdd51c6c2/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3443">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3443">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/backup-73716e96190d1b3b">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/agenda-1cdc5446aa8e9d8f">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/1792515fdd51c6c2-asr-45012ae7b970.vtt" type="text/vtt"/>
+      <pubDate>Tue, 14 Apr 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">1792515fdd51c6c2</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2605</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Environmental Task Force Meeting</title>
+      <link>https://www.citymeetings.fyi/arlington-tx-environmental-task-force/35b22fcc8d07967b/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&amp;clip_id=3424">Agenda</a></li><li><a href="https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=3424">Watch the video</a></li><li><a href="https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/backup-13f8c07787bcf535">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/agenda-28a6b1309cb11254">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/35b22fcc8d07967b-asr-8a004d63fbe9.vtt" type="text/vtt"/>
+      <pubDate>Tue, 24 Mar 2020 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">35b22fcc8d07967b</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2585</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

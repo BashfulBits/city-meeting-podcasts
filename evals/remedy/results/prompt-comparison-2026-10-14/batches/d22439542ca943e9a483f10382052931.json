@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Bond Advisory Committee (Addison, TX)"
+      }
+    ],
+    "case_id": "recording-9bd6780e16f497eb919d9423",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The posted agenda (retained-agenda) convenes a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on January 8, 2026 at Addison Town Hall, posted by City Secretary Valencia Garcia, and the provider player/transcript (provider-player, native-source-chapters) shows that same committee considering minutes and a recommendation to the Addison City Council on calling a bond election for the Police and Courts facility. The convened body is therefore the Addison Bond Advisory Committee, not the City Council, which is only the recipient of a recommendation, and no other body (e.g., Farmers Branch staff, referenced only for prior tours) is a proven participant. The existing feed addison-tx-bond-committees explicitly covers 'Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee', which matches this proven body, so publication is assign_existing with only that feed slug. No other existing feed's scope matches this committee meeting."
+  },
+  "attempt_id": "993e060af3b743fcb9d1b0f13934ff2e",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-9bd6780e16f497eb919d9423",
+  "case_input_hash": "ad40f40f0a8d44f7d3d8337ccc185f4306718fff4f8b80d57f387152defefc05",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.100520500003768
+    }
+  ],
+  "end_to_end_seconds": 13.343971750000492,
+  "finished_at": "2026-10-14T21:25:50.959510+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T21:25:37.615433+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "2ae8431261215487a63d389b9366867e8b28fd7ab2c75707fa9b106b16df02a1",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1077,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 753,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3550,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4627
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"name\": \"Bond Advisory Committee (Addison, TX)\"}], \"case_id\": \"recording-9bd6780e16f497eb919d9423\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"feed_slugs\": [\"addison-tx-bond-committees\"], \"missing_evidence\": [], \"publication_action\": \"assign_existing\", \"rationale\": \"The posted agenda (retained-agenda) convenes a 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' on January 8, 2026 at Addison Town Hall, posted by City Secretary Valencia Garcia, and the provider player/transcript (provider-player, native-source-chapters) shows that same committee considering minutes and a recommendation to the Addison City Council on calling a bond election for the Police and Courts facility. The convened body is therefore the Addison Bond Advisory Committee, not the City Council, which is only the recipient of a recommendation, and no other body (e.g., Farmers Branch staff, referenced only for prior tours) is a proven participant. The existing feed addison-tx-bond-committees explicitly covers 'Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee', which matches this proven body, so publication is assign_existing with only that feed slug. No other existing feed's scope matches this committee meeting.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify which municipal body/bodies this recording belongs to, from supplied official evidence.\n\nThe recording is \"Bond Advisory Committee \u2013 Jan 08, 2026\" in Addison, TX. The agenda (retained-agenda) shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, January 8, 2026, Work Session Room, Addison Town Hall, 15600 Addison Road, Addison, TX 75001\", posted by Valencia Garcia, City Secretary. Agenda item 3d: \"Consider action on making a recommendation to the Addison City Council including the calling of a bond election regarding a capital project to address the Town's Police and Courts facility.\"\n\nThe provider-player evidence shows the video with transcript: \"Bond Advisory Committee\" January 8, 2026, with a Deputy City Manager facilitating, mention of the Chief of Farmers Branch hosting tours, etc.\n\nExisting feeds include \"addison-tx-bond-committees\" - \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This directly matches the convened body: the Bond Advisory Committee (2026 Police and Courts facility bond program committee).\n\nSo the convened body is the Bond Advisory Committee (Addison, TX). The feed slug \"addison-tx-bond-committees\" explicitly includes this committee per its description.\n\nPublication action: assign_existing.\n\nBodies: name \"Bond Advisory Committee\" with evidence refs retained-agenda, provider-player, native-source-chapters.\n\nShould I name it \"Addison Bond Advisory Committee\" or include the 2026 Police and Courts facility context? The body label in recordings is \"Bond Advisory Committee\". The agenda says \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\". I'll name it \"Bond Advisory Committee\" (Addison, TX). Maybe name \"Addison Bond Advisory Committee (2026 Police and Courts facility bond program)\". Keep concise but accurate: \"Bond Advisory Committee\" with evidence refs.\n\nFeed slugs: [\"addison-tx-bond-committees\"]. No other body convened: the recording is a single committee meeting; City Council is only the recipient of a recommendation, not a participant. Not a joint meeting. Farmers Branch mention is a tour host, not part of this meeting. No other feed matches (e.g., addison-tx-city-council would be wrong; addison-tx-town-meetings is for town halls/community meetings, not applicable; addison-tx-public-briefings is for educational briefings\u2014this is a committee meeting, not a briefing).\n\nEvidence ref IDs: all three are relevant: retained-agenda (proves the convened body name and meeting), provider-player (proves recording content and title), native-source-chapters (proves agenda items).\n\nMissing evidence: none needed? Possibly none. The assignment is clear. I'll include an empty missing_evidence array or maybe note nothing. The instructions say cite the gap if unresolved; here it's resolved. So missing_evidence: [].\n\nRationale: The convened body per the posted agenda is the Bond Advisory Committee (Addison Town Hall, Jan 8, 2026, posted by City Secretary Valencia Garcia). Transcript confirms committee meeting discussion, recommendation to City Council regarding Police and Courts facility bond election. The existing feed addison-tx-bond-committees explicitly covers verified bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee. City Council is only a recommendation recipient, not a participant; no joint meeting. Publication action: assign_existing.\n\nCase id echo: \"recording-9bd6780e16f497eb919d9423\".\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify which municipal body/bodies this recording belongs to, from supplied official evidence.\n\nThe recording is \"Bond Advisory Committee \u2013 Jan 08, 2026\" in Addison, TX. The agenda (retained-agenda) shows \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, January 8, 2026, Work Session Room, Addison Town Hall, 15600 Addison Road, Addison, TX 75001\", posted by Valencia Garcia, City Secretary. Agenda item 3d: \"Consider action on making a recommendation to the Addison City Council including the calling of a bond election regarding a capital project to address the Town's Police and Courts facility.\"\n\nThe provider-player evidence shows the video with transcript: \"Bond Advisory Committee\" January 8, 2026, with a Deputy City Manager facilitating, mention of the Chief of Farmers Branch hosting tours, etc.\n\nExisting feeds include \"addison-tx-bond-committees\" - \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" This directly matches the convened body: the Bond Advisory Committee (2026 Police and Courts facility bond program committee).\n\nSo the convened body is the Bond Advisory Committee (Addison, TX). The feed slug \"addison-tx-bond-committees\" explicitly includes this committee per its description.\n\nPublication action: assign_existing.\n\nBodies: name \"Bond Advisory Committee\" with evidence refs retained-agenda, provider-player, native-source-chapters.\n\nShould I name it \"Addison Bond Advisory Committee\" or include the 2026 Police and Courts facility context? The body label in recordings is \"Bond Advisory Committee\". The agenda says \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\". I'll name it \"Bond Advisory Committee\" (Addison, TX). Maybe name \"Addison Bond Advisory Committee (2026 Police and Courts facility bond program)\". Keep concise but accurate: \"Bond Advisory Committee\" with evidence refs.\n\nFeed slugs: [\"addison-tx-bond-committees\"]. No other body convened: the recording is a single committee meeting; City Council is only the recipient of a recommendation, not a participant. Not a joint meeting. Farmers Branch mention is a tour host, not part of this meeting. No other feed matches (e.g., addison-tx-city-council would be wrong; addison-tx-town-meetings is for town halls/community meetings, not applicable; addison-tx-public-briefings is for educational briefings\u2014this is a committee meeting, not a briefing).\n\nEvidence ref IDs: all three are relevant: retained-agenda (proves the convened body name and meeting), provider-player (proves recording content and title), native-source-chapters (proves agenda items).\n\nMissing evidence: none needed? Possibly none. The assignment is clear. I'll include an empty missing_evidence array or maybe note nothing. The instructions say cite the gap if unresolved; here it's resolved. So missing_evidence: [].\n\nRationale: The convened body per the posted agenda is the Bond Advisory Committee (Addison Town Hall, Jan 8, 2026, posted by City Secretary Valencia Garcia). Transcript confirms committee meeting discussion, recommendation to City Council regarding Police and Courts facility bond election. The existing feed addison-tx-bond-committees explicitly covers verified bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee. City Council is only a recommendation recipient, not a participant; no joint meeting. Publication action: assign_existing.\n\nCase id echo: \"recording-9bd6780e16f497eb919d9423\".\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792013082,
+    "id": "f84fd3be2ec03ce6a750667b31342d95",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1077,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 753,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3550,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4627
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

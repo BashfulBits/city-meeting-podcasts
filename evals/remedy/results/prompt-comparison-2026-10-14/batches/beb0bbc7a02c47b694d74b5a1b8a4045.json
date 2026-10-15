@@ -1,0 +1,133 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda"
+        ],
+        "name": "Animal Shelter Advisory Committee (City of Denton)"
+      }
+    ],
+    "case_id": "recording-cca86af01f5030c620cd25a7",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No feed slug in the supplied feed list corresponds to the Animal Shelter Advisory Committee, so no existing-feed assignment is possible."
+    ],
+    "publication_action": "unconfigured_body",
+    "rationale": "The recording-specific agenda (retained-agenda, recording_id 87453, Oct 21, 2020 3:00 PM, City of Denton) shows the Animal Shelter Advisory Committee convening a regular meeting, proving the convening body. The provider player title (provider-player) matches the same recording and is consistent but is not needed to establish the institution. None of the supplied feed slugs covers this body (no animal-shelter feed exists among the 28 feeds), and no supplied policy grouping fits its scope. Under the sparse policy, a real, proven body without an existing feed is unconfigured rather than non-city, so the action is unconfigured_body with no feed slugs; no feed slug is invented."
+  },
+  "attempt_id": "1d490ca1f0014764a89ebe5778181aa3",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-cca86af01f5030c620cd25a7",
+  "case_input_hash": "53f45bb5e78b2156cd66a6feb09073158b0122b591ba2efef48df9d3413bb466",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 14.124546167000517
+    }
+  ],
+  "end_to_end_seconds": 15.573344124997675,
+  "finished_at": "2026-10-14T18:43:06.111033+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:42:50.537562+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "64c6dba097f855dbe123576882d1f834ebbc5c0106ea15294b79bf2ce89d3c18",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 838,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 579,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3921,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4759
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-cca86af01f5030c620cd25a7\",\"bodies\":[{\"name\":\"Animal Shelter Advisory Committee (City of Denton)\",\"evidence_ref_ids\":[\"retained-agenda\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[\"No feed slug in the supplied feed list corresponds to the Animal Shelter Advisory Committee, so no existing-feed assignment is possible.\"],\"rationale\":\"The recording-specific agenda (retained-agenda, recording_id 87453, Oct 21, 2020 3:00 PM, City of Denton) shows the Animal Shelter Advisory Committee convening a regular meeting, proving the convening body. The provider player title (provider-player) matches the same recording and is consistent but is not needed to establish the institution. None of the supplied feed slugs covers this body (no animal-shelter feed exists among the 28 feeds), and no supplied policy grouping fits its scope. Under the sparse policy, a real, proven body without an existing feed is unconfigured rather than non-city, so the action is unconfigured_body with no feed slugs; no feed slug is invented.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is for the Animal Shelter Advisory Committee of the City of Denton, on 2020-10-21. The retained agenda is recording-specific evidence (agenda for recording_id 87453, matching the date and items). The agenda states \"Animal Shelter Advisory Committee, City of Denton\" convening in regular meeting.\n\nNow check existing feeds: there's no feed for \"Animal Shelter Advisory Committee\" in the list. The feeds include Airport Advisory Board, etc., but no Animal Shelter Advisory Committee. So this is a real body with no existing feed \u2192 unconfigured_body.\n\nPublication action: unconfigured_body. Feed slugs: empty (do not invent). Bodies: name \"Animal Shelter Advisory Committee\" with evidence ref \"retained-agenda\" (and possibly provider-player, but the agenda is the official evidence; the provider player title also names it but the agenda is the official one). I'll include retained-agenda and provider-player perhaps. The agenda is the primary evidence. The provider player shows the title \"Animal Shelter Advisory Committee on 2020-10-21 3:00 PM - Denton, TX\" \u2014 that's a player title, not formal institution proof per instructions (\"A player/program title alone does not establish...\"). But combined with agenda, the body is proven. So bodies: [{name: \"Animal Shelter Advisory Committee\", evidence_ref_ids: [\"retained-agenda\"]}].\n\nMissing evidence: perhaps note that no feed exists for this body in the supplied feed list \u2014 but that's not \"missing evidence\" per se; the unconfigured action covers it. Could mention \"No existing feed slug corresponds to the Animal Shelter Advisory Committee among supplied feeds.\" That could go in missing_evidence or rationale. The schema requires missing_evidence array; I can put a note there or leave empty. I think leaving it empty is fine since ownership is established; the gap is just feed configuration, which is handled by unconfigured_body. I could add a note: \"No supplied feed exists for the Animal Shelter Advisory Committee; feed assignment not possible.\" That is a documentation of the gap. I'll include it.\n\nEvidence ref ids: [\"retained-agenda\"] and maybe \"provider-player\". The provider-player confirms recording identity. I'll include both, but the body name evidence primarily retained-agenda.\n\nRationale: The retained agenda, posted by City of Denton, convenes the Animal Shelter Advisory Committee in regular meeting on Oct 21, 2020 at City Hall \u2014 recording-specific. No supplied feed matches this body; per sparse policy, a real body without existing feed is unconfigured, not non-city. So publication_action = unconfigured_body, feed_slugs = [].\n\nEcho case_id: \"recording-cca86af01f5030c620cd25a7\".\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is for the Animal Shelter Advisory Committee of the City of Denton, on 2020-10-21. The retained agenda is recording-specific evidence (agenda for recording_id 87453, matching the date and items). The agenda states \"Animal Shelter Advisory Committee, City of Denton\" convening in regular meeting.\n\nNow check existing feeds: there's no feed for \"Animal Shelter Advisory Committee\" in the list. The feeds include Airport Advisory Board, etc., but no Animal Shelter Advisory Committee. So this is a real body with no existing feed \u2192 unconfigured_body.\n\nPublication action: unconfigured_body. Feed slugs: empty (do not invent). Bodies: name \"Animal Shelter Advisory Committee\" with evidence ref \"retained-agenda\" (and possibly provider-player, but the agenda is the official evidence; the provider player title also names it but the agenda is the official one). I'll include retained-agenda and provider-player perhaps. The agenda is the primary evidence. The provider player shows the title \"Animal Shelter Advisory Committee on 2020-10-21 3:00 PM - Denton, TX\" \u2014 that's a player title, not formal institution proof per instructions (\"A player/program title alone does not establish...\"). But combined with agenda, the body is proven. So bodies: [{name: \"Animal Shelter Advisory Committee\", evidence_ref_ids: [\"retained-agenda\"]}].\n\nMissing evidence: perhaps note that no feed exists for this body in the supplied feed list \u2014 but that's not \"missing evidence\" per se; the unconfigured action covers it. Could mention \"No existing feed slug corresponds to the Animal Shelter Advisory Committee among supplied feeds.\" That could go in missing_evidence or rationale. The schema requires missing_evidence array; I can put a note there or leave empty. I think leaving it empty is fine since ownership is established; the gap is just feed configuration, which is handled by unconfigured_body. I could add a note: \"No supplied feed exists for the Animal Shelter Advisory Committee; feed assignment not possible.\" That is a documentation of the gap. I'll include it.\n\nEvidence ref ids: [\"retained-agenda\"] and maybe \"provider-player\". The provider-player confirms recording identity. I'll include both, but the body name evidence primarily retained-agenda.\n\nRationale: The retained agenda, posted by City of Denton, convenes the Animal Shelter Advisory Committee in regular meeting on Oct 21, 2020 at City Hall \u2014 recording-specific. No supplied feed matches this body; per sparse policy, a real body without existing feed is unconfigured, not non-city. So publication_action = unconfigured_body, feed_slugs = [].\n\nEcho case_id: \"recording-cca86af01f5030c620cd25a7\".\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792003385,
+    "id": "805547bb7139d7ef416f8db40b3ef375",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 838,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 579,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3921,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4759
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Planning and Zoning Commission"
+      }
+    ],
+    "case_id": "recording-6711ef6cf459b6dc7add2175",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission for Addison in a work session on Dec 21, 2021; native-source-chapters corroborates the same P&Z Commission agenda chapters. No evidence shows a joint meeting or a second municipal body. The existing feed addison-tx-planning-and-zoning-commission is the configured feed for Planning and Zoning Commission meetings, so the recording is assigned there."
+  },
+  "attempt_id": "3b9c59412f74445b81404fe7ae11815d",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-6711ef6cf459b6dc7add2175",
+  "case_input_hash": "af128d585e076b763970a04af45340be89e926361c9ae6178c6b808ab45f207c",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.06052733300021
+    }
+  ],
+  "end_to_end_seconds": 63.083275208002306,
+  "finished_at": "2026-10-14T19:56:20.706679+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T19:55:17.623047+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "6a8c12093aa0d000a2e60856bfec9e224c6d622c0a391d97be5acf6e9da28b19",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1801,
+    "completion_tokens": 2004,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1801,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3238,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3878,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5882
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-6711ef6cf459b6dc7add2175\",\"bodies\":[{\"name\":\"Planning and Zoning Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-planning-and-zoning-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission for Addison in a work session on Dec 21, 2021; native-source-chapters corroborates the same P&Z Commission agenda chapters. No evidence shows a joint meeting or a second municipal body. The existing feed addison-tx-planning-and-zoning-commission is the configured feed for Planning and Zoning Commission meetings, so the recording is assigned there.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need parse task. We have recording case. Need determine municipal body/bodies, feed slugs existing, publication action, evidence IDs. Need follow rules.\n\nWe have evidence:\n- body_label: Planning & Zoning Commission Work Session\n- case_id recording-6711ef6cf459b6dc7add2175\n- city addison-tx\n- evidence refs: retained-agenda, provider-player, native-source-chapters.\nAgenda: PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday Dec 21 2021, Addison TreeHouse. It's a work session of P&Z Commission. The recording title Planning & Zoning Commission Work Session. The body convened: Planning and Zoning Commission (Town of Addison). Existing feed slug addison-tx-planning-and-zoning-commission description \"Planning and Zoning Commission meetings for Addison.\" So likely assign_existing with feed_slug that.\n\nNeed \"Name every proven participant in a joint meeting.\" There is no joint meeting. Only P&Z Commission. Evidence proves body name. Participants? The task asks bodies not persons. \"bodies\" identified body. Maybe also Town of Addison? No, municipal body is P&Z Commission. Existing feed.\n\nNeed consider \"Work Session\" vs regular meeting. It's a work session of P&Z Commission. Feed includes meetings. No archive_only/exclude_event. Not promotional/economic luncheon, not ceremonies. So assign existing.\n\nNeed cite evidence IDs for body names and assignments. Use retained-agenda, provider-player, native-source-chapters maybe. For feed assignment: existing feed slug from supplied. Need evidence for body name and assignment. Evidence IDs: retained-agenda, provider-player. native-source-chapters also corroborates title? It lists chapter titles but not body name? It has \"1. Call Meeting to Order\", item 1 status update on P&Z Commission. Source span includes \"Planning and Zoning Commission\" in chapter titles. Use all three maybe.\n\nNeed check if any other plausible omitted feed? Maybe public briefings? No, it's a work session of P&Z. No public comment? No. Not TIF, bond, etc. The agenda mentions \"Planning and Zoning Commission Regular Meeting\" upcoming. But body is P&Z Commission. The work session itself. Existing feed covers \"Planning and Zoning Commission meetings\". So yes.\n\nNeed output JSON schema:\ncase_id, bodies array of IdentifiedBody {name, evidence_ref_ids}, feed_slugs array strings, publication_action enum, evidence_ref_ids array, missing_evidence array, rationale string.\n\nNeed include missing_evidence maybe empty or note? If evidence sufficient. Missing evidence: maybe no missing evidence. But perhaps \"No participant roster/attendance list supplied; bodies identified from official agenda/title, not individual members.\" The task says \"Name every proven participant in a joint meeting\" but no joint meeting. Missing evidence could mention no evidence of additional joint bodies/participants. But if no gap, empty. But prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. So missing_evidence can be []. But maybe to be safe, include \"No roster of individual attendees or joint participants supplied; not needed for body assignment.\" However schema expects missing_evidence items strings. It says genuine missing evidence. Since no missing evidence for body assignment. But maybe if asking \"Name every proven participant in a joint meeting\" - there is no joint meeting, so not missing. Could be empty.\n\nNeed rationale concise, max 2000. Cite evidence. \"retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission of Addison in a work session on 2021-12-21; native-source-chapters corroborates the P&Z Commission agenda chapters. No evidence of a joint meeting or second municipal body. Existing feed addison-tx-planning-and-zoning-commission covers P&Z Commission meetings. Publication action assign_existing.\"\n\nNeed evidence_ref_ids overall: maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies name: \"Planning and Zoning Commission\" or \"Planning and Zoning Commission Work Session\"? The body_label says \"Planning & Zoning Commission Work Session\", but actual body is Planning and Zoning Commission. Existing feed title \"Addison: Planning and Zoning Commission\". The body name should be \"Planning and Zoning Commission\" (not Work Session, that's meeting type). Evidence says \"PLANNING AND ZONING COMMISSION WORK SESSION\" and \"The Planning and Zoning Commission WORK SESSION\". So body: Planning and Zoning Commission. Could include \"Town of Addison Planning and Zoning Commission\" maybe. Use official title from agenda: \"PLANNING AND ZONING COMMISSION\" and city Addison. So name \"Planning and Zoning Commission\" sufficient. Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nPublication action: assign_existing.\n\nNeed no markdown. Return JSON only.\n\nDouble-check \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" We used official agenda title. Good.\n\n\"Do not invent feed slug.\" We use supplied.\n\n\"If a real body has no existing feed, return unconfigured_body and name it.\" It has existing feed.\n\n\"If ownership cannot be established, return unresolved...\" Ownership established.\n\n\"Identify actual body/program separately from its subscription grouping.\" We do.\n\n\"Select ALL appropriate existing feed slugs under supplied publication rules.\" Only P&Z. Not town meetings because work session? The policy has \"town halls, community meetings, open houses and historical citizen input\" feed. A work session of P&Z is not public input? It is public meeting but not \"town meetings\" feed. The feed description \"Town halls, community meetings, open houses and historical citizen input.\" Work session not that. So only P&Z.\n\nCould the P&Z work session be \"public briefings\"? No, public educational briefings, not a P&Z work session.\n\nNo joint meeting. \"Name every proven participant in a joint meeting\" - no joint meeting. So bodies array one.\n\nPotential issue: The recording is a \"Work Session\" not regular meeting. The feed description \"Planning and Zoning Commission meetings for Addison.\" Work session is a meeting. So yes.\n\nNeed output exactly JSON. Ensure no trailing comments. Use proper quotes.\n\nLet's craft:\n{\n  \"case_id\": \"recording-6711ef6cf459b6dc7add2175\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission for Addison in a work session on Dec 21, 2021; native-source-chapters corroborates the same P&Z Commission agenda chapters. No evidence shows a joint meeting or a second municipal body. The existing feed addison-tx-planning-and-zoning-commission is the configured feed for Planning and Zoning Commission meetings, so the recording is assigned there.\"\n}\n\nNeed maybe mention \"Addison\" in body name? Official title \"PLANNING AND ZONING COMMISSION\" in Town of Addison. Existing feed \"Addison: Planning and Zoning Commission\". Body name can be \"Planning and Zoning Commission\" or \"Town of Addison Planning and Zoning Commission\". Since city is Addison, maybe \"Planning and Zoning Commission\" is enough. But schema name max 300. I'll use \"Planning and Zoning Commission\" to match feed. Could include \"Town of Addison Planning and Zoning Commission\" to be precise. Evidence says \"THE TOWN OF ADDISON IS ACCESSIBLE...\" and \"Planning and Zoning Commission\". The body is municipal. Use \"Planning and Zoning Commission\" likely.\n\nCheck if \"Work Session\" is part of body? No, meeting type. So body name correct.\n\nMissing evidence: empty. But prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. So empty okay.\n\nNeed no markdown. Final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need parse task. We have recording case. Need determine municipal body/bodies, feed slugs existing, publication action, evidence IDs. Need follow rules.\n\nWe have evidence:\n- body_label: Planning & Zoning Commission Work Session\n- case_id recording-6711ef6cf459b6dc7add2175\n- city addison-tx\n- evidence refs: retained-agenda, provider-player, native-source-chapters.\nAgenda: PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday Dec 21 2021, Addison TreeHouse. It's a work session of P&Z Commission. The recording title Planning & Zoning Commission Work Session. The body convened: Planning and Zoning Commission (Town of Addison). Existing feed slug addison-tx-planning-and-zoning-commission description \"Planning and Zoning Commission meetings for Addison.\" So likely assign_existing with feed_slug that.\n\nNeed \"Name every proven participant in a joint meeting.\" There is no joint meeting. Only P&Z Commission. Evidence proves body name. Participants? The task asks bodies not persons. \"bodies\" identified body. Maybe also Town of Addison? No, municipal body is P&Z Commission. Existing feed.\n\nNeed consider \"Work Session\" vs regular meeting. It's a work session of P&Z Commission. Feed includes meetings. No archive_only/exclude_event. Not promotional/economic luncheon, not ceremonies. So assign existing.\n\nNeed cite evidence IDs for body names and assignments. Use retained-agenda, provider-player, native-source-chapters maybe. For feed assignment: existing feed slug from supplied. Need evidence for body name and assignment. Evidence IDs: retained-agenda, provider-player. native-source-chapters also corroborates title? It lists chapter titles but not body name? It has \"1. Call Meeting to Order\", item 1 status update on P&Z Commission. Source span includes \"Planning and Zoning Commission\" in chapter titles. Use all three maybe.\n\nNeed check if any other plausible omitted feed? Maybe public briefings? No, it's a work session of P&Z. No public comment? No. Not TIF, bond, etc. The agenda mentions \"Planning and Zoning Commission Regular Meeting\" upcoming. But body is P&Z Commission. The work session itself. Existing feed covers \"Planning and Zoning Commission meetings\". So yes.\n\nNeed output JSON schema:\ncase_id, bodies array of IdentifiedBody {name, evidence_ref_ids}, feed_slugs array strings, publication_action enum, evidence_ref_ids array, missing_evidence array, rationale string.\n\nNeed include missing_evidence maybe empty or note? If evidence sufficient. Missing evidence: maybe no missing evidence. But perhaps \"No participant roster/attendance list supplied; bodies identified from official agenda/title, not individual members.\" The task says \"Name every proven participant in a joint meeting\" but no joint meeting. Missing evidence could mention no evidence of additional joint bodies/participants. But if no gap, empty. But prompt: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. So missing_evidence can be []. But maybe to be safe, include \"No roster of individual attendees or joint participants supplied; not needed for body assignment.\" However schema expects missing_evidence items strings. It says genuine missing evidence. Since no missing evidence for body assignment. But maybe if asking \"Name every proven participant in a joint meeting\" - there is no joint meeting, so not missing. Could be empty.\n\nNeed rationale concise, max 2000. Cite evidence. \"retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission of Addison in a work session on 2021-12-21; native-source-chapters corroborates the P&Z Commission agenda chapters. No evidence of a joint meeting or second municipal body. Existing feed addison-tx-planning-and-zoning-commission covers P&Z Commission meetings. Publication action assign_existing.\"\n\nNeed evidence_ref_ids overall: maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies name: \"Planning and Zoning Commission\" or \"Planning and Zoning Commission Work Session\"? The body_label says \"Planning & Zoning Commission Work Session\", but actual body is Planning and Zoning Commission. Existing feed title \"Addison: Planning and Zoning Commission\". The body name should be \"Planning and Zoning Commission\" (not Work Session, that's meeting type). Evidence says \"PLANNING AND ZONING COMMISSION WORK SESSION\" and \"The Planning and Zoning Commission WORK SESSION\". So body: Planning and Zoning Commission. Could include \"Town of Addison Planning and Zoning Commission\" maybe. Use official title from agenda: \"PLANNING AND ZONING COMMISSION\" and city Addison. So name \"Planning and Zoning Commission\" sufficient. Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nFeed slugs: [\"addison-tx-planning-and-zoning-commission\"].\n\nPublication action: assign_existing.\n\nNeed no markdown. Return JSON only.\n\nDouble-check \"Determine the convening institution from supplied official evidence, not shared members, venue, topic words, or city names.\" We used official agenda title. Good.\n\n\"Do not invent feed slug.\" We use supplied.\n\n\"If a real body has no existing feed, return unconfigured_body and name it.\" It has existing feed.\n\n\"If ownership cannot be established, return unresolved...\" Ownership established.\n\n\"Identify actual body/program separately from its subscription grouping.\" We do.\n\n\"Select ALL appropriate existing feed slugs under supplied publication rules.\" Only P&Z. Not town meetings because work session? The policy has \"town halls, community meetings, open houses and historical citizen input\" feed. A work session of P&Z is not public input? It is public meeting but not \"town meetings\" feed. The feed description \"Town halls, community meetings, open houses and historical citizen input.\" Work session not that. So only P&Z.\n\nCould the P&Z work session be \"public briefings\"? No, public educational briefings, not a P&Z work session.\n\nNo joint meeting. \"Name every proven participant in a joint meeting\" - no joint meeting. So bodies array one.\n\nPotential issue: The recording is a \"Work Session\" not regular meeting. The feed description \"Planning and Zoning Commission meetings for Addison.\" Work session is a meeting. So yes.\n\nNeed output exactly JSON. Ensure no trailing comments. Use proper quotes.\n\nLet's craft:\n{\n  \"case_id\": \"recording-6711ef6cf459b6dc7add2175\",\n  \"bodies\": [\n    {\n      \"name\": \"Planning and Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-planning-and-zoning-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"retained-agenda and provider-player identify the convened body as the Planning and Zoning Commission for Addison in a work session on Dec 21, 2021; native-source-chapters corroborates the same P&Z Commission agenda chapters. No evidence shows a joint meeting or a second municipal body. The existing feed addison-tx-planning-and-zoning-commission is the configured feed for Planning and Zoning Commission meetings, so the recording is assigned there.\"\n}\n\nNeed maybe mention \"Addison\" in body name? Official title \"PLANNING AND ZONING COMMISSION\" in Town of Addison. Existing feed \"Addison: Planning and Zoning Commission\". Body name can be \"Planning and Zoning Commission\" or \"Town of Addison Planning and Zoning Commission\". Since city is Addison, maybe \"Planning and Zoning Commission\" is enough. But schema name max 300. I'll use \"Planning and Zoning Commission\" to match feed. Could include \"Town of Addison Planning and Zoning Commission\" to be precise. Evidence says \"THE TOWN OF ADDISON IS ACCESSIBLE...\" and \"Planning and Zoning Commission\". The body is municipal. Use \"Planning and Zoning Commission\" likely.\n\nCheck if \"Work Session\" is part of body? No, meeting type. So body name correct.\n\nMissing evidence: empty. But prompt says \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" No suspected. So empty okay.\n\nNeed no markdown. Final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792007769,
+    "id": "54074c337551599431008bc46d0dfd42",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1801,
+      "completion_tokens": 2004,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1801,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3238,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3878,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5882
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

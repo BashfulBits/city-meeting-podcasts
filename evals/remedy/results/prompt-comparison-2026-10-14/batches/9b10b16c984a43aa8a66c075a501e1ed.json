@@ -1,0 +1,145 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Animal Shelter Advisory Committee"
+      }
+    ],
+    "case_id": "recording-c3179aff49eb426e0d5ffd85",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No configured feed slug for Animal Shelter Advisory Committee exists in the supplied existing_feeds.",
+      "No evidence of a joint convening body; the agenda lists individual committee members and staff, not separate municipal bodies."
+    ],
+    "publication_action": "unconfigured_body",
+    "rationale": "The retained official agenda identifies the City of Denton Animal Shelter Advisory Committee as convening in a Regular Meeting on 2021-03-24 at 3:00 PM. The provider player and native chapters match the same Animal Shelter Advisory Committee meeting and agenda items. The listed chair, vice-chair and members are participants in that one committee, not evidence of a joint meeting by another body. No supplied feed slug corresponds to the Animal Shelter Advisory Committee. Under the sparse-body policy, this is a real municipal body with no existing feed, so it is unconfigured rather than assigned to an unrelated grouping such as Health & Building Standards Commission, City Council, or Public Info Meetings."
+  },
+  "attempt_id": "a363afff10814cbfb818517874325169",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-c3179aff49eb426e0d5ffd85",
+  "case_input_hash": "e71d27692d5a80e5188512b213e662892e944d1f254971d5d89d417ecdc81274",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.412449833995197
+    }
+  ],
+  "end_to_end_seconds": 62.30507087500155,
+  "finished_at": "2026-10-14T21:44:13.820372+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T21:43:11.514958+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "7af5b30d1fe382a80a22b085feb7d06ad15a7baaf61e8942c1c2b951df5326e7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1298,
+    "completion_tokens": 1574,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1298,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3860,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 4500,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 6074
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-c3179aff49eb426e0d5ffd85\",\"bodies\":[{\"name\":\"Animal Shelter Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[\"No configured feed slug for Animal Shelter Advisory Committee exists in the supplied existing_feeds.\",\"No evidence of a joint convening body; the agenda lists individual committee members and staff, not separate municipal bodies.\"],\"rationale\":\"The retained official agenda identifies the City of Denton Animal Shelter Advisory Committee as convening in a Regular Meeting on 2021-03-24 at 3:00 PM. The provider player and native chapters match the same Animal Shelter Advisory Committee meeting and agenda items. The listed chair, vice-chair and members are participants in that one committee, not evidence of a joint meeting by another body. No supplied feed slug corresponds to the Animal Shelter Advisory Committee. Under the sparse-body policy, this is a real municipal body with no existing feed, so it is unconfigured rather than assigned to an unrelated grouping such as Health & Building Standards Commission, City Council, or Public Info Meetings.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need solve. We have case about recording \"Animal Shelter Advisory Committee on 2021-03-24 3:00 PM\". Need identify convening body from official evidence. Existing feeds list. There is no feed for Animal Shelter Advisory Committee. Need determine publication_action. Body real? Agenda official says Animal Shelter Advisory Committee, City of Denton, regular meeting. So convening body is Animal Shelter Advisory Committee. Does it have existing feed? None. Policy sparse: real body without existing feed is unconfigured, not automatically non-city. So publication_action \"unconfigured_body\" and name body. Need maybe also consider whether fits any existing grouping? Existing feeds include Health & Building Standards Commission, Committee on Persons with Disabilities, etc. No animal shelter. Is there any broader grouping? No. \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" Not relevant. Could it be \"Public Info Meetings\"? No, that's for public info meetings, not advisory committee. Could it be \"City Council\"? No, it's an advisory committee. Could be under \"Health & Building Standards Commission\"? No, separate body. The agenda says Animal Shelter Advisory Committee. No feed. So unconfigured_body.\n\nNeed include bodies: Animal Shelter Advisory Committee. Evidence refs: retained-agenda, provider-player maybe native-source-chapters. Need cite evidence for body name. We can include all three? The schema bodies items require name and evidence_ref_ids. We can include one body with evidence refs [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] maybe okay. The evidence_ref_ids top-level should include all evidence used. Need missing_evidence: maybe \"No existing feed slug for Animal Shelter Advisory Committee; no evidence of joint convening with another body.\" But we don't need missing evidence if not unresolved? The schema requires missing_evidence array. Could list gap: \"No configured feed slug exists for Animal Shelter Advisory Committee in supplied existing_feeds.\" But that's not missing evidence for ownership? Ownership established. But it's a gap in feed. The instructions: If real body has no existing feed, return unconfigured_body and name it. So missing_evidence could be [] or mention no dedicated feed. Need rationale concise explaining evidence-to-feed connection. Also note not a joint meeting. Participants? The prompt says \"Name every proven participant in a joint meeting.\" Here not joint. So no additional bodies. The agenda lists chair, vice-chair, members, but those are individuals, not bodies. No joint participants. So bodies only Animal Shelter Advisory Committee.\n\nNeed feed_slugs: Select ALL appropriate existing feed slugs under rules. Since no existing feed, feed_slugs should be empty. But publication_action unconfigured_body. Could there be \"denton-tx-health-building-standards-commission\"? No, not same. \"denton-tx-public-info-meetings\"? No, routine public comment does not add Public Info feed membership. The recording is a regular committee meeting, not public info. \"denton-tx-city-council\"? No.\n\nNeed ensure JSON matches schema. case_id: \"recording-c3179aff49eb426e0d5ffd85\". bodies array. feed_slugs empty. publication_action \"unconfigured_body\". evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. missing_evidence maybe [\"No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds.\"] But missing_evidence is list of strings. Could also mention \"No evidence of joint convening by another municipal body.\" Rationale max 2000.\n\nLet's craft. Need no markdown. Ensure valid JSON. Use exact names.\n\nRationale: \"Official agenda (retained-agenda) and provider player (provider-player) identify the convened body as the Animal Shelter Advisory Committee, City of Denton, a regular meeting on 2021-03-24. Native chapters (native-source-chapters) match the same agenda items. This is not a joint meeting; listed individuals are members/officials, not separate bodies. No supplied feed slug corresponds to the Animal Shelter Advisory Committee; therefore it is a real unconfigured body, not assignable to an existing feed. No topic/venue/member substitution to Health & Building Standards Commission or other feeds is supported.\"\n\nEvidence_ref_ids top-level include all. Bodies evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Missing evidence: \"No dedicated feed slug for Animal Shelter Advisory Committee in existing_feeds.\" \"No evidence of a joint convening body.\" Could include both. But missing evidence should be gaps. The instructions: If ownership cannot be established, return unresolved. Here ownership established. So missing evidence can be empty? But they ask \"Return every proven assignment even if evidence insufficient for another suspected participant, explaining that gap.\" No other suspected. But maybe missing_evidence array can be empty. However, to explain unconfigured, missing evidence is not missing ownership; it's missing feed. But schema field missing_evidence likely for gaps. I'll include one item: \"No configured feed slug for Animal Shelter Advisory Committee in the supplied existing_feeds; no joint participant body is evidenced.\" This is fine.\n\nNeed maybe \"feed_slugs\": [] because no existing feed. publication_action \"unconfigured_body\". That matches.\n\nCheck if \"Animal Shelter Advisory Committee\" might be under \"denton-tx-health-building-standards-commission\"? No. The agenda is for Animal Shelter Advisory Committee. It's a city advisory committee. No feed. So unconfigured.\n\nDouble-check policy: \"A real body without an existing feed is unconfigured, not automatically non-city.\" Yes.\n\nNeed return one JSON object only. Ensure no extra. Use quotes. Valid.\n\nPotential nuance: The recording title \"Animal Shelter Advisory Committee on 2021-03-24 3:00 PM\" and agenda says \"Animal Shelter Advisory Committee\" and \"City of Denton\". That's enough. The \"body_label\" in input is same. Evidence refs: retained-agenda, provider-player, native-source-chapters. Good.\n\nCould there be a feed \"denton-tx-public-info-meetings\" for public info? No.\n\nThus final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need solve. We have case about recording \"Animal Shelter Advisory Committee on 2021-03-24 3:00 PM\". Need identify convening body from official evidence. Existing feeds list. There is no feed for Animal Shelter Advisory Committee. Need determine publication_action. Body real? Agenda official says Animal Shelter Advisory Committee, City of Denton, regular meeting. So convening body is Animal Shelter Advisory Committee. Does it have existing feed? None. Policy sparse: real body without existing feed is unconfigured, not automatically non-city. So publication_action \"unconfigured_body\" and name body. Need maybe also consider whether fits any existing grouping? Existing feeds include Health & Building Standards Commission, Committee on Persons with Disabilities, etc. No animal shelter. Is there any broader grouping? No. \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" Not relevant. Could it be \"Public Info Meetings\"? No, that's for public info meetings, not advisory committee. Could it be \"City Council\"? No, it's an advisory committee. Could be under \"Health & Building Standards Commission\"? No, separate body. The agenda says Animal Shelter Advisory Committee. No feed. So unconfigured_body.\n\nNeed include bodies: Animal Shelter Advisory Committee. Evidence refs: retained-agenda, provider-player maybe native-source-chapters. Need cite evidence for body name. We can include all three? The schema bodies items require name and evidence_ref_ids. We can include one body with evidence refs [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] maybe okay. The evidence_ref_ids top-level should include all evidence used. Need missing_evidence: maybe \"No existing feed slug for Animal Shelter Advisory Committee; no evidence of joint convening with another body.\" But we don't need missing evidence if not unresolved? The schema requires missing_evidence array. Could list gap: \"No configured feed slug exists for Animal Shelter Advisory Committee in supplied existing_feeds.\" But that's not missing evidence for ownership? Ownership established. But it's a gap in feed. The instructions: If real body has no existing feed, return unconfigured_body and name it. So missing_evidence could be [] or mention no dedicated feed. Need rationale concise explaining evidence-to-feed connection. Also note not a joint meeting. Participants? The prompt says \"Name every proven participant in a joint meeting.\" Here not joint. So no additional bodies. The agenda lists chair, vice-chair, members, but those are individuals, not bodies. No joint participants. So bodies only Animal Shelter Advisory Committee.\n\nNeed feed_slugs: Select ALL appropriate existing feed slugs under rules. Since no existing feed, feed_slugs should be empty. But publication_action unconfigured_body. Could there be \"denton-tx-health-building-standards-commission\"? No, not same. \"denton-tx-public-info-meetings\"? No, routine public comment does not add Public Info feed membership. The recording is a regular committee meeting, not public info. \"denton-tx-city-council\"? No.\n\nNeed ensure JSON matches schema. case_id: \"recording-c3179aff49eb426e0d5ffd85\". bodies array. feed_slugs empty. publication_action \"unconfigured_body\". evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. missing_evidence maybe [\"No existing feed slug for Animal Shelter Advisory Committee in supplied existing_feeds.\"] But missing_evidence is list of strings. Could also mention \"No evidence of joint convening by another municipal body.\" Rationale max 2000.\n\nLet's craft. Need no markdown. Ensure valid JSON. Use exact names.\n\nRationale: \"Official agenda (retained-agenda) and provider player (provider-player) identify the convened body as the Animal Shelter Advisory Committee, City of Denton, a regular meeting on 2021-03-24. Native chapters (native-source-chapters) match the same agenda items. This is not a joint meeting; listed individuals are members/officials, not separate bodies. No supplied feed slug corresponds to the Animal Shelter Advisory Committee; therefore it is a real unconfigured body, not assignable to an existing feed. No topic/venue/member substitution to Health & Building Standards Commission or other feeds is supported.\"\n\nEvidence_ref_ids top-level include all. Bodies evidence_ref_ids maybe [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Missing evidence: \"No dedicated feed slug for Animal Shelter Advisory Committee in existing_feeds.\" \"No evidence of a joint convening body.\" Could include both. But missing evidence should be gaps. The instructions: If ownership cannot be established, return unresolved. Here ownership established. So missing evidence can be empty? But they ask \"Return every proven assignment even if evidence insufficient for another suspected participant, explaining that gap.\" No other suspected. But maybe missing_evidence array can be empty. However, to explain unconfigured, missing evidence is not missing ownership; it's missing feed. But schema field missing_evidence likely for gaps. I'll include one item: \"No configured feed slug for Animal Shelter Advisory Committee in the supplied existing_feeds; no joint participant body is evidenced.\" This is fine.\n\nNeed maybe \"feed_slugs\": [] because no existing feed. publication_action \"unconfigured_body\". That matches.\n\nCheck if \"Animal Shelter Advisory Committee\" might be under \"denton-tx-health-building-standards-commission\"? No. The agenda is for Animal Shelter Advisory Committee. It's a city advisory committee. No feed. So unconfigured.\n\nDouble-check policy: \"A real body without an existing feed is unconfigured, not automatically non-city.\" Yes.\n\nNeed return one JSON object only. Ensure no extra. Use quotes. Valid.\n\nPotential nuance: The recording title \"Animal Shelter Advisory Committee on 2021-03-24 3:00 PM\" and agenda says \"Animal Shelter Advisory Committee\" and \"City of Denton\". That's enough. The \"body_label\" in input is same. Evidence refs: retained-agenda, provider-player, native-source-chapters. Good.\n\nCould there be a feed \"denton-tx-public-info-meetings\" for public info? No.\n\nThus final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792014244,
+    "id": "65253806c488ff5f5c56ee7bb282a19d",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1298,
+      "completion_tokens": 1574,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1298,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3860,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 4500,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 6074
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

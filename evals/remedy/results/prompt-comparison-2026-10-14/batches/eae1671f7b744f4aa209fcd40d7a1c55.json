@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Redistricting Commission"
+      }
+    ],
+    "case_id": "recording-f282f5df099ea90db279956b",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "dallas-tx-redistricting-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "Official notice states THE REDISTRICTING COMMISSION WILL MEET IN OPEN SESSION on Saturday, January 22, 2022, and the provider recording is titled Saturday Redistricting Commission. The agenda heading's reference to a Redistricting Committee Town Hall is not separate proof of another convened body; the notice and recording establish the Redistricting Commission as the convened body. Existing feed dallas-tx-redistricting-commission matches the proven body. The event is a public commission town hall/meeting, not a promotional, ceremonial, or archival-only event; routine public comment does not create Public Info feed membership. No joint meeting participant body is proven."
+  },
+  "attempt_id": "3d8e8b54b28e46348b5335eee6d3bd8f",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-f282f5df099ea90db279956b",
+  "case_input_hash": "70507c032756300ed4afd9db9ed7f64dab86c18be774720653013c12eb560add",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.92724116699901
+    }
+  ],
+  "end_to_end_seconds": 54.44321108300028,
+  "finished_at": "2026-10-14T15:21:51.077255+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T15:20:56.633725+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "f34b19c0cf59b683562f9dd572dec099a2e957654b9e8eb0d99ad733a59e3bc0",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 1098,
+    "completion_tokens": 1328,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1098,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 5223,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 5607,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 6935
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-f282f5df099ea90db279956b\",\"bodies\":[{\"name\":\"Redistricting Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"dallas-tx-redistricting-commission\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"Official notice states THE REDISTRICTING COMMISSION WILL MEET IN OPEN SESSION on Saturday, January 22, 2022, and the provider recording is titled Saturday Redistricting Commission. The agenda heading's reference to a Redistricting Committee Town Hall is not separate proof of another convened body; the notice and recording establish the Redistricting Commission as the convened body. Existing feed dallas-tx-redistricting-commission matches the proven body. The event is a public commission town hall/meeting, not a promotional, ceremonial, or archival-only event; routine public comment does not create Public Info feed membership. No joint meeting participant body is proven.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine body/bodies for recording. Need inspect evidence. Recording title \"Saturday Redistricting Commission \u2013 Jan 22, 2022\". Agenda: \"THE REDISTRICTING COMMISSION WILL MEET IN OPEN SESSION ON SATURDAY, JANUARY 22, 2022 ... The Redistricting Town Hall will be held...\" Agenda header \"REDISTRICTING COMMITTEE TOWN HALL AGENDA\" maybe typo. Official notice says The Redistricting Commission. Existing feeds include \"dallas-tx-redistricting-commission\" description \"Meetings of the Dallas Redistricting Commission.\" So body = Redistricting Commission (Dallas). Need feed slug existing dallas-tx-redistricting-commission. Maybe also \"dallas-tx-public-info-meetings\"? Policy says routine public comment does not add Public Info feed membership. It's a town hall? But convened body is Redistricting Commission. Need identify actual body/program separately from subscription grouping. The feed \"Dallas: Redistricting Commission\" exists. Publication action assign_existing. Bodies list should include Redistricting Commission with evidence refs retained-agenda, provider-player. Any joint meeting? No. Participants? Chairman Jesse Oliver, Priti Mathur ARCBridge? \"Name every proven participant in a joint meeting\" only if joint meeting. This is not joint? The body is Redistricting Commission. Participants: Chairman Jesse Oliver, Priti Mathur, ARCBridge Consulting, Inc. Maybe \"Redistricting Committee Town Hall\" vs \"Redistricting Commission\". Need decide if body is \"Redistricting Commission\" or \"Redistricting Committee\"? Evidence official notice: \"THE REDISTRICTING COMMISSION WILL MEET...\" and agenda heading \"REDISTRICTING COMMITTEE TOWN HALL AGENDA\". Existing feed slug \"dallas-tx-redistricting-commission\" title \"Dallas: Redistricting Commission\". The recording title \"Saturday Redistricting Commission\". So body: Redistricting Commission. Could also be \"Redistricting Committee\"? But official notice uses Commission repeatedly. The agenda heading says Committee maybe typo. Existing feed is Commission. Need cite evidence IDs only: retained-agenda, provider-player.\n\nNeed JSON matching schema:\n{\n \"case_id\": \"recording-f282f5df099ea90db279956b\",\n \"bodies\": [{\"name\":\"Redistricting Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\n \"feed_slugs\": [\"dallas-tx-redistricting-commission\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\"],\n \"missing_evidence\": [],\n \"rationale\": \"...\"\n}\n\nNeed perhaps include \"City of Dallas Redistricting Commission\" or \"Dallas Redistricting Commission\"? Body name official? The notice: \"THE REDISTRICTING COMMISSION\". Existing feed title \"Dallas: Redistricting Commission\". Use \"Redistricting Commission\". Could include \"Saturday Redistricting Commission\"? Schema IdentifiedBody name. The recording title body_label \"Saturday Redistricting Commission\" but official body is Redistricting Commission. The prompt says identify actual body/program separately from subscription grouping. So name actual body \"Redistricting Commission\". Evidence refs.\n\nNeed consider \"Redistricting Town Hall\" maybe program? The event is a town hall of the Redistricting Commission. Policy: Public Info Meetings? \"Routine public comment does not add Public Info feed membership.\" The meeting is a Redistricting Town Hall with public comments. Existing feed for Redistricting Commission. Could also feed \"dallas-tx-public-info-meetings\"? No, because public comment does not add Public Info feed membership. The body is commission. So only redistricting commission feed.\n\nNeed ensure not include archive_only/exclude. It's a public meeting of commission, not promotional. So assign_existing.\n\nNeed maybe mention no joint participants? \"Name every proven participant in a joint meeting.\" There is no joint meeting; only one body. But could \"Priti Mathur, ARCBridge Consulting\" is not a participant body. We don't list people. Missing evidence maybe none. But maybe need note \"Agenda heading says REDISTRICTING COMMITTEE TOWN HALL AGENDA, but official notice and recording identify Redistricting Commission; no separate committee proven.\" Could include in rationale.\n\nNeed evidence for body names and assignments. Use retained-agenda and provider-player. Evidence_ref_ids top-level maybe both. Bodies evidence refs both. Feed slug assignment evidence retained-agenda and provider-player plus existing feed? Existing feeds not evidence refs? The schema evidence_ref_ids are supplied evidence IDs. We can cite only supplied evidence IDs. Existing feed list isn't evidence ref ID? It's \"existing_feeds\". But feed slug choice is based on policy/existing feeds. Evidence refs can include retained-agenda, provider-player. We don't have IDs for existing feeds. Fine.\n\nNeed maybe mention missing evidence: If ownership cannot be established? It is established. No missing. Maybe mention no joint participant list needed.\n\nLet's craft concise rationale under 2000 chars. Ensure JSON only no markdown. Use exact case_id. Final.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine body/bodies for recording. Need inspect evidence. Recording title \"Saturday Redistricting Commission \u2013 Jan 22, 2022\". Agenda: \"THE REDISTRICTING COMMISSION WILL MEET IN OPEN SESSION ON SATURDAY, JANUARY 22, 2022 ... The Redistricting Town Hall will be held...\" Agenda header \"REDISTRICTING COMMITTEE TOWN HALL AGENDA\" maybe typo. Official notice says The Redistricting Commission. Existing feeds include \"dallas-tx-redistricting-commission\" description \"Meetings of the Dallas Redistricting Commission.\" So body = Redistricting Commission (Dallas). Need feed slug existing dallas-tx-redistricting-commission. Maybe also \"dallas-tx-public-info-meetings\"? Policy says routine public comment does not add Public Info feed membership. It's a town hall? But convened body is Redistricting Commission. Need identify actual body/program separately from subscription grouping. The feed \"Dallas: Redistricting Commission\" exists. Publication action assign_existing. Bodies list should include Redistricting Commission with evidence refs retained-agenda, provider-player. Any joint meeting? No. Participants? Chairman Jesse Oliver, Priti Mathur ARCBridge? \"Name every proven participant in a joint meeting\" only if joint meeting. This is not joint? The body is Redistricting Commission. Participants: Chairman Jesse Oliver, Priti Mathur, ARCBridge Consulting, Inc. Maybe \"Redistricting Committee Town Hall\" vs \"Redistricting Commission\". Need decide if body is \"Redistricting Commission\" or \"Redistricting Committee\"? Evidence official notice: \"THE REDISTRICTING COMMISSION WILL MEET...\" and agenda heading \"REDISTRICTING COMMITTEE TOWN HALL AGENDA\". Existing feed slug \"dallas-tx-redistricting-commission\" title \"Dallas: Redistricting Commission\". The recording title \"Saturday Redistricting Commission\". So body: Redistricting Commission. Could also be \"Redistricting Committee\"? But official notice uses Commission repeatedly. The agenda heading says Committee maybe typo. Existing feed is Commission. Need cite evidence IDs only: retained-agenda, provider-player.\n\nNeed JSON matching schema:\n{\n \"case_id\": \"recording-f282f5df099ea90db279956b\",\n \"bodies\": [{\"name\":\"Redistricting Commission\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\n \"feed_slugs\": [\"dallas-tx-redistricting-commission\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\"],\n \"missing_evidence\": [],\n \"rationale\": \"...\"\n}\n\nNeed perhaps include \"City of Dallas Redistricting Commission\" or \"Dallas Redistricting Commission\"? Body name official? The notice: \"THE REDISTRICTING COMMISSION\". Existing feed title \"Dallas: Redistricting Commission\". Use \"Redistricting Commission\". Could include \"Saturday Redistricting Commission\"? Schema IdentifiedBody name. The recording title body_label \"Saturday Redistricting Commission\" but official body is Redistricting Commission. The prompt says identify actual body/program separately from subscription grouping. So name actual body \"Redistricting Commission\". Evidence refs.\n\nNeed consider \"Redistricting Town Hall\" maybe program? The event is a town hall of the Redistricting Commission. Policy: Public Info Meetings? \"Routine public comment does not add Public Info feed membership.\" The meeting is a Redistricting Town Hall with public comments. Existing feed for Redistricting Commission. Could also feed \"dallas-tx-public-info-meetings\"? No, because public comment does not add Public Info feed membership. The body is commission. So only redistricting commission feed.\n\nNeed ensure not include archive_only/exclude. It's a public meeting of commission, not promotional. So assign_existing.\n\nNeed maybe mention no joint participants? \"Name every proven participant in a joint meeting.\" There is no joint meeting; only one body. But could \"Priti Mathur, ARCBridge Consulting\" is not a participant body. We don't list people. Missing evidence maybe none. But maybe need note \"Agenda heading says REDISTRICTING COMMITTEE TOWN HALL AGENDA, but official notice and recording identify Redistricting Commission; no separate committee proven.\" Could include in rationale.\n\nNeed evidence for body names and assignments. Use retained-agenda and provider-player. Evidence_ref_ids top-level maybe both. Bodies evidence refs both. Feed slug assignment evidence retained-agenda and provider-player plus existing feed? Existing feeds not evidence refs? The schema evidence_ref_ids are supplied evidence IDs. We can cite only supplied evidence IDs. Existing feed list isn't evidence ref ID? It's \"existing_feeds\". But feed slug choice is based on policy/existing feeds. Evidence refs can include retained-agenda, provider-player. We don't have IDs for existing feeds. Fine.\n\nNeed maybe mention missing evidence: If ownership cannot be established? It is established. No missing. Maybe mention no joint participant list needed.\n\nLet's craft concise rationale under 2000 chars. Ensure JSON only no markdown. Use exact case_id. Final.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791991302,
+    "id": "c3912ac93e4040ec1fee815bf9a82d0a",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 1098,
+      "completion_tokens": 1328,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1098,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 5223,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 5607,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 6935
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

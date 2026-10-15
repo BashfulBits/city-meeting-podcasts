@@ -1,0 +1,142 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Community and Neighborhood Development Committee"
+      }
+    ],
+    "case_id": "recording-e8d7b11f6fe27f95223b88f1",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-community-and-neighborhood-development-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda explicitly convenes the COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON for April 28, 2020, and the provider player repeats that body title for the recording. This establishes the Community and Neighborhood Development Committee as the convened municipal body. The existing feed slug arlington-tx-community-and-neighborhood-development-committee is the dedicated matching configured feed. No evidence proves a joint meeting or any additional participating body."
+  },
+  "attempt_id": "86e0350c6c7b4a9788a72404b5008888",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-e8d7b11f6fe27f95223b88f1",
+  "case_input_hash": "104f122ef095d196e9421318375b817f2a392c2e549edba158f6acfeaa74d9e8",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 5.843407207998098
+    }
+  ],
+  "end_to_end_seconds": 53.830520125000476,
+  "finished_at": "2026-10-14T20:07:15.409655+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T20:06:21.578843+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d5681ee88238d9cc3bd17a3f3e09c80683b62fbd5496d632bf736a60c915967c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 501,
+    "completion_tokens": 701,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 501,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 1670,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 2310,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 3011
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-e8d7b11f6fe27f95223b88f1\",\"bodies\":[{\"name\":\"Community and Neighborhood Development Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-community-and-neighborhood-development-committee\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda explicitly convenes the COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE, CITY OF ARLINGTON for April 28, 2020, and the provider player repeats that body title for the recording. This establishes the Community and Neighborhood Development Committee as the convened municipal body. The existing feed slug arlington-tx-community-and-neighborhood-development-committee is the dedicated matching configured feed. No evidence proves a joint meeting or any additional participating body.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need identify municipal body/bodies from evidence. Case: Arlington TX, recording title Community and Neighborhood Development Committee. Evidence retained agenda: COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON, telephone meeting April 28 2020. Provider player title same. Existing feeds includes arlington-tx-community-and-neighborhood-development-committee. Likely assign_existing, feed slug that. Bodies: Community and Neighborhood Development Committee. Any joint meeting? Evidence only committee. No other participants. Need consider if city council? Agenda says Office of City Manager header, committee. No joint. Need maybe not city council. Feed \"arlington-tx\" broader all meetings? The rules: select ALL appropriate existing feed slugs under supplied publication rules. A feed can be broader subscription grouping. For this recording, should we include arlington-tx too? Need infer from instructions. \"Identify actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" It might be appropriate to include specific feed and broader \"Arlington \u2014 All Meetings\" if it aggregates all meetings. But if assigning existing feed for body, do we include both? Need assess. Existing feeds: specific \"arlington-tx-community-and-neighborhood-development-committee\" exactly matches. Broader \"arlington-tx\" titled Arlington \u2014 All Meetings description Video recordings of Arlington City Council and Planning & Zoning meetings. Wait description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That does not include Community and Neighborhood Development Committee. So likely not include arlington-tx. The specific feed is appropriate. No other bodies. Publication action assign_existing. Evidence ref ids: retained-agenda, provider-player. Missing evidence: maybe none? Need maybe no missing. Bodies with evidence ref ids. Rationale concise. case_id.\n\nNeed ensure JSON schema. Evidence_ref_ids array maybe include both. feed_slugs [\"arlington-tx-community-and-neighborhood-development-committee\"]. publication_action \"assign_existing\". missing_evidence [] or maybe mention no missing? Required array. rationale.\n\nNeed consider \"Every proven participant in joint meeting.\" Not joint. \"Name every proven participant...\" Only body. Could there be \"Office of City Manager\" as staff? Not convening. Not body. Do not include. \"City of Arlington\" not a body. Committee.\n\nLet's craft final JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need identify municipal body/bodies from evidence. Case: Arlington TX, recording title Community and Neighborhood Development Committee. Evidence retained agenda: COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON, telephone meeting April 28 2020. Provider player title same. Existing feeds includes arlington-tx-community-and-neighborhood-development-committee. Likely assign_existing, feed slug that. Bodies: Community and Neighborhood Development Committee. Any joint meeting? Evidence only committee. No other participants. Need consider if city council? Agenda says Office of City Manager header, committee. No joint. Need maybe not city council. Feed \"arlington-tx\" broader all meetings? The rules: select ALL appropriate existing feed slugs under supplied publication rules. A feed can be broader subscription grouping. For this recording, should we include arlington-tx too? Need infer from instructions. \"Identify actual body/program separately from its subscription grouping.\" \"Select ALL appropriate existing feed slugs under supplied publication rules.\" It might be appropriate to include specific feed and broader \"Arlington \u2014 All Meetings\" if it aggregates all meetings. But if assigning existing feed for body, do we include both? Need assess. Existing feeds: specific \"arlington-tx-community-and-neighborhood-development-committee\" exactly matches. Broader \"arlington-tx\" titled Arlington \u2014 All Meetings description Video recordings of Arlington City Council and Planning & Zoning meetings. Wait description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That does not include Community and Neighborhood Development Committee. So likely not include arlington-tx. The specific feed is appropriate. No other bodies. Publication action assign_existing. Evidence ref ids: retained-agenda, provider-player. Missing evidence: maybe none? Need maybe no missing. Bodies with evidence ref ids. Rationale concise. case_id.\n\nNeed ensure JSON schema. Evidence_ref_ids array maybe include both. feed_slugs [\"arlington-tx-community-and-neighborhood-development-committee\"]. publication_action \"assign_existing\". missing_evidence [] or maybe mention no missing? Required array. rationale.\n\nNeed consider \"Every proven participant in joint meeting.\" Not joint. \"Name every proven participant...\" Only body. Could there be \"Office of City Manager\" as staff? Not convening. Not body. Do not include. \"City of Arlington\" not a body. Committee.\n\nLet's craft final JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792008430,
+    "id": "da6dcc6e9585959ef1ee98f37fea624c",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 501,
+      "completion_tokens": 701,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 501,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 1670,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 2310,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 3011
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

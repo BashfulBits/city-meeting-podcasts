@@ -1,0 +1,764 @@
+{
+  "binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "cases": [
+    {
+      "case_id": "recording-0312d144c749c190446edfe0",
+      "category": "existing_body_assignment",
+      "city": "dallas-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player",
+                "dallas-streets-archive"
+              ],
+              "name": "2024 Bond Streets and Transportation Subcommittee"
+            }
+          ],
+          "case_id": "recording-0312d144c749c190446edfe0",
+          "evidence_ref_ids": [
+            "provider-player",
+            "dallas-streets-archive"
+          ],
+          "feed_slugs": [
+            "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+            "dallas-tx-bond-program-meetings"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "The recording 270975 is the Aug 22, 2023 Streets and Transportation Subcommittee Meeting #6 under Dallas' 2024 Bond Program. The official Office of Bond & Construction Management subcommittee page lists that date as a Streets and Transportation Subcommittee meeting, and the Swagit player confirms the same recording. The convened body is therefore the 2024 Bond Streets and Transportation Subcommittee, not the overall Community Bond Task Force; the transcript distinguishes the separate task-force meeting. The existing dedicated feed dallas-tx-2024-bond-streets-and-transportation-subcommittee matches this proven body. Under the configured-family-feed policy, the Bond Program Meetings family feed dallas-tx-bond-program-meetings is also appropriate for this proven bond-program body. Thus both the dedicated subcommittee feed and the bond family feed should be assigned. No missing ownership proof remains; routine public comment does not add Public Info feed membership."
+        },
+        "choice": "A",
+        "end_to_end_seconds": 44.669968915994104,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [
+          "dallas-tx-transportation-and-infrastructure"
+        ],
+        "provider_seconds": 42.04718995800067,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cached_tokens": 0,
+          "completion_thinking_tokens": 6877,
+          "completion_tokens": 7184,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 6877,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 14421,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 14421,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 21605
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": false
+        }
+      },
+      "expected_choice": [
+        "C"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "B",
+          "supported_A": 0.39,
+          "supported_B": 0.72
+        },
+        "choice_correct": false,
+        "end_to_end_seconds": 2.033016792003764,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.8081949170009466,
+        "raw_usage": {
+          "input_tokens": 16617,
+          "output_tokens": 172
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023"
+    },
+    {
+      "case_id": "recording-0850ab9885c4b28efea3adfe",
+      "category": "existing_body_assignment",
+      "city": "dallas-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "dallas-streets-may25"
+              ],
+              "name": "Streets and Transportation Subcommittee, 2024 Bond Task Force"
+            }
+          ],
+          "case_id": "recording-0850ab9885c4b28efea3adfe",
+          "evidence_ref_ids": [
+            "dallas-streets-may25",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "feed_slugs": [
+            "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+            "dallas-tx-bond-program-meetings"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "The official minutes dallas-streets-may25 identify the convened body as the Streets and Transportation Subcommittee of the 2024 Bond Task Force on May 25, 2023, with committee members present, a chair, staff presentations, discussion, and adjournment. provider-player and native-source-chapters match recording 233032 to that same May 25 bond streets and transportation meeting. The existing dedicated feed dallas-tx-2024-bond-streets-and-transportation-subcommittee matches this proven subcommittee body. Under the configured bond-family rule, dallas-tx-bond-program-meetings is also an appropriate existing family feed for this proven bond-program body; it is feed scope, not a separate convening body. Proposal A correctly includes both feeds. Proposal B is incomplete because it omits the configured Bond Program Meetings family feed. No assignment is made to dallas-tx-2024-community-bond-task-force because the evidence shows a subcommittee meeting, not a full Community Bond Task Force meeting, and no supplied evidence proves the parent task force separately convened or is the same body as that feed. Public Works and Transportation staff are presenters/staff, not separate municipal bodies."
+        },
+        "choice": "A",
+        "end_to_end_seconds": 33.12582499999553,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [],
+        "provider_seconds": 32.0496729170045,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cached_tokens": 0,
+          "completion_thinking_tokens": 4862,
+          "completion_tokens": 5235,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 4862,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 20918,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 20918,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 26153
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": true
+        }
+      },
+      "expected_choice": [
+        "A"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "B",
+          "supported_A": 0.45,
+          "supported_B": 0.61
+        },
+        "choice_correct": false,
+        "end_to_end_seconds": 2.093991957997787,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.9706547500027227,
+        "raw_usage": {
+          "input_tokens": 23056,
+          "output_tokens": 163
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023"
+    },
+    {
+      "case_id": "recording-1fd48da636e2445a9d8ecebb",
+      "category": "existing_body_assignment",
+      "city": "fort-worth-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "retained-agenda",
+                "provider-player",
+                "native-source-chapters"
+              ],
+              "name": "Board of Trustees of Eagle Mountain-Saginaw ISD"
+            },
+            {
+              "evidence_ref_ids": [
+                "retained-agenda",
+                "provider-player",
+                "native-source-chapters"
+              ],
+              "name": "Fort Worth City Council"
+            }
+          ],
+          "case_id": "recording-1fd48da636e2445a9d8ecebb",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "feed_slugs": [
+            "fort-worth-tx-emsisd-board-joint-meetings",
+            "fort-worth-tx-city-council"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "The retained agenda and provider player name a joint convened meeting of the Board of Trustees of Eagle Mountain-Saginaw ISD and the Fort Worth City Council on 2016-04-25. The agenda and native chapters show both bodies conducting business: Board President Dick Elkins calls the meeting and ISD reports (superintendent reports, demographic/economic development/state of district, career and technology) are presented, while Mayor Betsy Price gives the city welcome and city reports (Mayor's Report on Education, Master Thoroughfare Plan). Both are therefore proven participants, not mere attendees. Under the joints rule, each proven participant shares the recording in its configured feed. The existing feed fort-worth-tx-emsisd-board-joint-meetings is explicitly described as source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; fort-worth-tx-city-council is the City Council body feed. The general fort-worth-tx feed is not a body-specific configured feed for either participant; its broad/catch-all scope and historical inclusions do not prove body membership or require inclusion here. The opening ceremony and embedded HCTC video do not make this an excluded ceremony or archive-only film because the meeting is a substantive joint business meeting. No missing ownership proof is present."
+        },
+        "choice": "A",
+        "end_to_end_seconds": 53.58973387499282,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [],
+        "provider_seconds": 52.46784995900089,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cached_tokens": 0,
+          "completion_thinking_tokens": 8098,
+          "completion_tokens": 8506,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 8098,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 9708,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 9708,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 18214
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": true
+        }
+      },
+      "expected_choice": [
+        "A"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "A",
+          "supported_A": 0.58,
+          "supported_B": 0.19
+        },
+        "choice_correct": true,
+        "end_to_end_seconds": 1.6963718330007396,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.7242425000004005,
+        "raw_usage": {
+          "input_tokens": 11622,
+          "output_tokens": 163
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL"
+    },
+    {
+      "case_id": "recording-4cbdc0f5678a5408279ffae1",
+      "category": "existing_body_assignment",
+      "city": "addison-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player",
+                "citizen-council-june2007"
+              ],
+              "name": "Citizen Advisory Committee"
+            }
+          ],
+          "case_id": "recording-4cbdc0f5678a5408279ffae1",
+          "evidence_ref_ids": [
+            "provider-player",
+            "citizen-council-june2007"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No supplied evidence maps the 2007 Citizen Advisory Committee recording to any existing feed slug; none of the existing feed descriptions names this body.",
+            "No supplied evidence equates the Citizen Advisory Committee with the Comprehensive Plan Advisory Committee or another configured advisory committee.",
+            "No supplied evidence proves that the City Council or another body jointly convened the June 1, 2007 recording."
+          ],
+          "publication_action": "unconfigured_body",
+          "rationale": "The official Addison Swagit player identifies recording 56029, dated Jun 01, 2007, as the Citizen Advisory Committee, and the City Secretary packet references City Council handling of Citizen Advisory Committee recommendations, corroborating it as an Addison municipal body. The convened body is the Citizen Advisory Committee, not the City Council; the packet does not show Council participation in the recorded meeting. It is also not proven to be the Comprehensive Plan Advisory Committee or another configured committee. No existing feed slug is for the Citizen Advisory Committee, and the public-input feed's scope (town halls, community meetings, open houses, historical citizen input) does not establish coverage of a standing advisory committee's own proceedings. Under the sparse-body rule, a real municipal body without an existing feed is unconfigured_body."
+        },
+        "choice": "B",
+        "end_to_end_seconds": 49.598356250004144,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [
+          "addison-tx-town-meetings"
+        ],
+        "provider_seconds": 48.59925095899962,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 384,
+          "cached_tokens": 384,
+          "completion_thinking_tokens": 7317,
+          "completion_tokens": 7647,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 7317,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 384,
+          "prompt_cache_miss_tokens": 4293,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 4677,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 384,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 12324
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": false
+        }
+      },
+      "expected_choice": [
+        "A"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "C",
+          "supported_A": 0.12,
+          "supported_B": 0.09
+        },
+        "choice_correct": false,
+        "end_to_end_seconds": 2.1510019580018707,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.9012077910010703,
+        "raw_usage": {
+          "input_tokens": 5751,
+          "output_tokens": 169
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "Citizen Advisory Committee \u2013 Jun 01, 2007"
+    },
+    {
+      "case_id": "recording-5dddfe1f523eeff020ce4343",
+      "category": "existing_body_assignment",
+      "city": "dallas-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "dallas-streets-june13"
+              ],
+              "name": "Streets and Transportation Subcommittee, 2024 Bond Task Force"
+            }
+          ],
+          "case_id": "recording-5dddfe1f523eeff020ce4343",
+          "evidence_ref_ids": [
+            "dallas-streets-june13",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "feed_slugs": [
+            "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+            "dallas-tx-bond-program-meetings"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "Official minutes (dallas-streets-june13) are headed 'Streets and Transportation Subcommittee / 2024 Bond Task Force' and record the June 13, 2023 meeting, members, staff, discussion, and adjournment. The provider title and recording-specific chapter corroborate recording 259821 but are not the source of body identity. The convened body is therefore the Streets and Transportation Subcommittee of the 2024 Bond Task Force, not the parent task-force plenary and not a staff department. The subcommittee has the configured specific feed dallas-tx-2024-bond-streets-and-transportation-subcommittee. Because this is a proven bond-program body, the configured bond-family feed dallas-tx-bond-program-meetings is also appropriate under the family policy; historical RSS examples are not treated as ownership proof, but the family feed is supported by the bond-family policy. No parent task-force feed is assigned because no plenary convened. Publication action is assign_existing."
+        },
+        "choice": "A",
+        "end_to_end_seconds": 41.05523333399469,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [],
+        "provider_seconds": 40.01522174999991,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 384,
+          "cached_tokens": 384,
+          "completion_thinking_tokens": 6143,
+          "completion_tokens": 6476,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 6143,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 384,
+          "prompt_cache_miss_tokens": 21973,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 22357,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 384,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 28833
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": true
+        }
+      },
+      "expected_choice": [
+        "A"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "B",
+          "supported_A": 0.27,
+          "supported_B": 0.7
+        },
+        "choice_correct": false,
+        "end_to_end_seconds": 1.9555698330004816,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.9937610830020276,
+        "raw_usage": {
+          "input_tokens": 24423,
+          "output_tokens": 160
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 Jun 13, 2023"
+    },
+    {
+      "case_id": "recording-64905d6e32cae3a0ec5a7070",
+      "category": "existing_body_assignment",
+      "city": "arlington-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "retained-agenda",
+                "provider-player"
+              ],
+              "name": "Environmental Task Force"
+            }
+          ],
+          "case_id": "recording-64905d6e32cae3a0ec5a7070",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player"
+          ],
+          "feed_slugs": [
+            "arlington-tx-environmental-task-force"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "The retained agenda (retained-agenda) is on City of Arlington letterhead and convenes the ENVIRONMENTAL TASK FORCE, CITY OF ARLINGTON for April 28, 2020, matching the recording date. The provider player (provider-player) corroborates the recording title. This proves the convened body is the Environmental Task Force, not Council or P&Z; references to Council and P&Z in the materials are context only. The existing feed arlington-tx-environmental-task-force is described as verified 2020 Arlington Environmental Task Force proceedings, so it is the appropriate configured feed and publication_action is assign_existing. The arlington-tx feed is described as Council and Planning & Zoning recordings and its history examples are Council meetings, so it is not an all-body feed for this Task Force meeting and is not included. No missing ownership proof."
+        },
+        "choice": "B",
+        "end_to_end_seconds": 34.77550899999915,
+        "extra_feeds": [],
+        "identity_held": false,
+        "missing_feeds": [],
+        "provider_seconds": 33.59642737499962,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 384,
+          "cached_tokens": 384,
+          "completion_thinking_tokens": 4915,
+          "completion_tokens": 5191,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 4915,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 384,
+          "prompt_cache_miss_tokens": 5311,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 5695,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 384,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 10886
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": true
+        }
+      },
+      "expected_choice": [
+        "B"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "B",
+          "supported_A": 0.25,
+          "supported_B": 0.47
+        },
+        "choice_correct": true,
+        "end_to_end_seconds": 1.9532045829982962,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.7267959169985261,
+        "raw_usage": {
+          "input_tokens": 6598,
+          "output_tokens": 172
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "Environmental Task Force Meeting"
+    },
+    {
+      "case_id": "recording-76b77357565cdc16153f2a97",
+      "category": "insufficient_owner_proof",
+      "city": "fort-worth-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player",
+                "expanded-provider-player-0"
+              ],
+              "name": "Minority Leaders and Citizen's Council"
+            }
+          ],
+          "case_id": "recording-76b77357565cdc16153f2a97",
+          "evidence_ref_ids": [
+            "provider-player",
+            "expanded-provider-player-0"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, enabling ordinance, resolution, roster, or official posting in the supplied evidence identifies the convening institution of the Minority Leaders and Citizen's Council.",
+            "No supplied evidence proves that this body is a Fort Worth municipal body or is otherwise owned/sponsored by the City of Fort Worth.",
+            "No catalog metadata beyond the Granicus player-page title exists for clip_id=848 (no sponsoring department, series, parent body, or document list)."
+          ],
+          "publication_action": "unresolved",
+          "rationale": "The supplied evidence is only the Granicus player page for clip_id=848. It shows the event label \"Minority Leaders and Citizen's Council\" and that the recording is hosted on the Fort Worth archive platform, but it contains only player/navigation chrome with no agenda, minutes, roster, or convening statement. Under the proof policy, the player title and hosting platform do not establish ownership, and missing ownership proof requires unresolved rather than unconfigured_body. No existing feed matches this named body: the Minority and Women Business Enterprise Advisory Committee feed is a different body, and the general Fort Worth feed is not shown to cover this non-Council proceeding. Therefore no existing feed slug is assigned."
+        },
+        "choice": "B",
+        "end_to_end_seconds": 19.430862916997285,
+        "extra_feeds": null,
+        "identity_held": false,
+        "missing_feeds": null,
+        "provider_seconds": 18.403133749998233,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 384,
+          "cached_tokens": 384,
+          "completion_thinking_tokens": 2164,
+          "completion_tokens": 2493,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 2164,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 384,
+          "prompt_cache_miss_tokens": 4703,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 5087,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 384,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 7580
+        },
+        "verdict": {
+          "body_assignment_correct": null,
+          "category": "insufficient_owner_proof",
+          "guardrail_pass": true
+        }
+      },
+      "expected_choice": [
+        "B"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "B",
+          "supported_A": 0.05,
+          "supported_B": 0.84
+        },
+        "choice_correct": true,
+        "end_to_end_seconds": 1.8410755840013735,
+        "enqueue_seconds": null,
+        "provider_seconds": 0.7268922919975012,
+        "raw_usage": {
+          "input_tokens": 6528,
+          "output_tokens": 172
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council"
+    },
+    {
+      "case_id": "recording-eef10050e298d3758921b67a",
+      "category": "existing_body_assignment",
+      "city": "dallas-tx",
+      "deepseek": {
+        "answer": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "dallas-cbtf-aug15",
+                "provider-player",
+                "native-source-chapters"
+              ],
+              "name": "2024 Community Bond Task Force"
+            }
+          ],
+          "case_id": "recording-eef10050e298d3758921b67a",
+          "evidence_ref_ids": [
+            "dallas-cbtf-aug15",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "feed_slugs": [
+            "dallas-tx-2024-community-bond-task-force",
+            "dallas-tx-bond-program-meetings"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "Official minutes dallas-cbtf-aug15 (dallascityhall.com, Bond and Construction Management) convene the Community Bond Task Force / 2024 Bond Task Force on 2023-08-15 at 6:30 PM and repeatedly identify the body as the CBTF. provider-player and native-source-chapters corroborate the same recording 269608. This is the full task force, not a 2024 bond subcommittee, and not the 2017 Citizens Bond Task Force. Assign to the existing body-specific feed dallas-tx-2024-community-bond-task-force. Under the configured families policy, also include the configured bond-family feed dallas-tx-bond-program-meetings for this proven bond body. Routine public comment does not add Public Info feed membership. No ownership proof is missing."
+        },
+        "choice": "B",
+        "end_to_end_seconds": 35.90348379199713,
+        "extra_feeds": [
+          "dallas-tx-bond-program-meetings"
+        ],
+        "identity_held": false,
+        "missing_feeds": [],
+        "provider_seconds": 28.013408667000476,
+        "serving_family_held": true,
+        "status": "completed",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 384,
+          "cached_tokens": 384,
+          "completion_thinking_tokens": 4228,
+          "completion_tokens": 4524,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 4228,
+            "rejected_prediction_tokens": 0
+          },
+          "credit": 0,
+          "prompt_cache_hit_tokens": 384,
+          "prompt_cache_miss_tokens": 19482,
+          "prompt_cache_write_tokens": 0,
+          "prompt_tokens": 19866,
+          "prompt_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cached_tokens": 384,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "total_tokens": 24390
+        },
+        "verdict": {
+          "category": "existing_body_assignment",
+          "correct": false
+        }
+      },
+      "expected_choice": [
+        "A"
+      ],
+      "jev": {
+        "answers": {
+          "choice": "A",
+          "supported_A": 0.74,
+          "supported_B": 0.25
+        },
+        "choice_correct": true,
+        "end_to_end_seconds": 2.5032876249970286,
+        "enqueue_seconds": null,
+        "provider_seconds": 1.0255717079999158,
+        "raw_usage": {
+          "input_tokens": 22086,
+          "output_tokens": 172
+        },
+        "scope": "Bounded candidate choice, not a free-form feed assignment",
+        "status": "completed",
+        "transport": "existing_local_pilot"
+      },
+      "title": "2024 Bond Task Force Community Bond Task Force Meeting \u2013 Aug 15, 2023"
+    }
+  ],
+  "gold_hash": "2a8da03b1427885341ccee740d945e22b9766f4812af15b28ecf4853a4a62836",
+  "qualified": false,
+  "unknown_intents": 0
+}

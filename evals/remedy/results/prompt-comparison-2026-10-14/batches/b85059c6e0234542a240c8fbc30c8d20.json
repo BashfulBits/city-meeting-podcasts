@@ -1,0 +1,171 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning & Zoning Commission"
+      }
+    ],
+    "case_id": "recording-dfc5556c32049fce49d38785",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official October 17, 2023 agenda identifies a joint meeting of the Addison City Council and Planning & Zoning Commission and calls both bodies to order. The recording-specific player transcript confirms that both bodies were called to order and that each had a quorum. Both proven participants therefore belong in their respective configured feeds under the joint-meeting rule. The Advance Addison Comprehensive Plan is the discussion topic, not evidence that the Comprehensive Plan Advisory Committee convened."
+  },
+  "attempt_id": "f65223362dee4253811c32e1fea0dee9",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-dfc5556c32049fce49d38785",
+  "case_input_hash": "b7e11d1e8fa123d2c384f2f4ff5759d50c758726e09fd0a5e1c567396b6ff417",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 12.005716499996197
+    }
+  ],
+  "end_to_end_seconds": 58.164818416000344,
+  "finished_at": "2026-10-14T21:59:16.645621+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T21:58:18.480489+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "ec66d20c33b5b5b74d341338c90dad1d8c3d4303f5fd6442e395e27a98ec980a",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3237,
+        "output_tokens": 282
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 282,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3237,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3237,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3519,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-dfc5556c32049fce49d38785\",\n  \"bodies\": [\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    },\n    {\n      \"name\": \"Addison Planning & Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-city-council\",\n    \"addison-tx-planning-and-zoning-commission\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official October 17, 2023 agenda identifies a joint meeting of the Addison City Council and Planning & Zoning Commission and calls both bodies to order. The recording-specific player transcript confirms that both bodies were called to order and that each had a quorum. Both proven participants therefore belong in their respective configured feeds under the joint-meeting rule. The Advance Addison Comprehensive Plan is the discussion topic, not evidence that the Comprehensive Plan Advisory Committee convened.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792015155,
+    "id": "resp_0480b735da289608016acffb2a4c5c81998a825ad30290ae0b",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3237,
+          "output_tokens": 282
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 282,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3237,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3237,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3519,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

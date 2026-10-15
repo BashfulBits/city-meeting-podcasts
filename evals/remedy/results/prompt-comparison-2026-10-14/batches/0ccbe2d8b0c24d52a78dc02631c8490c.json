@@ -1,0 +1,135 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Bond Advisory Committee (Town of Addison)"
+      }
+    ],
+    "case_id": "recording-a6fa645e613b3e5b90ed44ca",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The convened body is the Addison Bond Advisory Committee: the posted agenda (retained-agenda, recording 362796) is headed 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001', posted by Sarah Kuechler, Chief of Staff, on 11/25/2025. The provider player (provider-player) confirms Swagit video 362796 is the same Dec 4, 2025 Bond Advisory Committee meeting, and native-source-chapters mirrors the identical agenda items for this recording, tying recording-specific evidence together. No joint-meeting evidence exists: references in the transcript to facility tours and chiefs (e.g., Redden, Williams) are staff/topical content, not proof another board convened or co-convened, so no other body is named. Venue and topic are not used to infer ownership; the agenda's own header supplies it. Publication: the existing feed 'addison-tx-bond-committees' is configured for verified Addison bond-program committee meetings, which covers this proven body, so assign_existing with that single slug is appropriate. No archive/exclusion rule applies, and no body lacks a feed."
+  },
+  "attempt_id": "e686db25b4c64d93a692a0d6d1e2e703",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-a6fa645e613b3e5b90ed44ca",
+  "case_input_hash": "f22469eaa3a09586bcc4bd17bf783583bb2ac92375c929665c2fbefc946f89fb",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 26.257317125000554
+    }
+  ],
+  "end_to_end_seconds": 27.8801572079974,
+  "finished_at": "2026-10-14T18:30:16.732131+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:29:48.851773+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d53a0d01d8e31f6a7a1ab73b0416e2e89611b10d990373b04cf9310c06a7f072",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1521,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1111,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3487,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5008
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"case_id\": \"recording-a6fa645e613b3e5b90ed44ca\",\n  \"bodies\": [\n    {\n      \"name\": \"Bond Advisory Committee (Town of Addison)\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"addison-tx-bond-committees\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The convened body is the Addison Bond Advisory Committee: the posted agenda (retained-agenda, recording 362796) is headed 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE, Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001', posted by Sarah Kuechler, Chief of Staff, on 11/25/2025. The provider player (provider-player) confirms Swagit video 362796 is the same Dec 4, 2025 Bond Advisory Committee meeting, and native-source-chapters mirrors the identical agenda items for this recording, tying recording-specific evidence together. No joint-meeting evidence exists: references in the transcript to facility tours and chiefs (e.g., Redden, Williams) are staff/topical content, not proof another board convened or co-convened, so no other body is named. Venue and topic are not used to infer ownership; the agenda's own header supplies it. Publication: the existing feed 'addison-tx-bond-committees' is configured for verified Addison bond-program committee meetings, which covers this proven body, so assign_existing with that single slug is appropriate. No archive/exclusion rule applies, and no body lacks a feed.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Bond Advisory Committee \u2013 Dec 04, 2025\" from Addison, TX. The agenda is for \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" at Addison Town Hall, posted by Sarah Kuechler, Chief of Staff of the Town of Addison.\n\nEvidence:\n- retained-agenda: Agenda for Regular Meeting of the Bond Advisory Committee, Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001. Posted by Sarah Kuechler, Chief of Staff. This establishes the body as the Bond Advisory Committee of the Town of Addison.\n- provider-player: Swagit video player with transcript, same meeting title.\n- native-source-chapters: chapter data.\n\nThe convened body: Bond Advisory Committee (Town of Addison). The transcript mentions a \"former chief\" and \"chief\" and tours of facilities \u2014 the 2026 Police and Courts facility Bond Advisory Committee is mentioned in the feed description, but the agenda/transcript does not explicitly say \"Police and Courts facility\" \u2014 well, it discusses Options B and C, buildings, tours of Roanoke and Carrollton facilities. The feed \"addison-tx-bond-committees\" description says: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" So the Bond Advisory Committee falls under that feed.\n\nThe instructions: \"Identify the actual body/program separately from its subscription grouping.\" So the body is \"Bond Advisory Committee\" and the feed is \"addison-tx-bond-committees\".\n\nNo joint meeting indicators \u2014 only one body convened. The transcript mentions fire chief and police chief participation via tours, but that doesn't create joint meeting participants; those are just topics/staff.\n\nPublication action: assign_existing. Feed slug: addison-tx-bond-committees.\n\nMissing evidence: none significant. Maybe note that the agenda doesn't explicitly tie to the \"2026 Police and Courts facility\" program name, but the feed covers bond committees generally. Actually the feed description says \"including\" so it's inclusive. I could note in rationale that the specific program name (2026 Police and Courts facility) is inferred from the feed description, but the assignment is to the family feed which covers bond-program committees.\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters. The native-source-chapters just repeats agenda items; I can cite all or just the first two. I'll cite all three since they're recording-specific evidence.\n\ncase_id: recording-a6fa645e613b3e5b90ed44ca\n\nOutput JSON matching schema:\n{\n  \"case_id\": \"recording-a6fa645e613b3e5b90ed44ca\",\n  \"bodies\": [{\"name\": \"Bond Advisory Committee (Town of Addison, TX)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}],\n  \"feed_slugs\": [\"addison-tx-bond-committees\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nThe body name should be exactly what's proven: \"Bond Advisory Committee\" \u2014 Town of Addison context. I'll use \"Bond Advisory Committee\" with evidence refs.\n\nRationale: The posted agenda for the Regular Meeting of the Bond Advisory Committee on Dec 4, 2025 at Addison Town Hall, posted by the Town's Chief of Staff, establishes the convened body as Addison's Bond Advisory Committee. The provider player confirms recording 362796 is that meeting. The transcript references facility tours and chiefs, but no other municipal body convened the meeting; there's no joint-meeting evidence. The existing feed addison-tx-bond-committees covers verified Addison bond-program committee meetings, so assign_existing with that feed slug. No unconfigured body or unresolved gaps.\n\nShould the body name include \"Town of Addison\"? The body_label says \"Bond Advisory Committee\". I'll name it \"Bond Advisory Committee (Town of Addison, TX)\" \u2014 but safer: \"Bond Advisory Committee\". The evidence shows \"BOND ADVISORY COMMITTEE\" and \"THE TOWN OF ADDISON IS ACCESSIBLE...\" plus Addison Town Hall address. I'll go with \"Bond Advisory Committee (Town of Addison)\".\n\nFinal JSON, no markdown. The system prompt says output valid JSON object, ending code block with ``` \u2014 actually it says \"Ensure you always end your code block with ``` to signal the end of the JSON object.\" But also \"Return one JSON object only (no Markdown or commentary)\". Hmm, conflicting. The instruction in the user message says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". The system prompt says to always output a valid JSON object and end with ``` in a code block. To be safe, I'll output a JSON code block with ```json ... ```? The user says no Markdown. The system says end code block with ```. I'll output the JSON inside a code block to satisfy the system instruction: ```json ... ```. Actually the system instruction says \"Ensure you always end your code block with ```\". I'll do a fenced code block.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Bond Advisory Committee \u2013 Dec 04, 2025\" from Addison, TX. The agenda is for \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" at Addison Town Hall, posted by Sarah Kuechler, Chief of Staff of the Town of Addison.\n\nEvidence:\n- retained-agenda: Agenda for Regular Meeting of the Bond Advisory Committee, Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001. Posted by Sarah Kuechler, Chief of Staff. This establishes the body as the Bond Advisory Committee of the Town of Addison.\n- provider-player: Swagit video player with transcript, same meeting title.\n- native-source-chapters: chapter data.\n\nThe convened body: Bond Advisory Committee (Town of Addison). The transcript mentions a \"former chief\" and \"chief\" and tours of facilities \u2014 the 2026 Police and Courts facility Bond Advisory Committee is mentioned in the feed description, but the agenda/transcript does not explicitly say \"Police and Courts facility\" \u2014 well, it discusses Options B and C, buildings, tours of Roanoke and Carrollton facilities. The feed \"addison-tx-bond-committees\" description says: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" So the Bond Advisory Committee falls under that feed.\n\nThe instructions: \"Identify the actual body/program separately from its subscription grouping.\" So the body is \"Bond Advisory Committee\" and the feed is \"addison-tx-bond-committees\".\n\nNo joint meeting indicators \u2014 only one body convened. The transcript mentions fire chief and police chief participation via tours, but that doesn't create joint meeting participants; those are just topics/staff.\n\nPublication action: assign_existing. Feed slug: addison-tx-bond-committees.\n\nMissing evidence: none significant. Maybe note that the agenda doesn't explicitly tie to the \"2026 Police and Courts facility\" program name, but the feed covers bond committees generally. Actually the feed description says \"including\" so it's inclusive. I could note in rationale that the specific program name (2026 Police and Courts facility) is inferred from the feed description, but the assignment is to the family feed which covers bond-program committees.\n\nEvidence ref ids: retained-agenda, provider-player, native-source-chapters. The native-source-chapters just repeats agenda items; I can cite all or just the first two. I'll cite all three since they're recording-specific evidence.\n\ncase_id: recording-a6fa645e613b3e5b90ed44ca\n\nOutput JSON matching schema:\n{\n  \"case_id\": \"recording-a6fa645e613b3e5b90ed44ca\",\n  \"bodies\": [{\"name\": \"Bond Advisory Committee (Town of Addison, TX)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}],\n  \"feed_slugs\": [\"addison-tx-bond-committees\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nThe body name should be exactly what's proven: \"Bond Advisory Committee\" \u2014 Town of Addison context. I'll use \"Bond Advisory Committee\" with evidence refs.\n\nRationale: The posted agenda for the Regular Meeting of the Bond Advisory Committee on Dec 4, 2025 at Addison Town Hall, posted by the Town's Chief of Staff, establishes the convened body as Addison's Bond Advisory Committee. The provider player confirms recording 362796 is that meeting. The transcript references facility tours and chiefs, but no other municipal body convened the meeting; there's no joint-meeting evidence. The existing feed addison-tx-bond-committees covers verified Addison bond-program committee meetings, so assign_existing with that feed slug. No unconfigured body or unresolved gaps.\n\nShould the body name include \"Town of Addison\"? The body_label says \"Bond Advisory Committee\". I'll name it \"Bond Advisory Committee (Town of Addison, TX)\" \u2014 but safer: \"Bond Advisory Committee\". The evidence shows \"BOND ADVISORY COMMITTEE\" and \"THE TOWN OF ADDISON IS ACCESSIBLE...\" plus Addison Town Hall address. I'll go with \"Bond Advisory Committee (Town of Addison)\".\n\nFinal JSON, no markdown. The system prompt says output valid JSON object, ending code block with ``` \u2014 actually it says \"Ensure you always end your code block with ``` to signal the end of the JSON object.\" But also \"Return one JSON object only (no Markdown or commentary)\". Hmm, conflicting. The instruction in the user message says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema\". The system prompt says to always output a valid JSON object and end with ``` in a code block. To be safe, I'll output a JSON code block with ```json ... ```? The user says no Markdown. The system says end code block with ```. I'll output the JSON inside a code block to satisfy the system instruction: ```json ... ```. Actually the system instruction says \"Ensure you always end your code block with ```\". I'll do a fenced code block.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002615,
+    "id": "27078550f791cd3e37908c588a39cce8",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 1521,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1111,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3487,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5008
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

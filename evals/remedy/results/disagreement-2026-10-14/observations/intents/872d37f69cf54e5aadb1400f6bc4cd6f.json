@@ -1,0 +1,21 @@
+{
+  "approval_ref": "maintainer chat2026-10-14 local JEV pilot fallback",
+  "attempt_id": "872d37f69cf54e5aadb1400f6bc4cd6f",
+  "binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "candidate": "jev",
+  "case_id": "recording-0850ab9885c4b28efea3adfe",
+  "mode": "disagreement_adjudication",
+  "observed_at": "2026-10-15T00:03:15.185503+00:00",
+  "provider_attempts": 1,
+  "qualified": false,
+  "request_hash": "e64a0d087013d53251be9ab14eed7c703f7135a8df79d306af2a35c3c131da06",
+  "sizes": {
+    "questions": [
+      257,
+      220,
+      220
+    ],
+    "state": 17615
+  },
+  "transport": "existing_local_pilot"
+}

@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Town of Bond Advisory Committee"
+      }
+    ],
+    "case_id": "recording-a6fa645e613b3e5b90ed44ca",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific posted agenda (retained-agenda) is titled 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' for Thursday, December 4, 2025, 6:00 PM, at Addison Town Hall, posted by Sarah Kuechler, Chief of Staff, establishing the Town of Addison Bond Advisory Committee as the convening body. The provider player page and native chapter list (provider-player, native-source-chapters) repeat the identical official agenda for recording 362796, and the transcript confirms the committee convened with quorum and acted on its own minutes, so the body is proven as the convener, not merely a topic or venue reference. No joint meeting is indicated; staff mentioned in discussion (police chiefs) were participants/presenters, not conveners, and the Council Chambers venue does not make this a City Council proceeding per the identity policy. No dedicated Bond Advisory Committee feed exists among the supplied feeds, but the policy's families rule directs proven bond-program bodies to the configured family feed; addison-tx-bond-committees ('Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee') matches this committee's scope and its facility-options agenda content. Other feeds (zoning, council, P&Z, TIF, town meetings/public input, etc.) do not match the convened body; a regular committee meeting is not a town hall or public-input event, and routine agenda business triggers no public-comment or briefing feed. Therefore assign_existing to addison-tx-bond-committees."
+  },
+  "attempt_id": "abc277af51e140d6ab64abfc0e422245",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-a6fa645e613b3e5b90ed44ca",
+  "case_input_hash": "f22469eaa3a09586bcc4bd17bf783583bb2ac92375c929665c2fbefc946f89fb",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.584766792002483
+    }
+  ],
+  "end_to_end_seconds": 19.468892291002703,
+  "finished_at": "2026-10-14T18:30:38.432325+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:30:18.963289+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "586e7ac9d0c42d2148d809ac6d70b51948cbc1903f34c3ad686e93c0ed0f405f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1360,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 915,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3619,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4979
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"name\": \"Addison Town of Bond Advisory Committee\"}], \"case_id\": \"recording-a6fa645e613b3e5b90ed44ca\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"feed_slugs\": [\"addison-tx-bond-committees\"], \"missing_evidence\": [], \"publication_action\": \"assign_existing\", \"rationale\": \"The recording-specific posted agenda (retained-agenda) is titled 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' for Thursday, December 4, 2025, 6:00 PM, at Addison Town Hall, posted by Sarah Kuechler, Chief of Staff, establishing the Town of Addison Bond Advisory Committee as the convening body. The provider player page and native chapter list (provider-player, native-source-chapters) repeat the identical official agenda for recording 362796, and the transcript confirms the committee convened with quorum and acted on its own minutes, so the body is proven as the convener, not merely a topic or venue reference. No joint meeting is indicated; staff mentioned in discussion (police chiefs) were participants/presenters, not conveners, and the Council Chambers venue does not make this a City Council proceeding per the identity policy. No dedicated Bond Advisory Committee feed exists among the supplied feeds, but the policy's families rule directs proven bond-program bodies to the configured family feed; addison-tx-bond-committees ('Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee') matches this committee's scope and its facility-options agenda content. Other feeds (zoning, council, P&Z, TIF, town meetings/public input, etc.) do not match the convened body; a regular committee meeting is not a town hall or public-input event, and routine agenda business triggers no public-comment or briefing feed. Therefore assign_existing to addison-tx-bond-committees.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nThe recording: \"Bond Advisory Committee \u2013 Dec 04, 2025\" from Addison, TX, recording ID 362796.\n\nEvidence:\n1. `retained-agenda`: The official agenda for the \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" on Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001. Posted by Sarah Kuechler, Chief of Staff, on 11/25/2025. Items: Call Meeting to Order, Regular Agenda (minutes from November 20, 2025 Bond Advisory Committee Meeting; Q&A document review; discussion of Options B and C), Adjourn.\n\n2. `provider-player`: Swagit player page with the same agenda, plus transcript excerpts confirming the meeting was called to order, quorum, minutes accepted, etc.\n\n3. `native-source-chapters`: Chapters matching agenda items.\n\nConvening body: The Bond Advisory Committee of the Town of Addison. The evidence directly proves this \u2014 the agenda title states \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" at Addison Town Hall. This is a recording-specific agenda (completeness: recording-specific), so the convening body is proven: Town of Addison Bond Advisory Committee.\n\nNote the feed description for `addison-tx-bond-committees`: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" The recording is Dec 4, 2025, discussing Options B and C for a facility (police and courts, per the transcript references to chiefs, tours of Roanoke and Carrollton facilities). The feed is a broader subscription grouping (\"bond-program committee meetings\") that includes the Bond Advisory Committee. So the assignment: feed slug `addison-tx-bond-committees`.\n\nIs there a dedicated feed for the Bond Advisory Committee itself? Looking at existing feeds: board-of-zoning-adjustment, bond-committees (family/grouping feed), city-council, community-partnership-committee, comprehensive-plan-advisory-committee, planning-and-zoning-commission, public-briefings, tif, town-meetings (Public Input), unified-development-code-advisory-committee. There's no dedicated \"addison-tx-bond-advisory-committee\" feed. The bond-committees feed is the family feed for bond program committees. Policy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" So the Bond Advisory Committee belongs in the `addison-tx-bond-committees` feed.\n\nShould I also consider `addison-tx-town-meetings` (Public Input: \"Town halls, community meetings, open houses and historical citizen input\")? No \u2014 this is a regular meeting of a numbered advisory committee, not a town hall or community meeting. Policy \"identity\": \"Use the convened body, not venue, topic or common members.\" The venue is Council Chambers; the body is the Bond Advisory Committee.\n\nNo joint meeting \u2014 only the Bond Advisory Committee convened. Presenting staff (chiefs mentioned in transcript) are not conveners. No other proven participants.\n\nPublication action: assign_existing (the body is proven, and an existing grouping feed fits per the families policy).\n\nBodies: Town of Addison Bond Advisory Committee \u2014 name it with official title \"Bond Advisory Committee\" (per agenda). Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none significant. Maybe note no dedicated body-specific feed exists but the family feed covers it \u2014 that's not missing evidence though. I could leave missing_evidence empty.\n\nRationale: The official posted agenda and player page prove the Town of Addison Bond Advisory Committee convened a regular meeting on Dec 4, 2025 in Council Chambers at Addison Town Hall; transcript confirms quorum and actions. No dedicated bond-advisory feed exists; the configured bond family feed `addison-tx-bond-committees` covers verified Addison bond-program committee meetings, matching this body's scope per the families policy. Venue (Council Chambers) and topic references don't add other bodies; no joint participants proven.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"].\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nThe recording: \"Bond Advisory Committee \u2013 Dec 04, 2025\" from Addison, TX, recording ID 362796.\n\nEvidence:\n1. `retained-agenda`: The official agenda for the \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" on Thursday, December 4, 2025, 6:00 PM, Council Chambers, Addison Town Hall, 15600 Addison Road, Addison, TX 75001. Posted by Sarah Kuechler, Chief of Staff, on 11/25/2025. Items: Call Meeting to Order, Regular Agenda (minutes from November 20, 2025 Bond Advisory Committee Meeting; Q&A document review; discussion of Options B and C), Adjourn.\n\n2. `provider-player`: Swagit player page with the same agenda, plus transcript excerpts confirming the meeting was called to order, quorum, minutes accepted, etc.\n\n3. `native-source-chapters`: Chapters matching agenda items.\n\nConvening body: The Bond Advisory Committee of the Town of Addison. The evidence directly proves this \u2014 the agenda title states \"REGULAR MEETING OF THE BOND ADVISORY COMMITTEE\" at Addison Town Hall. This is a recording-specific agenda (completeness: recording-specific), so the convening body is proven: Town of Addison Bond Advisory Committee.\n\nNote the feed description for `addison-tx-bond-committees`: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" The recording is Dec 4, 2025, discussing Options B and C for a facility (police and courts, per the transcript references to chiefs, tours of Roanoke and Carrollton facilities). The feed is a broader subscription grouping (\"bond-program committee meetings\") that includes the Bond Advisory Committee. So the assignment: feed slug `addison-tx-bond-committees`.\n\nIs there a dedicated feed for the Bond Advisory Committee itself? Looking at existing feeds: board-of-zoning-adjustment, bond-committees (family/grouping feed), city-council, community-partnership-committee, comprehensive-plan-advisory-committee, planning-and-zoning-commission, public-briefings, tif, town-meetings (Public Input), unified-development-code-advisory-committee. There's no dedicated \"addison-tx-bond-advisory-committee\" feed. The bond-committees feed is the family feed for bond program committees. Policy \"families\": \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" So the Bond Advisory Committee belongs in the `addison-tx-bond-committees` feed.\n\nShould I also consider `addison-tx-town-meetings` (Public Input: \"Town halls, community meetings, open houses and historical citizen input\")? No \u2014 this is a regular meeting of a numbered advisory committee, not a town hall or community meeting. Policy \"identity\": \"Use the convened body, not venue, topic or common members.\" The venue is Council Chambers; the body is the Bond Advisory Committee.\n\nNo joint meeting \u2014 only the Bond Advisory Committee convened. Presenting staff (chiefs mentioned in transcript) are not conveners. No other proven participants.\n\nPublication action: assign_existing (the body is proven, and an existing grouping feed fits per the families policy).\n\nBodies: Town of Addison Bond Advisory Committee \u2014 name it with official title \"Bond Advisory Committee\" (per agenda). Evidence refs: retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none significant. Maybe note no dedicated body-specific feed exists but the family feed covers it \u2014 that's not missing evidence though. I could leave missing_evidence empty.\n\nRationale: The official posted agenda and player page prove the Town of Addison Bond Advisory Committee convened a regular meeting on Dec 4, 2025 in Council Chambers at Addison Town Hall; transcript confirms quorum and actions. No dedicated bond-advisory feed exists; the configured bond family feed `addison-tx-bond-committees` covers verified Addison bond-program committee meetings, matching this body's scope per the families policy. Venue (Council Chambers) and topic references don't add other bodies; no joint participants proven.\n\nFeed slugs: [\"addison-tx-bond-committees\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"].\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002564,
+    "id": "b10f901db844ff3775d103198ff1f3f7",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1360,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 915,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3619,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4979
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

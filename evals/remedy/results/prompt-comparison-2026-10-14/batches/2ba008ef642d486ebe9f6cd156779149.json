@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-98b938d821e0d41caa8a48a6",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "Recording-specific official evidence naming a municipal convening body or committee for this dedication.",
+      "Any agenda, minutes, notice, or official proceeding record showing a city body convened."
+    ],
+    "publication_action": "exclude_event",
+    "rationale": "The only supplied evidence is the Swagit player page title for the Dec 09, 2011 George Herbert Walker Bush Elementary Dedication in Addison, TX. This describes a dedication ceremony/event, not a municipal body, and the supplied policy states that ceremonies and dedications are excluded from body feeds. No supplied evidence identifies a convening city body, committee, board, or joint meeting, and the event title alone cannot establish a formal municipal convening institution. Therefore the recording is excluded under the events rule, with no supported feed assignment and no proven body to name."
+  },
+  "attempt_id": "9283d8b6715e40a2a25f03440bfe7abb",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-98b938d821e0d41caa8a48a6",
+  "case_input_hash": "a10eb51712e2c12d131352b20e6c5209701725bd3fd7f897c35a577544688925",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.502133500001946
+    }
+  ],
+  "end_to_end_seconds": 10.79575204199864,
+  "finished_at": "2026-10-14T16:14:07.539030+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T16:13:56.743169+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "72c50f5a35f6d930f77c006984a193355fc9661e1732d347f79daf01f5d22247",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1054,
+    "completion_tokens": 1267,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1054,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 1181,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 1821,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 3088
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-98b938d821e0d41caa8a48a6\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"exclude_event\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"Recording-specific official evidence naming a municipal convening body or committee for this dedication.\",\"Any agenda, minutes, notice, or official proceeding record showing a city body convened.\"],\"rationale\":\"The only supplied evidence is the Swagit player page title for the Dec 09, 2011 George Herbert Walker Bush Elementary Dedication in Addison, TX. This describes a dedication ceremony/event, not a municipal body, and the supplied policy states that ceremonies and dedications are excluded from body feeds. No supplied evidence identifies a convening city body, committee, board, or joint meeting, and the event title alone cannot establish a formal municipal convening institution. Therefore the recording is excluded under the events rule, with no supported feed assignment and no proven body to name.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies for recording. We have evidence only player title: \"Dec 09, 2011 George Herbert Walker Bush Elementary Dedication - Addison, TX\". Policy says ceremonies, dedications and site-tour segments are excluded from body feeds. Need identify convening institution? The recording is a dedication of elementary school? George Herbert Walker Bush Elementary Dedication. City Addison, TX. Is this municipal body? It may be a school dedication, possibly not city body. Need publication action likely exclude_event, no bodies, no feed slugs? Need follow rules: If ownership cannot be established, return unresolved, cite gap, and do not invent institution or declare non-government. But policy explicitly: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So action exclude_event, feed_slugs empty. Do we need bodies? Probably none? The body_label says \"George Herbert Walker Bush Elementary Dedication\" but that's event title, not body. Need distinguish. Evidence only player page title. It doesn't establish a municipal convening body. It's a dedication ceremony. Under events policy, excluded from body feeds. So publication_action exclude_event. bodies maybe [] because no proven body. Evidence_ref_ids: [\"provider-player\"]. missing_evidence: maybe evidence identifying convening municipal body if any; but exclusion doesn't require ownership? The instruction: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" Here events rule applies: dedications excluded. So exclude_event. Do we still need identify bodies? The schema requires bodies array. Could be empty. But the instruction says \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" But here policy says exclude dedications. That's a publication action, not unresolved. It doesn't require body. But is there a body? It could be Addison City Council? Dedication of elementary school may involve city officials, but no evidence. The title includes \"Addison, TX\" as city. No official body. So bodies empty. Rationale: evidence is only a Swagit player page title for a dedication ceremony. Policy events excludes ceremonies/dedications from body feeds. No recording-specific evidence proves a municipal convening body; title is event, not institution. So exclude_event. feed_slugs empty. missing_evidence: \"Evidence of a municipal body convening the dedication, if any; the supplied evidence is only a player page title and does not name a city body.\" Evidence_ref_ids include provider-player. case_id echo.\n\nNeed ensure JSON matches schema. Publication_action enum includes exclude_event. Bodies array max 10. Feed slugs max 15. Evidence_ref_ids array. Missing evidence array. Rationale max 2000.\n\nBut the prompt: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence... Name every proven participant in a joint meeting. Identify actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs... If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite gap, and do not invent an institution or declare recording non-government. Return every proven assignment even if evidence insufficient for another suspected participant, explaining that gap.\"\n\nThe recording is \"George Herbert Walker Bush Elementary Dedication\". This is likely a dedication event, not a public meeting. Policy says ceremonies, dedications and site-tour segments are excluded from body feeds. So publication_action exclude_event. But should we identify body? No body proven. However, the body_label in input is \"George Herbert Walker Bush Elementary Dedication\" but that's not a municipal body. So bodies empty.\n\nCould it be a school district event? George Herbert Walker Bush Elementary is likely in Addison, TX, served by Dallas ISD? But not municipal. Not supplied. We cannot fetch. So no.\n\nNeed maybe include evidence_ref_ids: [\"provider-player\"]. Also maybe \"recording-98b938d821e0d41caa8a48a6\"? No, case_id separate. Evidence refs only supplied IDs. Use provider-player.\n\nMissing evidence: \"Official evidence identifying a municipal convening body; current evidence only shows a dedication ceremony title.\" Maybe also \"Agenda or minutes for any municipal body.\" \n\nRationale: \"Only supplied evidence is Swagit player title for 'George Herbert Walker Bush Elementary Dedication' dated Dec 09, 2011. A dedication ceremony is an event, not a municipal body, and policy events excludes ceremonies/dedications from body feeds. No recording-specific official evidence names a convening city body or committee. Therefore exclude_event; no feed slug applies; no bodies proven.\"\n\nIs there any possibility of \"Addison: Public Input\" town meetings? Dedication is ceremony, excluded. \"Public Briefings\"? Dedication not briefing. So no.\n\nNeed output JSON only.\n\nCheck if \"exclude_event\" is allowed with no bodies. Yes.\n\nLet's craft final JSON. Ensure no Markdown.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies for recording. We have evidence only player title: \"Dec 09, 2011 George Herbert Walker Bush Elementary Dedication - Addison, TX\". Policy says ceremonies, dedications and site-tour segments are excluded from body feeds. Need identify convening institution? The recording is a dedication of elementary school? George Herbert Walker Bush Elementary Dedication. City Addison, TX. Is this municipal body? It may be a school dedication, possibly not city body. Need publication action likely exclude_event, no bodies, no feed slugs? Need follow rules: If ownership cannot be established, return unresolved, cite gap, and do not invent institution or declare non-government. But policy explicitly: \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" So action exclude_event, feed_slugs empty. Do we need bodies? Probably none? The body_label says \"George Herbert Walker Bush Elementary Dedication\" but that's event title, not body. Need distinguish. Evidence only player page title. It doesn't establish a municipal convening body. It's a dedication ceremony. Under events policy, excluded from body feeds. So publication_action exclude_event. bodies maybe [] because no proven body. Evidence_ref_ids: [\"provider-player\"]. missing_evidence: maybe evidence identifying convening municipal body if any; but exclusion doesn't require ownership? The instruction: \"Use archive_only, archive_series or exclude_event only when the general approved publication rules apply.\" Here events rule applies: dedications excluded. So exclude_event. Do we still need identify bodies? The schema requires bodies array. Could be empty. But the instruction says \"If ownership cannot be established, return unresolved, cite the gap, and do not invent an institution or declare the recording non-government.\" But here policy says exclude dedications. That's a publication action, not unresolved. It doesn't require body. But is there a body? It could be Addison City Council? Dedication of elementary school may involve city officials, but no evidence. The title includes \"Addison, TX\" as city. No official body. So bodies empty. Rationale: evidence is only a Swagit player page title for a dedication ceremony. Policy events excludes ceremonies/dedications from body feeds. No recording-specific evidence proves a municipal convening body; title is event, not institution. So exclude_event. feed_slugs empty. missing_evidence: \"Evidence of a municipal body convening the dedication, if any; the supplied evidence is only a player page title and does not name a city body.\" Evidence_ref_ids include provider-player. case_id echo.\n\nNeed ensure JSON matches schema. Publication_action enum includes exclude_event. Bodies array max 10. Feed slugs max 15. Evidence_ref_ids array. Missing evidence array. Rationale max 2000.\n\nBut the prompt: \"Which municipal body or bodies does this recording belong to? Determine the convening institution from supplied official evidence... Name every proven participant in a joint meeting. Identify actual body/program separately from its subscription grouping. Select ALL appropriate existing feed slugs... If a real body has no existing feed, return unconfigured_body and name it. If ownership cannot be established, return unresolved, cite gap, and do not invent an institution or declare recording non-government. Return every proven assignment even if evidence insufficient for another suspected participant, explaining that gap.\"\n\nThe recording is \"George Herbert Walker Bush Elementary Dedication\". This is likely a dedication event, not a public meeting. Policy says ceremonies, dedications and site-tour segments are excluded from body feeds. So publication_action exclude_event. But should we identify body? No body proven. However, the body_label in input is \"George Herbert Walker Bush Elementary Dedication\" but that's not a municipal body. So bodies empty.\n\nCould it be a school district event? George Herbert Walker Bush Elementary is likely in Addison, TX, served by Dallas ISD? But not municipal. Not supplied. We cannot fetch. So no.\n\nNeed maybe include evidence_ref_ids: [\"provider-player\"]. Also maybe \"recording-98b938d821e0d41caa8a48a6\"? No, case_id separate. Evidence refs only supplied IDs. Use provider-player.\n\nMissing evidence: \"Official evidence identifying a municipal convening body; current evidence only shows a dedication ceremony title.\" Maybe also \"Agenda or minutes for any municipal body.\" \n\nRationale: \"Only supplied evidence is Swagit player title for 'George Herbert Walker Bush Elementary Dedication' dated Dec 09, 2011. A dedication ceremony is an event, not a municipal body, and policy events excludes ceremonies/dedications from body feeds. No recording-specific official evidence names a convening city body or committee. Therefore exclude_event; no feed slug applies; no bodies proven.\"\n\nIs there any possibility of \"Addison: Public Input\" town meetings? Dedication is ceremony, excluded. \"Public Briefings\"? Dedication not briefing. So no.\n\nNeed output JSON only.\n\nCheck if \"exclude_event\" is allowed with no bodies. Yes.\n\nLet's craft final JSON. Ensure no Markdown.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791994438,
+    "id": "44ca8b4dceaaaa57ba02d1e466ca7ee9",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1054,
+      "completion_tokens": 1267,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1054,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 1181,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 1821,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 3088
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

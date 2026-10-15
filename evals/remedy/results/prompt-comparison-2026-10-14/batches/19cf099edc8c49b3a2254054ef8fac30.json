@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Dallas Redistricting Commission"
+      }
+    ],
+    "case_id": "recording-f282f5df099ea90db279956b",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "dallas-tx-redistricting-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official notice explicitly states that the Redistricting Commission will meet in open session on January 22, 2022, and identifies the proceedings as a Redistricting Town Hall (retained-agenda). The provider ties recording 203320 to that date and the title Saturday Redistricting Commission (provider-player). This establishes the Commission as the convening body and supports its configured feed. The town hall label describes the meeting format, not a separate institution or proven Public Info subscription grouping; public comments do not independently add that feed under the supplied policy. No joint convening body is established."
+  },
+  "attempt_id": "8f5dac1fc0644ed0a1c5e0afb0cffc48",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-f282f5df099ea90db279956b",
+  "case_input_hash": "70507c032756300ed4afd9db9ed7f64dab86c18be774720653013c12eb560add",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.857506874999672
+    }
+  ],
+  "end_to_end_seconds": 53.35463770899878,
+  "finished_at": "2026-10-14T15:20:53.832284+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T15:20:00.477339+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "26b8caa38f690c4e5ad8dd2584c65d13160a6abef381b8b189c6e86e140b254d",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 5625,
+        "output_tokens": 243
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 243,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 5625,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 5625,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 5868,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-f282f5df099ea90db279956b\",\n  \"bodies\": [\n    {\n      \"name\": \"Dallas Redistricting Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\"dallas-tx-redistricting-commission\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official notice explicitly states that the Redistricting Commission will meet in open session on January 22, 2022, and identifies the proceedings as a Redistricting Town Hall (retained-agenda). The provider ties recording 203320 to that date and the title Saturday Redistricting Commission (provider-player). This establishes the Commission as the convening body and supports its configured feed. The town hall label describes the meeting format, not a separate institution or proven Public Info subscription grouping; public comments do not independently add that feed under the supplied policy. No joint convening body is established.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791991253,
+    "id": "resp_0f59ec1fe8da8a9b016acf9dcbef808193bd3b01b36510ca97",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 5625,
+          "output_tokens": 243
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 243,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 5625,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 5625,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 5868,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

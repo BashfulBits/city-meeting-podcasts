@@ -214,12 +214,18 @@ P0's guard prerequisite generalizes local policy protection to the approved aggr
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical
 inventory or implement P2's persistent ledger.
 
-[review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
-P1–P5 structure and exact phase build contracts. **P1 harness: Shipped** (#1987); strict physical-
-route admission remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)).
-P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
-input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
-live evaluation has run. Publication-selection inactive machinery is **Shipped** in
+[review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, records the P1–P5
+structure and phase contracts. **P1 harness: Shipped** (#1987); strict physical-route admission
+remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)). P1 also has
+a completed three-model, three-prompt, 60-recording comparison and an eight-case disagreement
+diagnostic, preserved under `evals/remedy/results/`. On the original prompt, Sol + GLM Flash
+agreed correctly on 52/60 with zero shared wrong agreements; these reused cases are comparison
+evidence, not independent route admission. The maintainer selected a bounded Sol + GLM Flash
+initial consensus followed by one DeepSeek V4.1 Flash + JEV adjudication round, as specified in
+review/51. Exact physical model identity, serving family, reasoning controls, free-route capacity,
+P1 admission, and JEV's production dispatch integration remain open gates; no model is admitted.
+The maintainer's feed-by-feed annotations for the eight diagnostic cases are stored separately from
+the frozen gold. Publication-selection inactive machinery is **Shipped** in
 [PR #1999](https://github.com/BashfulBits/city-meeting-podcasts/pull/1999)
 ([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
 existing UID projection, pre-write holds and raw-page preservation. No city declarations are activated by that machinery PR. City activations and future-member admission stay L2
@@ -229,7 +235,9 @@ until exact winner/exposure/date proof and evaluated sticky-winner policies are 
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
 P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped
 L3 contracts and issues are being prepared. The maintainer approved source-partitioned immutable
-feedback-event paths on 2026-10-04. P3–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
+feedback-event paths on 2026-10-04. P3 follows the consensus cascade now recorded in review/51,
+but remains predecessor-gated on P1 route admission, complete P2 contracts, and the documented
+JEV dispatch integration. P4–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
@@ -1732,20 +1740,13 @@ grouping and quiet unchanged scans.
 P2c2a merged at 2026-10-10T04:23:55Z. Final CI passed; substantive CodeRabbit coverage was absent
 before human merge and is explicitly recorded in review/51. No production caller is enabled.
 
-Next authorized review/51 work: P2c2b trusted decision actions/retry recovery, then P2c3a
-remembered-decision comparison reports. Both are L2 proposals in review/51 pending the exact
-maintainer-command transport; recurring alert activation and publication coordinator remain gated.
-
-P2c2b command transport approved: dedicated `/citypods-decision` JSON comment. Exact callable
-contract in review/51 is L3; production command runner/activation remains separate.
-
-
-P2c2b implementation prepared under #2242: trusted-snapshot command binding, permission/evidence
-freshness and lease-protected retry recovery. No scheduled entrypoint connected. P2c3a local
-comparison report contract is L3 under #2243; activation remains separate from report validation.
-
-P2c3a implementation prepared under #2243: pure comparison and local report CLI. Reviewed case
-projections are explicit inputs; automatic coverage projection and alert activation are not enabled.
+P2c2b trusted decision actions and retry recovery shipped in
+[PR #2244](https://github.com/BashfulBits/city-meeting-podcasts/pull/2244); P2c3a
+remembered-decision comparison shipped in
+[PR #2245](https://github.com/BashfulBits/city-meeting-podcasts/pull/2245).
+They provide callable validation/recovery and a local report CLI. Scheduled callers, automatic
+coverage projection, recurring alerts, and publication coordination remain gated; these are the
+remaining P2 integrations before P3's decision ledger is connected to the production workflow.
 
 P1 completion prerequisite (2026-10-10): maintainer approved scoped existing-route reasoning
 capability metadata and local credential-wrapper evaluation. Exact prerequisite contract is in

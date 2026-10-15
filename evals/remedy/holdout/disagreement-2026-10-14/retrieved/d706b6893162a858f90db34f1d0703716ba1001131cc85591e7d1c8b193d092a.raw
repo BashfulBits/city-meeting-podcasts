@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+  
+  <title>Jun 01, 2007 Citizen Advisory Committee - Addison, TX</title>
+
+  <script src="/assets/application-84b1c92415b2ab208d522e647cfca26328d1b8e25e43fd8db4c69271e3a18c2d.js" data-turbolinks-track="true"></script>
+
+  <!-- Latest compiled and minified CSS -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <!-- Latest compiled and minified JavaScript -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+  <meta property="og:title" content="Jun 01, 2007 Citizen Advisory Committee - Addison, TX" />
+  <link rel="stylesheet" href="/css/social-likes_flat.css">
+
+  <link href="https://cdn.jsdelivr.net/npm/video.js@7.20.2/dist/video-js.min.css" rel="stylesheet" />
+  <link href="/css/vjs-skin.css" rel="stylesheet" />
+
+  <!-- If you'd like to support IE8 (for Video.js versions prior to v7) -->
+  <script src="https://cdn.jsdelivr.net/npm/videojs-ie8@1.1.2/dist/videojs-ie8.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/video.js@7.20.2/dist/video.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/videojs-flash@2.2.1/dist/videojs-flash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@brightcove/videojs-flashls-source-handler@1.4.8/dist/videojs-flashls-source-handler.min.js"></script>
+  
+  <script src="/jwplayer-8.14.0/jwplayer.js"></script>
+  <script type="text/javascript">jwplayer.key="w/w1LBkqYA/K1cL06BsNVzYmXXMUVMMItKzpqeGp6MiUr0Bs";</script>
+
+  <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/themes/base/jquery-ui.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"/>
+  <style type="text/css">
+  
+
+    .vjs-text-track-display div {
+      font-size: 1.15em;
+    }
+    video::-webkit-media-text-track-display {
+      font-size: 1.15em;
+      font-size: 1.5vh;
+    }
+
+    #vjs-player .vjs-mouse-display {
+      z-index: 2;
+    }
+
+
+
+    /*
+    .media-heading {font-size: 20px;font-weight: bold;}
+    */
+		h1 {
+			font-size: 22px;
+		}
+		h2 {
+			font-size: 20px;
+		}
+		h3 {
+			font-size: 18px;
+		}
+		h4 {
+			font-size: 16px;
+		}
+    h5 {
+			font-size: 14px;
+		}
+    h6 {
+			font-size: 12px;
+		}
+
+    body {
+      font-size: 16px;
+    }
+
+    em { color: red; }
+
+    #header {
+        width:100%;
+        height:64px;
+        // background-image:url(https://swagit-attachments.granicus.com/uploads/customer/header/67/addison.png);
+          cursor:pointer;
+        background-repeat:no-repeat;
+        background-color: #e5dbd5;
+        background-color: #ffffff;
+      height: 65px; /*Height of top section*/
+      border-bottom: thin solid #ffffff;
+      color: #E1E1C8;
+    }
+
+    #footerbar {
+      background: #4DA6DE;
+      padding-bottom: 10px;
+      color: #000000;
+      /* dkk
+      border-top: 1px solid #4DA6DE;
+      */
+    }
+    #footerbar a:link, #footerbar a:visited, #footerbar a:active, #footerbar a:hover {
+      color: #000000;
+      text-decoration:none;
+    }
+    #footerbar a:hover {
+      text-decoration:underline;
+    }
+
+    #copyright {
+      text-align: right;
+      font-size: 90%;
+      padding-right: 10px;
+    }
+
+    #disclaimer {
+      text-align: center;
+      font-size: 80%;
+    }
+
+    #title, #xs-title {
+      background: #4DA6DE;
+      padding: 10px;
+    }
+    #title h1, #xs-title h1 {
+      margin: 0;
+      color: #E9EFF8;
+    }
+
+    #contentwrap {
+      background: #4DA6DE;
+      padding: 10px;
+    }
+
+    #leftcolumnwrap {
+      background: #4DA6DE;
+      padding:10px;
+    }
+
+    #info-image {
+      height:93px;
+      height:71px;
+      padding-right:10px;
+      padding-bottom:10px;
+    }
+
+    #info {
+      padding:10px;
+      margin-top:10px;
+      min-height: 120px;
+      overflow-x: hidden;
+    }
+
+    #focusMode {
+      display: none;
+      background-color: white;
+      border-radius: 10px 10px 10px 10px;
+      outline-color: gray;
+      outline-style: outset;
+    }
+
+    #focusMode.active {
+      background-color: #ff000094;
+      outline-style: inset;
+    }
+
+    #icoViewfinder {
+      margin-inline: 6px;
+      font-size:25px;
+      position: relative;
+      top:0px;
+      margin-block: 6px;
+    }
+
+    #skimBar {
+      border-radius: 15px 15px 0px 0px;
+      display: none;
+      width: 98.5vw;
+      height: 50px;
+      background: #4DA6DE;
+      bottom: 0px;
+      position: absolute;
+    }
+
+    #skimControl {
+      width: 98%;
+      height: 25%;
+      background: gray;
+      top: 40%;
+      position: relative;
+      left: 1vw;
+      border-radius: 15px;
+    }
+
+    #xshare label, #xshare b {
+      color: #4DA6DE;
+    }
+
+    #share hr {
+      margin-top:0px;
+      margin-bottom: 10px;
+    }
+
+    a, a:hover, a:focus {
+      color: #4DA6DE;
+    }
+
+    .btn-link {
+      color: #4DA6DE;
+    }
+
+    .nav-tabs > li > a:hover, .nav-tabs > li > a:focus {
+      background-color: #E9EFF8;
+      color: #333;
+    }
+
+    .row-no-padding > [class*="col-"] {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+
+    .jssocials-share a {
+      padding-top: 3px;
+      padding-bottom: 3px;
+    }
+    .currentItem {
+      padding-top: 5px;
+      background-color: #4DA6DE;
+      border-radius: 8px
+    }
+    .currentItem > a {
+      color: #E9EFF8;
+    }
+  </style>
+
+  <script type="text/javascript" src="/js/jquery.ba-hashchange.js"></script>
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-25043615-45"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-25043615-45', {
+      page_location: 'https://addisontx.swagit.com/addisontx/videos/Jun 01, 2007 Citizen Advisory Committee'
+    });
+  </script>
+
+  <style>
+
+    /* Small Devices, Tablets */
+    @media only screen and (min-width : 992px) {
+      body {
+        overflow:hidden;
+      }
+
+    }
+    .tab-pane {
+      overflow-x: hidden;
+    }
+    @media (max-width: 992px){
+      body {
+        overflow: auto;
+      }
+    }
+  </style>
+
+  <script type="text/javascript">
+    function test(what) {
+      alert(what);
+    }
+
+    // $.noConflict();
+
+    function isBreakpoint( alias ) {
+        return jQuery('.device-' + alias).is(':visible');
+    }
+
+    function resizePage() {
+
+
+      if( isBreakpoint('lg') ||  isBreakpoint('md')) {
+        jQuery('#info .tab-pane').height(
+          // jQuery(window).height() - jQuery('#header').outerHeight() - (jQuery('#leftcolumnwrap').outerHeight() - jQuery('#info').height())
+          jQuery(window).height() - jQuery('#header').outerHeight() - (jQuery('#leftcolumnwrap').outerHeight() - jQuery('#info .tab-pane').height())
+        );
+
+        jQuery('#contentwrap .tab-pane').height(
+          jQuery(window).height() - jQuery('#header').outerHeight() - (jQuery('#contentwrap').outerHeight() - jQuery('#contentwrap .tab-pane').height()) - jQuery('#title').outerHeight() - jQuery('#footerbar').outerHeight()
+        );
+
+        jQuery('#agendaframe').height(
+          jQuery('#contentwrap .tab-pane').height()
+        );
+
+        jQuery('#pdf').height(
+          jQuery('#contentwrap .tab-pane').height()
+        );
+
+        jQuery('#document').height(
+          jQuery('#contentwrap .tab-pane').height() - 10
+        );
+
+        jQuery('#agendaframe').width(
+          jQuery('#contentwrap .tab-pane').width() - 10
+        );
+
+        $('[href="#full-agenda"]').tab('show');
+
+        // jQuery('.cpx').collapse('show');
+
+        jQuery('.cpx').removeClass("collapse");
+        jQuery('.cpx').addClass("collapse.in");
+      } else {
+        // jQuery('#info').css('height', 'auto');
+        // jQuery('#contentwrap .tab-pane').css('height', 'auto');
+
+        jQuery('#document').height(350);
+
+        // targetHeight = jQuery(window).height() - jQuery('#leftcolumnwrap').outerHeight() - (jQuery('#contentwrap').outerHeight() - jQuery('#contentwrap .tab-pane').height()) - jQuery('#title').outerHeight() - jQuery('#footerbar').outerHeight();
+
+        // jQuery('#contentwrap .tab-pane').height(
+        //   targetHeight > 50 ? targetHeight : 50
+        // );
+
+        // dkk
+
+        jQuery('#document').height(
+          jQuery('#contentwrap .tab-pane').height() - 10
+        );
+
+        jQuery('#agendaframe').height(
+          // jQuery('#contentwrap .tab-pane.active').height()
+          "100%"
+        );
+        jQuery('#agendaframe').width(
+          jQuery('#contentwrap .tab-pane.active').width()
+        );
+
+        $('[href="#video-index-sm"]').tab('show');
+
+        // jQuery('.cpx').collapse('hide');
+        // jQuery('.cpx').collapse('hide');
+        jQuery('.cpx').removeClass("collapse.in");
+        jQuery('.cpx').addClass("collapse");
+
+      }
+    }
+
+    jQuery(window).resize(function($) {
+      resizePage();
+    });
+
+    jQuery(document).ready(function($) {
+      resizePage();
+    });
+  </script>
+
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/jquery.jssocials/1.5.0/jssocials.min.js"></script>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.5.0/css/font-awesome.css" />
+
+  <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/jquery.jssocials/1.5.0/jssocials.css" />
+
+  <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/jquery.jssocials/1.5.0/jssocials-theme-flat.css" />
+
+  <style>
+    /* Customization css style */
+    .theo-primary-color,
+    .vjs-selected {
+        /* color: #C60203 !important; */
+        /* color: #D01415 !important; */
+        color: #FF1D1D !important;
+    }
+
+    .theo-primary-background {
+        color: #ffffff !important;
+        background-color: #C60203 !important;
+        /* background-color: #D01415 !important; */
+        /* background-color: #FF1D1D !important; */
+    }
+
+    /* Set other image */
+    .theoplayer-skin .vjs-big-play-button:before {
+      content: "";
+      background: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+Cjxzdmcgd2lkdGg9IjcycHgiIGhlaWdodD0iNzJweCIgdmlld0JveD0iMCAwIDcyIDcyIiB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgogICAgPCEtLSBHZW5lcmF0b3I6IFNrZXRjaCA0My4yICgzOTA2OSkgLSBodHRwOi8vd3d3LmJvaGVtaWFuY29kaW5nLmNvbS9za2V0Y2ggLS0+CiAgICA8dGl0bGU+dmlkZW8gaWNvbiBjb3B5IDQ8L3RpdGxlPgogICAgPGRlc2M+Q3JlYXRlZCB3aXRoIFNrZXRjaC48L2Rlc2M+CiAgICA8ZGVmcz48L2RlZnM+CiAgICA8ZyBpZD0iSG9tZXBhZ2UiIHN0cm9rZT0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxIiBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgICAgIDxnIGlkPSJIb21lcGFnZS1fZGVza3RvcCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTQ3MC4wMDAwMDAsIC0zMDEyLjAwMDAwMCkiPgogICAgICAgICAgICA8ZyBpZD0iZnd0diIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTIwLjAwMDAwMCwgMjc4OC4wMDAwMDApIj4KICAgICAgICAgICAgICAgIDxnIGlkPSJiaWctdmlkZW8iIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLCA1MC4wMDAwMDApIj4KICAgICAgICAgICAgICAgICAgICA8ZyBpZD0idmlkZW8tMnB4IiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzNTEuMDAwMDAwLCAxNzUuMDAwMDAwKSI+CiAgICAgICAgICAgICAgICAgICAgICAgIDxnIGlkPSJ2aWRlby1jb3B5IiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzNS4wMDAwMDAsIDM1LjAwMDAwMCkgcm90YXRlKC0zNjAuMDAwMDAwKSB0cmFuc2xhdGUoLTM1LjAwMDAwMCwgLTM1LjAwMDAwMCkgIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxjaXJjbGUgaWQ9Ik92YWwtMiIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utd2lkdGg9IjIiIGZpbGwtb3BhY2l0eT0iMC4xNSIgZmlsbD0iIzAwMDAwMCIgY3g9IjM1IiBjeT0iMzUiIHI9IjM1Ij48L2NpcmNsZT4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwb2x5Z29uIGlkPSJUcmlhbmdsZSIgZmlsbD0iI0ZGRkZGRiIgcG9pbnRzPSIyNi45ODI4NTY5IDQ5Ljk1Mzc1MiAyNi45ODI4NTY5IDE5LjM0MjEwNTMgNDguNTQzNDU4OSAzMy45OTY5NDI5Ij48L3BvbHlnb24+CiAgICAgICAgICAgICAgICAgICAgICAgIDwvZz4KICAgICAgICAgICAgICAgICAgICA8L2c+CiAgICAgICAgICAgICAgICA8L2c+CiAgICAgICAgICAgIDwvZz4KICAgICAgICA8L2c+CiAgICA8L2c+Cjwvc3ZnPg==")
+        no-repeat 0 0;
+      /* background: url('http://i.stack.imgur.com/LT3WE.png') no-repeat 0 0; */ /* Use image instead */
+      background-size: 100%;
+      display: block;
+    }
+    /* Remove default THEOplayer image */
+    .theo-big-play-button-svg-container svg {
+      display: none;
+    }
+    /* Remove default spotlight around button on focus */
+    .theoplayer-skin:hover .vjs-big-play-button:after,
+    .theoplayer-skin .vjs-big-play-button:focus:after {
+      opacity: 0;
+    }
+
+    .theoplayer-webvtt-region-default > div {
+      min-width: 100%;
+    }
+
+    .fa .theo-button-tooltip {
+      -webkit-font-smoothing: auto;
+    }
+  </style>
+  <script>
+    var _rollbarConfig = {
+      accessToken: "08b7e09eefdd499cb6ea34a1f7f8405c",
+      captureUncaught: false, // was true
+      captureUnhandledRejections: true,
+      payload: {
+        environment: "production"
+      }
+    };
+    // Rollbar Snippet
+    !function(r){var e={};function o(n){if(e[n])return e[n].exports;var t=e[n]={i:n,l:!1,exports:{}};return r[n].call(t.exports,t,t.exports,o),t.l=!0,t.exports}o.m=r,o.c=e,o.d=function(r,e,n){o.o(r,e)||Object.defineProperty(r,e,{enumerable:!0,get:n})},o.r=function(r){"undefined"!=typeof Symbol&&Symbol.toStringTag&&Object.defineProperty(r,Symbol.toStringTag,{value:"Module"}),Object.defineProperty(r,"__esModule",{value:!0})},o.t=function(r,e){if(1&e&&(r=o(r)),8&e)return r;if(4&e&&"object"==typeof r&&r&&r.__esModule)return r;var n=Object.create(null);if(o.r(n),Object.defineProperty(n,"default",{enumerable:!0,value:r}),2&e&&"string"!=typeof r)for(var t in r)o.d(n,t,function(e){return r[e]}.bind(null,t));return n},o.n=function(r){var e=r&&r.__esModule?function(){return r.default}:function(){return r};return o.d(e,"a",e),e},o.o=function(r,e){return Object.prototype.hasOwnProperty.call(r,e)},o.p="",o(o.s=0)}([function(r,e,o){var n=o(1),t=o(4);_rollbarConfig=_rollbarConfig||{},_rollbarConfig.rollbarJsUrl=_rollbarConfig.rollbarJsUrl||"https://cdnjs.cloudflare.com/ajax/libs/rollbar.js/2.7.1/rollbar.min.js",_rollbarConfig.async=void 0===_rollbarConfig.async||_rollbarConfig.async;var a=n.setupShim(window,_rollbarConfig),l=t(_rollbarConfig);window.rollbar=n.Rollbar,a.loadFull(window,document,!_rollbarConfig.async,_rollbarConfig,l)},function(r,e,o){var n=o(2);function t(r){return function(){try{return r.apply(this,arguments)}catch(r){try{console.error("[Rollbar]: Internal error",r)}catch(r){}}}}var a=0;function l(r,e){this.options=r,this._rollbarOldOnError=null;var o=a++;this.shimId=function(){return o},"undefined"!=typeof window&&window._rollbarShims&&(window._rollbarShims[o]={handler:e,messages:[]})}var i=o(3),d=function(r,e){return new l(r,e)},c=function(r){return new i(d,r)};function s(r){return t(function(){var e=Array.prototype.slice.call(arguments,0),o={shim:this,method:r,args:e,ts:new Date};window._rollbarShims[this.shimId()].messages.push(o)})}l.prototype.loadFull=function(r,e,o,n,a){var l=!1,i=e.createElement("script"),d=e.getElementsByTagName("script")[0],c=d.parentNode;i.crossOrigin="",i.src=n.rollbarJsUrl,o||(i.async=!0),i.onload=i.onreadystatechange=t(function(){if(!(l||this.readyState&&"loaded"!==this.readyState&&"complete"!==this.readyState)){i.onload=i.onreadystatechange=null;try{c.removeChild(i)}catch(r){}l=!0,function(){var e;if(void 0===r._rollbarDidLoad){e=new Error("rollbar.js did not load");for(var o,n,t,l,i=0;o=r._rollbarShims[i++];)for(o=o.messages||[];n=o.shift();)for(t=n.args||[],i=0;i<t.length;++i)if("function"==typeof(l=t[i])){l(e);break}}"function"==typeof a&&a(e)}()}}),c.insertBefore(i,d)},l.prototype.wrap=function(r,e,o){try{var n;if(n="function"==typeof e?e:function(){return e||{}},"function"!=typeof r)return r;if(r._isWrap)return r;if(!r._rollbar_wrapped&&(r._rollbar_wrapped=function(){o&&"function"==typeof o&&o.apply(this,arguments);try{return r.apply(this,arguments)}catch(o){var e=o;throw e&&("string"==typeof e&&(e=new String(e)),e._rollbarContext=n()||{},e._rollbarContext._wrappedSource=r.toString(),window._rollbarWrappedError=e),e}},r._rollbar_wrapped._isWrap=!0,r.hasOwnProperty))for(var t in r)r.hasOwnProperty(t)&&(r._rollbar_wrapped[t]=r[t]);return r._rollbar_wrapped}catch(e){return r}};for(var p="log,debug,info,warn,warning,error,critical,global,configure,handleUncaughtException,handleUnhandledRejection,captureEvent,captureDomContentLoaded,captureLoad".split(","),u=0;u<p.length;++u)l.prototype[p[u]]=s(p[u]);r.exports={setupShim:function(r,e){if(r){var o=e.globalAlias||"Rollbar";if("object"==typeof r[o])return r[o];r._rollbarShims={},r._rollbarWrappedError=null;var a=new c(e);return t(function(){e.captureUncaught&&(a._rollbarOldOnError=r.onerror,n.captureUncaughtExceptions(r,a,!0),n.wrapGlobals(r,a,!0)),e.captureUnhandledRejections&&n.captureUnhandledRejections(r,a,!0);var t=e.autoInstrument;return!1!==e.enabled&&(void 0===t||!0===t||"object"==typeof t&&t.network)&&r.addEventListener&&(r.addEventListener("load",a.captureLoad.bind(a)),r.addEventListener("DOMContentLoaded",a.captureDomContentLoaded.bind(a))),r[o]=a,a})()}},Rollbar:c}},function(r,e){function o(r,e,o){if(e.hasOwnProperty&&e.hasOwnProperty("addEventListener")){for(var n=e.addEventListener;n._rollbarOldAdd&&n.belongsToShim;)n=n._rollbarOldAdd;var t=function(e,o,t){n.call(this,e,r.wrap(o),t)};t._rollbarOldAdd=n,t.belongsToShim=o,e.addEventListener=t;for(var a=e.removeEventListener;a._rollbarOldRemove&&a.belongsToShim;)a=a._rollbarOldRemove;var l=function(r,e,o){a.call(this,r,e&&e._rollbar_wrapped||e,o)};l._rollbarOldRemove=a,l.belongsToShim=o,e.removeEventListener=l}}r.exports={captureUncaughtExceptions:function(r,e,o){if(r){var n;if("function"==typeof e._rollbarOldOnError)n=e._rollbarOldOnError;else if(r.onerror){for(n=r.onerror;n._rollbarOldOnError;)n=n._rollbarOldOnError;e._rollbarOldOnError=n}var t=function(){var o=Array.prototype.slice.call(arguments,0);!function(r,e,o,n){r._rollbarWrappedError&&(n[4]||(n[4]=r._rollbarWrappedError),n[5]||(n[5]=r._rollbarWrappedError._rollbarContext),r._rollbarWrappedError=null),e.handleUncaughtException.apply(e,n),o&&o.apply(r,n)}(r,e,n,o)};o&&(t._rollbarOldOnError=n),r.onerror=t}},captureUnhandledRejections:function(r,e,o){if(r){"function"==typeof r._rollbarURH&&r._rollbarURH.belongsToShim&&r.removeEventListener("unhandledrejection",r._rollbarURH);var n=function(r){var o,n,t;try{o=r.reason}catch(r){o=void 0}try{n=r.promise}catch(r){n="[unhandledrejection] error getting `promise` from event"}try{t=r.detail,!o&&t&&(o=t.reason,n=t.promise)}catch(r){}o||(o="[unhandledrejection] error getting `reason` from event"),e&&e.handleUnhandledRejection&&e.handleUnhandledRejection(o,n)};n.belongsToShim=o,r._rollbarURH=n,r.addEventListener("unhandledrejection",n)}},wrapGlobals:function(r,e,n){if(r){var t,a,l="EventTarget,Window,Node,ApplicationCache,AudioTrackList,ChannelMergerNode,CryptoOperation,EventSource,FileReader,HTMLUnknownElement,IDBDatabase,IDBRequest,IDBTransaction,KeyOperation,MediaController,MessagePort,ModalWindow,Notification,SVGElementInstance,Screen,TextTrack,TextTrackCue,TextTrackList,WebSocket,WebSocketWorker,Worker,XMLHttpRequest,XMLHttpRequestEventTarget,XMLHttpRequestUpload".split(",");for(t=0;t<l.length;++t)r[a=l[t]]&&r[a].prototype&&o(e,r[a].prototype,n)}}}},function(r,e){function o(r,e){this.impl=r(e,this),this.options=e,function(r){for(var e=function(r){return function(){var e=Array.prototype.slice.call(arguments,0);if(this.impl[r])return this.impl[r].apply(this.impl,e)}},o="log,debug,info,warn,warning,error,critical,global,configure,handleUncaughtException,handleUnhandledRejection,_createItem,wrap,loadFull,shimId,captureEvent,captureDomContentLoaded,captureLoad".split(","),n=0;n<o.length;n++)r[o[n]]=e(o[n])}(o.prototype)}o.prototype._swapAndProcessMessages=function(r,e){var o,n,t;for(this.impl=r(this.options);o=e.shift();)n=o.method,t=o.args,this[n]&&"function"==typeof this[n]&&("captureDomContentLoaded"===n||"captureLoad"===n?this[n].apply(this,[t[0],o.ts]):this[n].apply(this,t));return this},r.exports=o},function(r,e){r.exports=function(r){return function(e){if(!e&&!window._rollbarInitialized){for(var o,n,t=(r=r||{}).globalAlias||"Rollbar",a=window.rollbar,l=function(r){return new a(r)},i=0;o=window._rollbarShims[i++];)n||(n=o.handler),o.handler._swapAndProcessMessages(l,o.messages);window[t]=n,window._rollbarInitialized=!0}}}}]);
+    // End Rollbar Snippet
+  </script>
+</head>
+<body>
+  <div class="container-fluid">
+  <div class="row row-no-padding">
+    <div class="col-md-12">
+      <div id="header" onclick="window.open('http://www.addisontx.net')" class="hidden-xs hidden-sm">
+        <img src="https://swagit-attachments.granicus.com/uploads/customer/header/67/addison.png" id="logo" alt="Addison, TX logo" style="border:0;height:64px;">
+      </div>
+    </div>
+  </div>
+  <div class="row row-no-padding">
+    <div class="col-md-5">
+      <div id="leftcolumnwrap">
+        <!--<div id="xs-title" class="hidden-xs hidden-sm"><h1>Jun 01, 2007 Citizen Advisory Committee</h1></div>-->
+
+      <style type="text/css">
+        .video-js .vjs-current-time {
+          display: block;
+        }
+      </style>
+
+  <div class="embed-responsive embed-responsive-16by9">
+    <div class="embed-responsive-item">
+      <div id="player"></div>
+
+      <video-js id="vjs-player" class="vjs-default-skin vjs-big-play-centered vjs-16-9" controls>
+      <!--
+        <p class="vjs-no-js">
+          To view this video please enable JavaScript, and consider upgrading to a
+          web browser that
+          <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+        </p>
+      -->
+
+        </video-js>
+    </div>
+  </div>
+<!--
+      <video id="player" class="video-js vjs-16-9" controls autoplay preload="auto">
+        <p class="vjs-no-js">
+          To view this video please enable JavaScript, and consider upgrading to a web browser that
+          <a href="http://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+        </p>
+      </video>
+-->
+    	<div id="info" class="hidden-xs hidden-sm" style="background-color:#fff;">
+        <ul id="videoTabs" class="nav nav-tabs" role="tablist" style="padding-top:5px;">
+          <li role="presentation" class="active"><a href="#video-index" id="video-index-tab" role="tab" data-toggle="tab" aria-controls="video-index" aria-expanded="true">Video index</a></li>
+          <li id='focusMode' class="pull-right"><i id='icoViewfinder' class="fa-solid fa-users-viewfinder"></i></li>
+        </ul>
+        <div id="videoTabContent" class="tab-content" style="padding-top:10px;">
+          <div role="tabpanel" class="tab-pane active" id="video-index" aria-labelledby="video-index-tab">
+              <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330515" data-ts="" data-end-ts="" data-title="Recreation and Community Facilities"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330515">
+          <p>
+            <a class="v2PlayerControl" data-id="2" href="/play/56029/2"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Recreation and Community Facilities</a>
+          </p>
+          <p>Recreation and Community Facilities</p>
+      </div>
+        <div class="cpx" id="md-index1330515">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330516" data-ts="" data-end-ts="" data-title="Education"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330516">
+          <p>
+            <a class="v2PlayerControl" data-id="3" href="/play/56029/3"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Education</a>
+          </p>
+          <p>Education</p>
+      </div>
+        <div class="cpx" id="md-index1330516">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330517" data-ts="" data-end-ts="" data-title="Business Development"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330517">
+          <p>
+            <a class="v2PlayerControl" data-id="4" href="/play/56029/4"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Business Development</a>
+          </p>
+          <p>Business Development</p>
+      </div>
+        <div class="cpx" id="md-index1330517">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330518" data-ts="" data-end-ts="" data-title="Environmental Design"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330518">
+          <p>
+            <a class="v2PlayerControl" data-id="5" href="/play/56029/5"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Environmental Design</a>
+          </p>
+          <p>Environmental Design</p>
+      </div>
+        <div class="cpx" id="md-index1330518">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330519" data-ts="" data-end-ts="" data-title="Museums"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330519">
+          <p>
+            <a class="v2PlayerControl" data-id="6" href="/play/56029/6"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Museums</a>
+          </p>
+          <p>Museums</p>
+      </div>
+        <div class="cpx" id="md-index1330519">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330520" data-ts="" data-end-ts="" data-title="Performing and Visual Arts"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330520">
+          <p>
+            <a class="v2PlayerControl" data-id="7" href="/play/56029/7"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Performing and Visual Arts</a>
+          </p>
+          <p>Performing and Visual Arts</p>
+      </div>
+        <div class="cpx" id="md-index1330520">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330521" data-ts="" data-end-ts="" data-title="Public Relations"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330521">
+          <p>
+            <a class="v2PlayerControl" data-id="8" href="/play/56029/8"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Public Relations</a>
+          </p>
+          <p>Public Relations</p>
+      </div>
+        <div class="cpx" id="md-index1330521">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330522" data-ts="" data-end-ts="" data-title="Transportation"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330522">
+          <p>
+            <a class="v2PlayerControl" data-id="9" href="/play/56029/9"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Transportation</a>
+          </p>
+          <p>Transportation</p>
+      </div>
+        <div class="cpx" id="md-index1330522">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330523" data-ts="" data-end-ts="" data-title="Culinary"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330523">
+          <p>
+            <a class="v2PlayerControl" data-id="10" href="/play/56029/10"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Culinary</a>
+          </p>
+          <p>Culinary</p>
+      </div>
+        <div class="cpx" id="md-index1330523">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330524" data-ts="" data-end-ts="" data-title="Human Services"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330524">
+          <p>
+            <a class="v2PlayerControl" data-id="11" href="/play/56029/11"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Human Services</a>
+          </p>
+          <p>Human Services</p>
+      </div>
+        <div class="cpx" id="md-index1330524">
+        </div>
+    </div>
+  </div>
+
+          </div> <!-- /tabpanel -->
+        </div> <!-- /VideoTabContent -->
+      </div> <!-- /info -->
+    </div> <!-- /left col wrap -->
+
+    </div> <!-- /left col -->
+    <div class="col-md-7">
+      <div id="title" class="hidden-xs hidden-sm"><h1>Jun 01, 2007 Citizen Advisory Committee</h1></div>
+        <div id="contentwrap">
+          <div style="background-color:#fff;padding:10px;">
+          <ul id="myTabs" class="my-tabs nav nav-tabs hidden-xs hidden-sm" role="tablist">
+            <li role="presentation" class="active"><a href="#full-agenda" aria-controls="full-agenda" role="tab" data-toggle="tab">Full agenda</a></li>
+            <li role="presentation"><a href="#share" aria-controls="share" role="tab" data-toggle="tab">Share this video</a></li>
+          </ul>
+          <ul id="myTabs" class="my-tabs nav nav-tabs visible-xs visible-sm" role="tablist">
+            <li role="presentation"><a href="#video-index-sm" aria-controls="video-index-sm" role="tab" data-toggle="tab">Video Index</a></li>
+            <li role="presentation" class="active"><a href="#full-agenda" aria-controls="full-agenda" role="tab" data-toggle="tab">Full agenda</a></li>
+            <li role="presentation"><a href="#share" aria-controls="share" role="tab" data-toggle="tab">Share</a></li>
+          </ul>
+            <!-- tab content -->
+            <div class="tab-content my-tabs-tab-content" style="padding-top:10px;">
+
+              <div role="tabpanel" class="tab-pane active" id="full-agenda">
+<!-- af -->
+                <div id="agendaframe" style="-webkit-overflow-scrolling: touch;">
+                    <!--
+                  <div id="pdf"  style="background-color:#666666;">
+                    <embed src='/system/agendas/147966/original/2-27 DallasCC.pdf?1551292673#' type='application/pdf' width='100%' height='100%'></embed>
+                  </div>
+                  -->
+                  <script>
+                      document.write('<iframe id="document" name="document" width="100%" height="100%" src="" frameborder="0" allowfullscreen></iframe>');
+                  </script>
+                </div> <!-- /agendaframe -->
+              </div> <!-- /full-agenda -->
+
+            <div role="tabpanel" class="hidden-md hidden-lg tab-pane" id="video-index-sm">
+                <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330515" data-ts="" data-end-ts="" data-title="Recreation and Community Facilities"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330515">
+          <p>
+            <a class="v2PlayerControl" data-id="2" href="/play/56029/2"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Recreation and Community Facilities</a>
+          </p>
+          <p>Recreation and Community Facilities</p>
+      </div>
+        <div class="cpx" id="sm-index1330515">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330516" data-ts="" data-end-ts="" data-title="Education"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330516">
+          <p>
+            <a class="v2PlayerControl" data-id="3" href="/play/56029/3"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Education</a>
+          </p>
+          <p>Education</p>
+      </div>
+        <div class="cpx" id="sm-index1330516">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330517" data-ts="" data-end-ts="" data-title="Business Development"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330517">
+          <p>
+            <a class="v2PlayerControl" data-id="4" href="/play/56029/4"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Business Development</a>
+          </p>
+          <p>Business Development</p>
+      </div>
+        <div class="cpx" id="sm-index1330517">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330518" data-ts="" data-end-ts="" data-title="Environmental Design"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330518">
+          <p>
+            <a class="v2PlayerControl" data-id="5" href="/play/56029/5"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Environmental Design</a>
+          </p>
+          <p>Environmental Design</p>
+      </div>
+        <div class="cpx" id="sm-index1330518">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330519" data-ts="" data-end-ts="" data-title="Museums"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330519">
+          <p>
+            <a class="v2PlayerControl" data-id="6" href="/play/56029/6"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Museums</a>
+          </p>
+          <p>Museums</p>
+      </div>
+        <div class="cpx" id="sm-index1330519">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330520" data-ts="" data-end-ts="" data-title="Performing and Visual Arts"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330520">
+          <p>
+            <a class="v2PlayerControl" data-id="7" href="/play/56029/7"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Performing and Visual Arts</a>
+          </p>
+          <p>Performing and Visual Arts</p>
+      </div>
+        <div class="cpx" id="sm-index1330520">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330521" data-ts="" data-end-ts="" data-title="Public Relations"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330521">
+          <p>
+            <a class="v2PlayerControl" data-id="8" href="/play/56029/8"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Public Relations</a>
+          </p>
+          <p>Public Relations</p>
+      </div>
+        <div class="cpx" id="sm-index1330521">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330522" data-ts="" data-end-ts="" data-title="Transportation"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330522">
+          <p>
+            <a class="v2PlayerControl" data-id="9" href="/play/56029/9"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Transportation</a>
+          </p>
+          <p>Transportation</p>
+      </div>
+        <div class="cpx" id="sm-index1330522">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330523" data-ts="" data-end-ts="" data-title="Culinary"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330523">
+          <p>
+            <a class="v2PlayerControl" data-id="10" href="/play/56029/10"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Culinary</a>
+          </p>
+          <p>Culinary</p>
+      </div>
+        <div class="cpx" id="sm-index1330523">
+        </div>
+    </div>
+  </div>
+  <div class="media" style="padding-left:8px;">
+    <div class="media-left media-top">
+      <span class="playerControl" data-id="1330524" data-ts="" data-end-ts="" data-title="Human Services"></span>
+    </div>
+    <div class="media-body">
+
+      <div class="media-heading" id="item-1330524">
+          <p>
+            <a class="v2PlayerControl" data-id="11" href="/play/56029/11"><span class="glyphicon glyphicon-play-circle" style="color: red;" aria-hidden="true"></span> Human Services</a>
+          </p>
+          <p>Human Services</p>
+      </div>
+        <div class="cpx" id="sm-index1330524">
+        </div>
+    </div>
+  </div>
+
+              <script>
+                $('#video-index-sm .cpx').on('hide.bs.collapse', function (e) {
+                  console.log(e.currentTarget.id);
+                  $('#itemCollapse-' + e.currentTarget.id).removeClass("glyphicon-triangle-top").addClass("glyphicon-triangle-bottom");
+                });
+                $('#video-index-sm .cpx').on('show.bs.collapse', function (e) {
+                  console.log(e.currentTarget.id);
+                  $('#itemCollapse-' + e.currentTarget.id).removeClass("glyphicon-triangle-bottom").addClass("glyphicon-triangle-top");
+                });
+              </script>
+              </div>
+              <div role="tabpanel" class="tab-pane" id="share">
+                <div class="row">
+                  <div class="col-lg-9">
+                    <h3>Link</h3>
+                      <form class="form-inline">
+                        <div class="form-group">
+                          <div class="checkbox">
+                            <label>
+                              Start video at the currently playing item
+                              <input style="margin-left:12px;" type="checkbox" id="start_video_at" aria-label="Checkbox to generate shareable link for the currently playing item"> 
+                            </label>
+                          </div>
+                        </div>
+                      </form><br>
+                    <form>
+                      <div class="form-group">
+                        <input type="text" class="form-control" id="url" placeholder="URL" value="https://addisontx.new.swagit.com/videos/56029" onclick="this.select();">
+                      </div>
+                    </form>
+
+                    <style>
+                      .social-likes__button_email, .social-likes__button_email:hover, .social-likes__button_email:focus  {
+                        color: #ffffff;
+                        text-decoration: none;
+                      }
+
+                    </style>
+
+                    <h3>Social</h3>
+
+                    <div id="social"></div>
+
+                        <script>
+                          jsSocials.shareStrategies["my_popup"] = function(args) {
+                            return $("<a>").click(function() {
+                              let width = 800; let height = 600; // was this default
+                              // let width = 600; let height = 500; // was social-likes-next
+
+                              let left = Math.round(screen.width / 2 - width / 2);
+                              let top = 0;
+                              if (screen.height > height) {
+                                top = Math.round(screen.height / 3 - height / 2);
+                              }
+                              window.open(args.shareUrl, "MyShareWindow", "width=" + width + ", height=" + height + ", left=" + left + ", top=" + top + ", location=1, resizeable=1, menubar=0, scrollbars=0, status=0, titlebar=0, toolbar=0");
+                            });
+                          };
+
+                          $("#social").jsSocials({
+                            shares: [
+                              { share: "email", label: "Email", url: "/videos/56029" }, 
+                              { share: "facebook", label: "Facebook", url: "/videos/56029" }, 
+                              { share: "twitter", label: "Twitter", url: "/videos/56029" }, 
+                              { share: "linkedin", label: "LinkedIn", url: "/videos/56029" }],
+                            shareIn: 'my_popup',
+                            showCount: false,
+                            onRendered: setSocialAttributes()
+                          });
+                          function setSocialAttributes() {
+                            setTimeout(() => {
+                                $("#share .jssocials-share-email a").attr({
+                                  "aria-label": "Share via email",
+                                  "role": "button",
+                                  "name": "email-share"
+                                }).attr("tabindex", "0")
+                                $("#share .jssocials-share-facebook a").attr({
+                                  "aria-label": "Share on Facebook",
+                                  "role": "button",
+                                  "name": "facebook-share"
+                                }).attr("tabindex", "0")
+                                  .on("keypress", function(event) {
+                                    if (event.key === "Enter") {
+                                      $(this).click();
+                                    }
+                                  })
+                                $("#share .jssocials-share-twitter a").attr({
+                                  "aria-label": "Share on Twitter",
+                                  "role": "button",
+                                  "name": "twitter-share"
+                                }).attr("tabindex", "0")
+                                  .on("keypress", function(event) {
+                                    if (event.key === "Enter") {
+                                      $(this).click();
+                                    }
+                                  })
+                                $("#share .jssocials-share-linkedin a").attr({
+                                  "aria-label": "Share on Linkedin",
+                                  "role": "button",
+                                  "name": "linkedin-share"
+                                }).attr("tabindex", "0")
+                                  .on("keypress", function(event) {
+                                    if (event.key === "Enter") {
+                                      $(this).click();
+                                    }
+                                  })                                
+                              }, 100);
+                            }
+                            function enhanceSocialLinks() {
+                              $("#social .jssocials-share-link").each(function () {
+                                const $a = $(this);
+
+                                // Always make focusable
+                                $a.attr("tabindex", "0")
+                                  .attr("role", "button");
+
+                                // Add labels based on class
+                                if ($a.closest(".jssocials-share-email").length) {
+                                  $a.attr("aria-label", "Share via email");
+                                }
+                                if ($a.closest(".jssocials-share-facebook").length) {
+                                  $a.attr("aria-label", "Share on Facebook");
+                                }
+                                if ($a.closest(".jssocials-share-twitter").length) {
+                                  $a.attr("aria-label", "Share on Twitter");
+                                }
+                                if ($a.closest(".jssocials-share-linkedin").length) {
+                                  $a.attr("aria-label", "Share on LinkedIn");
+                                }
+                              });
+                            }
+
+                            enhanceSocialLinks();
+
+                            const socialObserver = new MutationObserver(function () {
+                              enhanceSocialLinks();
+                            });
+
+                            socialObserver.observe(document.getElementById("social"), {
+                              childList: true,
+                              subtree: true
+                            });
+                          </script>
+
+                              <h3>Embed</h3>
+                              <form class="form-inline">
+                                <div class="form-group">
+                                  <div class="checkbox">
+                                  <label>
+                                     Disable autoplay on embedded content?
+                                     <input type="checkbox" id="autoplay-embed" aria-label="Checkbox to disable autoplay on embedded content" style="margin-left:12px;">
+                                  </label>
+                                  </div>
+                                </div>
+                              </form><br>
+                              <textarea class="form-control" cols="40" id="embedVideo" name="segment[embed]" onclick="this.select();" rows="3">&lt;iframe title=&quot;Swagit Video Player&quot; width=&quot;640&quot; height=&quot;360&quot; src=&quot;https://addisontx.new.swagit.com/videos/56029/embed&quot; frameborder=&quot;0&quot; allowfullscreen&gt;&lt;/iframe&gt;</textarea>
+                                  <div id="download-current-item" style="display: none;">
+                                    <h3>Download Selected Item</h3>
+                                      <blockquote>
+                                        <p id="current-item-title"></p>
+                                      </blockquote>
+                                      <a class="btn btn-default" id="download-selected-item-button" role="button">Download</a>
+                                  </div>
+                        </div>
+                      </div>
+                    </div><!-- /share -->
+
+                    <!-- transcript -->
+
+                    <!-- /transcript -->
+                  </div>
+                  <!-- /tab content -->
+                </div>
+              </div> <!-- contentwrap -->
+              <div id="footerbar">
+                <div id="copyright">&copy; 2003-2026 <a href="http://www.swagit.com">Swagit Productions, LLC</a></div>
+              </div> <!-- /footerbar -->
+            </div> <!-- /col-md-7 -->
+          </div> <!-- /row -->
+          <div id='skimBar'>
+            <div id="skimControl"></div>
+          </div>
+</div> <!-- /container -->
+
+<div class="device-xs visible-xs"></div>
+<div class="device-sm visible-sm"></div>
+<div class="device-md visible-md"></div>
+<div class="device-lg visible-lg"></div>
+
+<!-- hls.js -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@0.12.0/dist/hls.min.js"></script>
+
+<script type="text/javascript">
+  var focusMode = false
+  var mimeCodec = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
+
+  var USER_AGENT = window.navigator.userAgent;
+  var IS_IE11 = (/Trident\/7.0/i).test(USER_AGENT) && (/rv:11.0/).test(USER_AGENT);
+  var IS_EDGE = (/Edge/i).test(USER_AGENT);
+  var IS_CHROME = !IS_EDGE && (/Chrome/i).test(USER_AGENT);
+
+  var IS_IPAD = /iPad/i.test(USER_AGENT);
+  var IS_IPHONE = /iPhone/i.test(USER_AGENT) && !IS_IPAD;
+  var IS_IPOD = /iPod/i.test(USER_AGENT);
+  var IS_IOS = IS_IPHONE || IS_IPAD || IS_IPOD;
+
+  var IS_ANDROID = /Android/i.test(USER_AGENT);
+  var IS_SAFARI = /Safari/i.test(USER_AGENT) && !IS_CHROME && !IS_ANDROID && !IS_EDGE;
+  var IS_ANY_SAFARI = (IS_SAFARI || IS_IOS) && !IS_CHROME;
+
+  var go_for_ng = true;
+
+    go_for_ng = false;
+
+  var base_url = 'https://addisontx.new.swagit.com/videos/56029';
+  var round_seconds = 0;
+  var lastPos = -1;
+
+  function updateStartAtDisplay(currentTime) {
+    var date = new Date(null);
+    round_seconds = Math.round(currentTime);
+    date.setSeconds(round_seconds); // specify value for SECONDS here
+    var result = date.toISOString().substr(11, 8);
+
+    if (!$("#start_video_at").is(":checked")) {
+      $('#start_at').val(result);
+    }
+  }
+
+  if (go_for_ng) {
+    console.log('vjs');
+
+    var element = document.querySelector("#vjs-player");
+/*
+    element.classList.add("video-js");
+    element.classList.add("vjs-default-skin");
+    element.classList.add("vjs-big-play-centered");
+    element.classList.add("vjs-fluid");
+*/
+    (function(window, videojs) {
+
+      if (typeof videojs.options.hls !== 'object') {
+        videojs.options.hls = {};
+      }
+
+      if (videojs.browser.IS_ANDROID && videojs.options.hls.enableLowInitialPlaylist === undefined) {
+        videojs.options.hls.enableLowInitialPlaylist = true;
+      } // use vhs on everything that isn't Safari
+
+      if (videojs.options.hls.overrideNative === undefined && !videojs.browser.IS_ANY_SAFARI) {
+        videojs.options.hls.overrideNative = true;
+      }
+
+      if (!(videojs.browser.IS_ANY_SAFARI || videojs.browser.IS_IOS)) {
+      }
+
+        var player = window.player = videojs('vjs-player', { "controls": true, "autoplay": "muted", "preload": "auto", playsinline: true, flash: {swf: "https://unpkg.com/@brightcove/videojs-flashls-source-handler/dist/video-js.swf"}, playbackRates: [0.5, 1, 1.5, 2]});
+
+      player.ready(function(){
+        var settings = this.textTrackSettings;
+        settings.setValues({
+          "backgroundOpacity": "0.5"
+        });
+        settings.updateDisplay();
+      });
+
+        player.src({type: "application/x-mpegURL", src: "http://107.178.209.195/vod/_definst_/mp4:addisontx//playlist.m3u8"});
+    }(window, window.videojs));
+
+    player.on("timeupdate", function(e) {
+      var vtime = player.currentTime();
+
+      if ((vtime > (lastPos + 1)) || (vtime < (lastPos - 1))) {
+        $("#transcript-fragments a").css('font-weight', '400');
+
+        $("#transcript-fragments a").filter(function() {
+          return parseFloat($(this).attr("data-ts")) <= vtime;
+        }).last().css('font-weight', 'bold');
+        lastPos = vtime;
+      }
+    });
+
+    jQuery(".playerControl").click(function (event) {
+      event.preventDefault();
+      var id = $(this).data("id");
+      var timestamp = $(this).data("ts"); //grab the beginning TS here
+      var end_timestamp = $(this).data("end-ts"); //grab the ending TS here
+      let duration = end_timestamp - timestamp //grab the duration here
+      hls_path = 'http://107.178.209.195/vod/_definst_/mp4:addisontx//playlist.m3u8'.replace(/stream.*demand/, '35.184.29.198:1935/vod-edge')
+        // player.src(`${hls_path}?wowzaplaystart=${timestamp*1000}&wowzaplayduration=${duration*1000}`);
+      // console.log(`${hls_path}?wowzaplaystart=${timestamp*1000}&wowzaplayduration=${duration*1000}`)
+      seek(timestamp)
+      $('#section_end').val(result);
+      $( "#current-item-title" ).html($(this).data("title"));
+      $( "#download-current-item" ).show();
+
+      var date = new Date(null);
+      round_seconds = Math.round(timestamp);
+      date.setSeconds(round_seconds); // specify value for SECONDS here
+      var result = date.toISOString().substr(11, 8);
+      $("input[name=section_start]").val(timestamp);
+
+      var date = new Date(null);
+      round_seconds = Math.round(end_timestamp);
+      date.setSeconds(round_seconds); // specify value for SECONDS here
+      var result = date.toISOString().substr(11, 8);
+      $("input[name=section_end]").val(end_timestamp);
+
+      $("#download-selected-item-button").prop('disabled', false);
+      $("#download-selected-item-button").val("Download");
+
+      // player.currentTime(timestamp);
+      console.log("ts: " + timestamp + " to: " + end_timestamp);
+    });
+
+    function seek(timestamp) {
+      player.currentTime(timestamp);
+      player.play()
+    }
+    // setting up the rewind button by setting up a video-js component
+    var Button = videojs.getComponent('Button');
+    var RewindButton = videojs.extend(Button, {
+      constructor: function() {
+        Button.apply(this, arguments);
+        // this.el() = created DOM-element
+
+/*
+        // add tooltip
+        var tooltipSpan = document.createElement('span');
+        tooltipSpan.className = 'theo-button-tooltip vjs-hidden';
+        tooltipSpan.innerText = 'Back 10 secs.';
+        function toggleTooltip() {
+            tooltipSpan.classList.toggle('vjs-hidden');
+        }
+        this.el().addEventListener('mouseover', toggleTooltip);
+        this.el().addEventListener('mouseout', toggleTooltip);
+
+        this.el().appendChild(tooltipSpan);
+*/
+        this.controlText('Back 10 secs.');
+
+      },
+      handleClick: function() {
+        player.currentTime(player.currentTime() - 10);
+      },
+      buildCSSClass: function () {
+        return 'fa fa-backward vjs-control vjs-button'; // insert all class names here
+      }
+    });
+    videojs.registerComponent('RewindButton', RewindButton);
+    player.getChild('controlBar').addChild('RewindButton', {});
+   
+    // setting up the forward button by setting up a video-js component
+    var Button = videojs.getComponent('Button');
+    var ForwardButton = videojs.extend(Button, {
+      constructor: function() {
+        Button.apply(this, arguments);
+        // this.el() = created DOM-element
+
+/*
+        // add tooltip
+        var tooltipSpan = document.createElement('span');
+        tooltipSpan.className = 'theo-button-tooltip vjs-hidden';
+        tooltipSpan.innerText = 'Forward 10 secs.';
+        function toggleTooltip() {
+            tooltipSpan.classList.toggle('vjs-hidden');
+        }
+        this.el().addEventListener('mouseover', toggleTooltip);
+        this.el().addEventListener('mouseout', toggleTooltip);
+        this.el().appendChild(tooltipSpan);
+*/
+        this.controlText('Forward 10 secs.');
+      },
+      handleClick: function() {
+        player.currentTime(player.currentTime() + 10);
+      },
+      buildCSSClass: function () {
+        return 'fa fa-forward vjs-control vjs-button'; // insert all class names here
+      }
+    });
+    videojs.registerComponent('ForwardButton', ForwardButton);
+    player.getChild('controlBar').addChild('ForwardButton', {});
+
+    player.one("playing", function(e) {
+      console.log("first play event!", e);
+
+        console.log("first-ready-hash-check");
+        if (location.hash) {
+          hash = location.hash.replace(/^#/, '')
+          hash = parseInt(hash.replace(/^&start=/, ''))
+          hash = isNaN(hash) ? 0 : hash
+          player.currentTime(hash);
+        }
+    });
+
+    player.ready(()=>{
+      // rename captions here
+      player.textTracks().addEventListener('addtrack', (e) => {
+        setTimeout(() => {
+          const track = e.track; // Ensure correct access
+          if (track.kind == 'captions') {
+            let labelToRemove;
+            switch (track.label) {
+              case 'CC1':
+                track.label = 'English';
+                break;
+              case 'CC3':
+                track.label = 'Español';
+                break;
+              case 'cc708_1':
+                labelToRemove = 'cc708_1';
+                break;
+              case 'cc708_2':
+                labelToRemove = 'cc708_2';
+                break;
+            }
+
+            captionElems = $('.vjs-captions-menu-item').children('.vjs-menu-item-text')
+            captionElems.each(function() {
+              if ($(this).text().includes('708')){
+                $(this).parent().remove()
+              }
+            });
+          }
+        }, 50);
+      });
+    })
+  } else {
+    console.log('jp');
+    jwplayer("player").setup({
+      nextUpDisplay: false,
+
+        playlist: [{"id":1330515,"seq":2,"title":"Recreation and Community Facilities","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-16.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-16.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-16.480x360.jpg"},{"id":1330516,"seq":3,"title":"Education","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-17.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-17.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-17.480x360.jpg"},{"id":1330517,"seq":4,"title":"Business Development","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-18.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-18.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-18.480x360.jpg"},{"id":1330518,"seq":5,"title":"Environmental Design","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-19.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-19.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-19.480x360.jpg"},{"id":1330519,"seq":6,"title":"Museums","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-20.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-20.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-20.480x360.jpg"},{"id":1330520,"seq":7,"title":"Performing and Visual Arts","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-21.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-21.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-21.480x360.jpg"},{"id":1330521,"seq":8,"title":"Public Relations","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-22.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-22.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-22.480x360.jpg"},{"id":1330522,"seq":9,"title":"Transportation","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-23.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-23.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-23.480x360.jpg"},{"id":1330523,"seq":10,"title":"Culinary","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-24.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-24.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-24.480x360.jpg"},{"id":1330524,"seq":11,"title":"Human Services","dfile":"https://swagit-video.granicus.com/archive/2009/05/19/05192009-25.h264.mp4","file":"https://archive-stream.granicus.com/OnDemand/_definst_/mp4:swagitVideo/archive/2009/05/19/05192009-25.h264.mp4/playlist.m3u8","image":"http://stills.swagit.com/swagit/swagit/05192009-25.480x360.jpg"}],      
+      width: '100%',
+      height: '100%',
+      autostart: true
+    });
+
+    var seek = function(timestamp) {
+      jwplayer("player").seek(timestamp);
+      jwplayer("player").play()
+    }
+
+    function playlistitem(id) {
+      jQuery.each(jwplayer("player").getPlaylist(), function(item, value) {
+        if (value['id'] == id) {
+          jwplayer("player").playlistItem(item);
+        }
+      });
+    }
+
+    function seekp(id, timestamp) {
+      jwplayer("player").playlistItem(id).once("play", function(){
+        console.log('seeking?');
+        //exit if it's no first playback start
+        console.log('seekping to:' + timestamp);
+        jwplayer().seek(timestamp);
+      });
+    }
+
+    jwplayer("player").on('fullscreen', function(event){
+      if (event.fullscreen) {
+        $("#document").addClass("hidden");
+      } else {
+        $("#document").removeClass("hidden");
+      }
+    });
+    
+    jwplayer("player").on('time', function(event){
+      if ((event.position > (lastPos + 1)) || (event.position < (lastPos - 1))) {
+        updateStartAtDisplay(event.position);
+
+        $("#transcript-fragments a").css('font-weight', '400');
+
+        $("#transcript-fragments a").filter(function() {
+            return parseFloat($(this).attr("data-ts")) <= event.position;
+        }).last().css('font-weight', 'bold');
+        lastPos = event.position;
+      }
+    })
+
+    // Manually seeking while paused doesn't reliably fire 'time', so the
+    // "Start Video At" display/link would otherwise be stale (GUB-89911).
+    jwplayer("player").on('seeked', function(event){
+      updateStartAtDisplay(jwplayer("player").getPosition());
+    })
+
+    jQuery(".playerControl").click(function (event) {
+      event.preventDefault();
+      var id = $(this).data("id");
+      var timestamp = $(this).data("ts");
+      var end_timestamp = $(this).data("end-ts");
+
+      $('#section_end').val(result);
+      $( "#current-item-title" ).html($(this).data("title"));
+      $( "#download-current-item" ).show();
+
+      var date = new Date(null);
+      round_seconds = Math.round(timestamp);
+      date.setSeconds(round_seconds); // specify value for SECONDS here
+      var result = date.toISOString().substr(11, 8);
+      $("input[name=section_start]").val(timestamp);
+
+      var date = new Date(null);
+      round_seconds = Math.round(end_timestamp);
+      date.setSeconds(round_seconds); // specify value for SECONDS here
+      var result = date.toISOString().substr(11, 8);
+      $("input[name=section_end]").val(end_timestamp);
+
+      $("#download-selected-item-button").prop('disabled', false);
+      $("#download-selected-item-button").val("Download");
+
+      jwplayer("player").seek(timestamp);
+      console.log("ts: " + timestamp + " to: " + end_timestamp);
+    });
+  
+    jQuery(".v2PlayerControl").click(function (event) {
+      event.preventDefault();
+      var id = $(this).data("id");
+
+      console.log('changing playlist item');
+      i = 0;
+      jQuery.each(jwplayer("player").getPlaylist(), function(item, value) {
+        if (value['seq'] == id) {
+          $( "#download-selected-item-button").attr('href', value.dfile);
+          $('#current-item-title').text(value.title)
+          $('#download-current-item').show()
+          jwplayer("player").playlistItem(i);
+        }
+        i += 1;
+      });
+    });
+    // TODO: can we seek prior to play without triggering autoplay issues?
+
+    jwplayer("player").once("play", function(){
+        console.log("first-ready-hash-check");
+        if (location.hash) {
+          hash = location.hash.replace(/^#/, '')
+          hash = parseInt(hash.replace(/^&start=/, ''))
+          hash = isNaN(hash) ? 0 : hash
+
+            jQuery.each(jwplayer("player").getPlaylist(), function(item, value) {
+              if (value['seq'] == hash) {
+                jwplayer("player").playlistItem(item);
+              }
+            });
+        }
+    });
+  }
+
+  function partnerPlay(id) {
+    $( "a.playerControl[data-id=" + id + "]").trigger("click")
+  }
+
+  $('#start_video_at').change(function() {
+    if(this.checked) {
+      var currentSeconds = Math.round(go_for_ng ? player.currentTime() : jwplayer("player").getPosition());
+      $('#url').val(base_url + "?ts=" + currentSeconds);
+    } else {
+      $('#url').val(base_url);
+    }
+
+    $("#social").jsSocials("shareOption", "email", "url", $('#url').val());
+    $("#social").jsSocials("shareOption", "facebook", "url", $('#url').val());
+    $("#social").jsSocials("shareOption", "twitter", "url", $('#url').val());
+    $("#social").jsSocials("shareOption", "linkedin", "url", $('#url').val());
+  });
+
+  $(document).ready(() => {
+    if (go_for_ng){
+      $('#focusMode').css('display', 'block')
+    }
+    $('#skimControl').slider({
+      animate: true,
+    })
+    let indexData = $('#video-index').children('.media').children('.media-body').find('.playerControl')
+    tsArr = []
+    indexData.each(e => {
+      tsArr.push({
+        id: indexData[e].dataset.id, 
+        ts: indexData[e].dataset.ts, 
+        endTs: indexData[e].dataset.endTs, 
+        runtime: (indexData[e].dataset.endTs - indexData[e].dataset.ts)
+      })
+    })
+    tsArr = tsArr.sort((a,b) => {return parseInt(a.ts) - parseInt(b.ts)})
+    let vid = $('#vjs-player_html5_api')
+    var current = null
+    vid.on('timeupdate', e => {
+      let ts = vid[0].currentTime
+      // NOTE: previously this declared its own `let round_seconds`, which
+      // shadowed the page-level `round_seconds` used by the "Start Video At"
+      // share link, so the link always used the stale initial value of 0
+      // (GUB-89911). Route through the shared helper instead so the
+      // page-level round_seconds is actually kept in sync.
+      updateStartAtDisplay(ts);
+
+      tsArr.every(data => {
+        if (current && current.data('id') == data.id)
+          var percentOfItem = Math.round((((ts-current.data('ts'))/data.runtime)*100))
+        if (data.ts <= ts && data.endTs <= ts)
+          return true
+        itemSwitch(data.id, percentOfItem) 
+        return false
+      })
+    })
+
+    // Manually seeking while paused doesn't fire timeupdate, so the
+    // "Start Video At" display/link would otherwise be stale (GUB-89911).
+    vid.on('seeked', e => {
+      updateStartAtDisplay(vid[0].currentTime);
+    })
+
+    $('#skimControl').on('slide', (event, ui) => {
+      val = ui.value
+      runtime = current.data('endTs') - current.data('ts')
+      seconds = parseInt((parseFloat(val/100) * runtime).toFixed()) + current.data('ts')
+      seek(seconds)
+    })
+
+    function itemSwitch(id, percent){
+      if ($('#skimControl').slider('value') != percent){
+        $('#skimControl').slider("value", percent)
+      }
+      let cur = jQuery($(`[data-id="${id}"]`)[0])
+      let curSibling = $(`#item-${id}`)
+      if (!current || current.data('id') != id){
+        current = cur
+      }
+      if (curSibling.hasClass('currentItem')){
+        return
+      }
+      $('*').removeClass('currentItem')
+      tsArr.forEach((e) => {
+        if (e.ts == cur.data('ts') && e.endTs == cur.data('endTs')){
+          $(`#item-${e.id}`).addClass('currentItem')
+        }
+      })
+      $( "#current-item-title" ).html(current.data('title'));
+      if ($( "#current-item-title" ).html() != ''){
+        $( "#download-current-item" ).show();
+      }
+      curSibling.addClass('currentItem')
+      $('.currentItem')[0].scrollIntoView({behavior: 'smooth'})
+    }
+  })
+
+  $('#focusMode').click(() => {
+    if (!focusMode){
+      $('#skimBar').slideDown(500)
+      focusMode = true
+    $('#focusMode').addClass('active')
+    } else {
+      $('#skimBar').slideUp(500)
+      focusMode = false
+      $('#focusMode').removeClass('active')
+    }
+  })
+
+  $('#autoplay-embed').click(() => {
+    embedval = $('#embedVideo').val()
+    if ($('#autoplay-embed').is(':checked')){
+      embedval = embedval.replace(/embed/, 'embed?autoplay=0')
+    } else {
+      embedval = embedval.replace(/\?autoplay=0/, '')
+    }
+    $('#embedVideo').val(embedval)
+  })
+
+  $(document).ready(function() {
+    const $videoTabs = $('#videoTabs');
+    const $myTabs = $('#myTabs');
+    const $videoTabElements = $videoTabs.find('li');
+    const $myTabElements = $myTabs.find('li');
+
+    function setInitialActiveTab() {
+      $videoTabElements.first().addClass('active').find('a').attr('aria-expanded', 'true');
+    }
+
+    function switchToMyTab() {
+      $myTabElements.first().find('a').focus();
+    }
+
+    function switchToVideoTab() {
+      console.log($videoTabElements)
+      $videoTabElements.first().find('a').focus();
+    }
+
+    function handleTabSwitch(event, $focusedElement) {
+      if($focusedElement.attr('href') === undefined || !$focusedElement.attr('href').startsWith('#')) {
+        return;
+      }
+      const $tabContentId = $focusedElement.attr('href');
+      const $tabContent = $($tabContentId);
+
+      if ($tabContentId === '#video-index' || $tabContentId === '#video-index-sm') {
+        event.preventDefault();
+        $('#video-index-sm').addClass('active');
+        if ($tabContentId === '#video-index-sm') {
+          $("#myTabs > li[role='presentation']").removeClass('active')
+          $('li[role="presentation"] > a[href="#video-index-sm"]').parent().addClass('active');
+          $('#video-index-sm').addClass('active');
+          $('#full-agenda').removeClass('active');
+          $('#share').removeClass('active');
+          $('#transcript').removeClass('active');
+        }
+        $tabContent.find('a').not('a.btn.btn-link').first().focus();
+      } else if ($tabContentId === '#full-agenda') {
+        event.preventDefault();
+        $('#video-index-sm').removeClass('active');
+        $("#myTabs > li[role='presentation']").removeClass('active');
+        $('li[role="presentation"] > a[href="#full-agenda"]').parent().addClass('active');
+        $('#full-agenda').addClass('active');
+        $('#share').removeClass('active');
+        $('#transcript').removeClass('active');
+        $tabContent.find('iframe').first().focus();
+      } else if ($tabContentId === '#transcript') {
+        event.preventDefault();
+        $('#video-index-sm').removeClass('active');
+        $("#myTabs > li[role='presentation']").removeClass('active');
+        $('li[role="presentation"] > a[href="#transcript"]').parent().addClass('active');
+        $('#transcript').addClass('active');
+        $('#full-agenda').removeClass('active');
+        $('#share').removeClass('active');
+        $('#transcript').focus();
+      } else {
+        event.preventDefault();
+        $('#video-index-sm').removeClass('active');
+        $("#myTabs > li[role='presentation']").removeClass('active');
+        $('li[role="presentation"] > a[href="#share"]').parent().addClass('active');
+        $('#full-agenda').removeClass('active');
+        $('#transcript').removeClass('active');
+        $('#share').addClass('active');
+        $('#url').focus();
+      }
+    }
+
+    $(document).on('keydown', function(event) {
+      const $focusedElement = $(document.activeElement);
+      const isFirstMyTab = $focusedElement.closest('li').is($myTabElements.first());
+      const isLastVideoTab = $focusedElement.closest('li').is($videoTabElements.first());
+
+      if (event.key === 'Tab') {
+        if (!event.shiftKey && isLastVideoTab) {
+          event.preventDefault();
+          switchToMyTab();
+        } else if (event.shiftKey && isFirstMyTab) {
+          event.preventDefault();
+          switchToVideoTab();
+        }
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        handleTabSwitch(event, $focusedElement);
+      }
+    });
+
+    setInitialActiveTab();
+  });
+
+</script>
+
+<script>
+  $(function() {
+    // Only operate on the visible tab group
+    var $tablist = $('.my-tabs:visible');
+    var $tabs = $tablist.find('a[role="tab"]');
+    var $focusedTabContentDiv = null;
+    
+    function updateTabs() {
+      $tablist = $('.my-tabs:visible');
+      $tabs = $tablist.find('a[role="tab"]');
+    }
+    // Update tabs on window resize (covers zoom and responsive changes)
+    $(window).on('resize', updateTabs);
+    // Optionally, update on orientation change (for mobile)
+    window.addEventListener('orientationchange', updateTabs);
+
+    function getTabPanel($tab) {
+      return $($tab.attr('href'));
+    }
+
+    function getFocusable($panel) {
+      return $panel.find('a, button, input, textarea, select, [tabindex]:not([tabindex="-1"])').filter(':visible');
+    }
+
+    // Use event delegation from document so handler always applies to current visible tabs
+    $(document).off('keydown.tabnav').on('keydown.tabnav', '.my-tabs:visible a[role="tab"]', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        // Activate tab and focus first focusable in panel
+        e.preventDefault();
+        $(this).tab('show');
+        var $panel = getTabPanel($(this));
+        var $focusable = getFocusable($panel);
+        if ($focusable.length) {
+          $focusable.first().focus();
+        }
+      }
+      else if (e.key === 'Tab' && !e.shiftKey) {
+        if ($focusedTabContentDiv == null || !$focusedTabContentDiv.is($(this))) {
+          if ($tabs.index($(this)) === $tabs.length - 1) {
+            // If last tab, allow normal tab out (to footer, etc)
+            var $footerLink = $('#footerbar a').first();
+            if ($footerLink.length) {
+              e.preventDefault();
+              $footerLink.focus();
+            }
+            return;
+          }
+        }
+      }
+    });
+
+    $(document).off('keyup.tabnav').on('keyup.tabnav', '.my-tabs:visible a[role="tab"]', function(e) {
+      if (e.key !== 'Tab') return;
+      let focusedTabs = $('a[is-tab-focused="true"]');
+      focusedTabs.each(function() {
+        $(this).attr('is-tab-focused', 'false');
+      });
+      $(this).attr('is-tab-focused', 'true');
+      $focusedTabContentDiv = getTabPanel($(this));
+    });
+
+    // Trap focus inside the visible tab panel
+    $('.my-tabs-tab-content .tab-pane').on('keydown', function(e) {
+      if (e.key !== 'Tab') return;
+      var $panel = $(this);
+      if (!$panel.is(':visible')) return; // Only handle visible panel
+      var $focusable = getFocusable($panel);
+      if (!$focusable.length) return;
+      var first = $focusable[0];
+      var last = $focusable[$focusable.length - 1];
+      if (!e.shiftKey && document.activeElement === last) {
+        // Tab from last focusable: go to next tab in DOM order and activate it (do not wrap)
+        e.preventDefault();
+        var $currentTab = $tabs.filter('[aria-expanded="true"]');
+        var idx = $tabs.index($currentTab);
+        if (idx < $tabs.length - 1) {
+          var nextIdx = idx + 1;
+          $tabs.eq(nextIdx).focus();
+          var $nextPanel = getTabPanel($tabs.eq(nextIdx));
+          var $nextFocusable = getFocusable($nextPanel);
+          if ($nextFocusable.length) $nextFocusable.first().focus();
+        } else {
+          // If last tab, allow normal tab out (to footer, etc)
+          var $footerLink = $('#footerbar a').first();
+          if ($footerLink.length) {
+            e.preventDefault();
+            $footerLink.focus();
+          }
+        }
+      }
+    });
+  });
+</script>
+
+<script src="/js/social-likes.js"></script>
+</body>
+</html>

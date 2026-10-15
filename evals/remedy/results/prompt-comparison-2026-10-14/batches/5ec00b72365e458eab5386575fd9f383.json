@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Community and Neighborhood Development Committee, City of Arlington"
+      }
+    ],
+    "case_id": "recording-e433f4350ee6f597cd0a81a3",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-community-and-neighborhood-development-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) is an official City of Arlington, Office of the City Manager notice for the 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE / CITY OF ARLINGTON' telephone meeting on May 19, 2020, with Call to Order, New Business (CARES Act ESG/CDBG-CV and Emergency Housing Assistance), and Adjournment, establishing this as a real convened committee meeting, not a program label. The Granicus player page (provider-player) titles the recording with the same committee name, and the recordings record's body/title match. The existing feed 'arlington-tx-community-and-neighborhood-development-committee' is described as 'Meetings of Arlington's Community and Neighborhood Development Committee,' an exact proven scope match, so assign_existing applies. No joint or co-convening body is named in the agenda, so no other body feed is proven. The broader 'arlington-tx' feed is not selected because its stated scope is 'Video recordings of Arlington City Council and Planning & Zoning meetings,' which does not cover this committee meeting; shared members, the city name, or the topic are not ownership evidence per the supplied rules. No archive/event disposition applies since this is a regular committee business meeting."
+  },
+  "attempt_id": "79088c3955a64e0a994aa65822dcb9cf",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-e433f4350ee6f597cd0a81a3",
+  "case_input_hash": "810e8e7874541cd05a6420c47291374bbe3bc10c1b5075388a7390f6bbeec15a",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 22.366456540999934
+    }
+  ],
+  "end_to_end_seconds": 24.223817957998108,
+  "finished_at": "2026-10-14T16:36:38.672345+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T16:36:14.448356+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "182796721d7ff434f078e653c33bc040b0bd99c1ec35f62229bc0d8576368d66",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1744,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1345,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2294,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4038
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-e433f4350ee6f597cd0a81a3\",\n  \"bodies\": [\n    {\n      \"name\": \"Community and Neighborhood Development Committee, City of Arlington\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"arlington-tx-community-and-neighborhood-development-committee\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The retained agenda (retained-agenda) is an official City of Arlington, Office of the City Manager notice for the 'COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE / CITY OF ARLINGTON' telephone meeting on May 19, 2020, with Call to Order, New Business (CARES Act ESG/CDBG-CV and Emergency Housing Assistance), and Adjournment, establishing this as a real convened committee meeting, not a program label. The Granicus player page (provider-player) titles the recording with the same committee name, and the recordings record's body/title match. The existing feed 'arlington-tx-community-and-neighborhood-development-committee' is described as 'Meetings of Arlington's Community and Neighborhood Development Committee,' an exact proven scope match, so assign_existing applies. No joint or co-convening body is named in the agenda, so no other body feed is proven. The broader 'arlington-tx' feed is not selected because its stated scope is 'Video recordings of Arlington City Council and Planning & Zoning meetings,' which does not cover this committee meeting; shared members, the city name, or the topic are not ownership evidence per the supplied rules. No archive/event disposition applies since this is a regular committee business meeting.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Community and Neighborhood Development Committee\" from Arlington, TX, dated 2020-05-19. The retained agenda shows \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" with a telephone meeting on May 19, 2020, from the Office of the City Manager. The provider player page also confirms \"Community and Neighborhood Development Committee Video Player\".\n\nSo the convening body is the Community and Neighborhood Development Committee of the City of Arlington. The existing feed \"arlington-tx-community-and-neighborhood-development-committee\" matches: \"Meetings of Arlington's Community and Neighborhood Development Committee.\"\n\nIs this a committee of the City Council or a separate body? The agenda header says \"Office of the City Manager... COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". It's a real body, not just a program label. The feed exists for it.\n\nShould we also assign \"arlington-tx\" (Arlington \u2014 All Meetings)? Its description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That's the subscription grouping \u2014 but the description says it covers City Council and Planning & Zoning meetings, not all meetings despite the title. Hmm. The title says \"Arlington \u2014 All Meetings\" but the description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So this broader feed's proven scope is Council and P&Z only. The CNDC recording isn't a Council or P&Z meeting per the evidence. So I should not assign \"arlington-tx\".\n\nWait \u2014 but the instruction says \"Consider broader subscription groupings independently of who convened the recording.\" The grouping \"arlington-tx\" is titled \"All Meetings\" \u2014 but its description limits to Council and Planning & Zoning. The publication rules: \"Use the convened body, not venue, topic or common members\". The feed description is the proven scope. Given the description explicitly says \"City Council and Planning & Zoning meetings\", a CNDC committee meeting is outside that proven scope. So exclude it.\n\nHmm, but is that right? The title says \"All Meetings\". There's ambiguity. Let me think. The publication rules say feeds have \"legitimate publication scope\" proven by official evidence. Here the feed's own description is the evidence of its scope. \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 that's a narrower scope than \"All Meetings\". The committee meeting is not a Council meeting nor P&Z. So I would only select the CNDC feed.\n\nActually, let me reconsider: many of these tasks have an \"All Meetings\" aggregate feed that includes everything from the provider. The description here though explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That suggests the feed's proven content is only Council and P&Z. Since we can't prove that CNDC meetings are published in that feed, and the description defines the scope, I'll not include it. Hmm, but \"All Meetings\" title... The safest interpretation: the description defines the feed's scope; the title is a label. I'll go with just the CNDC feed.\n\nActually wait \u2014 let me reconsider once more. The instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The rules include \"joints\": every proven participant can share the same recording in its configured feed. There are no joint participants here \u2014 only the CNDC convened this telephone meeting. No other body is named in the agenda.\n\nThe CNDC is a committee of Arlington City Council? The agenda says \"Office of the City Manager\" issued it, and \"CITY OF ARLINGTON\". The body label given is \"Community and Neighborhood Development Committee\". The recording title matches. The feed exists. So assign \"arlington-tx-community-and-neighborhood-development-committee\".\n\nPublication action: assign_existing.\n\nBodies: [{\"name\": \"Community and Neighborhood Development Committee (City of Arlington)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda and provider-player. The recordings array also lists body, but evidence refs are the two provided.\n\nMissing evidence: none significant. Maybe note that no other bodies are proven to participate. Could note that the \"arlington-tx\" aggregate feed's stated scope (Council and P&Z) doesn't cover this committee, so it's not selected \u2014 but that's rationale, not missing evidence.\n\nCase_id: recording-e433f4350ee6f597cd0a81a3.\n\nRationale: The retained agenda (retained-agenda) shows the City of Arlington Community and Neighborhood Development Committee telephone meeting on May 19, 2020, issued via the Office of the City Manager; the Granicus player page (provider-player) titles the recording with the same committee. The existing feed arlington-tx-community-and-neighborhood-development-committee describes exactly these meetings. No joint participants are named in the agenda; no other feed's scope is proven. The \"arlington-tx\" feed's description limits its scope to Council and Planning & Zoning meetings, which doesn't cover this committee meeting.\n\nMissing evidence: [] or maybe \"No evidence of additional participating bodies\" \u2014 missing_evidence should be genuine missing evidence. I can leave it empty or note none. Schema requires the array; empty array is fine.\n\nLet me double check whether the CNDC could be a \"program label\" rather than formal body \u2014 the check: \"Do not establish a formal municipal institution from a program label.\" Here CNDC appears to be an actual committee with call to order, new business, adjournment \u2014 a real meeting body. The feed already exists for it, meaning it's a configured body. So it's fine.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-e433f4350ee6f597cd0a81a3\",\n  \"bodies\": [\n    {\"name\": \"Community and Neighborhood Development Committee, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}\n  ],\n  \"feed_slugs\": [\"arlington-tx-community-and-neighborhood-development-committee\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale within 2000 chars. Keep concise.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is titled \"Community and Neighborhood Development Committee\" from Arlington, TX, dated 2020-05-19. The retained agenda shows \"COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\" with a telephone meeting on May 19, 2020, from the Office of the City Manager. The provider player page also confirms \"Community and Neighborhood Development Committee Video Player\".\n\nSo the convening body is the Community and Neighborhood Development Committee of the City of Arlington. The existing feed \"arlington-tx-community-and-neighborhood-development-committee\" matches: \"Meetings of Arlington's Community and Neighborhood Development Committee.\"\n\nIs this a committee of the City Council or a separate body? The agenda header says \"Office of the City Manager... COMMUNITY AND NEIGHBORHOOD DEVELOPMENT COMMITTEE CITY OF ARLINGTON\". It's a real body, not just a program label. The feed exists for it.\n\nShould we also assign \"arlington-tx\" (Arlington \u2014 All Meetings)? Its description: \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That's the subscription grouping \u2014 but the description says it covers City Council and Planning & Zoning meetings, not all meetings despite the title. Hmm. The title says \"Arlington \u2014 All Meetings\" but the description says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" So this broader feed's proven scope is Council and P&Z only. The CNDC recording isn't a Council or P&Z meeting per the evidence. So I should not assign \"arlington-tx\".\n\nWait \u2014 but the instruction says \"Consider broader subscription groupings independently of who convened the recording.\" The grouping \"arlington-tx\" is titled \"All Meetings\" \u2014 but its description limits to Council and Planning & Zoning. The publication rules: \"Use the convened body, not venue, topic or common members\". The feed description is the proven scope. Given the description explicitly says \"City Council and Planning & Zoning meetings\", a CNDC committee meeting is outside that proven scope. So exclude it.\n\nHmm, but is that right? The title says \"All Meetings\". There's ambiguity. Let me think. The publication rules say feeds have \"legitimate publication scope\" proven by official evidence. Here the feed's own description is the evidence of its scope. \"Video recordings of Arlington City Council and Planning & Zoning meetings\" \u2014 that's a narrower scope than \"All Meetings\". The committee meeting is not a Council meeting nor P&Z. So I would only select the CNDC feed.\n\nActually, let me reconsider: many of these tasks have an \"All Meetings\" aggregate feed that includes everything from the provider. The description here though explicitly says \"Video recordings of Arlington City Council and Planning & Zoning meetings.\" That suggests the feed's proven content is only Council and P&Z. Since we can't prove that CNDC meetings are published in that feed, and the description defines the scope, I'll not include it. Hmm, but \"All Meetings\" title... The safest interpretation: the description defines the feed's scope; the title is a label. I'll go with just the CNDC feed.\n\nActually wait \u2014 let me reconsider once more. The instruction: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" The rules include \"joints\": every proven participant can share the same recording in its configured feed. There are no joint participants here \u2014 only the CNDC convened this telephone meeting. No other body is named in the agenda.\n\nThe CNDC is a committee of Arlington City Council? The agenda says \"Office of the City Manager\" issued it, and \"CITY OF ARLINGTON\". The body label given is \"Community and Neighborhood Development Committee\". The recording title matches. The feed exists. So assign \"arlington-tx-community-and-neighborhood-development-committee\".\n\nPublication action: assign_existing.\n\nBodies: [{\"name\": \"Community and Neighborhood Development Committee (City of Arlington)\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}]\n\nEvidence ref ids: retained-agenda and provider-player. The recordings array also lists body, but evidence refs are the two provided.\n\nMissing evidence: none significant. Maybe note that no other bodies are proven to participate. Could note that the \"arlington-tx\" aggregate feed's stated scope (Council and P&Z) doesn't cover this committee, so it's not selected \u2014 but that's rationale, not missing evidence.\n\nCase_id: recording-e433f4350ee6f597cd0a81a3.\n\nRationale: The retained agenda (retained-agenda) shows the City of Arlington Community and Neighborhood Development Committee telephone meeting on May 19, 2020, issued via the Office of the City Manager; the Granicus player page (provider-player) titles the recording with the same committee. The existing feed arlington-tx-community-and-neighborhood-development-committee describes exactly these meetings. No joint participants are named in the agenda; no other feed's scope is proven. The \"arlington-tx\" feed's description limits its scope to Council and Planning & Zoning meetings, which doesn't cover this committee meeting.\n\nMissing evidence: [] or maybe \"No evidence of additional participating bodies\" \u2014 missing_evidence should be genuine missing evidence. I can leave it empty or note none. Schema requires the array; empty array is fine.\n\nLet me double check whether the CNDC could be a \"program label\" rather than formal body \u2014 the check: \"Do not establish a formal municipal institution from a program label.\" Here CNDC appears to be an actual committee with call to order, new business, adjournment \u2014 a real meeting body. The feed already exists for it, meaning it's a configured body. So it's fine.\n\nFinal JSON:\n\n{\n  \"case_id\": \"recording-e433f4350ee6f597cd0a81a3\",\n  \"bodies\": [\n    {\"name\": \"Community and Neighborhood Development Committee, City of Arlington\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]}\n  ],\n  \"feed_slugs\": [\"arlington-tx-community-and-neighborhood-development-committee\"],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"...\"\n}\n\nRationale within 2000 chars. Keep concise.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791995719,
+    "id": "5d8c90b94244f6a0e51e2ddea2df7366",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1744,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1345,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2294,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4038
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -1,0 +1,169 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Board of Trustees of Eagle Mountain-Saginaw ISD"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Fort Worth City Council"
+      }
+    ],
+    "case_id": "recording-1fd48da636e2445a9d8ecebb",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "fort-worth-tx-emsisd-board-joint-meetings",
+      "fort-worth-tx-city-council",
+      "fort-worth-tx"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda explicitly names both the EMSISD Board of Trustees and Fort Worth City Council as the meeting bodies; the provider player corroborates that joint title. The agenda includes call to order, district and city reports, separate board-president and mayor announcements, and adjournment. Assign the whole recording to the configured EMSISD Board joint-meetings feed, whose scope expressly covers these joint proceedings, and to both configured Council feeds, whose descriptions cover Fort Worth City Council meetings. The joint-meetings feed is a publication grouping, not an additional convening body. No evidence identifies this as a Council worksession or another committee's meeting. The opening ceremony and economic-development report are agenda segments, not grounds to exclude or archive the joint meeting."
+  },
+  "attempt_id": "044de323e57d4038a89bb5c5980b73be",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-1fd48da636e2445a9d8ecebb",
+  "case_input_hash": "62ec933d9ce1d86fee5d6b0d041703729552c26033c6bb5060d9a625a9670dda",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 15.841699208000136
+    }
+  ],
+  "end_to_end_seconds": 46.26233766599944,
+  "finished_at": "2026-10-14T13:24:01.312489+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T13:23:15.049788+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "df3babd90653ee5c1664cb170507bd7869da05da2aae5629087ea597de553875",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 5553,
+        "output_tokens": 342
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 342,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 5553,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 5553,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 5895,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-1fd48da636e2445a9d8ecebb\",\n  \"bodies\": [\n    {\n      \"name\": \"Board of Trustees of Eagle Mountain-Saginaw ISD\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    },\n    {\n      \"name\": \"Fort Worth City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"fort-worth-tx-emsisd-board-joint-meetings\",\n    \"fort-worth-tx-city-council\",\n    \"fort-worth-tx\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific official agenda explicitly names both the EMSISD Board of Trustees and Fort Worth City Council as the meeting bodies; the provider player corroborates that joint title. The agenda includes call to order, district and city reports, separate board-president and mayor announcements, and adjournment. Assign the whole recording to the configured EMSISD Board joint-meetings feed, whose scope expressly covers these joint proceedings, and to both configured Council feeds, whose descriptions cover Fort Worth City Council meetings. The joint-meetings feed is a publication grouping, not an additional convening body. No evidence identifies this as a Council worksession or another committee's meeting. The opening ceremony and economic-development report are agenda segments, not grounds to exclude or archive the joint meeting.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791984240,
+    "id": "resp_008765e0945df4c3016acf8262392481938d74cd524c9fd4ad",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 5553,
+          "output_tokens": 342
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 342,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 5553,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 5553,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 5895,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}
