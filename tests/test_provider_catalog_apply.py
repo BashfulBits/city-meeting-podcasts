@@ -50,6 +50,29 @@ CANDIDATE = Candidate(
     evidence=PROOF.to_dict(),
     evidence_digest=candidate_digest(PROOF, ("lane",)),
 )
+DISCOVERY = {
+    "profile": "history",
+    "axes": [
+        {
+            "axis": "input",
+            "admitted": 12000,
+            "count_basis": "input",
+            "control": "input:v2",
+            "source": "https://catalog.example/models",
+        }
+    ],
+    "input_characterization": {
+        "admitted_input": 12000,
+        "generated_output": 234,
+        "count_basis": "input",
+        "control": "input:v2",
+        "identity": "physical-route-digest",
+        "parser_version": "provider-parser-v1",
+        "fixture_version": "discovery-v1",
+        "evidence_digest": "a" * 64,
+        "successful_run_ids": ["10001", "10002"],
+    },
+}
 
 
 def config(routes=()):
@@ -67,9 +90,21 @@ def config(routes=()):
 
 
 def plan(proof=PROOF, decision=None):
-    report = Report(candidates=[replace(CANDIDATE, evidence=proof.to_dict())])
+    report = Report(candidates=[replace(CANDIDATE, evidence=proof.to_dict(), discovery=DISCOVERY)])
     return plan_apply(
-        report, (decision or Decision("host", "creator/new", "add", ("lane",), PROOF),), config()
+        report,
+        (
+            decision
+            or Decision(
+                "host",
+                "creator/new",
+                "add",
+                ("lane",),
+                PROOF,
+                discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+            ),
+        ),
+        config(),
     )
 
 
@@ -79,6 +114,10 @@ def test_selected_addition_preserves_primary_and_records_route_method():
     route = dict(result.routes[0])
     assert route["model"] == "creator/new" and route["free"] is True
     assert route["structured_output_method"] == "prompt_only"
+    assert route["hard_input_ceiling"] == 12000
+    assert route["input_context_limit"] == 12234
+    assert result.route_notes[0][0] == route["route_id"]
+    assert "12000 provider-counted input tokens admitted" in result.route_notes[0][1][0]
     assert route["rpm"] == route["concurrency"] == 1
     assert result.backups == (("lane", "creator/new"),)
     assert not result.deferred and not result.rejected
@@ -110,6 +149,105 @@ def test_unknown_identity_is_deferred_and_legacy_state_is_advisory():
     result = plan(unknown, Decision("host", "creator/new", "add", evidence=unknown))
     assert "identity_required" in result.deferred[0]
     assert plan(decision=Decision("host", "creator/new", "add")).deferred
+
+
+def test_measured_window_raises_operational_context_and_retains_provider_claim():
+    discovery = {
+        **DISCOVERY,
+        "input_characterization": {
+            **DISCOVERY["input_characterization"],
+            "admitted_input": 12000,
+            "generated_output": 234,
+        },
+    }
+    report = Report(candidates=[replace(CANDIDATE, discovery=discovery)])
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        ("lane",),
+        PROOF,
+        discovery_digest=discovery["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(report, (decision,), config())
+    route = dict(result.routes[0])
+    assert route["hard_input_ceiling"] == 12000
+    assert route["input_context_limit"] == 12234
+
+
+def test_stale_or_missing_discovery_evidence_cannot_prepare_an_addition():
+    report = Report(candidates=[replace(CANDIDATE, discovery=DISCOVERY)])
+    decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes
+    assert "authenticated provider-counted input evidence" in result.deferred[0]
+
+
+def test_non_provider_counted_or_stale_discovery_cap_is_not_accepted():
+    for field, value in (
+        ("count_basis", "local_estimate"),
+        ("parser_version", ""),
+        ("fixture_version", "old-fixture"),
+    ):
+        discovery = {
+            **DISCOVERY,
+            "input_characterization": {
+                **DISCOVERY["input_characterization"],
+                field: value,
+            },
+        }
+        report = Report(candidates=[replace(CANDIDATE, discovery=discovery)])
+        decision = Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            PROOF,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        )
+        result = plan_apply(report, (decision,), config())
+        assert not result.routes
+
+
+def test_route_addition_waits_for_two_distinct_successful_evidence_runs():
+    one_run = {
+        **DISCOVERY,
+        "input_characterization": {
+            **DISCOVERY["input_characterization"],
+            "successful_run_ids": ["10001"],
+        },
+    }
+    report = Report(candidates=[replace(CANDIDATE, discovery=one_run)])
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        ("lane",),
+        PROOF,
+        discovery_digest=one_run["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes
+    assert "authenticated provider-counted input evidence" in result.deferred[0]
+
+    malformed = {
+        **DISCOVERY,
+        "input_characterization": {
+            **DISCOVERY["input_characterization"],
+            "successful_run_ids": [{"unhashable": True}],
+        },
+    }
+    report = Report(candidates=[replace(CANDIDATE, discovery=malformed)])
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        ("lane",),
+        PROOF,
+        discovery_digest=malformed["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes and result.deferred
 
 
 def test_shared_provider_capacity_is_not_copied_to_routes():
@@ -471,9 +609,22 @@ def test_publication_creates_one_pr_and_repeated_noop_does_not_push():
 @pytest.mark.parametrize("field", ["input_context_limit", "output_context_limit"])
 def test_unknown_compiler_required_bound_defers_only_that_candidate(field):
     proof = replace(PROOF, **{field: None})
-    result = plan(proof, Decision("host", "creator/new", "add", evidence=proof))
-    assert result.deferred and not result.routes
-    assert "compiler requires" in result.deferred[0]
+    result = plan(
+        proof,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            evidence=proof,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    if field == "input_context_limit":
+        assert result.routes
+        assert dict(result.routes[0])["input_context_limit"] == 12234
+    else:
+        assert result.deferred and not result.routes
+        assert "output-context value" in result.deferred[0]
 
 
 def test_old_selection_cannot_place_an_already_configured_task_plugin_in_a_chat_lane():
@@ -839,6 +990,9 @@ def prepare_fixture(tmp_path, monkeypatch, limits, report, site_text):
     monkeypatch.setattr(commands, "_control", lambda _: object())
     monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
     monkeypatch.setattr(commands, "fetch_quality_index", lambda _: object())
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")
+    monkeypatch.setattr(commands, "discover_discovery_references", lambda **_: ())
+    monkeypatch.setattr(commands, "verified_discovery_history", lambda *_, **__: ((), (), ()))
     seen = []
 
     def fresh(limits, lanes, *args, **kwargs):
@@ -886,15 +1040,16 @@ def test_apply_rebuild_honors_current_backup_opt_out_despite_warm_lane_cache(tmp
     from dataclasses import asdict
 
     conf = config()
+    candidate = replace(CANDIDATE, discovery=DISCOVERY)
     snapshot = Report(
-        candidates=[CANDIDATE], state={"last_full": {"candidates": [asdict(CANDIDATE)]}}
+        candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}}
     )
     body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
         "- [ ] `host/creator/new`: add as backup to `lane`",
         "- [x] `host/creator/new`: add as backup to `lane`",
     )
     commands, texts, seen = prepare_fixture(
-        tmp_path, monkeypatch, conf.limits, Report(candidates=[CANDIDATE]), lane_yaml()
+        tmp_path, monkeypatch, conf.limits, Report(candidates=[candidate]), lane_yaml()
     )
     assert commands.prepare(body, "first-main").backups == (("lane", "creator/new"),)
     for p, text in texts.items():
@@ -1084,6 +1239,51 @@ def test_input_characterization_report_separates_provider_usage_and_estimates(pr
     assert ("Output and combined checks are supporting examples, not maxima" in body) == (
         profile == "input_priority"
     )
+
+
+def test_issue_shows_measured_operational_window_and_preserves_published_claim():
+    discovery = {
+        "profile": "history",
+        "axes": [
+            {
+                "axis": "input",
+                "published": 8000,
+                "source": "https://provider.test/models",
+                "count_basis": "input",
+                "control": "input:v2",
+            },
+            {"axis": "output", "published": 4096},
+        ],
+        "input_characterization": {
+            "admitted_input": 9000,
+            "generated_output": 100,
+            "count_basis": "input",
+            "control": "input:v2",
+            "successful_run_ids": ["10001", "10002"],
+        },
+    }
+    body = render_body(
+        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
+        run_date=TODAY.isoformat(),
+    )
+    assert "`hard_input_ceiling` = 9,000" in body
+    assert "`input_context_limit` = 9,100" in body
+    assert "provider claim 8,000" in body
+    assert "two distinct successful weekly runs" not in body
+
+    discovery["input_characterization"]["successful_run_ids"] = ["10001"]
+    deferred_body = render_body(
+        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
+        run_date=TODAY.isoformat(),
+    )
+    assert "currently verified: 1" in deferred_body
+
+    discovery["input_characterization"]["successful_run_ids"] = [{"malformed": True}]
+    malformed_body = render_body(
+        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
+        run_date=TODAY.isoformat(),
+    )
+    assert "currently verified: 0" in malformed_body
 
 
 def test_input_priority_supporting_counts_do_not_claim_full_requested_output():

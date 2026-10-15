@@ -1826,6 +1826,7 @@ def verified_discovery_history(
                 now=stamp,
             )
             found, run_counts, run_attempts, run_call_counts = [], {}, set(), {}
+            run_input_successes = set()
             for session in payload["sessions"]:
                 metadata = session["session"]
                 identity = metadata["identity"]
@@ -1846,6 +1847,26 @@ def verified_discovery_history(
                     if not timedelta(0) <= now - original <= timedelta(days=90):
                         continue
                     session_found.append(item)
+                    if (
+                        run.get("conclusion") == "success"
+                        and item.request.axis == "input"
+                        and item.outcome == "admitted"
+                        and item.verified
+                        and item.count_basis in {"input", "prompt_tokens"}
+                        and item.usage_state == "valid"
+                        and type(item.reported_input) is int
+                        and item.reported_input > 0
+                        and type(item.reported_output) is int
+                        and item.reported_output >= 0
+                    ):
+                        run_input_successes.add(
+                            (
+                                item.request.identity,
+                                item.request.parser_version,
+                                item.request.fixture_version,
+                                item.request.control,
+                            )
+                        )
                 if unique_attempts:
                     run_counts[identity] = run_counts.get(identity, 0) + 1
                     run_call_counts[identity] = (
@@ -1873,6 +1894,9 @@ def verified_discovery_history(
                         }
                     ),
                     "call_counts": run_call_counts,
+                    "input_successes": [
+                        [*signature, run_id] for signature in sorted(run_input_successes)
+                    ],
                 }
             )
         except (

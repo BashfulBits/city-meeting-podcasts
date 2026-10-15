@@ -686,11 +686,10 @@ Review/48 manual trigger implementation is prepared under #2221 with the approve
 finite allowance. Explicit canary execution and acceptance precede output/broader activation.
 
 Review/48 new-route discovery/report/retry shipped in #2275, and its single-candidate manual live
-activation shipped in #2281. The first selected OpenRouter candidate returned HTTP 200 for all
-four JSON methods but did not produce verified fixture JSON, so request-size discovery did not
-run. Its detailed diagnostics are being improved before the next attempt. Broad weekly discovery
-stays disabled until successful first-route evidence is reviewed; unknown quota scope remains
-explicitly unknown and no limits are published automatically.
+activation shipped in #2281. The 2026-10-14 approved workflow now runs bounded input discovery for
+qualifying newly found free routes after reachability and structured-output checks. Unknown quota
+scope remains explicit; no configuration is published automatically. Authenticated admitted-input
+evidence is being connected to reviewed route-addition values in #2271.
 
 The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
 reservation. It yielded no provider counts or completion reason, so it does not verify that request
@@ -718,7 +717,13 @@ and only when the AA score is strictly above GPT-OSS-120B. Missing or lower/equa
 The bounded plan permits three provider-paused sessions per weekly run, up to 96 calls and 90
 minutes per route, with 288 shared calls and a five-hour workflow ceiling. No cap is written to
 configuration automatically. This supersedes the earlier manual-only activation note above; a
-one-time scan of already-configured routes remains separate and unimplemented.
+one-time scan of already-configured routes remains separate and unimplemented. #2271 prepares
+`hard_input_ceiling` from the largest provider-counted admitted input and operational
+`input_context_limit` from the larger of the published context claim and admitted input plus actual
+generated output. It preserves the provider claim/source in route comments and the addition PR;
+output-context values remain sourced from provider/catalog or LiteLLM claims, with missing values
+deferred for maintainer input. A cap offer waits for matching admitted-input evidence from two
+distinct successful workflow runs.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing

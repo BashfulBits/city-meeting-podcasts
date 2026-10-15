@@ -419,11 +419,13 @@ Add `citypods/provider_catalog/evidence.py` with immutable `CatalogEvidence`, `R
   establish serving identity, shared quotas, or judge independence. Reuse an existing pool only
   for an exact configured upstream identity or a unique plugin-proven canonical identity. Otherwise
   report `identity_required` and request a manual mapping; no inferred brand-name pooling.
-- An addition requires a positive catalog context bound and a verified structured method. Missing
-  hard ceilings remain unset: a successful long request is only a lower bound. Missing catalog
-  context requires a separately reviewed config/evidence change before `/apply`; never invent a
-  context value. RPM/concurrency may fall back to 1 within existing provider caps. Do not invent
-  TPM/RPD/output ceilings or copy provider/account capacity into independent route capacity.
+- An addition requires a verified structured method and enough evidence or reviewed sourced values
+  for every required route field. The original positive-catalog-context prerequisite is superseded
+  by §8.13.4: fresh provider-counted input admission supplies an operational input/context window,
+  while the published claim and source remain visible for review. Missing output context still
+  requires a maintainer-entered value; never invent it. RPM/concurrency may fall back to 1 within
+  existing provider caps. Do not invent TPM/RPD values or copy provider/account capacity into
+  independent route capacity.
 
 Use `issue.py`, `reconcile.py` and `probe.py` to carry these records from the actual planner. Safe
 headers must be captured before classification discards them. Availability and method verification
@@ -2299,17 +2301,27 @@ The issue shows API/provider claimed limits with source and scope separately fro
 bounds, plus AA comparison, reachability, counts, conditional constraints, convergence status,
 spent budgets, deferral reason and evidence links. Missing provider quotas are questions, not
 RPM/RPD guesses. Existing automatic route-addition defaults must not masquerade as claimed limits.
-An addition requires explicit maintainer-reviewed values for the existing representable required
-caps/quotas; the preparation PR displays provenance and any override/disagreement. Provider-canonical
-status requires exact source/scope; otherwise label the entered value maintainer supplied.
+For an addition with fresh authenticated input evidence, `/apply` proposes `hard_input_ceiling` at
+the largest provider-counted admitted input value. It proposes operational `input_context_limit` at
+least the larger of the published provider/catalog context claim and that admitted input plus the
+same request's actual generated output. This lets dispatch use the measured window while preserving
+the original published claim and source in YAML comments and the PR for human comparison. A higher
+measured value is an explicit reviewed discrepancy in that PR; it does not rewrite the provider
+claim or acquire provider-canonical status. Estimated refusal sizes never become caps. The separate
+`output_context_limit` comes from a provider/catalog claim or LiteLLM hint and remains reviewable;
+when neither exists, `/apply` defers and asks the maintainer to enter an operational value. Preserve
+the existing onboarding evidence gate: two compatible provider-counted admitted inputs from
+distinct successful weekly runs must reproduce the same route/parser/fixture/control before
+`/apply` offers an input cap. The issue shows the verified run count; fewer than two runs is deferred.
 
 Discovery reporting/retry can ship independently of the separate explicit quota-pool and combined-cap
 schema design. If a measured combined cap or shared quota cannot be faithfully enforced by current
 configuration, `/apply` defers addition with the exact missing schema dependency. Do not silently
 approximate combined capacity with independent input/output maxima or discard a binding shared cap.
-An override must be an explicit reviewed decision with rationale/source, never an editable numeric
-issue marker interpreted as authenticated probe evidence. The exact numeric-entry/config migration
-format belongs to that separate design before implementing addition of such constrained routes.
+Provider claims and measured values remain separate: the selected addition decision authorizes a
+reviewable PR, not an issue-edited number or automatic config write. Any maintainer override must
+carry its rationale/source in that PR. Shared-quota and combined-cap schema work remains deferred;
+routes whose required constraints cannot be represented by current configuration still defer.
 
 #### 8.13.5 First live activation — one manually selected new route
 
@@ -2644,7 +2656,8 @@ Allowed implementation files and responsibilities:
 - `citypods/provider_catalog/reconcile.py`: candidate selection, discovery report fields, pause
   integration, pending daily retry selection and separate budget accounting.
 - `citypods/provider_catalog/issue.py`, `apply.py`: result rendering, mutually exclusive retry
-  choices, required-limit/dependency gating and no guessed provider-canonical facts.
+  choices, authenticated admitted-input projection into reviewed route caps, provenance comments,
+  required-limit/dependency gating and no guessed provider-canonical facts.
 - `scripts/reconcile_provider_routes.py`: manual single-candidate discovery switch, pause renewal,
   history/receipt loading, artifacts and shared run deadlines.
   `scripts/provider_catalog_commands.py`: authenticated retry queueing and result receipts without

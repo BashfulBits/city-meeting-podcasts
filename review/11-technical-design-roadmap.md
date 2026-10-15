@@ -1839,6 +1839,10 @@ request-size search in review/48. Seek verified admitted/refused brackets at str
 stuck sessions checkpoint partial evidence and a maintainer `test again` resumes on a later day
 using authenticated compatible history. No configured new-route RPD is required; provider quotas
 and finite execution escape bounds still apply. Existing runtime adaptations remain intact.
+For the reviewed route addition, authenticated input admissions map to `hard_input_ceiling`; the
+operational context window covers the provider claim or measured input plus actual generated output,
+with the original claim/source retained for review. Two compatible admissions from distinct
+successful runs are required before `/apply` offers that cap. Implementation is tracked by #2271.
 Explicit quota-pool/schema enforcement needs a separate bounded design; periodic empirical
 quota/cap revalidation, overflow/refill and broader pacing redesign are Deferred under
 [review/54](54-provider-limit-characterization.md), tracked by #2264. Previous review/48 §8.12 L3
@@ -1902,8 +1906,8 @@ measured brackets, and an authorized `/apply` can queue an authenticated next-da
 provider calls. Before a new provider's free route is added, §8.13 requires this suite's evidence to
 inform the proposed route values; unresolved axes need sourced maintainer input or `test again`.
 Pure adapter tests cover supported axes; unsupported refusal/combined semantics remain explicit.
-Broad scheduled discovery was disabled at the time of this initial integration; the later
-2026-10-14 decision below supersedes that state for qualifying input-only new-route discovery.
+The 2026-10-14 decision below supersedes the earlier manual-only activation state for qualifying
+input discovery. Implementation of the reviewed route-value projection is tracked in [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 

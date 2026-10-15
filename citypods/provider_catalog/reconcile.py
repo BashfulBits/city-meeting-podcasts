@@ -359,6 +359,7 @@ def reconcile(
     discovery_axis: str = "all",
     discovery_history=(),
     discovery_history_calls: Mapping[str, int] | None = None,
+    discovery_input_success_runs: Mapping[tuple[str, str, str, str], tuple[str, ...]] | None = None,
     discovery_receipt_id: str | None = None,
     discovery_receipt_ids: Mapping[str, str] | None = None,
     discovery_run_id: str = "",
@@ -582,6 +583,7 @@ def reconcile(
                     (discovery_history_calls or {}).get(
                         _candidate_discovery_identity(provider, model, rules, cfg), 0
                     ),
+                    discovery_input_success_runs or {},
                 )
             return candidate
 
@@ -1553,7 +1555,14 @@ def _discovery_claims(record):
 
 
 def _discovery_history_summary(
-    provider, model, record, rules, provider_cfg, history, history_calls=0
+    provider,
+    model,
+    record,
+    rules,
+    provider_cfg,
+    history,
+    history_calls=0,
+    input_success_runs=None,
 ):
     from citypods.provider_catalog.discovery import (
         Bracket,
@@ -1594,6 +1603,40 @@ def _discovery_history_summary(
         summary["published"] = claims[axis]
         summary["source"] = source
         axes.append(summary)
+    characterization = _discovery_input_characterization(
+        axes, compatible, identity=identity, parser_version=rules.discovery_parser_version
+    )
+    if characterization:
+        signature = (
+            characterization["identity"],
+            characterization["parser_version"],
+            characterization["fixture_version"],
+            characterization["control"],
+        )
+        successful_run_ids = sorted(set((input_success_runs or {}).get(signature, ())))
+        characterization["successful_run_ids"] = successful_run_ids
+        matching = next(
+            item
+            for item in compatible
+            if item.request.axis == "input"
+            and item.request.control == characterization["control"]
+            and item.request.parser_version == characterization["parser_version"]
+            and item.request.fixture_version == characterization["fixture_version"]
+            and item.outcome == "admitted"
+            and item.verified
+            and item.reported_input == characterization["admitted_input"]
+            and item.reported_output == characterization["generated_output"]
+            and item.request.input_tokens == characterization["admitted_local_estimate"]
+            and item.request.output_tokens == characterization["requested_output"]
+            and item.observed_at == characterization["observed_at"]
+        )
+        characterization["evidence_digest"] = digest(
+            {
+                "request": asdict(matching.request),
+                "observation": asdict(matching),
+                "successful_run_ids": successful_run_ids,
+            }
+        )
     return {
         "retryable": bool(compatible)
         and any(row["axis"] == "input" and row["status"] != "converged" for row in axes),
@@ -1609,9 +1652,7 @@ def _discovery_history_summary(
         "input_tokens": sum(item.request.input_tokens for item in compatible),
         "output_tokens": sum(item.request.output_tokens for item in compatible),
         "axes": axes,
-        "input_characterization": _discovery_input_characterization(
-            axes, compatible, identity=identity, parser_version=rules.discovery_parser_version
-        ),
+        "input_characterization": characterization,
         "attempt_diagnostics": _discovery_attempt_diagnostics(compatible),
         "litellm": litellm,
     }
@@ -1643,7 +1684,11 @@ def _discovery_input_characterization(axes, attempts, *, identity, parser_versio
         for req, obs in rows
         if obs.get("verified") is True
         and obs.get("outcome") == "admitted"
+        and obs.get("count_basis") in {"input", "prompt_tokens"}
+        and obs.get("usage_state") == "valid"
         and obs.get("reported_input") == lower
+        and type(obs.get("reported_output")) is int
+        and obs["reported_output"] >= 0
         and positive(req.get("input_tokens"))
     ]
     if not passing:
@@ -1684,6 +1729,14 @@ def _discovery_input_characterization(axes, attempts, *, identity, parser_versio
         "admitted_local_estimate": req["input_tokens"],
         "requested_output": req.get("output_tokens"),
         "generated_output": obs.get("reported_output"),
+        "count_basis": obs.get("count_basis"),
+        "control": req.get("control"),
+        "identity": identity,
+        "parser_version": parser_version,
+        "fixture_version": req.get("fixture_version"),
+        "observed_at": obs.get("observed_at"),
+        "evidence_digest": digest({"request": req, "observation": obs}),
+        "successful_run_ids": [],
         "rejected_estimates": rejected_rows,
     }
 

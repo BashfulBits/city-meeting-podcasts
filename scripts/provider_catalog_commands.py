@@ -130,6 +130,34 @@ def prepare(body, base_commit, proposal_kind=None):
         control = _control(False)
         if isinstance(control, NoDispatchControl):
             raise ValueError("route changes require a configured exclusive dispatch pause")
+        discovery_history = ()
+        discovery_history_gaps = ()
+        discovery_history_calls = {}
+        discovery_input_success_runs = {}
+        if selected:
+            now = datetime.now(UTC)
+            repository = os.environ.get("GITHUB_REPOSITORY")
+            if not repository:
+                raise ValueError("route additions require authenticated discovery provenance")
+            references = discover_discovery_references(repository=repository, now=now)
+            discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
+                references,
+                repository=repository,
+                now=now,
+            )
+            for accepted_run in accepted:
+                for identity, calls in accepted_run.get("call_counts", {}).items():
+                    discovery_history_calls[identity] = (
+                        discovery_history_calls.get(identity, 0) + calls
+                    )
+                for row in accepted_run.get("input_successes", []):
+                    if (
+                        isinstance(row, list)
+                        and len(row) == 5
+                        and all(isinstance(value, str) and value for value in row)
+                    ):
+                        signature = tuple(row[:4])
+                        discovery_input_success_runs.setdefault(signature, set()).add(row[4])
         session = requests.Session()
         report = reconcile(
             limits,
@@ -143,7 +171,13 @@ def prepare(body, base_commit, proposal_kind=None):
             providers={d.provider for d in decisions if d.key in selected or d.route_id in paid},
             candidate_keys=selected,
             route_ids=paid,
+            discovery_history=discovery_history,
+            discovery_history_calls=discovery_history_calls,
+            discovery_input_success_runs={
+                key: tuple(sorted(value)) for key, value in discovery_input_success_runs.items()
+            },
         )
+        report.observations.extend(discovery_history_gaps)
     plan = plan_apply(report, decisions, config)
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:

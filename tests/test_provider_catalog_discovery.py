@@ -782,9 +782,20 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
         free_evidence_digest="b" * 64,
         created_at=now.isoformat(),
     )
+    input_success = DiscoveryObservation(
+        req,
+        STAMP,
+        outcome="admitted",
+        coordinate=2000,
+        count_basis="input",
+        verified=True,
+        reported_input=2000,
+        reported_output=10,
+        usage_state="valid",
+    )
     session = dict(
         session=metadata,
-        attempts=[dict(request=asdict(req), observation=asdict(observation(req, 2000)))],
+        attempts=[dict(request=asdict(req), observation=asdict(input_success))],
         reason="partial",
     )
     terminal_retry = {
@@ -853,6 +864,12 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
     values, accepted, deferred = verify()
     assert len(values) == len(accepted) == 1 and not deferred
     assert accepted[0]["receipt_ids"] == ["authorized-retry"]
+    assert accepted[0]["input_successes"] == []
+    run["conclusion"] = "success"
+    _values, accepted, deferred = verify()
+    assert not deferred and accepted[0]["input_successes"] == [
+        [req.identity, req.parser_version, req.fixture_version, req.control, "5"]
+    ]
 
     # Six newer empty or duplicate-only sessions must not crowd out older useful evidence.
     import copy
