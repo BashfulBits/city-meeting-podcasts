@@ -132,33 +132,59 @@ def _row(packet: Packet, item: Item, subject: Subject, **values: Any) -> dict[st
     }
 
 
+# The JEV route the Worker serves (config/provider_limits.yml) and its measured input ceiling, in
+# the provider's token units. A test pins both to the catalog so they cannot drift apart.
+JEV_ROUTE_ID = "beatapi_jev_1_13_free"
+JEV_HARD_INPUT_CEILING = 58_000
+# The Worker multiplies a job's chars/4 estimate by the route's input ratio before comparing it
+# with the ceiling (workers/llm-dispatch-v2/src/calibration.js). The ratio is learned, so a packet
+# is sized with the Worker's own figure plus a margin for its p95 tail; when the figure cannot be
+# read the packer assumes JEV counts 25% more tokens than chars/4.
+JEV_UNMEASURED_RATIO = 1.25
+JEV_RATIO_MARGIN = 1.05
+
+
+def _jev_question(item: Item) -> dict[str, Any]:
+    kind = item.question.kind
+    if kind in ("validate", "gate"):
+        return {"type": "noul", "instructions": item.text(), "criteria": {}}
+    if kind == "grade":
+        return {
+            "type": "score",
+            "instructions": item.text(),
+            "criteria": list(item.question.levels),
+        }
+    return {
+        "type": "choice",
+        "instructions": item.text(),
+        "criteria": {letter: f"Quote {letter}" for letter, _ in item.options},
+    }
+
+
 class JevBackend:
     role = "anchor"
-    # Plan figures (review/49 section 7): state is empty here, so the largest question must fit
-    # under 28,000 estimated tokens and the whole packet under 58,000.
-    max_total_tokens = 58_000
     max_question_tokens = 28_000
     max_items = 60
     output_reservation = 1_024  # within the route's 4,096 output reservation (Slice 3a fit)
 
+    def __init__(self, input_ratio: float | None = None) -> None:
+        """Size packets so the Worker admits them: the whole packet, as the producer will
+        estimate it, times the route's input ratio must stay within the hard input ceiling.
+
+        The first PR4 runs measured only each item's text, so every packet near the limit was
+        over the ceiling once the JSON the producer actually sends was counted (about 45 of 110
+        anchor packets a run failed as ``job_unroutable`` or ``input_over_route_ceiling``)."""
+        ratio = max(1.0, float(input_ratio)) if input_ratio else JEV_UNMEASURED_RATIO
+        self.input_ratio = ratio
+        self.max_total_tokens = int(JEV_HARD_INPUT_CEILING / (ratio * JEV_RATIO_MARGIN))
+        self.max_question_tokens = min(JevBackend.max_question_tokens, self.max_total_tokens)
+
+    def item_tokens(self, item: Item) -> int:
+        """The item's share of the request the producer estimates: its question as serialized."""
+        return estimate_tokens(json.dumps({item.qid: _jev_question(item)}, sort_keys=True))
+
     def build(self, packet: Packet) -> InferenceJob:
-        questions: dict[str, Any] = {}
-        for item in packet.items:
-            kind = item.question.kind
-            if kind in ("validate", "gate"):
-                questions[item.qid] = {"type": "noul", "instructions": item.text(), "criteria": {}}
-            elif kind == "grade":
-                questions[item.qid] = {
-                    "type": "score",
-                    "instructions": item.text(),
-                    "criteria": list(item.question.levels),
-                }
-            else:
-                questions[item.qid] = {
-                    "type": "choice",
-                    "instructions": item.text(),
-                    "criteria": {letter: f"Quote {letter}" for letter, _ in item.options},
-                }
+        questions: dict[str, Any] = {item.qid: _jev_question(item) for item in packet.items}
         return InferenceJob(
             task="judge",
             inputs={

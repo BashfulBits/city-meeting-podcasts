@@ -1738,6 +1738,21 @@ class JudgeStage(LLMProducerStage):
 
         anchor = lane_for("judge:anchor")
         sibling = lane_for("judge:sibling")
+        # Size JEV packets with the Worker's own input ratio for the route (None when it cannot be
+        # read: the packer then assumes the unmeasured default and errs small).
+        from citypods.compute.llm import dispatch_v2_learned_input_ratio
+        from citypods.judging.backends import JEV_ROUTE_ID
+
+        anchor_ratio = dispatch_v2_learned_input_ratio(
+            JEV_ROUTE_ID, "judge", backend=getattr(backend, "_backend", backend)
+        )
+        from citypods.judging.backends import JevBackend
+
+        print(
+            f"[judge] jev input ratio={anchor_ratio if anchor_ratio else 'unread'} "
+            f"packet ceiling={JevBackend(anchor_ratio).max_total_tokens} tokens",
+            flush=True,
+        )
         with ctx.judge_run_caps_lock:
             ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
             ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
@@ -1755,6 +1770,18 @@ class JudgeStage(LLMProducerStage):
             run_caps=ctx.judge_run_caps,
             run_caps_lock=ctx.judge_run_caps_lock,
             dry_run=dry_run,
+            anchor_input_ratio=anchor_ratio,
+            max_outstanding={
+                purpose: int(limit)
+                for purpose, limit in (
+                    ("judge:anchor", (config.get("max_outstanding_packets") or {}).get("anchor")),
+                    (
+                        "judge:sibling",
+                        (config.get("max_outstanding_packets") or {}).get("sibling"),
+                    ),
+                )
+                if limit is not None
+            },
         )
         result = runner.run(episodes, judging)
         for key, count in sorted(result.counts.items()):

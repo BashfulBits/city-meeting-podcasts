@@ -3139,6 +3139,62 @@ def test_judge_lane_uses_merged_scoped_push_without_full_reconcile(
     assert captured["full_run"] is False
 
 
+def test_judge_lanes_are_preflighted_and_a_closed_lane_starts_with_no_packets(
+    tmp_path, fake_provider, monkeypatch
+):
+    """2026-10-13: the Worker refused ingress (HTTP 500 on every enqueue) and the judge lane spent
+    about 50 minutes planning for nothing before the run went red. The judge lanes now join the
+    run-level preflight, and one reported closed starts the pass with no packets."""
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+        "judging:\n  enabled: true\n"
+    )
+    monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch.example.test")
+    asked = []
+
+    def fake_open(purpose, *, backend=None):
+        asked.append(purpose)
+        if purpose == "judge:anchor":
+            return False, {"open": False, "reasons": ["preflight_unavailable"]}
+        return True, {"open": True, "reasons": []}
+
+    monkeypatch.setattr("citypods.compute.llm.dispatch_v2_ingress_open", fake_open)
+    seen = {}
+
+    def _across(stage, _sources, ctx):
+        seen["caps"] = dict(ctx.judge_run_caps)
+        return StageStats(stage.name)
+
+    monkeypatch.setattr(run, "run_judge_across_sources", _across)
+    monkeypatch.setattr(run, "push_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(run, "push_records_merged", lambda *_a, **_k: 0)
+    monkeypatch.setattr(run, "reconcile_state", lambda *_a, **_k: 0)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
+
+    assert {"judge:anchor", "judge:sibling"} <= set(asked)
+    assert seen["caps"] == {"judge:anchor": 0}
+
+
+def test_other_lanes_do_not_preflight_the_judge_lanes(tmp_path, fake_provider, monkeypatch):
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+        "judging:\n  enabled: true\n"
+    )
+    monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch.example.test")
+    asked = []
+
+    def fake_open(purpose, *, backend=None):
+        asked.append(purpose)
+        return True, {"open": True, "reasons": []}
+
+    monkeypatch.setattr("citypods.compute.llm.dispatch_v2_ingress_open", fake_open)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="tag")
+    assert "judge:anchor" not in asked and "judge:sibling" not in asked
+
+
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------
 
 _NOW = datetime(2026, 6, 12, tzinfo=UTC)
