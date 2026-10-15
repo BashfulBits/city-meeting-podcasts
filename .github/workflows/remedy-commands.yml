@@ -81,7 +81,12 @@ jobs:
               >> "$GITHUB_OUTPUT"
           else
             message=$(jq -r '.error // "decision rejected"' disposition-result.json)
-            echo "message=❌ $message" >> "$GITHUB_OUTPUT"
+            delimiter=$(uuidgen)
+            {
+              echo "message<<$delimiter"
+              printf '❌ %s\n' "$message"
+              echo "$delimiter"
+            } >> "$GITHUB_OUTPUT"
             echo "close_issue=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Reply with disposition result

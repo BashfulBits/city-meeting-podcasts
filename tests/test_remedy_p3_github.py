@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -134,12 +135,78 @@ def test_manual_issue_reconciliation_preserves_checked_boxes_and_notes():
     assert "- [x] Include `test-city-council`" in generated
     assert "- [x] Exclude `test-city-council`" not in generated
     assert "Keep this context." in updated
+    assert remedy_p3_publish.P3_ISSUE_KEY.format(binding["decision_id"]) in updated
+
+
+@pytest.mark.parametrize("state", ["open", "closed"])
+def test_issue_reconciliation_updates_same_decision_when_evidence_changes(monkeypatch, state):
+    old_binding = {
+        "decision_id": "a" * 64,
+        "evidence_hash": "b" * 64,
+        "policy_hash": "c" * 64,
+        "policy_id": "p3-unexpected-body-routing-v1",
+        "normalized_label": "committee",
+        "city": "example-tx",
+        "feed_slugs": ["test-city-council"],
+        "expected_parent_event_ids": [],
+        "source_key": "example:source",
+        "recording_refs": [],
+        "config_hash": "d" * 64,
+        "observed_at": "2026-10-15T00:00:00Z",
+    }
+    new_binding = {**old_binding, "evidence_hash": "e" * 64}
+    report = {
+        "decision": {"finding_id": "finding-1"},
+        "manual_issue_candidate": "- [ ] Include `test-city-council`",
+    }
+    prior_body = remedy_p3_publish._render_issue(report, old_binding)
+    issue = {
+        "number": 17,
+        "title": "[P3 disposition] committee (example-tx)",
+        "body": prior_body,
+        "state": state,
+        "url": "https://github.com/example/repo/issues/17",
+    }
+    calls = []
+
+    def fake_gh(*args, check=True):
+        calls.append(args)
+        if args[:2] == ("issue", "list"):
+            return json.dumps([issue])
+        return ""
+
+    monkeypatch.setattr(remedy_p3_publish, "_gh", fake_gh)
+    url = remedy_p3_publish._reconcile_issue(report, new_binding, dry_run=False)
+
+    assert url == issue["url"]
+    edited = next(call for call in calls if call[:2] == ("issue", "edit"))
+    assert edited[2] == "17"
     assert (
-        remedy_p3_publish.P3_ISSUE_KEY.format(
-            remedy_p3_publish.canonical_hash([binding["decision_id"], binding["evidence_hash"]])
-        )
-        in updated
+        json.loads(re.search(r"<!-- citypods:remedy-p3:binding=([^\n]+) -->", edited[-1]).group(1))[
+            "evidence_hash"
+        ]
+        == new_binding["evidence_hash"]
     )
+    if state == "closed":
+        assert ("issue", "reopen", "17") in calls
+
+
+def test_public_disposition_error_is_single_line_and_does_not_expose_other_errors():
+    assert remedy_disposition_command._public_error(ValueError("stale or future snapshot")) == (
+        "Evidence is stale. Wait for the next refresh, then submit the disposition."
+    )
+    assert remedy_disposition_command._public_error(ValueError("first\nsecond")) == (
+        "P3 disposition could not be applied. Check the workflow log for details."
+    )
+    assert remedy_disposition_command._public_error(RuntimeError("secret detail")) == (
+        "P3 disposition could not be applied. Check the workflow log for details."
+    )
+
+
+def test_proposal_pr_explains_github_token_check_trigger_limit():
+    source = Path("scripts/remedy_p3_publish.py").read_text(encoding="utf-8")
+    assert "automatically run checks for PRs created with GITHUB_TOKEN" in source
+    assert "dispatch required checks against this PR branch and head before merge." in source
 
 
 def test_binding_uses_source_feeds_if_report_feed_list_is_absent():

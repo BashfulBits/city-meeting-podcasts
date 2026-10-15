@@ -1269,14 +1269,6 @@ four exact route/effort admissions pass and a monitored end-to-end cycle complet
 content is kept in fragments, with no direct CHANGELOG.md edit. Ruff, formatting, targeted tests,
 and the full local suite passed. This scoped verification does not authorize activation.
 
-**2026-10-15 verification record — P3 GitHub handoff PR #2449:** this record supersedes the earlier
-#2447 status above for current implementation. PR #2447 is merged; #2449 adds bounded proposal PRs,
-manual issues, and typed P2 feed dispositions using the existing reconciliation command path. The
-PR remains under review, so no Shipped status is claimed. Production remains shadowed until the
-four exact route/effort admissions pass and a monitored end-to-end cycle completes. The changelog
-content is kept in fragments; no direct CHANGELOG.md edit remains. Ruff, formatting, targeted tests,
-and the full local test suite passed. This scoped verification does not authorize activation.
-
 ---
 
 ## §8. Codex review appraisal & post-review queue

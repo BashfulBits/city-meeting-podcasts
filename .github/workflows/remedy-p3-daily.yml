@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 330
     outputs:
       status: ${{ steps.p3.outputs.status }}
+      report_ready_count: ${{ steps.p3.outputs.report_ready_count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -55,6 +56,8 @@ jobs:
             --evidence-output "$RUNNER_TEMP/remedy-p3-evidence-${GITHUB_RUN_ID}.json"
           echo "status=$(jq -r '.status' "$RUNNER_TEMP/remedy-p3-${GITHUB_RUN_ID}.json")" \
             >> "$GITHUB_OUTPUT"
+          echo "report_ready_count=$(jq '[.findings[] | select(.status == "report_ready")] | length' \
+            "$RUNNER_TEMP/remedy-p3-${GITHUB_RUN_ID}.json")" >> "$GITHUB_OUTPUT"
 
       - name: Upload P3 run report
         if: always()
@@ -66,7 +69,7 @@ jobs:
           retention-days: 30
 
       - name: Upload publication inputs
-        if: steps.p3.outputs.status == 'completed'
+        if: steps.p3.outputs.report_ready_count != '0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: remedy-p3-publication-${{ github.run_id }}
@@ -79,7 +82,7 @@ jobs:
   publish:
     needs: p3
     if: >-
-      github.ref == 'refs/heads/main' && needs.p3.outputs.status == 'completed'
+      github.ref == 'refs/heads/main' && needs.p3.outputs.report_ready_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

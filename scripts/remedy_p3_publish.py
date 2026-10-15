@@ -119,7 +119,7 @@ def _action_template(binding: dict) -> dict:
 
 
 def _render_issue(report: dict, binding: dict, prior_body: str = "") -> str:
-    key = canonical_hash([binding["decision_id"], binding["evidence_hash"]])
+    key = binding["decision_id"]
     action = _action_template(binding)
     body = "\n".join(
         [
@@ -196,7 +196,7 @@ def _find_binding(body: str) -> dict | None:
 
 
 def _reconcile_issue(report: dict, binding: dict, *, dry_run: bool) -> str:
-    key = canonical_hash([binding["decision_id"], binding["evidence_hash"]])
+    key = binding["decision_id"]
     if not dry_run:
         _gh(
             "label",
@@ -224,7 +224,11 @@ def _reconcile_issue(report: dict, binding: dict, *, dry_run: bool) -> str:
         )
         or "[]"
     )
-    existing = [issue for issue in issues if P3_ISSUE_KEY.format(key) in (issue.get("body") or "")]
+    existing = [
+        issue
+        for issue in issues
+        if (_find_binding(issue.get("body") or "") or {}).get("decision_id") == key
+    ]
     if len(existing) > 1:
         raise RuntimeError(f"duplicate reconciled P3 issues for {key}")
     title = f"[P3 disposition] {binding['normalized_label']} ({binding['city']})"
@@ -233,11 +237,15 @@ def _reconcile_issue(report: dict, binding: dict, *, dry_run: bool) -> str:
     if len(body) > MAX_ISSUE_BODY_CHARS:
         return "deferred: generated issue exceeds the safe GitHub body limit"
     if prior is not None:
-        if str(prior.get("state", "")).lower() != "open":
+        prior_binding = _find_binding(prior.get("body", "")) or {}
+        same_evidence = prior_binding.get("evidence_hash") == binding["evidence_hash"]
+        if str(prior.get("state", "")).lower() != "open" and same_evidence:
             return str(prior.get("url") or f"issue #{prior['number']} (closed; unchanged evidence)")
         if prior.get("title") != title or prior.get("body", "").strip() != body.strip():
             if not dry_run:
                 _gh("issue", "edit", str(prior["number"]), "--title", title, "--body", body)
+        if str(prior.get("state", "")).lower() != "open" and not dry_run:
+            _gh("issue", "reopen", str(prior["number"]))
         return str(prior.get("url") or f"issue #{prior['number']}")
     open_issues = [issue for issue in issues if str(issue.get("state", "")).lower() == "open"]
     if len(open_issues) >= MAX_OPEN_P3_ISSUES:
@@ -317,7 +325,10 @@ def _publish_pr(plans, *, repo_root: Path, digest: str) -> str:
     body = (
         "Validated P3 proposal from route-bound consensus. Feed changes were generated through "
         "the existing remedy mutation API, revalidated against current evidence, and passed the "
-        "repository config, Ruff, format, and offline test gates. Human review and merge required."
+        "repository config, Ruff, format, and offline test gates locally. GitHub Actions does not "
+        "automatically run checks for PRs created with GITHUB_TOKEN; a maintainer must manually "
+        "dispatch required checks against this PR branch and head before merge. Human review and "
+        "merge are required."
         f"\n\nFindings:\n{detail}"
     )
     created = subprocess.run(

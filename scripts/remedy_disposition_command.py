@@ -87,6 +87,15 @@ def apply_comment(event: dict, permission: dict, *, storage, lease_factory) -> s
         )
 
 
+def _public_error(exc: Exception) -> str:
+    if isinstance(exc, ValueError) and "\n" not in str(exc) and "\r" not in str(exc):
+        message = str(exc)
+        if "stale or future snapshot" in message:
+            return "Evidence is stale. Wait for the next refresh, then submit the disposition."
+        return message
+    return "P3 disposition could not be applied. Check the workflow log for details."
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True, type=Path)
@@ -120,10 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             "close_issue": action["state"] in {"covered", "excluded", "resolved"},
         }
     except Exception as exc:  # surfaced to the issue-comment workflow without exposing secrets
-        error = f"{type(exc).__name__}: {exc}"
-        if "stale or future snapshot" in error:
-            error = "Evidence is stale. Wait for the next refresh, then submit the disposition."
-        result = {"accepted": False, "error": error}
+        result = {"accepted": False, "error": _public_error(exc)}
     args.result.parent.mkdir(parents=True, exist_ok=True)
     args.result.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
     return 0 if result["accepted"] else 1
