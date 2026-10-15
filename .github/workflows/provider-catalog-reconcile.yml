@@ -19,12 +19,12 @@ on:
         default: false
         type: boolean
       discovery_enabled:
-        description: "Run one bounded request-cap discovery canary (manual selection required)"
+        description: "Run bounded discovery for an exact candidate (qualifying routes run weekly)"
         required: false
         default: false
         type: boolean
       discovery_candidate:
-        description: "Exact new route identity, provider/model (required when discovery_enabled is true)"
+        description: "Manual candidate provider/model; weekly automatic discovery ignores this"
         required: false
         default: ""
         type: string
@@ -82,11 +82,10 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    # Two bounded one-hour discovery sessions plus health/drain work and evidence cleanup.
-    # Per-call deadlines and all call/token ceilings remain unchanged.
+    # Three bounded 90-minute new-route input searches plus catalog checks and cleanup.
     timeout-minutes: >-
-      ${{ github.event_name == 'workflow_dispatch' &&
-          inputs.discovery_enabled == true && 180 || 120 }}
+      ${{ github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1' && 300 ||
+          github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 || 120 }}
     permissions:
       contents: read
       issues: write

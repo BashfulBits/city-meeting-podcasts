@@ -23,8 +23,13 @@ DEFAULT_OUTPUT_SEED = INPUT_OUTPUT_COUNTERPART
 DEFAULT_COMBINED_SEED = INPUT_OUTPUT_COUNTERPART + 2_048
 MIN_OUTPUT_INPUT = 256
 MIN_INPUT_PROBE = 2_000
-MAX_SESSION_INPUT = 8_388_608
-MAX_RUN_INPUT = 16_777_216
+MAX_SESSION_CALLS = 96
+MAX_RUN_SESSIONS = 3
+MAX_RUN_CALLS = MAX_SESSION_CALLS * MAX_RUN_SESSIONS
+MAX_SESSION_INPUT = 16_777_216
+MAX_RUN_INPUT = MAX_SESSION_INPUT * MAX_RUN_SESSIONS
+MAX_SESSION_OUTPUT = 1_572_864
+MAX_RUN_OUTPUT = MAX_SESSION_OUTPUT * MAX_RUN_SESSIONS
 
 
 def output_discovery_control(min_tokens: bool = False) -> str:
@@ -69,7 +74,7 @@ MAX_RESPONSE_PREVIEW_CHARS = 1_024
 MAX_NO_RESPONSE_CALLS = 5
 INPUT_SIZE_GUIDANCE = {"computed_input_budget_exhausted", "input_size_refused_without_exact_counts"}
 MAX_RESPONSE_TIMEOUT_SECONDS = 720
-MAX_SESSION_SECONDS = 3_600
+MAX_SESSION_SECONDS = 5_400
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
     "transport_connection_error",
@@ -377,9 +382,9 @@ class Bracket:
 
 @dataclass
 class DiscoveryBudget:
-    max_calls: int = 64
+    max_calls: int = MAX_SESSION_CALLS
     max_input: int = MAX_SESSION_INPUT
-    max_output: int = 524_288
+    max_output: int = MAX_SESSION_OUTPUT
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -507,11 +512,11 @@ def run_discovery(
         not selected_axes or any(axis not in AXES for axis in selected_axes)
     ):
         raise ValueError("invalid selected discovery axes")
-    for selected, multiplier in ((budget, 1), (shared_budget, 2)):
+    for selected, multiplier in ((budget, 1), (shared_budget, MAX_RUN_SESSIONS)):
         if selected and (
-            selected.max_calls > 64 * multiplier
+            selected.max_calls > MAX_SESSION_CALLS * multiplier
             or selected.max_input > MAX_SESSION_INPUT * multiplier
-            or selected.max_output > 524_288 * multiplier
+            or selected.max_output > MAX_SESSION_OUTPUT * multiplier
         ):
             raise ValueError("discovery envelope exceeds reviewed ceiling")
     started = datetime.fromisoformat(journal.data["started_at"])

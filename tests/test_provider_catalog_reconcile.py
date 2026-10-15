@@ -238,7 +238,9 @@ def test_a_proven_free_model_becomes_a_candidate_with_score_links_and_lane_sugge
 def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounded(
     monkeypatch,
 ):
+    import citypods.provider_catalog.discovery as discovery_module
     import citypods.provider_catalog.reconcile as module
+    from citypods.provider_catalog.discovery import MAX_RUN_SESSIONS
 
     calls = []
     selected_axes = []
@@ -282,11 +284,111 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
     candidate_keys = {candidate.key for candidate in report.candidates}
     assert calls
     assert {key for key, _ in calls} <= candidate_keys
-    assert len(calls) <= 2
+    assert len(calls) <= MAX_RUN_SESSIONS
     assert selected_axes and all(axes is None for axes in selected_axes)
     assert len({key.split("/", 1)[0] for key, _ in calls}) == len(calls)
     configured = {f"{route['provider']}/{route['upstream_model']}" for route in LIMITS["routes"]}
     assert all(key not in configured for key, _ in calls)
+
+    calls.clear()
+    selected_axes.clear()
+    automatic = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-run",
+    )
+    assert calls and all(axes == ("input",) for axes in selected_axes)
+    assert all(
+        candidate.score is not None and candidate.score > 33.0
+        for candidate in automatic.candidates
+        if candidate.discovery
+        and candidate.discovery.get("reason") != "below_automatic_quality_floor"
+    )
+    assert any(
+        candidate.discovery and candidate.discovery.get("reason") == "below_automatic_quality_floor"
+        for candidate in automatic.candidates
+    )
+
+    receipt_key = calls[0][0]
+    calls.clear()
+    selected_axes.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_receipt_ids={receipt_key: "reviewed-receipt"},
+        discovery_run_id="automatic-retry-run",
+    )
+    assert calls and all(
+        axes is None if key == receipt_key else axes == ("input",)
+        for (key, _receipt), axes in zip(calls, selected_axes, strict=True)
+    )
+
+    monkeypatch.setattr(discovery_module, "MAX_RUN_SESSIONS", 0)
+    calls.clear()
+    deferred = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-deferred-run",
+    )
+    pending = [
+        key for key, memory in deferred.state["canaries"].items() if memory.get("discovery_pending")
+    ]
+    assert pending
+    assert any(
+        candidate.key in pending
+        and candidate.discovery
+        and candidate.discovery.get("reason") == "automatic_discovery_deferred_run_budget"
+        for candidate in deferred.candidates
+    )
+
+    monkeypatch.setattr(discovery_module, "MAX_RUN_SESSIONS", 3)
+    calls.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        deferred.state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-next-week-run",
+    )
+    assert any(key in pending for key, _receipt in calls)
 
     calls.clear()
     selected = "groq/meta-llama/llama-new"

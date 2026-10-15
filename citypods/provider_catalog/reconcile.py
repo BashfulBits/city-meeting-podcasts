@@ -61,10 +61,9 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
-# New-route discovery is enabled only for an explicit, single-candidate workflow dispatch and
-# authenticated maintainer retries. Broad weekly discovery remains a separate activation gate.
+# New-route discovery runs on the weekly full scan after the existing route gates pass.
 DISCOVERY_ACTIVATION_ENABLED = True
-DISCOVERY_SCHEDULED_ENABLED = False
+DISCOVERY_SCHEDULED_ENABLED = True
 ANOMALY_VERDICTS = frozenset({"retired", "not_served", "not_entitled", "account_blocked"})
 RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say
@@ -356,6 +355,7 @@ def reconcile(
     early_rate_checks: set[str] | None = None,
     context_run=None,
     discovery_enabled: bool = False,
+    discovery_automatic: bool = False,
     discovery_axis: str = "all",
     discovery_history=(),
     discovery_history_calls: Mapping[str, int] | None = None,
@@ -367,14 +367,24 @@ def reconcile(
     report = Report(floor=quality.floor)
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")
+    if type(discovery_automatic) is not bool:
+        raise ValueError("invalid automatic discovery mode")
     if discovery_axis != "all" and not (discovery_enabled and candidate_keys):
         raise ValueError("axis selection requires an exact manual discovery candidate")
     discovery_shared_budget = None
     if discovery_enabled:
-        from citypods.provider_catalog.discovery import MAX_RUN_INPUT, DiscoveryBudget
+        from citypods.provider_catalog.discovery import (
+            MAX_RUN_CALLS,
+            MAX_RUN_INPUT,
+            MAX_RUN_OUTPUT,
+            MAX_RUN_SESSIONS,
+            DiscoveryBudget,
+        )
 
         discovery_shared_budget = DiscoveryBudget(
-            max_calls=128, max_input=MAX_RUN_INPUT, max_output=1_048_576
+            max_calls=MAX_RUN_CALLS,
+            max_input=MAX_RUN_INPUT,
+            max_output=MAX_RUN_OUTPUT,
         )
     rechecked_routes: set[str] = set()
     structured_checks = dict(previous_state.get("structured_checks") or {})
@@ -408,6 +418,21 @@ def reconcile(
             key=lambda provider: min(
                 (rank.get(r["route_id"], len(rank)) for r in routes if r["provider"] == provider),
                 default=len(rank),
+            )
+        )
+    if discovery_automatic:
+        pending_since: dict[str, str] = {}
+        for key, memory in canary_memory.items():
+            provider, separator, _model = key.partition("/")
+            pending_on = memory.get("discovery_pending_on")
+            if separator and memory.get("discovery_pending") and isinstance(pending_on, str):
+                pending_since[provider] = min(pending_since.get(provider, pending_on), pending_on)
+        original_order = {provider: index for index, provider in enumerate(selected)}
+        selected.sort(
+            key=lambda provider: (
+                0 if provider in pending_since else 1,
+                pending_since.get(provider, ""),
+                original_order[provider],
             )
         )
     for provider in selected:
@@ -675,6 +700,7 @@ def reconcile(
                     and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
+                    and not memory.get("discovery_pending")
                     and memory.get("verdict") in DEFINITIVE_VERDICTS
                     and (memory.get("verdict") != "proven" or memory.get("method"))
                 )
@@ -699,7 +725,14 @@ def reconcile(
                 if not free:
                     continue
                 score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
-                candidates.append((model, record, score, memory is not None))
+                candidates.append(
+                    (
+                        model,
+                        record,
+                        score,
+                        memory is not None and not memory.get("discovery_pending"),
+                    )
+                )
             for key in (retry_candidate_keys or set()) | (candidate_keys or set()):
                 provider_prefix, separator, model = key.partition("/")
                 if (
@@ -950,12 +983,17 @@ def reconcile(
                     method, _evidence = verify(model, api_key or "")
                     if method is None:
                         result = Classification("inconclusive", result.status, "JSON not verified")
+                discovery_pending_on = memory.get("discovery_pending_on") if memory else None
                 canary_memory[f"{provider}/{model}"] = {
                     "verdict": result.verdict,
                     "on": today.isoformat(),
                     "method": method,
                     "structured_results": _evidence,
                 }
+                if discovery_pending_on:
+                    canary_memory[f"{provider}/{model}"]["discovery_pending_on"] = (
+                        discovery_pending_on
+                    )
                 if result.verdict == "proven":
                     report.candidates.append(
                         evidenced_candidate(
@@ -973,40 +1011,143 @@ def reconcile(
                     if (
                         discovery_enabled
                         and not pause.contended
-                        and len(report.discovery_sessions) < 2
+                        and len(report.discovery_sessions) < MAX_RUN_SESSIONS
                         and not any(
                             row.get("session", {}).get("provider") == provider
                             for row in report.discovery_sessions
                         )
                     ):
-                        try:
-                            session_record = _discover_candidate_caps(
-                                candidate,
-                                record,
-                                provider_cfg=cfg,
-                                rules=rules,
-                                pause=pause,
-                                session=session,
-                                today=today,
-                                run_id=discovery_run_id,
-                                receipt_id=(discovery_receipt_ids or {}).get(
-                                    candidate.key, discovery_receipt_id
-                                ),
-                                history=discovery_history,
-                                shared_budget=discovery_shared_budget,
-                                selected_axes=(discovery_axis,)
-                                if discovery_axis != "all"
-                                else None,
-                                sleep=sleep,
-                            )
-                            candidate.discovery = session_record["summary"]
-                            report.discovery_sessions.append(session_record["artifact"])
-                        except Exception as exc:
-                            # Discovery is advisory; preserve the proven reachability result.
+                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                        identity = _candidate_discovery_identity(provider, model, rules, cfg)
+                        receipt_id = (discovery_receipt_ids or {}).get(
+                            candidate.key, discovery_receipt_id
+                        )
+                        automatic_candidate = (
+                            discovery_automatic
+                            and receipt_id is None
+                            and candidate.key not in (retry_candidate_keys or set())
+                        )
+                        already_discovered = automatic_candidate and identity in (
+                            discovery_history_calls or {}
+                        )
+                        if already_discovered:
+                            if not candidate.discovery:
+                                candidate.discovery = {
+                                    "retryable": False,
+                                    "reason": "automatic_discovery_already_recorded",
+                                    "detail": (
+                                        "Authenticated discovery history already exists; use the "
+                                        "reviewed test-again choice to spend another session."
+                                    ),
+                                    "axes": [],
+                                    "calls": 0,
+                                    "input_tokens": 0,
+                                    "output_tokens": 0,
+                                }
+                        elif automatic_candidate and (
+                            candidate.score is None
+                            or discovery_floor is None
+                            or candidate.score <= discovery_floor
+                        ):
                             candidate.discovery = {
                                 "retryable": False,
-                                "reason": "discovery_stopped_safely",
-                                "detail": f"Search stopped safely ({type(exc).__name__}).",
+                                "reason": "below_automatic_quality_floor",
+                                "detail": (
+                                    "Automatic input discovery requires an AA score strictly "
+                                    "above the current GPT-OSS-120B score."
+                                ),
+                                "axes": [],
+                                "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                            }
+                        else:
+                            selected_axes = (
+                                ("input",)
+                                if automatic_candidate
+                                else (discovery_axis,)
+                                if discovery_axis != "all"
+                                else None
+                            )
+                            try:
+                                session_record = _discover_candidate_caps(
+                                    candidate,
+                                    record,
+                                    provider_cfg=cfg,
+                                    rules=rules,
+                                    pause=pause,
+                                    session=session,
+                                    today=today,
+                                    run_id=discovery_run_id,
+                                    receipt_id=(discovery_receipt_ids or {}).get(
+                                        candidate.key, discovery_receipt_id
+                                    ),
+                                    history=discovery_history,
+                                    shared_budget=discovery_shared_budget,
+                                    selected_axes=selected_axes,
+                                    sleep=sleep,
+                                )
+                                candidate.discovery = session_record["summary"]
+                                report.discovery_sessions.append(session_record["artifact"])
+                            except Exception as exc:
+                                # Discovery is advisory; preserve the proven reachability result.
+                                candidate.discovery = {
+                                    "retryable": False,
+                                    "reason": "discovery_stopped_safely",
+                                    "detail": f"Search stopped safely ({type(exc).__name__}).",
+                                    "axes": [],
+                                    "calls": 1
+                                    + len((candidate.evidence or {}).get("methods") or ()),
+                                    "input_tokens": 0,
+                                    "output_tokens": 0,
+                                }
+                    elif discovery_automatic:
+                        receipt_id = (discovery_receipt_ids or {}).get(
+                            candidate.key, discovery_receipt_id
+                        )
+                        identity = _candidate_discovery_identity(provider, model, rules, cfg)
+                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                        if (
+                            receipt_id is None
+                            and candidate.key not in (retry_candidate_keys or set())
+                            and identity not in (discovery_history_calls or {})
+                            and candidate.score is not None
+                            and discovery_floor is not None
+                            and candidate.score > discovery_floor
+                        ):
+                            canary_memory[f"{provider}/{model}"]["discovery_pending"] = True
+                            canary_memory[f"{provider}/{model}"].setdefault(
+                                "discovery_pending_on", today.isoformat()
+                            )
+                            candidate.discovery = {
+                                "retryable": False,
+                                "reason": "automatic_discovery_deferred_run_budget",
+                                "detail": (
+                                    "Reachability and quality passed, but this run's bounded "
+                                    "discovery slot was unavailable; it will be rechecked "
+                                    "next week."
+                                ),
+                                "axes": [],
+                                "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                            }
+                        elif (
+                            receipt_id is None
+                            and candidate.key not in (retry_candidate_keys or set())
+                            and (
+                                candidate.score is None
+                                or discovery_floor is None
+                                or candidate.score <= discovery_floor
+                            )
+                        ):
+                            candidate.discovery = {
+                                "retryable": False,
+                                "reason": "below_automatic_quality_floor",
+                                "detail": (
+                                    "Automatic input discovery requires an AA score strictly "
+                                    "above the current GPT-OSS-120B score."
+                                ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
                                 "input_tokens": 0,

@@ -1602,7 +1602,7 @@ def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
         raise ValueError("too many discovery sessions")
     normalized = []
     for session in sessions:
-        if len(session.get("attempts", [])) > 64:
+        if len(session.get("attempts", [])) > 96:
             raise ValueError("too many discovery attempts")
         attempts = []
         for row in session.get("attempts", []):

@@ -1678,7 +1678,7 @@ def test_new_route_discovery_requires_one_explicit_manual_candidate():
     assert 'args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")' in run
     assert 'args+=(--discovery-axis "$DISCOVERY_AXIS")' in run
     assert (
-        "DISCOVERY_SCHEDULED_ENABLED = False"
+        "DISCOVERY_SCHEDULED_ENABLED = True"
         in (REPO_ROOT / "citypods" / "provider_catalog" / "reconcile.py").read_text()
     )
 
@@ -1869,9 +1869,10 @@ def test_manual_context_diagnostic_artifact_uploads_even_after_failure():
     assert "if: always() && github.event_name == 'workflow_dispatch'" in step
 
 
-def test_manual_discovery_has_cleanup_time_without_extending_ordinary_reconciliation():
+def test_discovery_has_bounded_weekly_and_manual_time_without_extending_ordinary_runs():
     workflow = yaml.safe_load(Path(".github/workflows/provider-catalog-reconcile.yml").read_text())
     timeout = workflow["jobs"]["reconcile"]["timeout-minutes"]
     assert "github.event_name == 'workflow_dispatch'" in timeout
     assert "inputs.discovery_enabled == true" in timeout
     assert "180 || 120" in timeout
+    assert "&& 300 ||" in timeout

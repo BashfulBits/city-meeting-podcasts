@@ -1781,6 +1781,10 @@ def test_weekly_disabled_or_stale_catalog_does_not_start_history_admission_or_ca
     )
     monkeypatch.setattr(script, "_control", lambda _no_pause: control)
     monkeypatch.setattr(evidence, "discover_context_references", forbidden)
+    monkeypatch.setattr(script, "discover_discovery_references", lambda **_kwargs: ())
+    monkeypatch.setattr(
+        script, "verified_discovery_history", lambda *_args, **_kwargs: ((), (), ())
+    )
     monkeypatch.setattr(script, "fetch_quality_index", lambda _session: None)
 
     def reconcile(*_args, **kwargs):
@@ -1790,7 +1794,9 @@ def test_weekly_disabled_or_stale_catalog_does_not_start_history_admission_or_ca
     monkeypatch.setattr(script, "reconcile", reconcile)
     monkeypatch.setattr(script, "backtest_discovery", lambda *_args, **_kwargs: [])
     target = tmp_path / "evidence.json"
-    assert script.main(["--context-evidence", str(target)]) == 0
+    assert (
+        script.main(["--context-evidence", str(target), "--discovery-evidence", str(target)]) == 0
+    )
     assert json.loads(target.read_text())["payload"]["observations"] == []
 
 
