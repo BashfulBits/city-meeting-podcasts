@@ -263,6 +263,15 @@ def test_a_reopening_counts_against_the_budget_before_new_work():
     assert not result.prs and result.queued[0].reason == "rolling_week_pr_budget"
 
 
+def test_a_reopening_that_does_not_fit_stays_queued_with_its_city_and_age():
+    closed = artifact("c", state="closed", opened_days_ago=40)
+    full = [artifact(f"w{i}", state="merged", opened_days_ago=1 + i * 0.1) for i in range(8)]
+    result = plan([cand("c", city="austin-tx", age_days=9, reopen_requested=True)], [closed, *full])
+    [item] = result.queued
+    assert (item.reason, item.city, item.age_days) == ("reopen_budget", "austin-tx", 9.0)
+    assert not result.reopens
+
+
 def test_a_rejected_decision_does_not_regenerate_until_its_evidence_changes():
     rejected = {did("r"): q.LedgerView("refinement_needed", "rejected", "e1")}
     same = plan([cand("r", evidence_hash="e1")], ledger=rejected)

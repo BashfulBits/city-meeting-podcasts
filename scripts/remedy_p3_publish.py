@@ -160,6 +160,17 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _eligibility(collected_at: object) -> tuple[datetime | None, str]:
+    """The time a finding became publishable, or why it cannot be read.
+
+    The publication plan is a report: an unreadable collection time only drops the plan and never
+    stops the publisher."""
+    try:
+        return _parse_time(str(collected_at)), ""
+    except (TypeError, ValueError) as exc:
+        return None, f"unreadable evidence collection time: {exc}"
+
+
 def _binding_for(
     source: dict,
     finding: dict,
@@ -525,6 +536,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     deferred = []
     candidates: list[Candidate] = []
     candidate_sources: set[str] = set()
+    eligible_since, publication_plan_error = _eligibility(collected_at)
     findings_by_id = {}
     for source in sources:
         for finding in source.get("unexpected_findings", []):
@@ -575,21 +587,22 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                     decision["evidence_hash"],
                 )
             )
-            candidates.append(
-                _pr_candidate(
-                    plan,
-                    _binding_for(
-                        source,
-                        finding,
-                        p3_report,
-                        canonical_hash(config.model_dump(mode="json")),
-                        [],
-                        collected_at,
-                    ),
-                    _parse_time(collected_at),
+            if eligible_since is not None:
+                candidates.append(
+                    _pr_candidate(
+                        plan,
+                        _binding_for(
+                            source,
+                            finding,
+                            p3_report,
+                            canonical_hash(config.model_dump(mode="json")),
+                            [],
+                            collected_at,
+                        ),
+                        eligible_since,
+                    )
                 )
-            )
-            candidate_sources.add(source["source_key"])
+                candidate_sources.add(source["source_key"])
         elif decision.get("disposition") == "issue_candidate":
             if len(issue_rows) >= MAX_PUBLISH_PER_RUN:
                 deferred.append(
@@ -615,8 +628,9 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 # Refresh lease before using the just-read parent snapshot.
                 lease.assert_held()
             issue_rows.append((p3_report, binding))
-            candidates.append(_issue_candidate(binding, _parse_time(collected_at)))
-            candidate_sources.add(source["source_key"])
+            if eligible_since is not None:
+                candidates.append(_issue_candidate(binding, eligible_since))
+                candidate_sources.add(source["source_key"])
 
     published = []
     if plans:
@@ -638,8 +652,10 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
         "status": status,
         "published": published,
         "deferred": deferred,
-        "publication_plan": _publication_report(
-            candidates, candidate_sources, storage, config.limits
+        "publication_plan": (
+            {"mode": "report_only", "error": publication_plan_error}
+            if publication_plan_error
+            else _publication_report(candidates, candidate_sources, storage, config.limits)
         ),
     }
 

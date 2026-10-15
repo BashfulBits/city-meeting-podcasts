@@ -381,3 +381,12 @@ def test_an_unreadable_github_listing_is_an_incomplete_snapshot(monkeypatch):
     monkeypatch.setattr(remedy_p3_publish, "_gh", refuse)
     snapshot = remedy_p3_publish._fetch_snapshot()
     assert snapshot.complete is False and not snapshot.artifacts
+
+
+def test_an_unreadable_collection_time_drops_the_plan_and_not_the_publisher():
+    """CodeRabbit review: parsing the evidence timestamp sat outside the report's guard."""
+    moment, error = remedy_p3_publish._eligibility("2026-10-15T06:30:00Z")
+    assert moment == datetime(2026, 10, 15, 6, 30, tzinfo=UTC) and error == ""
+    for bad in ("yesterday", "", None, 12):
+        moment, error = remedy_p3_publish._eligibility(bad)
+        assert moment is None and error.startswith("unreadable evidence collection time")

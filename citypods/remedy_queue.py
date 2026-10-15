@@ -309,7 +309,7 @@ def plan_publications(
     skipped: list[Skipped] = []
     updates: dict[int, list[str]] = defaultdict(list)
     update_artifacts: dict[int, Artifact] = {}
-    reopen_ids: dict[int, list[str]] = defaultdict(list)
+    reopen_ids: dict[int, list[Candidate]] = defaultdict(list)
     reopen_artifacts: dict[int, Artifact] = {}
     fresh: list[Candidate] = []
     seen: set[str] = set()
@@ -339,7 +339,7 @@ def plan_publications(
         closed_one = next((a for a in existing if a.state in ("closed", "merged")), None)
         if closed_one is not None:
             if candidate.reopen_requested and closed_one.state == "closed":
-                reopen_ids[closed_one.number].append(candidate.decision_id)
+                reopen_ids[closed_one.number].append(candidate)
                 reopen_artifacts[closed_one.number] = closed_one
             else:
                 skipped.append(Skipped(candidate.decision_id, f"already_{closed_one.state}"))
@@ -366,24 +366,15 @@ def plan_publications(
         artifact = reopen_artifacts[number]
         slots = min(weekly_left, open_left) if artifact.kind == "pr" else issue_slots
         if slots <= 0:
-            for item in ids:
-                queued.append(
-                    Queued(
-                        item,
-                        "",
-                        artifact.kind,
-                        "reopen_budget",
-                        artifact.opened_at,
-                        _age_days(artifact.opened_at, now),
-                    )
-                )
+            for candidate in ids:
+                defer(candidate, "reopen_budget")
             continue
         if artifact.kind == "pr":
             weekly_left -= 1
             open_left -= 1
         else:
             issue_slots -= 1
-        reopens.append(Reopen(artifact, tuple(sorted(ids))))
+        reopens.append(Reopen(artifact, tuple(sorted(c.decision_id for c in ids))))
 
     planned_prs: list[dict[str, Any]] = []
     planned_issues: list[PlannedIssue] = []
