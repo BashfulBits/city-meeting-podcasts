@@ -1393,6 +1393,25 @@ durable P2 policy, evidence and decision-ledger contracts; and implement JEV thr
 review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy that integration
 gate. Until these gates pass, production publication remains manual.
 
+**P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
+Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
+audit is already daily, while review/49's weekly judge audit is a separate workflow and keeps its
+cadence. A P3 invocation submits the two initial votes or reconciles their stable recipe hashes; a
+later daily invocation submits adjudication only after both initial results are available and
+disagree, then a subsequent invocation collects the adjudication and emits the report candidate.
+This permits the two model round-trips to finish over two or three days without keeping a GitHub
+runner alive or duplicating a deferred Worker job. Persist stage state through the existing durable
+P2 decision ledger before enabling this scheduled caller.
+
+Use the common adjudicator interface from review/49 and reuse its existing `JevBackend` for JEV's
+`systemone` request/response shape. Keep that wire adapter model-specific; do not create a second
+JEV client or fork the common orchestration and normalization. The current Worker catalog maps JEV
+to one physical route, so an allowed-model constraint is sufficient for it today. DeepSeek V4.1
+Flash maps to both NVIDIA and BeatAPI routes; P3's recorded route is
+`beatapi_deepseek_v4_1_flash_free`. The Worker request must constrain that physical route as well as
+the logical model, and defer rather than fall back if the pinned route is unavailable. This route
+allowlist capability is a prerequisite to the P3 caller, not a production catalog change.
+
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
 `P3Adjudication`, evidence/policy hashes, and an explicit set of runtime-admitted route IDs. It

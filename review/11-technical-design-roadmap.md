@@ -251,6 +251,13 @@ partial historical coverage needs a documented exception; future cities default 
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
 it does not silently reorder the unrelated Phase-H queue or change production route/Worker limits.
 
+The maintainer selected a dedicated daily P3 Worker workflow on 2026-10-15 so the initial judge
+round, disagreement adjudication, and report can complete across two or three daily invocations.
+This does not change review/49's separate weekly judge-audit cadence. The caller must resume stable
+Worker recipe hashes from the durable P2 decision ledger, reuse review/49's JEV adapter, and pin
+DeepSeek to `beatapi_deepseek_v4_1_flash_free`; JEV currently has only one catalog route. These are
+design decisions, not an activated schedule or route change.
+
 ### Active reliability follow-up: interactive remedy (#1231)
 
 Maintainer-directed, 2026-09-05; implementation in progress: direct-only, same-Actions-run remedy
