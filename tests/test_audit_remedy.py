@@ -952,6 +952,7 @@ def test_write_evidence_file_writes_bundle_and_returns_count(repo):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert len(payload["sources"]) == 1
     assert payload["sources"][0]["source_key"] == "test-source"
     assert len(payload["digest"]) == 64
@@ -982,6 +983,7 @@ def test_write_evidence_file_empty_list(tmp_path):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert payload["sources"] == []
     assert isinstance(payload["digest"], str)
     assert len(payload["digest"]) == 64

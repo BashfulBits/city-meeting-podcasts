@@ -651,14 +651,9 @@ def build_runtime_report(
         {"slug": row["slug"], "title": row.get("podcast_title") or row["slug"]}
         for row in evidence.get("existing_feeds", [])
     ]
-    feed_slugs = {feed["slug"] for feed in feeds}
-    suggested_slugs = {slug for vote in initial for slug in vote.decision.target_feeds}
-    if adjudication and adjudication.deepseek:
-        suggested_slugs.update(adjudication.deepseek.decision.target_feeds)
-    # Only locally configured feeds can become checkbox options. Model text can narrow the set,
-    # but cannot create a new slug or make an arbitrary configuration a trusted target.
-    candidates = sorted(feed_slugs & suggested_slugs)
-    feeds = [feed for feed in feeds if feed["slug"] in set(candidates)]
+    # Manual disposition must let a maintainer choose any feed on this source, including a
+    # reasonable target omitted by every model. These options come from local evidence, never
+    # model-supplied slugs.
     report_input = P3ReportInput(
         schema_version=1,
         finding_id=finding_id,

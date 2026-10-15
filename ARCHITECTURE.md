@@ -1085,7 +1085,9 @@ Deployment remains fail-closed until exact routes have valid runtime admissions 
 controls; the P1 evidence decision allowed implementation, not activation. A separate, write-scoped
 daily publisher job creates human-review proposal PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
-choices forward only when the evidence binding is unchanged. `/body-disposition` reuses the
+choices forward only when the evidence binding is unchanged. Manual choices include every feed
+from locally collected, same-source evidence, even when no model suggested it.
+`/body-disposition` reuses the
 existing current-writer permission check and P2 ledger append path; per-feed include/exclude choices
 are stored as an additive typed event field under the remedy lease. Old events omit that field and
 retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence

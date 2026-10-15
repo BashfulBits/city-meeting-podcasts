@@ -8,7 +8,6 @@ import hashlib
 import json
 import re
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -21,6 +20,7 @@ from citypods.audit_remedy import (
 from citypods.bodies import body_key
 from citypods.config import load_city_configs, load_site_config
 from citypods.ops.maintenance_leases import acquire
+from citypods.remedy_actions import _p3_generated_section
 from citypods.remedy_evaluation import RemedyConfig
 from citypods.remedy_ledger import REMEDY_LEASE_KEY, decision_id, load_decisions
 from citypods.remedy_p3_publication import validated_p3_plan
@@ -48,7 +48,14 @@ def _json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _binding_for(source: dict, finding: dict, report: dict, config_hash: str, parents: list[str]):
+def _binding_for(
+    source: dict,
+    finding: dict,
+    report: dict,
+    config_hash: str,
+    parents: list[str],
+    collected_at: str,
+):
     city = source["city"]["slug"]
     source_key = source["source_key"]
     label = finding["unexpected_body"]
@@ -72,7 +79,7 @@ def _binding_for(source: dict, finding: dict, report: dict, config_hash: str, pa
         key=canonical_hash,
     )
     identity = decision_id(city, source_key, P3_POLICY_ID, normalized_label)
-    feeds = report.get("feeds") or []
+    feeds = report.get("feeds") or source.get("existing_feeds") or []
     feed_slugs = sorted({item["slug"] for item in feeds})
     return {
         "city": city,
@@ -85,7 +92,7 @@ def _binding_for(source: dict, finding: dict, report: dict, config_hash: str, pa
         "policy_hash": report["decision"]["policy_hash"],
         "recording_refs": refs,
         "expected_parent_event_ids": sorted(parents),
-        "observed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "observed_at": collected_at,
         "feed_slugs": feed_slugs,
     }
 
@@ -144,7 +151,6 @@ def _render_issue(report: dict, binding: dict, prior_body: str = "") -> str:
     )
     generated = f"{_GENERATED_START}\n{body}\n{_GENERATED_END}"
     if prior_body:
-        body = _replace_generated(prior_body, generated)
         # Carry selections only when the evidence binding is identical.
         old = _find_binding(prior_body)
         same_observation = old is not None and {
@@ -157,16 +163,25 @@ def _render_issue(report: dict, binding: dict, prior_body: str = "") -> str:
             if key not in {"observed_at", "expected_parent_event_ids"}
         }
         if same_observation:
+            prior_section = _p3_generated_section(prior_body)
             for slug in binding["feed_slugs"]:
-                for choice in ("Include", "Exclude"):
-                    marker = f"- [x] {choice} `{slug}`"
-                    if marker in prior_body:
-                        body = body.replace(f"- [ ] {choice} `{slug}`", marker, 1)
+                pattern = rf"(?m)^- \[x\] (Include|Exclude) `{re.escape(slug)}`[ \t]*\r?$"
+                matches = re.findall(pattern, prior_section)
+                if len(matches) > 1:
+                    raise ValueError(f"prior issue has conflicting choices for feed {slug}")
+                if matches:
+                    choice = matches[0]
+                    unchecked = rf"(?m)^- \[ \] {choice} `{re.escape(slug)}`[ \t]*$"
+                    generated = re.sub(unchecked, f"- [x] {choice} `{slug}`", generated, count=1)
             for option in ("No feed assignment", "Hold for future evidence"):
-                marker = f"- [x] {option}"
-                if marker in prior_body:
-                    body = body.replace(f"- [ ] {option}", marker, 1)
-        return body
+                if re.search(rf"(?m)^- \[x\] {re.escape(option)}[ \t]*\r?$", prior_section):
+                    generated = re.sub(
+                        rf"(?m)^- \[ \] {re.escape(option)}[ \t]*$",
+                        f"- [x] {option}",
+                        generated,
+                        count=1,
+                    )
+        return _replace_generated(prior_body, generated)
     return generated
 
 
@@ -339,6 +354,9 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     )
     if not p3_enabled(config):
         return {"status": "policy_hold", "published": []}
+    collected_at = evidence_payload.get("collected_at")
+    if not isinstance(collected_at, str):
+        raise ValueError("evidence bundle is missing its collection timestamp; refresh evidence")
     storage = make_storage(site, site.get("base_url", ""), repo_root / "docs")
     if storage is None or not getattr(storage, "cas_capable", False):
         raise RuntimeError("P3 publication requires B2 storage and R2 CAS coordination")
@@ -397,7 +415,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 continue
             config_hash = canonical_hash(config.model_dump(mode="json"))
             with acquire(storage, owner="remedy-p3-publish", key=REMEDY_LEASE_KEY) as lease:
-                binding = _binding_for(source, finding, p3_report, config_hash, [])
+                binding = _binding_for(source, finding, p3_report, config_hash, [], collected_at)
                 states = load_decisions(storage, source_keys=[source["source_key"]])
                 history = states.get(binding["decision_id"])
                 if history is not None and history.diagnostics:

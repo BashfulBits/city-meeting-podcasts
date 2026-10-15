@@ -30,7 +30,38 @@ EVIDENCE_FIELDS = frozenset(
     "city source_key policy_id normalized_label evidence_hash config_hash policy_hash "
     "recording_refs observed_at".split()
 )
-COMMAND = "/body-disposition\n"
+COMMAND = "/body-disposition"
+P3_ISSUE_START = "<!-- citypods:generated:start -->"
+P3_ISSUE_END = "<!-- citypods:generated:end -->"
+
+
+def parse_disposition_comment(body):
+    """Parse the command and JSON payload with GitHub's LF or CRLF line ending."""
+    if not isinstance(body, str) or not body.startswith(COMMAND):
+        raise ValueError("comment: dedicated command required")
+    separator = body[len(COMMAND) :]
+    if separator.startswith("\r\n"):
+        payload = separator[2:]
+    elif separator.startswith("\n"):
+        payload = separator[1:]
+    else:
+        raise ValueError("comment: command must be followed by a newline")
+    try:
+        return json.loads(payload, object_pairs_hook=_unique_json_object)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("comment: invalid command JSON") from exc
+
+
+def _p3_generated_section(issue_body):
+    if not isinstance(issue_body, str):
+        raise ValueError("issue: generated P3 section is missing")
+    if issue_body.count(P3_ISSUE_START) != 1 or issue_body.count(P3_ISSUE_END) != 1:
+        raise ValueError("issue: expected one generated section")
+    start = issue_body.index(P3_ISSUE_START) + len(P3_ISSUE_START)
+    end = issue_body.index(P3_ISSUE_END)
+    if end < start:
+        raise ValueError("issue: malformed generated section")
+    return issue_body[start:end]
 
 
 def _utc(value, name):
@@ -97,12 +128,7 @@ def validate_decision_action(
     if not isinstance(url, str) or not re.fullmatch(pattern, url):
         raise ValueError("comment: repository or delivery URL mismatch")
     body = comment.get("body")
-    if not isinstance(body, str) or not body.startswith(COMMAND):
-        raise ValueError("comment: dedicated command required")
-    try:
-        submitted = json.loads(body[len(COMMAND) :], object_pairs_hook=_unique_json_object)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("comment: invalid command JSON") from exc
+    submitted = parse_disposition_comment(body)
     if submitted != action:
         raise ValueError("comment: approved content mismatch")
     if "feed_dispositions" in action:
@@ -258,20 +284,23 @@ def _validate_issue_feed_choices(action, *, issue_number, issue_body, comment_ur
     ):
         raise ValueError("issue: invalid feed disposition set")
     selected = {}
+    generated_section = _p3_generated_section(issue_body)
     for slug in candidate_slugs:
-        include = f"- [x] Include `{slug}`"
-        exclude = f"- [x] Exclude `{slug}`"
-        checked_count = issue_body.count(include) + issue_body.count(exclude)
-        if checked_count > 1:
+        pattern = rf"(?m)^- \[x\] (Include|Exclude) `{re.escape(slug)}`[ \t]*\r?$"
+        matches = re.findall(pattern, generated_section)
+        if len(matches) > 1:
             raise ValueError(f"issue: conflicting include/exclude checkbox for {slug}")
-        if checked_count:
-            selected[slug] = "include" if include in issue_body else "exclude"
-    no_assignment = "- [x] No feed assignment" in issue_body
-    hold = "- [x] Hold for future evidence" in issue_body
+        if matches:
+            selected[slug] = matches[0].lower()
+    no_assignment = bool(re.search(r"(?m)^- \[x\] No feed assignment[ \t]*\r?$", generated_section))
+    hold = bool(re.search(r"(?m)^- \[x\] Hold for future evidence[ \t]*\r?$", generated_section))
     if no_assignment and hold:
         raise ValueError("issue: overall dispositions conflict")
     overall_checked = len(
-        re.findall(r"- \[x\] (?:No feed assignment|Hold for future evidence)", issue_body)
+        re.findall(
+            r"(?m)^- \[x\] (?:No feed assignment|Hold for future evidence)[ \t]*\r?$",
+            generated_section,
+        )
     )
     if overall_checked > 1:
         raise ValueError("issue: conflicting overall disposition")

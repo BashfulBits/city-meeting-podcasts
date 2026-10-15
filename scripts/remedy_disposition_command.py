@@ -11,7 +11,7 @@ from pathlib import Path
 
 from citypods.config import load_site_config
 from citypods.ops.maintenance_leases import acquire
-from citypods.remedy_actions import COMMAND, record_decision_action
+from citypods.remedy_actions import parse_disposition_comment, record_decision_action
 from citypods.remedy_ledger import REMEDY_LEASE_KEY
 from citypods.storage import make_storage
 
@@ -41,10 +41,10 @@ def apply_comment(event: dict, permission: dict, *, storage, lease_factory) -> s
     comment = event.get("comment") or {}
     if issue.get("pull_request") is not None:
         raise ValueError("P3 decisions must be issue comments, not PR comments")
+    if (issue.get("user") or {}).get("login") != "github-actions[bot]":
+        raise ValueError("P3 decision issue must be opened by github-actions[bot]")
     body = comment.get("body")
-    if not isinstance(body, str) or not body.startswith(COMMAND):
-        raise ValueError("comment must start with /body-disposition and structured JSON")
-    action = json.loads(body[len(COMMAND) :], object_pairs_hook=_unique_object)
+    action = parse_disposition_comment(body)
     if not isinstance(action, dict) or "feed_dispositions" not in action:
         raise ValueError("P3 issue commands must include typed feed_dispositions")
     issue_body = issue.get("body")
@@ -96,9 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         event = json.loads(args.event.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
         body = (event.get("comment") or {}).get("body", "")
-        if not isinstance(body, str) or not body.startswith(COMMAND):
-            raise ValueError("comment must start with /body-disposition and structured JSON")
-        action = json.loads(body[len(COMMAND) :], object_pairs_hook=_unique_object)
+        action = parse_disposition_comment(body)
         permission = json.loads(
             args.permission.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
         )
@@ -122,7 +120,10 @@ def main(argv: list[str] | None = None) -> int:
             "close_issue": action["state"] in {"covered", "excluded", "resolved"},
         }
     except Exception as exc:  # surfaced to the issue-comment workflow without exposing secrets
-        result = {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
+        error = f"{type(exc).__name__}: {exc}"
+        if "stale or future snapshot" in error:
+            error = "Evidence is stale. Wait for the next refresh, then submit the disposition."
+        result = {"accepted": False, "error": error}
     args.result.parent.mkdir(parents=True, exist_ok=True)
     args.result.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
     return 0 if result["accepted"] else 1

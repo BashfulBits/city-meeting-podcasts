@@ -9,6 +9,7 @@ import pytest
 from citypods.remedy_actions import (
     COMMAND,
     EVIDENCE_FIELDS,
+    parse_disposition_comment,
     record_decision_action,
     validate_decision_action,
 )
@@ -16,6 +17,13 @@ from citypods.remedy_ledger import fold_events
 from tests.test_remedy_ledger import FakeEventStorage, FakeRemedyLease, event
 
 NOW = datetime(2026, 10, 10, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n"])
+def test_disposition_command_accepts_lf_and_crlf(separator):
+    assert parse_disposition_comment(COMMAND + separator + '{"action":"decide"}') == {
+        "action": "decide"
+    }
 
 
 def inputs(**changes):
@@ -38,7 +46,7 @@ def inputs(**changes):
         html_url="https://github.com/example/repo/issues/1#issuecomment-123",
         created_at="2026-10-10T00:00:00Z",
         user={"login": "human"},
-        body=COMMAND + json.dumps(action),
+        body=COMMAND + "\n" + json.dumps(action),
     )
     context = dict(
         repository="example/repo",
@@ -56,7 +64,7 @@ def inputs(**changes):
 
 
 def submit(action, context):
-    context["comment"]["body"] = COMMAND + json.dumps(action)
+    context["comment"]["body"] = COMMAND + "\n" + json.dumps(action)
     return validate_decision_action(action, **context)
 
 
@@ -76,7 +84,7 @@ def test_feed_checkboxes_are_bound_to_the_issue_and_persisted_as_typed_choices()
         {"feed_slug": "test-city-council", "disposition": "include"},
         {"feed_slug": "test-city-library-board", "disposition": "exclude"},
     ]
-    context["comment"]["body"] = COMMAND + json.dumps(action)
+    context["comment"]["body"] = COMMAND + "\n" + json.dumps(action)
     context["issue_number"] = 1
     binding = {
         "city": action["city"],
@@ -93,6 +101,7 @@ def test_feed_checkboxes_are_bound_to_the_issue_and_persisted_as_typed_choices()
         "feed_slugs": ["test-city-council", "test-city-library-board"],
     }
     context["issue_body"] = (
+        "<!-- citypods:generated:start -->\n"
         "<!-- citypods:remedy-p3:binding="
         + json.dumps(binding, sort_keys=True, separators=(",", ":"))
         + " -->\n"
@@ -102,6 +111,8 @@ def test_feed_checkboxes_are_bound_to_the_issue_and_persisted_as_typed_choices()
         "- [x] Exclude `test-city-library-board`\n"
         "- [ ] No feed assignment\n"
         "- [ ] Hold for future evidence\n"
+        "<!-- citypods:generated:end -->\n"
+        "\n## Evidence\n- [x] Include `test-city-library-board`\n"
     )
     result = validate_decision_action(action, **context)
     assert [item.disposition for item in result.feed_dispositions] == ["include", "exclude"]
@@ -124,7 +135,9 @@ def test_feed_checkboxes_are_bound_to_the_issue_and_persisted_as_typed_choices()
         lambda c: c["comment"].update(id=True),
         lambda c: c["comment"].update(created_at="2026-10-10T02:00:00Z"),
         lambda c: c["comment"].update(body="I agree"),
-        lambda c: c["comment"].update(body=COMMAND + '{"action":"decide","action":"reopen"}'),
+        lambda c: c["comment"].update(
+            body=COMMAND + "\n" + '{"action":"decide","action":"reopen"}'
+        ),
         lambda c: c["evidence"].update(observed_at="2026-10-08T00:00:00Z"),
         lambda c: c["evidence"].update(source_key="other"),
         lambda c: c["evidence"].update(city="other"),
@@ -200,7 +213,7 @@ def test_persisted_retry_recovers_without_second_upload():
     assert record(action, context, storage, lease) == key
     assert len([c for c in storage.calls if c[0] == "write"]) == before
     action["rationale"] = "Edited command"
-    context["comment"]["body"] = COMMAND + json.dumps(action)
+    context["comment"]["body"] = COMMAND + "\n" + json.dumps(action)
     with pytest.raises(ValueError, match="conflicting retry"):
         record(action, context, storage, lease)
 
@@ -236,7 +249,7 @@ def test_retry_after_lost_acknowledgment_and_after_later_decision():
     next_context["comment"].update(
         id=124, html_url="https://github.com/example/repo/issues/1#issuecomment-124"
     )
-    next_context["comment"]["body"] = COMMAND + json.dumps(next_action)
+    next_context["comment"]["body"] = COMMAND + "\n" + json.dumps(next_action)
     record(next_action, next_context, storage, lease)
     assert record(action, context, storage, lease) == key
     assert sum(c[0] == "write" for c in storage.calls) == 2

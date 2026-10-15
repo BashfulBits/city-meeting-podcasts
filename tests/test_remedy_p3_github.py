@@ -2,7 +2,11 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.remedy_actions import COMMAND
+import pytest
+
+from citypods.audit_remedy import P3_INITIAL_ROUTES, BodyDecision, P3Vote
+from citypods.audit_remedy_report import P3ReportInput, build_p3_report
+from citypods.remedy_actions import COMMAND, _p3_generated_section
 from citypods.remedy_ledger import load_decisions
 from scripts import remedy_disposition_command, remedy_p3_publish
 from tests.test_remedy_actions import inputs
@@ -34,6 +38,7 @@ def test_disposition_workflow_reuses_authenticated_issue_action_and_lease():
     ]
     binding = binding_for(action)
     issue_body = (
+        "<!-- citypods:generated:start -->\n"
         "<!-- citypods:remedy-p3:binding="
         + json.dumps(binding, sort_keys=True, separators=(",", ":"))
         + " -->\n"
@@ -43,15 +48,22 @@ def test_disposition_workflow_reuses_authenticated_issue_action_and_lease():
         "- [x] Exclude `test-city-library-board`\n"
         "- [ ] No feed assignment\n"
         "- [ ] Hold for future evidence\n"
+        "<!-- citypods:generated:end -->\n"
+        "\n## Evidence supplied by the issue reporter\n"
+        "- [x] Exclude `test-city-council`\n"
     )
     comment = {
         **context["comment"],
-        "body": COMMAND + json.dumps(action),
+        "body": COMMAND + "\n" + json.dumps(action),
         "created_at": datetime(2026, 10, 10, 0, tzinfo=UTC).isoformat(),
     }
     event_payload = {
         "repository": {"full_name": "example/repo"},
-        "issue": {"number": 1, "body": issue_body},
+        "issue": {
+            "number": 1,
+            "body": issue_body,
+            "user": {"login": "github-actions[bot]"},
+        },
         "comment": comment,
     }
     storage = FakeEventStorage()
@@ -74,6 +86,15 @@ def test_disposition_workflow_reuses_authenticated_issue_action_and_lease():
     assert key.endswith(".json")
     assert decision.events[0].feed_dispositions[0].disposition == "include"
     assert decision.events[0].feed_dispositions[1].disposition == "exclude"
+
+    event_payload["issue"]["user"]["login"] = "untrusted-user"
+    with pytest.raises(ValueError, match=r"must be opened by github-actions\[bot\]"):
+        remedy_disposition_command.apply_comment(
+            event_payload,
+            {"permission": "write", "user": {"login": "human"}},
+            storage=storage,
+            lease_factory=LeaseContext,
+        )
 
 
 def test_manual_issue_reconciliation_preserves_checked_boxes_and_notes():
@@ -101,6 +122,7 @@ def test_manual_issue_reconciliation_preserves_checked_boxes_and_notes():
     prior = (
         first.replace("- [ ] Include `test-city-council`", "- [x] Include `test-city-council`")
         + "\n\n### Maintainer notes\nKeep this context.\n"
+        + "- [x] Exclude `test-city-council`\n"
     )
     newer_binding = {
         **binding,
@@ -108,7 +130,9 @@ def test_manual_issue_reconciliation_preserves_checked_boxes_and_notes():
         "observed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     updated = remedy_p3_publish._render_issue(report, newer_binding, prior)
-    assert "- [x] Include `test-city-council`" in updated
+    generated = _p3_generated_section(updated)
+    assert "- [x] Include `test-city-council`" in generated
+    assert "- [x] Exclude `test-city-council`" not in generated
     assert "Keep this context." in updated
     assert (
         remedy_p3_publish.P3_ISSUE_KEY.format(
@@ -116,6 +140,58 @@ def test_manual_issue_reconciliation_preserves_checked_boxes_and_notes():
         )
         in updated
     )
+
+
+def test_binding_uses_source_feeds_if_report_feed_list_is_absent():
+    evidence_hash = "a" * 64
+    policy_hash = "b" * 64
+    routes = sorted(P3_INITIAL_ROUTES)
+    votes = [
+        P3Vote(
+            route_id=route,
+            upstream_model=f"test/{route}",
+            reasoning_level="high",
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            response_hash="c" * 64,
+            decision=BodyDecision(
+                finding_id="finding-1",
+                action="manual_review",
+                rationale="The evidence does not establish a safe assignment.",
+            ),
+        )
+        for route in routes
+    ]
+    report = build_p3_report(
+        P3ReportInput(
+            schema_version=1,
+            finding_id="finding-1",
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            evidence_summary="Unresolved ownership evidence.",
+            feeds=[{"slug": "source-council", "title": "City Council"}],
+            initial_votes=votes,
+            initial_validators={route: False for route in routes},
+        )
+    )
+    source = {
+        "city": {"slug": "test-city-tx"},
+        "source_key": "test-source",
+        "existing_feeds": [{"slug": "source-council"}],
+    }
+    finding = {"unexpected_body": "Unverified Board", "episodes": []}
+    report_without_feeds = {key: value for key, value in report.items() if key != "feeds"}
+
+    binding = remedy_p3_publish._binding_for(
+        source,
+        finding,
+        report_without_feeds,
+        "d" * 64,
+        [],
+        "2026-10-15T00:00:00Z",
+    )
+
+    assert binding["feed_slugs"] == ["source-council"]
 
 
 def test_publisher_holds_before_github_or_storage_when_routes_are_not_admitted(tmp_path):

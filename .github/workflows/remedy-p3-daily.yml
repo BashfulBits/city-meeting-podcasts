@@ -82,6 +82,9 @@ jobs:
       github.ref == 'refs/heads/main' && needs.p3.outputs.status == 'completed'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     permissions:
       contents: write
       issues: write
@@ -98,7 +101,35 @@ jobs:
           cache: pip
 
       - name: Install publisher dependencies
-        run: pip install -e ".[dev,storage]" -c constraints/prod.txt
+        run: |
+          pip install -e ".[dev,wer,llm,storage]" -c constraints/dev.txt
+          pip install "scikit-learn>=1.5" -c constraints/chapter-research.txt
+
+      - name: Install FFmpeg runtime libraries
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+
+      - name: Install pinned ffmpeg
+        timeout-minutes: 10
+        env:
+          FFMPEG_URL: >-
+            ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Install OCR runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils tesseract-ocr
+          pdftocairo -v
+          tesseract --version
 
       - name: Download current-run publication inputs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -121,7 +152,7 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          python scripts/remedy_p3_publish.py \
+          PATH="${FFMPEG_DIR}/bin:${PATH}" python scripts/remedy_p3_publish.py \
             --report "$RUNNER_TEMP/remedy-p3-publication/remedy-p3-${GITHUB_RUN_ID}.json" \
             --evidence-file "$RUNNER_TEMP/remedy-p3-publication/remedy-p3-evidence-${GITHUB_RUN_ID}.json" \
             --repo-root . \

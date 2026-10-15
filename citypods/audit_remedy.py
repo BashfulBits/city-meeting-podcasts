@@ -1441,6 +1441,7 @@ def write_evidence_file(
     ]
     payload = {
         "schema_version": 1,
+        "collected_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "sources": bundles,
         "digest": sha256(json.dumps(bundles, sort_keys=True, default=str).encode()).hexdigest(),
     }

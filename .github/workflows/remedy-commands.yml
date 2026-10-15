@@ -26,6 +26,7 @@ jobs:
     if: >-
       ${{ github.event.issue.pull_request == null &&
         startsWith(github.event.comment.body, '/body-disposition') &&
+        github.event.issue.user.login == 'github-actions[bot]' &&
         contains(github.event.issue.body, '<!-- citypods:remedy-p3:binding=') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
     runs-on: ubuntu-latest

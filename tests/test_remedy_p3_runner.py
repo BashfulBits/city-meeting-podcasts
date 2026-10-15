@@ -10,6 +10,7 @@ import yaml
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.remedy_evaluation import RemedyConfig
+from citypods.remedy_p3_observations import P3Observation
 from citypods.remedy_p3_runner import (
     P3_MODELS,
     P3_ROUTES,
@@ -19,6 +20,7 @@ from citypods.remedy_p3_runner import (
     _jev_decision_values,
     _jev_job,
     _response_from_result,
+    build_runtime_report,
     p3_enabled,
 )
 
@@ -190,6 +192,65 @@ def test_jev_missing_expected_qid_becomes_manual_review_values():
     answer = _jev_answer_for_finding(response, "finding-1")
     choice, supported_a, supported_b = _jev_decision_values(answer)
     assert (choice, supported_a, supported_b) == (None, None, None)
+
+
+def test_manual_report_lists_all_source_feeds_not_only_model_suggestions():
+    evidence = _evidence()
+    evidence["existing_feeds"].append(
+        {
+            "slug": "test-city-library-board",
+            "podcast_title": "Test City Library Board",
+            "remedy_policy": {},
+        }
+    )
+    observations = tuple(
+        P3Observation(
+            schema_version=1,
+            observation_id=f"{role}-observation",
+            finding_id="finding-1",
+            source_key="test-city",
+            stage="initial",
+            role=role,
+            recipe_hash="d" * 64,
+            request_hash="e" * 64,
+            evidence_hash="a" * 64,
+            config_hash="f" * 64,
+            policy_hash="b" * 64,
+            route_id=P3_ROUTES[role],
+            logical_model=role,
+            upstream_model=f"test/{role}",
+            reasoning_level="high",
+            response_hash="c" * 64,
+            response={
+                "decision": {
+                    "finding_id": "f0",
+                    "action": "manual_review",
+                    "rationale": "The evidence does not support an automatic assignment.",
+                }
+            },
+            observed_at="2026-10-15T00:00:00Z",
+        )
+        for role in ("sol", "glm_flash")
+    )
+
+    report = build_runtime_report(
+        finding_id="finding-1",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=evidence,
+        observations=observations,
+        admitted_routes=frozenset(P3_ROUTES[role] for role in ("sol", "glm_flash")),
+        repo_root=".",
+    )
+
+    assert report["decision"]["disposition"] == "issue_candidate"
+    assert {feed["slug"] for feed in report["feeds"]} == {
+        "test-city-council",
+        "test-city-library-board",
+    }
+    for slug in ("test-city-council", "test-city-library-board"):
+        assert f"- [ ] Include `{slug}`" in report["manual_issue_candidate"]
+        assert f"- [ ] Exclude `{slug}`" in report["manual_issue_candidate"]
 
 
 def test_daily_runner_reconciles_deferred_worker_handle_before_recording(monkeypatch):

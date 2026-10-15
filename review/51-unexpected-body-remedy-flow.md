@@ -1514,11 +1514,15 @@ accepts only a `pr_candidate` with passing deterministic validators, binds it to
 source evidence hash, recomputes the consensus from route-bound votes using trusted runtime
 admissions, resolves episode IDs locally, and re-runs `validate_proposals` against the current feed
 catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
-and create a human-review PR; it must never push to main or merge. Manual issues must preserve the
-per-feed options and provide a structured `/body-disposition` action. The issue command must
-authenticate a repository writer, bind the action to the exact issue/evidence and current ledger
-parents, and use `record_decision_action` so the human outcome is appended under the remedy lease.
-Model votes remain in the P3 observation log and never become P2 decisions.
+and create a human-review PR; it must never push to main or merge. Manual issues must preserve
+per-feed options for every locally configured same-source feed, even when no model suggested it,
+and provide a structured `/body-disposition` action. The command accepts LF or CRLF between the
+command and JSON. The issue must be opened by `github-actions[bot]`; the command must authenticate
+a repository writer, read checked boxes only from the generated issue section, bind the action to
+the exact issue/evidence and current ledger parents, and use `record_decision_action` so the human
+outcome is appended under the remedy lease. Evidence freshness is measured from collection time,
+and stale submissions tell maintainers to wait for refreshed evidence. Model votes remain in the
+P3 observation log and never become P2 decisions.
 
 PR #2449 implements bounded GitHub publication and the P2 issue-command handoff. A separate,
 least-privileged publisher job receives only the current run's short-retention report/evidence
@@ -3433,8 +3437,10 @@ Verify reports on frozen local fixtures before proposing any scheduled alert act
 
 #### P2c2b exact callable contract, approved transport
 
-Command body is exactly `/body-disposition` followed by a newline and one JSON object containing
-only the action fields listed above. Reject duplicate JSON keys. No free-form prose parsing.
+Command body is exactly `/body-disposition`, one LF or CRLF newline, and one JSON object
+containing only the action fields listed above. Reject duplicate JSON keys. No free-form prose
+parsing. The target issue must have been opened by `github-actions[bot]`; parse the checked choices
+only inside its generated section.
 The action field `expected_parent_event_ids` becomes the existing event parent list. Provenance is
 empty for a human-only action. `reopen` must use proposed state and null disposition; a terminal
 history can only leave its existing outcome through this explicit action. Diagnostic/conflicting
