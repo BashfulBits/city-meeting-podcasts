@@ -116,16 +116,21 @@ jobs:
           EVENT_PATH: ${{ github.event_path }}
         run: |
           gh auth setup-git
+          set +e
           python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
             --automatic-limits --out provider-catalog-limits.json
-          jq -r '.comment' provider-catalog-limits.json
+          code=$?
+          set -e
+          # Always surface the reason (a rejected gate or deferral exits non-zero).
+          jq -r '.comment' provider-catalog-limits.json || true
+          exit "$code"
   retirements:
     needs: limits
     if: >-
       ${{ always() && github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'schedule' &&
-        github.event.workflow_run.name == 'Provider catalog reconciliation' &&
+        github.event.workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml' &&
         github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository }}
@@ -167,6 +172,11 @@ jobs:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
           gh auth setup-git
+          set +e
           python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
             --automatic-retirements --out provider-catalog-retirements.json
-          jq -r '.comment' provider-catalog-retirements.json
+          code=$?
+          set -e
+          # Always surface the reason (a rejected gate or deferral exits non-zero).
+          jq -r '.comment' provider-catalog-retirements.json || true
+          exit "$code"

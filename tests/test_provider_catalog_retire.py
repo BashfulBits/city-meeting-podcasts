@@ -365,7 +365,7 @@ def test_automatic_removal_requires_successful_weekly_full_main_run(monkeypatch,
         "event": "schedule",
         "head_branch": "main",
         "head_repository": {"full_name": "owner/repo"},
-        "name": "Provider catalog reconciliation",
+        "path": commands.RECONCILE_WORKFLOW_PATH,
         "display_title": "Provider catalog reconciliation (weekly-full)",
     }
     event = tmp_path / "event.json"
@@ -393,6 +393,40 @@ def test_automatic_removal_requires_successful_weekly_full_main_run(monkeypatch,
             == 1
         )
         assert "accepted" not in json.loads(output.read_text())
+
+
+def test_automatic_limits_accept_scheduled_run_whose_name_is_the_run_name(monkeypatch, tmp_path):
+    """workflow_run.name is the run-name for scheduled runs, so the gate must key on the path."""
+    import json
+    from types import SimpleNamespace
+
+    from scripts import provider_catalog_commands as commands
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(commands, "run", lambda _args: "main")
+    monkeypatch.setattr(
+        commands, "prepare_limits", lambda *_a, **_k: SimpleNamespace(rate_changes=[])
+    )
+    workflow_run = {
+        "conclusion": "success",
+        "event": "schedule",
+        "head_branch": "main",
+        "head_repository": {"full_name": "owner/repo"},
+        "name": "Provider catalog reconciliation (daily-due-only)",
+        "display_title": "Provider catalog reconciliation (daily-due-only)",
+        "path": commands.RECONCILE_WORKFLOW_PATH,
+    }
+    event = tmp_path / "event.json"
+    output = tmp_path / "result.json"
+    event.write_text(json.dumps({"action": "completed", "workflow_run": workflow_run}))
+    assert commands.main(["--event", str(event), "--automatic-limits", "--out", str(output)]) == 0
+    assert json.loads(output.read_text())["comment"] == (
+        "No proven automatic tightening is available."
+    )
+    workflow_run["path"] = ".github/workflows/other.yml"
+    event.write_text(json.dumps({"action": "completed", "workflow_run": workflow_run}))
+    assert commands.main(["--event", str(event), "--automatic-limits", "--out", str(output)]) == 1
 
 
 def test_automatic_command_output_does_not_persist_trust_gate(monkeypatch, tmp_path):

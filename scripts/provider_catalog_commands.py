@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+RECONCILE_WORKFLOW_PATH = ".github/workflows/provider-catalog-reconcile.yml"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -484,7 +485,8 @@ def main(argv=None):
                 and source.get("conclusion") == "success"
                 and source.get("event") == "schedule"
                 and source.get("head_branch") == "main"
-                and source.get("name") == "Provider catalog reconciliation"
+                # `name` is the run-name (e.g. "... (daily-due-only)"), so match the workflow file.
+                and source.get("path") == RECONCILE_WORKFLOW_PATH
                 and (source.get("head_repository") or {}).get("full_name")
                 == os.environ.get("GITHUB_REPOSITORY", "")
                 and (
