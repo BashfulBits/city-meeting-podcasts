@@ -55,7 +55,7 @@ DISPATCHING_PURPOSES = frozenset(
         "r5-benchmark:tag",
         "r5-benchmark:judge",
         # review/53: registered in PR2; anchor and sibling dispatched by the judge stage since PR4,
-        # the adjudicator from PR5 -- see PENDING_DISPATCH_PURPOSES below.
+        # the adjudicator by PR5; only remedy:p3 is pending -- see PENDING_DISPATCH_PURPOSES below.
         "judge:anchor",
         "judge:sibling",
         "judge:adjudicator",
@@ -63,10 +63,10 @@ DISPATCHING_PURPOSES = frozenset(
     }
 )
 # Purposes whose producer is not enabled yet. A reservation is subtracted from every other lane's
-# headroom, so a lane nothing dispatches to must reserve zero; PR4 moves these out and sets the
-# review/53 reservations in the same change that turns judging on.
+# headroom, so a lane nothing dispatches to must reserve zero; review/53 PR4 and PR5 moved the
+# judge lanes out and set their reservations in the same changes that started their dispatch.
 PENDING_DISPATCH_PURPOSES = frozenset(
-    {"judge:adjudicator", "remedy:p3"}
+    {"remedy:p3"}
 )  # P3 stays closed until all exact route admissions exist
 
 

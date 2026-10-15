@@ -3020,9 +3020,10 @@ def _build_impl(
                 # minutes) and end in a red run (2026-10-13: HTTP 500 on every enqueue).
                 "judge:anchor": lane == "judge" and judging_config_enabled,
                 "judge:sibling": lane == "judge" and judging_config_enabled,
+                "judge:adjudicator": lane == "judge" and judging_config_enabled,
             }
         )
-        for judge_purpose in ("judge:anchor", "judge:sibling"):
+        for judge_purpose in ("judge:anchor", "judge:sibling", "judge:adjudicator"):
             if judge_purpose in closed:
                 judge_closed_caps[judge_purpose] = 0
         if "topic-tags:tagger" in closed:

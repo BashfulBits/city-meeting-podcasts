@@ -491,6 +491,39 @@ million on every one of those days.
   (`sample: "stability"`); flips are recorded per judge.
 - No decisions yet; data only.
 
+**As built (2026-10-15).** `citypods/judging/adjudication.py` selects what is due from stored
+judgments alone (so the stage's dirtiness check needs no transcript); `quotes.py` is the quote check;
+`AdjudicatorBackend` (`backends.py`) asks the question with a disprove-me system prompt and never
+shows earlier answers, so a contested item and a sampled one read the same.
+- **Contested** (per subject-question): the anchor's final reading against the sibling's disagrees at
+  p = 0.5 (`validate`, `gate`), differs by more than one level (`grade`), or the anchor's final
+  probability is in the escalation band. The anchor's *final* reading means its highest judged tier:
+  while its first-tier probability is in the band and the escalation tier has not landed, the
+  question waits (unless that evidence was recorded unbuildable), so the adjudicator is not spent on a
+  question the anchor may still settle. A meeting's `choose` question is contested when the anchor's
+  winner flips with the option order or differs from the sibling's; the adjudicator then answers both
+  orders. Only supported votes count (see the quote check).
+- **Calibration sample**: `judging.calibration_sample_rate` (3%) of the uncontested, fully compared
+  subject-questions, chosen by hash of `<subject>:<question>:calibration`.
+- **Adjudicator**: the first `judge:adjudicator` model whose family differs from the producer's and
+  the sibling's (`adjudicator_for`; for a meeting, from every producer in it), at the largest tier the
+  task's evidence builder can produce, packets of up to 20 questions and 60,000 estimated tokens.
+  `judging.adjudication.enabled` is the switch; `max_outstanding_packets.adjudicator` bounds its
+  queue share; the lane's reservation is 920 units and it left `PENDING_DISPATCH_PURPOSES`.
+- **Quote check**: a chat judge's or adjudicator's `reason` must hold a double-quoted passage of at
+  least three words that occurs verbatim in the evidence it was sent (NFKC, typographic quotes and
+  dashes flattened, whitespace collapsed; case kept; `...` or an ellipsis splits a quote into parts
+  that each must occur). The evidence is rebuilt from the transcript when the answer is collected and
+  must carry the digest the question was asked with. The row is stored with `quote_valid`; false
+  rows are kept (the ledger is append-only) and ignored as votes. An answer whose transcript cannot
+  be read now, or past `quote_check_reads` (400 transcripts) a pass, keeps its marker and is
+  recorded on a later pass. JEV answers are numbers and are not quote-checked.
+- **Stability probe**: `judging.stability_sample_rate` (2%) of subjects, once the first-tier routine
+  answer is recorded, are asked again by the same judge with `order "_s"`, `sample "stability"`: the
+  evidence first and the question reworded after it. The report counts flips per judge.
+- **Report** (`python -m citypods.judging.report`): quote validity per chat judge, adjudications per
+  task, sample and question, and stability pairs and flips per judge.
+
 ### PR6 — Probe set and weekly blind audit (review/49 P5)
 
 - `evals/judge/<task>/gold.json`: plain list of human-verified items, empty at start; probes are
