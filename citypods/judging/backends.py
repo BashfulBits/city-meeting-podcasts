@@ -19,7 +19,10 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.judging.tasks import Evidence, QuestionSpec, Subject
 
 JUDGE_CONTRACT = "judge-answers-v1"
+# The stored reason is trimmed to REASON_MAX after the quote check. The reply schema allows more, so
+# one verbose answer cannot discard the 20 others in its packet; the prompts still ask for 300.
 REASON_MAX = 300
+REASON_CONTRACT_MAX = 1_000
 CHOICE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 STABILITY_ORDER = "_s"
 
@@ -102,7 +105,7 @@ def ensure_contract():
         verdict: bool | None = None  # validate: supported; gate: flagged
         level: int | None = Field(default=None, ge=0, le=10)  # grade: index into levels
         choice: str | None = Field(default=None, max_length=4)  # choose: option letter
-        reason: str = Field(default="", max_length=REASON_MAX)
+        reason: str = Field(default="", max_length=REASON_CONTRACT_MAX)
 
     class Response(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -258,8 +261,9 @@ class ChatJudgeBackend:
         "Never rewrite or create a candidate. For each item return its id and exactly the field "
         "its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it "
         "must be held back); grade -> level (0 = lowest listed level); choose -> choice (the "
-        "option letter). In reason, copy a short passage from the evidence word for word and put "
-        'it in double quotes ("..."); an answer whose quote is not in the evidence is discarded.'
+        "option letter). In reason (at most 300 characters), copy a short passage from the "
+        'evidence word for word and put it in double quotes ("..."); an answer whose quote is '
+        "not in the evidence is discarded."
     )
 
     def build(self, packet: Packet) -> InferenceJob:
@@ -343,9 +347,9 @@ class AdjudicatorBackend(ChatJudgeBackend):
         "no reasonable way to read it otherwise. Never rewrite or create a candidate. For each "
         "item return its id and exactly the field its kind asks for: validate -> verdict (true if "
         "supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest "
-        "listed level); choose -> choice (the option letter). In reason, copy the passage that "
-        'decides the item from the evidence word for word and put it in double quotes ("..."); '
-        "an answer whose quote is not in the evidence is discarded."
+        "listed level); choose -> choice (the option letter). In reason (at most 300 characters), "
+        "copy the short passage that decides the item from the evidence word for word and put it "
+        'in double quotes ("..."); an answer whose quote is not in the evidence is discarded.'
     )
 
 

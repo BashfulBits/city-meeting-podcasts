@@ -31,6 +31,7 @@ from citypods.judging.adjudication import (
     subject_adjudicator,
 )
 from citypods.judging.backends import (
+    REASON_MAX,
     STABILITY_ORDER,
     AdjudicatorBackend,
     ChatJudgeBackend,
@@ -333,6 +334,9 @@ def _collect(
                         stats.counts[f"quote_{'valid' if row['quote_valid'] else 'invalid'}"] += 1
                     else:
                         stats.counts["quote_unchecked"] += 1
+                    if row.get("reason"):
+                        # Checked in full above; the stored copy stays short.
+                        row["reason"] = str(row["reason"])[:REASON_MAX]
             if not rows:
                 stats.counts["answer_missing"] += 1
             _record(packet, rows, stats)

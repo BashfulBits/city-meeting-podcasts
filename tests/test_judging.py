@@ -1534,3 +1534,28 @@ def test_the_judge_stage_enables_adjudication_only_by_config(monkeypatch):
             "judge:adjudicator": 3,
         }
     assert stages.JudgeStage.PURPOSES == ("judge:anchor", "judge:sibling", "judge:adjudicator")
+
+
+def test_one_overlong_reason_does_not_discard_its_packets_other_answers():
+    """CodeRabbit CLI review of PR5: the reply schema used to cap `reason` at the stored length, so
+    one verbose adjudicator rejected the whole reply (up to 20 answers)."""
+    from citypods.judging.backends import REASON_MAX
+
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    # Answer the sibling packets with a 700-character reason on every item.
+    for recipe, (packet, job) in list(dispatch.submitted.items()):
+        reply = answer_job(job, sibling=True)
+        if packet.role == "sibling":
+            body = json.loads(reply["choices"][0]["message"]["content"])
+            for answer in body["answers"]:
+                quote = answer["reason"]
+                answer["reason"] = f"{quote} " + "and so on " * 70
+            reply = {"choices": [{"message": {"content": json.dumps(body)}}]}
+        dispatch.records[recipe] = JobResult(task="judge", recipe_hash=recipe, output=reply)
+    dispatch.submitted.clear()
+    runner.run([ep], _adj_ctx(dispatch))
+    rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert rows and all(len(r["reason"]) <= REASON_MAX for r in rows)
+    assert {r["quote_valid"] for r in rows} == {True}  # checked against the full reason
