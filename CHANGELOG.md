@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Input-first route discovery.** Normal discovery prioritizes input refinement and uses bounded
+  output/combined examples rather than treating early output stopping as a maximum. Reports
+  separate confirmed provider counts from estimated rejected sizes and recheck old input-size
+  hints. Estimates do not create numerical refused caps or update production configuration.
+
 - **Discovery output elicitation.** Use varied numbered rows instead of repeated identical lines
   to reduce voluntary early stops. Fence previous output/combined fixture history while retaining
   input history and budget charges. Capacity proof still uses valid provider counts and a length
