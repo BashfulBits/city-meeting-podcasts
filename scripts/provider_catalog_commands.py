@@ -67,26 +67,6 @@ def run(args):
     return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def trusted_scheduled_run(event, repository, *, weekly_full_only=False):
-    """Accept only successful schedules from this repository's main catalog workflow."""
-    source = event.get("workflow_run") or {}
-    accepted = (
-        event.get("action") == "completed"
-        and source.get("conclusion") == "success"
-        and source.get("event") == "schedule"
-        and source.get("head_branch") == "main"
-        and source.get("name") == "Provider catalog reconciliation"
-        and (source.get("head_repository") or {}).get("full_name") == repository
-    )
-    return bool(
-        accepted
-        and (
-            not weekly_full_only
-            or source.get("display_title") == "Provider catalog reconciliation (weekly-full)"
-        )
-    )
-
-
 def process_event(event, permission):
     issue = event.get("issue") or {}
     number = issue.get("number")
@@ -470,11 +450,21 @@ def main(argv=None):
     args = parser.parse_args(argv)
     event = json.loads(Path(args.event).read_text())
     if args.automatic_limits or args.automatic_retirements:
+        source = event.get("workflow_run") or {}
         result = {
-            "accepted": trusted_scheduled_run(
-                event,
-                os.environ.get("GITHUB_REPOSITORY", ""),
-                weekly_full_only=args.automatic_retirements,
+            "accepted": bool(
+                event.get("action") == "completed"
+                and source.get("conclusion") == "success"
+                and source.get("event") == "schedule"
+                and source.get("head_branch") == "main"
+                and source.get("name") == "Provider catalog reconciliation"
+                and (source.get("head_repository") or {}).get("full_name")
+                == os.environ.get("GITHUB_REPOSITORY", "")
+                and (
+                    not args.automatic_retirements
+                    or source.get("display_title")
+                    == "Provider catalog reconciliation (weekly-full)"
+                )
             ),
             "comment": (
                 "Preparing evidence-gated route removals."

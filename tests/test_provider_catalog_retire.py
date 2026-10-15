@@ -346,30 +346,53 @@ def test_activation_gate_prevents_probes_and_publication(monkeypatch):
         )
 
 
-def test_automatic_removal_requires_successful_weekly_full_main_run():
-    from scripts.provider_catalog_commands import trusted_scheduled_run
+def test_automatic_removal_requires_successful_weekly_full_main_run(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
 
-    event = {
-        "action": "completed",
-        "workflow_run": {
-            "conclusion": "success",
-            "event": "schedule",
-            "head_branch": "main",
-            "head_repository": {"full_name": "owner/repo"},
-            "name": "Provider catalog reconciliation",
-            "display_title": "Provider catalog reconciliation (weekly-full)",
-        },
+    from scripts import provider_catalog_commands as commands
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(commands, "run", lambda _args: "main")
+    monkeypatch.setattr(
+        commands,
+        "prepare_retirements",
+        lambda _base: SimpleNamespace(removed_routes=[]),
+    )
+    workflow_run = {
+        "conclusion": "success",
+        "event": "schedule",
+        "head_branch": "main",
+        "head_repository": {"full_name": "owner/repo"},
+        "name": "Provider catalog reconciliation",
+        "display_title": "Provider catalog reconciliation (weekly-full)",
     }
-    assert trusted_scheduled_run(event, "owner/repo", weekly_full_only=True) is True
-    assert trusted_scheduled_run(event, "other/repo", weekly_full_only=True) is False
+    event = tmp_path / "event.json"
+    output = tmp_path / "result.json"
+
+    event.write_text(json.dumps({"action": "completed", "workflow_run": workflow_run}))
+    assert (
+        commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)]) == 0
+    )
+    result = json.loads(output.read_text())
+    assert result["comment"] == "No route has fresh evidence qualifying it for removal."
+    assert "accepted" not in result
+
     for change in (
         {"conclusion": "failure"},
         {"event": "workflow_dispatch"},
         {"head_branch": "feature"},
+        {"head_repository": {"full_name": "other/repo"}},
         {"display_title": "Provider catalog reconciliation (daily-due-only)"},
     ):
-        changed = {**event, "workflow_run": {**event["workflow_run"], **change}}
-        assert trusted_scheduled_run(changed, "owner/repo", weekly_full_only=True) is False
+        changed = {**workflow_run, **change}
+        event.write_text(json.dumps({"action": "completed", "workflow_run": changed}))
+        assert (
+            commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)])
+            == 1
+        )
+        assert "accepted" not in json.loads(output.read_text())
 
 
 def test_automatic_command_output_does_not_persist_trust_gate(monkeypatch, tmp_path):
