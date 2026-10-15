@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -26,6 +27,14 @@ from citypods.remedy_ledger import REMEDY_LEASE_KEY, decision_id, load_decisions
 from citypods.remedy_p3_publication import validated_p3_plan
 from citypods.remedy_p3_runner import admitted_p3_routes, p3_enabled, stable_finding_id
 from citypods.remedy_policy import canonical_hash
+from citypods.remedy_queue import (
+    Candidate,
+    GitHubSnapshot,
+    LedgerView,
+    parse_snapshot,
+    plan_publications,
+    plan_report,
+)
 from citypods.storage import make_storage
 
 # Match the audit's generated-section reconciliation so human notes survive refreshes.
@@ -44,8 +53,111 @@ MAX_OPEN_P3_ISSUES = 12
 MAX_ISSUE_BODY_CHARS = 55_000
 
 
+_REOPENS = "timelineItems(itemTypes: [REOPENED_EVENT], first: 50) {"
+_REOPEN_NODE = "nodes { ... on ReopenedEvent { createdAt } } }"
+SNAPSHOT_QUERY = f"""
+query($q: String!) {{
+  search(query: $q, type: ISSUE, first: 100) {{
+    issueCount
+    pageInfo {{ hasNextPage }}
+    nodes {{
+      ... on PullRequest {{
+        number url state createdAt mergedAt body headRefName author {{ login }}
+        {_REOPENS} {_REOPEN_NODE}
+      }}
+      ... on Issue {{
+        number url state createdAt body author {{ login }}
+        {_REOPENS} {_REOPEN_NODE}
+      }}
+    }}
+  }}
+}}
+"""
+
+
+def _fetch_snapshot() -> GitHubSnapshot:
+    """Every remedy PR and issue on GitHub, marked by whoever opened it; incomplete on any error
+    (an incomplete snapshot reserves nothing, so a failed read can only hold work back)."""
+    try:
+        repo = _gh("repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner").strip()
+        raw = _gh(
+            "api",
+            "graphql",
+            "-f",
+            f"query={SNAPSHOT_QUERY}",
+            "-f",
+            f'q=repo:{repo} "citypods:remedy" in:body sort:created-desc',
+        )
+        return parse_snapshot(json.loads(raw)["data"]["search"])
+    except (RuntimeError, ValueError, KeyError, TypeError):
+        return GitHubSnapshot((), complete=False)
+
+
+def _ledger_views(storage, source_keys) -> dict[str, LedgerView]:
+    """The P2 ledger's tip state per decision, read-only; damaged histories are left out."""
+    views: dict[str, LedgerView] = {}
+    for identity, history in load_decisions(storage, source_keys=sorted(source_keys)).items():
+        if history.diagnostics or len(history.tip_ids) != 1:
+            continue
+        tip = next((e for e in history.events if e.event_id == history.tip_ids[0]), None)
+        if tip is not None:
+            views[identity] = LedgerView(history.state, tip.disposition, tip.evidence_hash)
+    return views
+
+
+def _pr_candidate(plan, binding: dict, eligible_since: datetime) -> Candidate:
+    proposal = plan.accepted[0]
+    family = (
+        f"new-{proposal.new_feed_slug}"
+        if proposal.action == "new_feed"
+        else (sorted(proposal.target_feeds) or [binding["normalized_label"]])[0]
+    )
+    return Candidate(
+        decision_id=binding["decision_id"],
+        city=binding["city"],
+        family=family,
+        outcome=proposal.action,
+        kind="pr",
+        eligible_since=eligible_since,
+        evidence_hash=binding["evidence_hash"],
+        new_body=proposal.action == "new_feed",
+    )
+
+
+def _issue_candidate(binding: dict, eligible_since: datetime) -> Candidate:
+    return Candidate(
+        decision_id=binding["decision_id"],
+        city=binding["city"],
+        family=binding["normalized_label"],
+        outcome="manual",
+        kind="issue",
+        eligible_since=eligible_since,
+        evidence_hash=binding["evidence_hash"],
+    )
+
+
+def _publication_report(candidates, source_keys, storage, limits) -> dict:
+    """The plan this run would make under the P4 budgets. Report only: it writes nothing and the
+    publisher below keeps its existing behaviour until the plan is accepted."""
+    try:
+        plan = plan_publications(
+            candidates,
+            _ledger_views(storage, source_keys),
+            _fetch_snapshot(),
+            limits=limits,
+            now=datetime.now(UTC),
+        )
+        return {"mode": "report_only", **plan_report(plan)}
+    except Exception as exc:  # noqa: BLE001 -- a report must never stop the publisher
+        return {"mode": "report_only", "error": f"{type(exc).__name__}: {exc}"}
+
+
 def _json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _binding_for(
@@ -411,6 +523,8 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     plans = []
     issue_rows = []
     deferred = []
+    candidates: list[Candidate] = []
+    candidate_sources: set[str] = set()
     findings_by_id = {}
     for source in sources:
         for finding in source.get("unexpected_findings", []):
@@ -461,6 +575,21 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                     decision["evidence_hash"],
                 )
             )
+            candidates.append(
+                _pr_candidate(
+                    plan,
+                    _binding_for(
+                        source,
+                        finding,
+                        p3_report,
+                        canonical_hash(config.model_dump(mode="json")),
+                        [],
+                        collected_at,
+                    ),
+                    _parse_time(collected_at),
+                )
+            )
+            candidate_sources.add(source["source_key"])
         elif decision.get("disposition") == "issue_candidate":
             if len(issue_rows) >= MAX_PUBLISH_PER_RUN:
                 deferred.append(
@@ -486,6 +615,8 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 # Refresh lease before using the just-read parent snapshot.
                 lease.assert_held()
             issue_rows.append((p3_report, binding))
+            candidates.append(_issue_candidate(binding, _parse_time(collected_at)))
+            candidate_sources.add(source["source_key"])
 
     published = []
     if plans:
@@ -503,7 +634,14 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
         url = _reconcile_issue(p3_report, binding, dry_run=dry_run)
         published.append({"type": "manual_issue", "url": url})
     status = "published" if published else "deferred" if deferred else "no_candidates"
-    return {"status": status, "published": published, "deferred": deferred}
+    return {
+        "status": status,
+        "published": published,
+        "deferred": deferred,
+        "publication_plan": _publication_report(
+            candidates, candidate_sources, storage, config.limits
+        ),
+    }
 
 
 def main(argv=None) -> int:
