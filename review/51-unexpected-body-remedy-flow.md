@@ -1,7 +1,7 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 complete; P1 evaluation evidence recorded; P1 admission, P2 integration, and P3–P5
-gated.**
+**Status: P0 complete; P1 evidence accepted by maintainer for P3 implementation; P2 integration,
+P3 dispatch integration, and P4–P5 remain gated.**
 **Revised:** 2026-10-14 after P3 consensus-routing decision and evaluation capture.
 This specification does not itself change production routing or enable auto-merge.
 
@@ -1381,20 +1381,37 @@ not assignments. A JEV choice only agrees when it selects A or B and DeepSeek in
 the same normalized action, owner, and full feed set. The diagnostic's JEV multiple-choice result
 is not full-assignment accuracy.
 
-**Gates before production implementation:** finish the P1 physical-route/model-family/effort
-admissions for Sol, GLM Flash, DeepSeek V4.1 Flash, and JEV; reconcile exact route catalog entries;
-complete the durable P2 policy, evidence and decision-ledger contracts; and implement JEV through
-the documented review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy
-that integration gate. Until these gates pass, production publication remains manual.
+**Maintainer admission decision (2026-10-14):** the maintainer explicitly accepted the existing P1
+evaluation evidence as sufficient to proceed with P3 implementation. This acceptance does not
+rewrite observed provider identity or reasoning metadata: GLM's alias/serving-family question,
+default-effort evaluation coverage, and JEV's pilot-versus-dispatch distinction remain visible in
+the evaluation records. It does not change `config/remedy.yml`, enable runtime routing, publish
+feeds, or merge PRs.
 
-**P3 implementation and acceptance:** add a structured review decision containing both stage
-results, exact evidence/provenance, validator output, and `pr_candidate|issue_candidate|policy_hold`
-disposition. Reuse existing routing/quota controls; no direct JEV client, fallback, automatic
-retry, feed mutation, or auto-merge. Tests cover exact normalized agreement, action/owner/feed
-mismatches, deterministic-policy failures despite consensus, one and only one adjudication round,
-JEV A/B/C/D semantics, route unavailability, transport/schema/identity failure, uncertainty,
-sparse legitimate bodies, quota exhaustion, checkbox issue generation, and human-only PR merge.
-Keep unrelated P4/P5 controls, historical coverage, and stage/pipeline versions unchanged.
+**Remaining production gates:** reconcile exact route catalog entries; complete any remaining
+durable P2 policy, evidence and decision-ledger contracts; and implement JEV through the documented
+review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy that integration
+gate. Until these gates pass, production publication remains manual.
+
+**P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
+route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
+`P3Adjudication`, evidence/policy hashes, and an explicit set of runtime-admitted route IDs. It
+returns `P3ReviewDecision` with both stages' raw-response hashes and route/model/effort provenance,
+validator result, and `pr_candidate|issue_candidate|policy_hold`. The caller constructs JEV choices
+with A=Sol and B=GLM Flash; DeepSeek supplies its complete assignment. Exact normalized equality
+uses action, target feed set, episode IDs, all-observed flag, and new-feed slug. A proposal
+candidate requires the initial validated agreement, or a selected A/B proposal that exactly
+matches DeepSeek and all validators pass. C/D, missing results, mismatches, and validation failure
+cannot produce a PR candidate. Missing route admission returns a policy hold.
+
+`format_p3_manual_issue` renders evidence hashes, caller-prepared evidence, and per-feed
+correct/include, possible/hold, and incorrect/exclude checkboxes plus the two overall hold choices.
+It does not write to GitHub. The caller must supply feed names/slugs from locally validated
+evidence. P3 produces candidates only: no provider call, direct JEV client, fallback, automatic
+retry, feed mutation, GitHub write, or auto-merge is added here. JEV production work must use the
+review/49 dispatch API. Tests cover normalized consensus, adjudication, mismatches, validator
+failure, provenance binding, unavailable routes, JEV abstentions, and checkbox formatting. Keep
+unrelated P4/P5 controls, historical coverage, and stage/pipeline versions unchanged.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed
