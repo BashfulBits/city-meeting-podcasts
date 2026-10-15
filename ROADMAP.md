@@ -679,51 +679,17 @@ cases with current coverage in inspectable reports. Recurring alerts remain unch
 Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
 route and immediate first-run evidence review. Output and broader rotation remain separately gated.
 
-Review/48 manual canary follow-up: prepare reusable main-only dispatch for approved routes,
-with separately bounded durable manual budgets; contract review precedes implementation.
-
-Review/48 manual trigger implementation is prepared under #2221 with the approved separate
-finite allowance. Explicit canary execution and acceptance precede output/broader activation.
-
-Review/48 new-route discovery/report/retry shipped in #2275, and its single-candidate manual live
-activation shipped in #2281. The 2026-10-14 approved workflow now runs bounded input discovery for
-qualifying newly found free routes after reachability and structured-output checks. Unknown quota
-scope remains explicit; no configuration is published automatically. Authenticated admitted-input
-evidence is being connected to reviewed route-addition values in #2271.
-
-The 2026-10-11 manual Groq run allowed up to six calls but stopped after charging one 10,467-token
-reservation. It yielded no provider counts or completion reason, so it does not verify that request
-size. A manual-only, 4 KiB sanitized HTTP error-body excerpt is being added before rerunning the
-same target; scheduled probing remains at 8,192 and ordinary jobs at 7,125. No other route or
-dimension is enabled.
-
-**Review/48 scope correction and discovery L3 — 2026-10-11.** Complete route
-discovery/addition/removal with bounded new-route input/output/combined request-cap searches at strict 0.5% admitted/refused width.
-Report partial results on a stuck/escape bound; maintainer `test again` resumes authenticated
-progress another day. Ask for missing provider quotas and cap overrides before preparing a PR.
-Existing runtime feedback remains intact. Separate quota-pool configuration/enforcement design
-from route maintenance. Periodic empirical limit verification, burst/refill and pacing redesign
-are Deferred to [review/54](review/54-provider-limit-characterization.md), tracked by #2264; they
-do not block discovery reporting. Review/48 §8.13 defines the offline file/test plan, finite escape
-budgets and authenticated next-day retries; live discovery activation remains separately reviewed.
-The offline foundation shipped in #2273; report/retry/workflow integration shipped in #2275.
-Before a new provider free route is added, §8.13 requires request-cap evidence to inform its proposed
-route values. Live discovery activation remains separately gated by #2223; route-removal activation
-is tracked by #2274.
-
-**2026-10-14 approved implementation in progress:** weekly reconciliation will automatically run
-input discovery for newly found routes only after free, reachability and structured-output checks,
-and only when the AA score is strictly above GPT-OSS-120B. Missing or lower/equal scores defer it.
-The bounded plan permits three provider-paused sessions per weekly run, up to 96 calls and 90
-minutes per route, with 288 shared calls and a five-hour workflow ceiling. No cap is written to
-configuration automatically. This supersedes the earlier manual-only activation note above; a
-one-time scan of already-configured routes remains separate and unimplemented. #2271 prepares
-`hard_input_ceiling` from the largest provider-counted admitted input and operational
-`input_context_limit` from the larger of the published context claim and admitted input plus actual
-generated output. It preserves the provider claim/source in route comments and the addition PR;
-output-context values remain sourced from provider/catalog or LiteLLM claims, with missing values
-deferred for maintainer input. One successful authenticated discovery run is sufficient; this is
-new-route onboarding, not a weekly re-probe of that route.
+**Review/48 current status (2026-10-15).** New-route discovery, report/retry integration, automatic
+weekly input discovery and authenticated cap projection shipped in #2275, #2281, #2445 and #2448. The weekly
+run probes newly found free routes only after reachability, structured-output and strict AA gates;
+it searches input size and reports published hints, provider counts and calibrated refusal estimates.
+One successful authenticated discovery run supplies the input-cap evidence; configured routes are
+not re-probed weekly. The separate evidence-gated removal activation is in PR #2446 under #2274.
+Recovery evidence #2220 is accepted; recurring configured-route calibration remains deferred to
+[review/54](review/54-provider-limit-characterization.md)
+and #2264. The Groq pilot's first evidence review remains operational follow-up under #2221 and does
+not block new-route discovery or removal activation. No workflow edits config directly, merges, or
+deploys it.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing

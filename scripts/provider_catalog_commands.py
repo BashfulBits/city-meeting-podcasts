@@ -244,7 +244,7 @@ def prepare_context(base_commit, *, selected=()):
 
 
 def prepare_retirements(base_commit):
-    """Dormant automatic-removal preparation; activation is a separate reviewed change."""
+    """Rebuild retirement proposals from fresh catalogs and account-level confirmations."""
     from citypods.provider_catalog.reconcile import confirm_retirement_candidates
     from citypods.provider_catalog.retire import RETIREMENTS_ENABLED, plan_retirements
 
@@ -468,13 +468,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True)
     parser.add_argument("--permission")
-    parser.add_argument("--automatic-limits", action="store_true")
+    automatic = parser.add_mutually_exclusive_group()
+    automatic.add_argument("--automatic-limits", action="store_true")
+    automatic.add_argument("--automatic-retirements", action="store_true")
     parser.add_argument("--retry-receipt", type=Path)
     parser.add_argument("--out", required=True)
     # All publication operations are confined to the repository's own trusted Actions runner.
     args = parser.parse_args(argv)
     event = json.loads(Path(args.event).read_text())
-    if args.automatic_limits:
+    if args.automatic_limits or args.automatic_retirements:
         source = event.get("workflow_run") or {}
         result = {
             "accepted": bool(
@@ -484,9 +486,18 @@ def main(argv=None):
                 and source.get("head_branch") == "main"
                 and source.get("name") == "Provider catalog reconciliation"
                 and (source.get("head_repository") or {}).get("full_name")
-                == os.environ.get("GITHUB_REPOSITORY")
+                == os.environ.get("GITHUB_REPOSITORY", "")
+                and (
+                    not args.automatic_retirements
+                    or source.get("display_title")
+                    == "Provider catalog reconciliation (weekly-full)"
+                )
             ),
-            "comment": "Preparing verified automatic rate tightening.",
+            "comment": (
+                "Preparing evidence-gated route removals."
+                if args.automatic_retirements
+                else "Preparing verified automatic rate tightening."
+            ),
         }
     else:
         if not args.permission:
@@ -515,6 +526,25 @@ def main(argv=None):
                     break
             else:
                 raise ValueError("main changed repeatedly; defer rate maintenance")
+        elif result["accepted"] and args.automatic_retirements:
+            for _ in range(3):
+                run(["git", "fetch", "origin", "main"])
+                base = run(["git", "rev-parse", "origin/main"])
+                run(["git", "reset", "--hard", base])
+                plan = prepare_retirements(base)
+                if not plan.removed_routes:
+                    result["comment"] = "No route has fresh evidence qualifying it for removal."
+                    break
+                validate()
+                url = publish(plan)
+                if url is not None:
+                    result["comment"] = url
+                    if not url.startswith("Waiting:"):
+                        result["comment"] += "\n\n" + proposal_body(plan)
+                        result["plan"] = asdict(plan)
+                    break
+            else:
+                raise ValueError("main changed repeatedly; defer route-removal publication")
         elif result["accepted"]:
             number = result["issue_number"]
             current = json.loads(
@@ -614,8 +644,11 @@ def main(argv=None):
         )
     if result.get("accepted") and result.get("retry_receipt") and args.retry_receipt:
         args.retry_receipt.write_text(json.dumps(result["retry_receipt"], indent=2) + "\n")
+    accepted = bool(result["accepted"])
+    # The Actions caller only consumes the public comment; do not persist event-derived gates.
+    result.pop("accepted", None)
     Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
-    return 0 if result["accepted"] else 1
+    return 0 if accepted else 1
 
 
 def prepare_discovery_retry(decision, *, event, issue_number, now):

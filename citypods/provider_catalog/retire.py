@@ -8,8 +8,8 @@ from citypods.provider_catalog.reconcile import _route_model_keys
 
 BRANCH = "automation/provider-catalog-removals"
 PR_MARKER = "<!-- citypods:provider-catalog-removals -->"
-# A separate reviewed activation change follows deployed recovery-canary acceptance.
-RETIREMENTS_ENABLED = False
+# Activated by the reviewed recovery-canary follow-up in #2274.
+RETIREMENTS_ENABLED = True
 
 
 def _retirement_proven(route, report, config):

@@ -332,8 +332,10 @@ def test_lane_comments_survive_primary_backup_and_reasoning_cleanup():
 
 
 def test_activation_gate_prevents_probes_and_publication(monkeypatch):
+    from citypods.provider_catalog import retire
     from scripts import provider_catalog_commands as commands
 
+    monkeypatch.setattr(retire, "RETIREMENTS_ENABLED", False)
     monkeypatch.setattr(commands, "_control", lambda *a: pytest.fail("must not acquire live pause"))
     with pytest.raises(ValueError, match="canary"):
         commands.prepare_retirements("main")
@@ -342,6 +344,72 @@ def test_activation_gate_prevents_probes_and_publication(monkeypatch):
             EditPlan("main", (), proposal_kind="removals"),
             run_fn=lambda *a: pytest.fail("must not publish"),
         )
+
+
+def test_automatic_removal_requires_successful_weekly_full_main_run(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    from scripts import provider_catalog_commands as commands
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(commands, "run", lambda _args: "main")
+    monkeypatch.setattr(
+        commands,
+        "prepare_retirements",
+        lambda _base: SimpleNamespace(removed_routes=[]),
+    )
+    workflow_run = {
+        "conclusion": "success",
+        "event": "schedule",
+        "head_branch": "main",
+        "head_repository": {"full_name": "owner/repo"},
+        "name": "Provider catalog reconciliation",
+        "display_title": "Provider catalog reconciliation (weekly-full)",
+    }
+    event = tmp_path / "event.json"
+    output = tmp_path / "result.json"
+
+    event.write_text(json.dumps({"action": "completed", "workflow_run": workflow_run}))
+    assert (
+        commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)]) == 0
+    )
+    result = json.loads(output.read_text())
+    assert result["comment"] == "No route has fresh evidence qualifying it for removal."
+    assert "accepted" not in result
+
+    for change in (
+        {"conclusion": "failure"},
+        {"event": "workflow_dispatch"},
+        {"head_branch": "feature"},
+        {"head_repository": {"full_name": "other/repo"}},
+        {"display_title": "Provider catalog reconciliation (daily-due-only)"},
+    ):
+        changed = {**workflow_run, **change}
+        event.write_text(json.dumps({"action": "completed", "workflow_run": changed}))
+        assert (
+            commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)])
+            == 1
+        )
+        assert "accepted" not in json.loads(output.read_text())
+
+
+def test_automatic_command_output_does_not_persist_trust_gate(monkeypatch, tmp_path):
+    import json
+
+    from scripts import provider_catalog_commands as commands
+
+    event = tmp_path / "event.json"
+    output = tmp_path / "result.json"
+    event.write_text(json.dumps({"action": "completed", "workflow_run": {}}))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    assert (
+        commands.main(["--event", str(event), "--automatic-retirements", "--out", str(output)]) == 1
+    )
+    result = json.loads(output.read_text())
+    assert result["comment"] == "Preparing evidence-gated route removals."
+    assert "accepted" not in result
 
 
 def test_removal_writer_rebuilds_on_changed_main_and_flags_primary(monkeypatch):

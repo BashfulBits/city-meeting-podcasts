@@ -119,3 +119,54 @@ jobs:
           python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
             --automatic-limits --out provider-catalog-limits.json
           jq -r '.comment' provider-catalog-limits.json
+  retirements:
+    needs: limits
+    if: >-
+      ${{ always() && github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'schedule' &&
+        github.event.workflow_run.name == 'Provider catalog reconciliation' &&
+        github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - uses: ./.github/actions/setup-gh-cli
+      - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
+      - name: Prepare fresh evidence-gated route removals
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PATH: ${{ github.event_path }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
+          BEATAPI_API_KEY: ${{ secrets.BEATAPI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          gh auth setup-git
+          python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
+            --automatic-retirements --out provider-catalog-retirements.json
+          jq -r '.comment' provider-catalog-retirements.json

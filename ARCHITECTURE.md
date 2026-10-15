@@ -389,7 +389,9 @@ records, or updates the selected free scalar/acknowledgement, and asserts the ex
 it never promotes primaries or re-enables paused routes.
 Both compilers and catalog/lane/limit tests run before publication to the bot-owned fixed additions
 branch. Main changes trigger a bounded rebuild; branch replacement uses a lease. Observation and
-apply serialize through one writer lock. Human PR merge remains the activation step. Removal activation remains gated;
+apply serialize through one writer lock. Human PR merge remains the activation step. Evidence-gated
+removal proposal preparation is implemented by PR #2446 under tracking issue #2274. The workflow
+prepares reviewed proposals only;
 legacy R5 shadow promotion is superseded by review/53 graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 Slice 4 stores payload-free, versioned rate artifacts from successful scheduled main runs, binding
@@ -420,14 +422,14 @@ temporary quota exhaustion cannot cause structural failure. Python records the o
 catalog identity and eligible route generations before removing a matching terminal handle;
 structural recovery preserves failure/schema-correction counts and blocks unchanged resubmissions.
 Prelabeler batches use retained subjects and current input/output bounds. Completed recipes remain
-reusable; no pipeline version changes. Coordinated client/Worker activation
-remains a deployment gate, followed by a recovery canary before Slice 3b removal activation. Slice 3b's
-pure retirement planner (implemented in PR #2193) checks complete fresh absence and exact account evidence, preserves
-surviving pools, and repairs new-job lanes using existing free, unpaused backups. No safe backup
-means the removal is held for review. Exact YAML edits remove dependent retry/reasoning fields
-with semantic fencing. The shared managed writer selects a separate removals branch and flags
-primary changes; preparation and publication remain disabled until a separately reviewed
-post-canary activation change. Existing queued-job policies and completed artifacts are unchanged.
+reusable; no pipeline version changes. The recovery canary accepted in #2220 completes the
+prerequisite for Slice 3b retirement. Its pure planner (PR #2193) checks complete fresh absence and
+independent exact-account confirmation, preserves surviving pools, and repairs new-job lanes using
+existing free, unpaused backups. No safe backup means the removal is held for review. Exact YAML
+edits remove dependent retry/reasoning fields with semantic fencing. The activation tracked by
+#2274 runs after a successful weekly full catalog reconciliation under the shared writer lock and
+prepares a managed removal PR only; it does not merge or deploy configuration. Existing queued-job
+policies and completed artifacts are unchanged.
 
 | Area | Modules |
 |---|---|
