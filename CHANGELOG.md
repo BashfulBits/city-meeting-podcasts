@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Document P3 route admission evidence.** Record the four selected physical routes, evaluated
+  chat settings, identity and serving-family holds, and the gap between evaluation budgets and the
+  current Worker caller. Runtime remains shadowed pending verified Worker evidence and admission.
+
 - **Provider-default remedy reasoning.** Remedy admissions can now explicitly record
   `provider-default` reasoning, meaning the request omits a reasoning override and hashes only
   the route's compiled request parameters. This supports the evaluated P3 configuration without
