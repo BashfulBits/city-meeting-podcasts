@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog commands: scheduled rate/removal jobs no longer reject their own trigger.**
+  The `workflow_run` gate compared `workflow_run.name` to the workflow name, but scheduled
+  reconciliation runs carry their `run-name` (e.g. `... (daily-due-only)`), so the first scheduled
+  run failed with no explanation. The gate now matches the reconcile workflow file path, and the
+  automatic jobs print the result comment before exiting non-zero.
+
 - **P3 GitHub handoff.** Publish validated consensus proposals as human-review PRs and other
   findings as reconciled issues with per-feed include/exclude choices and a finding-level evidence
   hold. The existing issue-comment permission and P2 ledger plumbing record typed feed choices via
