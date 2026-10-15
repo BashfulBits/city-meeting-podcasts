@@ -381,8 +381,9 @@ records, or updates the selected free scalar/acknowledgement, and asserts the ex
 it never promotes primaries or re-enables paused routes.
 Both compilers and catalog/lane/limit tests run before publication to the bot-owned fixed additions
 branch. Main changes trigger a bounded rebuild; branch replacement uses a lease. Observation and
-apply serialize through one writer lock. Human PR merge remains the activation step. Reviewed removal
-proposal activation is pending #2274;
+apply serialize through one writer lock. Human PR merge remains the activation step. Evidence-gated
+removal proposal preparation is implemented by PR #2446 under tracking issue #2274. The workflow
+prepares reviewed proposals only;
 legacy R5 shadow promotion is superseded by review/53 graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 Slice 4 stores payload-free, versioned rate artifacts from successful scheduled main runs, binding

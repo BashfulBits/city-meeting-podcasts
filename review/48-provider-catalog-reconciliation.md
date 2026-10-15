@@ -650,8 +650,9 @@ structurally failed deferred work; already-completed recipes remain reusable.
 
 Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
 The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
-merged 2026-10-08 (America/Chicago). The separate activation is prepared in PR #2274 after
-maintainer acceptance of the recovery evidence under #2220. It proposes reviewed route-removal
+merged 2026-10-08 (America/Chicago). The separate activation is prepared in
+[PR #2446](https://github.com/BashfulBits/city-meeting-podcasts/pull/2446), tracked by #2274,
+after maintainer acceptance of the recovery evidence under #2220. It proposes reviewed route-removal
 PRs from the weekly full catalog run; it never edits configuration directly.
 Retirement requires current-day complete catalog evidence and an unchanged route digest for
 each configured physical account serving the upstream. Old issue markers alone cannot authorize
@@ -664,8 +665,8 @@ pool alternatives. Remove `backup_after_attempts` when the last backup is remove
 reasoning entries for models no longer in the lane. Do not rewrite existing queued jobs or their
 stored policies. New lane primary identities affect new jobs; completed artifacts remain reusable.
 
-The code and managed writer are activated in the reviewed PR for #2274 after the accepted
-recovery-canary evidence. The existing `prepare_retirements()` rebuilds from fresh `main`, obtains
+The code and managed writer will be activated by merging implementation PR #2446, following the
+accepted recovery-canary evidence. The existing `prepare_retirements()` rebuilds from fresh `main`, obtains
 the ordinary v2 provider pause, performs fresh route/account confirmations, compiles both catalogs,
 and publishes only a managed review PR. The writer runs after a successful weekly full catalog
 workflow under the shared writer lock; the daily due-only run does not start extra route probes.
