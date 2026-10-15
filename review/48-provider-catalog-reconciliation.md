@@ -2032,6 +2032,15 @@ constraint, defer that route addition until the schema or an explicit reviewed o
 it. This gate applies to new free-route additions; it does not start recurring calibration of already
 configured routes (deferred to #2264).
 
+**Implementation gap.** The shipped discovery flow reports request-cap observations separately from
+`RouteEvidence`; current `/apply` builds route context values from catalog evidence and does not yet
+project the authenticated discovery history into the addition PR. The onboarding requirement is not
+complete until the candidate decision is bound to compatible authenticated discovery evidence and
+the resulting dimension-specific values (including their count basis and any provider/local estimate
+conversion) are included in the proposed route configuration. Add regression coverage for stale,
+missing, mismatched and partial evidence. No route cap is published automatically. Track this follow-up
+under #2271; unresolved combined-cap representation remains a design dependency where applicable.
+
 **Probe axes.** Seek at least one verified admitted size and one typed too-large size on each
 axis. For input, hold output reservation and task fixed and verify input processing. For output,
 hold small input fixed and use actual generated output plus finish reason; accepting an output
