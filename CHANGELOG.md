@@ -15,6 +15,29 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **P3 daily Worker caller (in progress).** Adds stable-hash reconciliation for the Sol/GLM Flash
+  initial pair and one DeepSeek/JEV adjudication round, with route-pinned queue-only requests and
+  a separate append-only observation log. A daily GitHub Actions workflow emits report artifacts.
+  Shadow mode and missing route/effort admissions keep it closed; proposal/issue publication and
+  the P2 human-disposition connection remain unfinished. No production calls or feed changes were
+  made by this implementation.
+
+- **P3 report-only replay.** Added a strict local replay tool for recorded unexpected-body votes.
+  It emits a new decision report and fails closed with the repository's empty route admissions;
+  it makes no model calls or GitHub, storage, feed, or production-routing changes. P3 dispatch
+  integration remains gated separately.
+- **P3 dispatch cadence.** Recorded the maintainer's decision for a dedicated daily Worker caller,
+  a shared adjudicator interface with the existing JEV wire adapter, and a physical BeatAPI route
+  constraint for DeepSeek. The scheduled caller remains gated on durable P2 state and admission.
+- **Worker route pinning.** Queue-only dispatch can now narrow a logical model pool to explicit
+  physical route IDs. Pins cannot widen the model policy, and unavailable pinned routes do not
+  fall back to another provider.
+- **P3 observation storage.** Completed model responses now have a strict append-only record
+  separate from P2 human dispositions. It binds the Worker recipe, request/evidence/config/policy
+  hashes, route/model provenance, response and collection time; writes use the remedy lease and
+  verify read-back. Pending jobs remain in the existing deferred-request registry. The daily P3
+  caller and schedule are still pending.
+
 - **Review/48 evidence-gated route removals.** After a successful weekly full catalog run, the
   managed writer rechecks exact provider/account retirement evidence and prepares a review PR for
   safe removals. It does not merge or deploy route configuration.
