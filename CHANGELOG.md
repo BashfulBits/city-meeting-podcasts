@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Connect authenticated new-route input-discovery evidence to reviewed route additions. `/apply`
+proposes the largest provider-counted admitted input as `hard_input_ceiling` and raises the
+operational `input_context_limit` to cover the published claim or the admitted input plus actual
+generated output, while preserving the original claim and source in YAML comments and the PR.
+Missing output-context claims defer for maintainer input; estimated refusals never become caps.
+One successful authenticated discovery run can support the reviewed cap offer; new-route onboarding
+does not require a second weekly probe.
+
 - **P3 consensus decision engine.** Adds an offline engine for the approved Sol/GLM Flash
   initial score and single DeepSeek/JEV adjudication. It binds votes to evidence and policy
   hashes, fails closed when routes are not admitted, and renders per-feed manual-disposition
