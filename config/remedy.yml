@@ -1,5 +1,7 @@
 version: 1
 mode: shadow
+# report_only: record the publication plan only; live: execute it (set after inspecting plans)
+publication_mode: report_only
 admissions: []
 qualified_alias_types: []
 limits:

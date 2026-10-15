@@ -1636,6 +1636,36 @@ evidence was rejected or already settled does not regenerate. Markers are
 nothing. **Not in this stage:** the isolated-worktree apply, manifest-limited staging, publication of the
 plan, `remedy-feedback.yml` and `/remedy reopen` (the live stage).
 
+**Live stage (2026-10-16).** `config/remedy.yml` `publication_mode` (`report_only` by default,
+excluded from the config fingerprint so flipping it re-asks nothing) switches the publisher to execute
+its plan. In `live` mode (`scripts/remedy_p3_publish.py`, `citypods/remedy_publication.py`):
+- **One isolated worktree per PR**, created from `origin/main` before the unit's change is applied.
+  Only the files the mutation reports (the manifest, all `config/feeds/*.yml`) are staged and the
+  staged set must equal it; there is no `git clean`, and a failure removes only that unit's worktree
+  and branch. `verify_remedy_mutations` runs on that exact tree and the manifest hash is recomputed
+  after it, before the commit that is pushed. One failing unit does not stop the others.
+- **Identity.** The body carries `<!-- citypods:remedy:v1:<decision_id> -->` markers and a
+  per-decision binding (city, source, policy, label, evidence, config and policy hashes, recordings),
+  the evidence hash, the models and reasoning each vote used, the changed files with their hash, and
+  the limits of the check. A repeat dispatch updates or leaves a marked open artifact; a closed one is
+  not republished unless reopened.
+- **Feedback** (`remedy-feedback.yml`, `citypods/remedy_feedback.py`): `pull_request_target` and
+  `issues` (`closed`, `reopened`) check out `main` only, hold no model keys, and accept an event only
+  from a human with write access on an artifact the repository's own Actions identity opened, whose
+  bindings recompute to the decision ids and whose branch is the one the decisions derive. A merge
+  records `covered`/`assigned` with the PR as approval; closing unmerged records
+  `refinement_needed`/`rejected` (the PR is the artifact a refinement issue answers); reopening records
+  `in_review`; closing a directional issue nobody settled records `blocked`/`watch`. A daily
+  reconciliation recovers missed events with the same delivery ids, so the two never double-record.
+- **Refinement.** A rejected decision gets exactly one marked refinement issue that links the closed
+  PR and preserves the decision requested; if issue capacity is full the ledger already holds
+  `refinement_needed` with the PR link until it can open. The same evidence never regenerates a PR.
+- **`/remedy reopen <decision_id>`** (maintainer write access, on a marked PR or issue): records a P2
+  `proposed` event carrying the decision's own hashes; the next pass reopens or updates the artifact
+  and a reopening counts against the weekly budget. It cannot grant an alias auto-merge or change
+  policy.
+- All mutation workflows share the concurrency group `remedy-taxonomy-writes`.
+
 **Gate:** P2/P3 are implemented; all external writes first run in report-only mode for inspection.
 **Permitted files:** new `citypods/remedy_queue.py`, `scripts/remedy_unexpected_bodies.py`,
 `scripts/remedy_commands.py`, new `scripts/remedy_feedback.py`, `scripts/audit_feeds.py`,

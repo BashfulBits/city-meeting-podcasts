@@ -378,3 +378,17 @@ def test_a_first_generation_p3_issue_key_still_names_its_decision():
     assert q.parse_markers(body) == (did("legacy"),)
     both = body + q.marker(did("new"))
     assert q.parse_markers(both) == tuple(sorted([did("legacy"), did("new")]))
+
+
+def test_a_decision_may_be_both_a_pr_candidate_and_a_refinement_issue():
+    rejected = {did("r"): q.LedgerView("refinement_needed", "rejected", "e1")}
+    result = plan(
+        [
+            cand("r", evidence_hash="e1"),
+            cand("r", kind="issue", evidence_hash="e1", refines="pr-url"),
+        ],
+        ledger=rejected,
+    )
+    assert [s.reason for s in result.skipped] == ["rejected_unchanged_evidence"]  # no second PR
+    assert [i.decision_id for i in result.issues] == [did("r")]  # the refinement issue goes out
+    assert result.issues[0].refines == "pr-url"

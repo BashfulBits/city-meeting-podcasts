@@ -1118,7 +1118,12 @@ or publication are enabled by the repository's current shadow configuration.
 Remedy publication planning (review/51 P4, report-only): `citypods/remedy_queue.py` plans what the
 P3 publisher would open, update or leave queued within `config/remedy.yml`'s limits (packing, rolling
 week, open caps, round-robin by city, stable decision markers and branches); the publisher records it
-as `publication_plan` and writes nothing from it yet.
+as `publication_plan`. With `publication_mode: live` in `config/remedy.yml` the publisher executes it:
+one isolated worktree and branch per PR (manifest-limited staging, the repository gate on the exact
+tree, stable decision markers and bindings in the body), a refinement issue for a rejected PR, and
+`remedy-feedback.yml` (merge, close and reopen on `pull_request_target`/`issues`, plus a daily
+reconciliation) and `/remedy reopen` record what people do as P2 decision events. All of it shares
+the `remedy-taxonomy-writes` concurrency group.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same
