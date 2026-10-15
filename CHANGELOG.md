@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **P3 GitHub handoff.** Publish validated consensus proposals as human-review PRs and other
+  findings as reconciled issues with per-feed include/exclude choices and a finding-level evidence
+  hold. The existing issue-comment permission and P2 ledger plumbing record typed feed choices via
+  `/body-disposition`. Exact route admission and reasoning gates remain required; the shadow
+  configuration publishes nothing. Human review and merge remain required for feed changes.
+
+- **P3 publication boundary.** Record the maintainer's P1 evidence acceptance and remove redundant
+  evaluation and review/49 league gates from P3. Recompute consensus from admitted route-bound
+  votes, rebind candidates to exact source evidence, and rerun the existing feed mutation
+  validator. The daily workflow now publishes bounded proposal PRs and P2 human-disposition issues;
+  production configuration remains shadowed pending exact route admission and monitored operation.
+
 - **P3 daily Worker caller (in progress).** Adds stable-hash reconciliation for the Sol/GLM Flash
   initial pair and one DeepSeek/JEV adjudication round, with route-pinned queue-only requests and
   a separate append-only observation log. A daily GitHub Actions workflow emits report artifacts.
