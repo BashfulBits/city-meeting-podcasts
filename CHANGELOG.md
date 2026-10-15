@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Record unexpected-body consensus policy.** Document the maintainer-selected Sol + GLM Flash
+  initial score and one DeepSeek V4.1 Flash + JEV adjudication round, with deterministic validation,
+  explicit manual-disposition issues, and human review for every resulting pull request. Preserve
+  the prompt-comparison and disagreement-diagnostic scripts, observations, reports, and separate
+  maintainer feed labels under `evals/remedy/`. This records policy and evaluation evidence only;
+  production routing and feed behavior are unchanged.
+
 - **Input-first route discovery.** Normal discovery prioritizes input refinement and uses bounded
   output/combined examples rather than treating early output stopping as a maximum. Reports
   separate confirmed provider counts from estimated rejected sizes and recheck old input-size
