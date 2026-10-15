@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **CivicPlus protocol-relative embed and HLS resolution.** Support protocol-relative URLs (`//...`)
+  and normalize insecure or schemeless embed and stream URLs to HTTPS in `CivicPlusProvider`,
+  resolving media extraction failures across CivicPlus cities (fixes #2296).
+
 - **Document P3 route admission evidence.** Record the four selected physical routes, evaluated
   chat settings, identity and serving-family holds, and the gap between evaluation budgets and the
   current Worker caller. Runtime remains shadowed pending verified Worker evidence and admission.
