@@ -286,7 +286,8 @@ proposed at least as large as both the published context claim and the admitted 
 generated output. YAML comments and the PR retain the claim and source for comparison. Estimated
 refusals are not promoted to caps, and missing provider/catalog and LiteLLM output-context values
 defer the addition for maintainer input. A cap offer also requires compatible admitted-input
-evidence from two distinct successful workflow runs; the issue reports the verified run count.
+evidence from one successful authenticated discovery run; onboarding does not re-probe the route
+weekly. The issue and addition PR retain the evidence provenance for maintainer review.
 Discovery output can opt into a documented minimum-generation parameter for a verified
 endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is the initial opt-in;
 other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum

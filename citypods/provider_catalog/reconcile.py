@@ -359,7 +359,7 @@ def reconcile(
     discovery_axis: str = "all",
     discovery_history=(),
     discovery_history_calls: Mapping[str, int] | None = None,
-    discovery_input_success_runs: Mapping[tuple[str, str, str, str], tuple[str, ...]] | None = None,
+    discovery_successful_input_evidence: set[str] | None = None,
     discovery_receipt_id: str | None = None,
     discovery_receipt_ids: Mapping[str, str] | None = None,
     discovery_run_id: str = "",
@@ -583,7 +583,7 @@ def reconcile(
                     (discovery_history_calls or {}).get(
                         _candidate_discovery_identity(provider, model, rules, cfg), 0
                     ),
-                    discovery_input_success_runs or {},
+                    discovery_successful_input_evidence or set(),
                 )
             return candidate
 
@@ -1562,7 +1562,7 @@ def _discovery_history_summary(
     provider_cfg,
     history,
     history_calls=0,
-    input_success_runs=None,
+    successful_input_evidence=None,
 ):
     from citypods.provider_catalog.discovery import (
         Bracket,
@@ -1604,39 +1604,12 @@ def _discovery_history_summary(
         summary["source"] = source
         axes.append(summary)
     characterization = _discovery_input_characterization(
-        axes, compatible, identity=identity, parser_version=rules.discovery_parser_version
+        axes,
+        compatible,
+        identity=identity,
+        parser_version=rules.discovery_parser_version,
+        successful_evidence=successful_input_evidence or set(),
     )
-    if characterization:
-        signature = (
-            characterization["identity"],
-            characterization["parser_version"],
-            characterization["fixture_version"],
-            characterization["control"],
-        )
-        successful_run_ids = sorted(set((input_success_runs or {}).get(signature, ())))
-        characterization["successful_run_ids"] = successful_run_ids
-        matching = next(
-            item
-            for item in compatible
-            if item.request.axis == "input"
-            and item.request.control == characterization["control"]
-            and item.request.parser_version == characterization["parser_version"]
-            and item.request.fixture_version == characterization["fixture_version"]
-            and item.outcome == "admitted"
-            and item.verified
-            and item.reported_input == characterization["admitted_input"]
-            and item.reported_output == characterization["generated_output"]
-            and item.request.input_tokens == characterization["admitted_local_estimate"]
-            and item.request.output_tokens == characterization["requested_output"]
-            and item.observed_at == characterization["observed_at"]
-        )
-        characterization["evidence_digest"] = digest(
-            {
-                "request": asdict(matching.request),
-                "observation": asdict(matching),
-                "successful_run_ids": successful_run_ids,
-            }
-        )
     return {
         "retryable": bool(compatible)
         and any(row["axis"] == "input" and row["status"] != "converged" for row in axes),
@@ -1658,7 +1631,9 @@ def _discovery_history_summary(
     }
 
 
-def _discovery_input_characterization(axes, attempts, *, identity, parser_version):
+def _discovery_input_characterization(
+    axes, attempts, *, identity, parser_version, successful_evidence=None
+):
     """Advisory input evidence: never mix actual usage with estimated rejected sizes."""
     from citypods.provider_catalog.discovery import INPUT_SIZE_GUIDANCE, positive
 
@@ -1690,6 +1665,10 @@ def _discovery_input_characterization(axes, attempts, *, identity, parser_versio
         and type(obs.get("reported_output")) is int
         and obs["reported_output"] >= 0
         and positive(req.get("input_tokens"))
+        and (
+            successful_evidence is None
+            or digest({"request": req, "observation": obs}) in successful_evidence
+        )
     ]
     if not passing:
         return {}
@@ -1736,7 +1715,6 @@ def _discovery_input_characterization(axes, attempts, *, identity, parser_versio
         "fixture_version": req.get("fixture_version"),
         "observed_at": obs.get("observed_at"),
         "evidence_digest": digest({"request": req, "observation": obs}),
-        "successful_run_ids": [],
         "rejected_estimates": rejected_rows,
     }
 

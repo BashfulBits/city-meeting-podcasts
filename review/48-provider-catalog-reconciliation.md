@@ -2309,10 +2309,17 @@ the original published claim and source in YAML comments and the PR for human co
 measured value is an explicit reviewed discrepancy in that PR; it does not rewrite the provider
 claim or acquire provider-canonical status. Estimated refusal sizes never become caps. The separate
 `output_context_limit` comes from a provider/catalog claim or LiteLLM hint and remains reviewable;
-when neither exists, `/apply` defers and asks the maintainer to enter an operational value. Preserve
-the existing onboarding evidence gate: two compatible provider-counted admitted inputs from
-distinct successful weekly runs must reproduce the same route/parser/fixture/control before
-`/apply` offers an input cap. The issue shows the verified run count; fewer than two runs is deferred.
+when neither exists, `/apply` defers and asks the maintainer to enter an operational value. For a
+newly discovered route, the bounded onboarding search produces one authenticated result
+artifact containing its compatible probe observations. That single successful discovery run is
+sufficient for `/apply` to offer the largest provider-counted admitted input as a reviewed cap;
+do not schedule or wait for a second weekly measurement of the route. Apply still reauthenticates
+the workflow run and artifact, and requires the exact evidence digest plus matching route, parser,
+fixture, control and count basis. Partial, failed, stale or mismatched history cannot support a cap.
+`input_context_limit` is the combined per-request window, not a promise that maximum input and
+maximum output fit together. Direct and Worker dispatch cap each request's output by both
+`output_context_limit` and the window remaining after its input; do not inflate the window to the
+sum of independent maxima without evidence for that larger combined request.
 
 Discovery reporting/retry can ship independently of the separate explicit quota-pool and combined-cap
 schema design. If a measured combined cap or shared quota cannot be faithfully enforced by current

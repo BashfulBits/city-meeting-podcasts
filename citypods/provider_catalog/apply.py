@@ -369,7 +369,6 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "required; refresh the issue"
                 )
                 continue
-            discovery = current.discovery if current else None
             litellm = discovery.get("litellm") if isinstance(discovery, Mapping) else None
             litellm_output = litellm.get("output") if isinstance(litellm, Mapping) else None
             provider_context_claim = (
@@ -506,7 +505,6 @@ def _verified_input_cap(discovery):
     identity = characterization.get("identity")
     parser_version = characterization.get("parser_version")
     fixture_version = characterization.get("fixture_version")
-    successful_run_ids = characterization.get("successful_run_ids")
     source = axis.get("source") if isinstance(axis, Mapping) else None
     if (
         not isinstance(axis, Mapping)
@@ -527,13 +525,6 @@ def _verified_input_cap(discovery):
         or not isinstance(parser_version, str)
         or not parser_version
         or fixture_version != "discovery-v1"
-        or not isinstance(successful_run_ids, list)
-        or len(successful_run_ids) > 128
-        or any(
-            not isinstance(run_id, str) or not re.fullmatch(r"[0-9]{1,20}", run_id)
-            for run_id in successful_run_ids
-        )
-        or len(set(successful_run_ids)) < 2
     ):
         return None
     return {
@@ -544,7 +535,6 @@ def _verified_input_cap(discovery):
         "identity": identity,
         "parser_version": parser_version,
         "fixture_version": fixture_version,
-        "successful_run_ids": tuple(sorted(set(successful_run_ids))),
         "evidence_digest": stamp,
         "source": source if isinstance(source, str) else None,
     }

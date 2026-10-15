@@ -133,7 +133,7 @@ def prepare(body, base_commit, proposal_kind=None):
         discovery_history = ()
         discovery_history_gaps = ()
         discovery_history_calls = {}
-        discovery_input_success_runs = {}
+        discovery_successful_input_evidence = set()
         if selected:
             now = datetime.now(UTC)
             repository = os.environ.get("GITHUB_REPOSITORY")
@@ -150,14 +150,9 @@ def prepare(body, base_commit, proposal_kind=None):
                     discovery_history_calls[identity] = (
                         discovery_history_calls.get(identity, 0) + calls
                     )
-                for row in accepted_run.get("input_successes", []):
-                    if (
-                        isinstance(row, list)
-                        and len(row) == 5
-                        and all(isinstance(value, str) and value for value in row)
-                    ):
-                        signature = tuple(row[:4])
-                        discovery_input_success_runs.setdefault(signature, set()).add(row[4])
+                discovery_successful_input_evidence.update(
+                    accepted_run.get("successful_input_evidence", [])
+                )
         session = requests.Session()
         report = reconcile(
             limits,
@@ -173,9 +168,7 @@ def prepare(body, base_commit, proposal_kind=None):
             route_ids=paid,
             discovery_history=discovery_history,
             discovery_history_calls=discovery_history_calls,
-            discovery_input_success_runs={
-                key: tuple(sorted(value)) for key, value in discovery_input_success_runs.items()
-            },
+            discovery_successful_input_evidence=discovery_successful_input_evidence,
         )
         report.observations.extend(discovery_history_gaps)
     plan = plan_apply(report, decisions, config)

@@ -1907,7 +1907,9 @@ provider calls. Before a new provider's free route is added, §8.13 requires thi
 inform the proposed route values; unresolved axes need sourced maintainer input or `test again`.
 Pure adapter tests cover supported axes; unsupported refusal/combined semantics remain explicit.
 The 2026-10-14 decision below supersedes the earlier manual-only activation state for qualifying
-input discovery. Implementation of the reviewed route-value projection is tracked in [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
+input discovery. A single successful authenticated discovery run supplies cap evidence; the new
+route is not re-probed weekly. Implementation of the reviewed route-value projection is tracked in
+[#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
 
 ### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
 

@@ -864,12 +864,11 @@ def test_authenticate_partial_artifacts_and_reject_forged_numeric_state(tmp_path
     values, accepted, deferred = verify()
     assert len(values) == len(accepted) == 1 and not deferred
     assert accepted[0]["receipt_ids"] == ["authorized-retry"]
-    assert accepted[0]["input_successes"] == []
+    assert "input_successes" not in accepted[0]
+    assert accepted[0]["successful_input_evidence"] == []
     run["conclusion"] = "success"
     _values, accepted, deferred = verify()
-    assert not deferred and accepted[0]["input_successes"] == [
-        [req.identity, req.parser_version, req.fixture_version, req.control, "5"]
-    ]
+    assert not deferred and len(accepted[0]["successful_input_evidence"]) == 1
 
     # Six newer empty or duplicate-only sessions must not crowd out older useful evidence.
     import copy

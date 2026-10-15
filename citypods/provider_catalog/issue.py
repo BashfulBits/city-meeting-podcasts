@@ -472,18 +472,6 @@ def render_body(
                 admitted = primary.get("admitted_input")
                 generated = primary.get("generated_output")
                 claim = input_axis.get("published")
-                raw_successful_run_ids = primary.get("successful_run_ids")
-                successful_run_ids = (
-                    sorted(
-                        {
-                            run_id
-                            for run_id in raw_successful_run_ids
-                            if isinstance(run_id, str) and re.fullmatch(r"[0-9]{1,20}", run_id)
-                        }
-                    )
-                    if isinstance(raw_successful_run_ids, list)
-                    else []
-                )
                 if (
                     type(admitted) is int
                     and admitted > 0
@@ -505,30 +493,28 @@ def render_body(
                     )
                     if not output_claim and isinstance(hints, dict):
                         output_claim = hints.get("output")
-                    if len(set(successful_run_ids)) >= 2:
-                        lines += [
-                            "**Proposed route values if you select add:** "
-                            f"`hard_input_ceiling` = {_discovery_count(admitted)} provider-counted "
-                            "input (verified admitted value); "
-                            f"`input_context_limit` = {_discovery_count(operational_window)} "
-                            f"(max of provider claim {claim_label} and the admitted input plus "
-                            f"{_discovery_count(generated)} actually generated output).",
-                            "The provider claim and source are preserved in route YAML comments. "
-                            "Output/combined probe results do not set caps; the route's separate "
-                            "`output_context_limit` comes from a provider/catalog or LiteLLM claim "
-                            "and stays visible for review. If neither exists, `/apply` defers for "
-                            "a maintainer-entered value.",
-                            f"Independent successful weekly runs: {len(set(successful_run_ids))}.",
-                            "",
-                        ]
-                    else:
-                        lines += [
-                            "**Input cap proposal deferred:** need provider-counted admitted input "
-                            "from two distinct successful weekly runs with the same route, parser, "
-                            "fixture and control; currently verified: "
-                            f"{len(set(successful_run_ids))}.",
-                            "",
-                        ]
+                    output_label = (
+                        _discovery_count(output_claim)
+                        if type(output_claim) is int and output_claim > 0
+                        else "not published"
+                    )
+                    lines += [
+                        "**Proposed route values if you select add:** "
+                        f"`hard_input_ceiling` = {_discovery_count(admitted)} provider-counted "
+                        "input (verified admitted value); "
+                        f"`input_context_limit` = {_discovery_count(operational_window)} "
+                        f"(max of provider claim {claim_label} and the admitted input plus "
+                        f"{_discovery_count(generated)} actually generated output).",
+                        "The provider claim and source are preserved in route YAML comments. "
+                        "Output/combined probe results do not set caps; the route's separate "
+                        "`output_context_limit` comes from a provider/catalog or LiteLLM claim "
+                        "and stays visible for review. If neither exists, `/apply` defers for "
+                        "a maintainer-entered value.",
+                        f"Proposed `output_context_limit`: {output_label}.",
+                        "This proposal uses one successful authenticated discovery run; the "
+                        "addition remains subject to maintainer review.",
+                        "",
+                    ]
                 lines += [
                     "**Primary input characterization:** confirmed "
                     f"{_discovery_count(primary.get('admitted_input'))} provider-counted input "

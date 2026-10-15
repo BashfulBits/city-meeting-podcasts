@@ -70,7 +70,6 @@ DISCOVERY = {
         "parser_version": "provider-parser-v1",
         "fixture_version": "discovery-v1",
         "evidence_digest": "a" * 64,
-        "successful_run_ids": ["10001", "10002"],
     },
 }
 
@@ -209,45 +208,19 @@ def test_non_provider_counted_or_stale_discovery_cap_is_not_accepted():
         assert not result.routes
 
 
-def test_route_addition_waits_for_two_distinct_successful_evidence_runs():
-    one_run = {
-        **DISCOVERY,
-        "input_characterization": {
-            **DISCOVERY["input_characterization"],
-            "successful_run_ids": ["10001"],
-        },
-    }
-    report = Report(candidates=[replace(CANDIDATE, discovery=one_run)])
+def test_route_addition_accepts_one_authenticated_discovery_run():
+    report = Report(candidates=[replace(CANDIDATE, discovery=DISCOVERY)])
     decision = Decision(
         "host",
         "creator/new",
         "add",
         ("lane",),
         PROOF,
-        discovery_digest=one_run["input_characterization"]["evidence_digest"],
+        discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
     )
     result = plan_apply(report, (decision,), config())
-    assert not result.routes
-    assert "authenticated provider-counted input evidence" in result.deferred[0]
-
-    malformed = {
-        **DISCOVERY,
-        "input_characterization": {
-            **DISCOVERY["input_characterization"],
-            "successful_run_ids": [{"unhashable": True}],
-        },
-    }
-    report = Report(candidates=[replace(CANDIDATE, discovery=malformed)])
-    decision = Decision(
-        "host",
-        "creator/new",
-        "add",
-        ("lane",),
-        PROOF,
-        discovery_digest=malformed["input_characterization"]["evidence_digest"],
-    )
-    result = plan_apply(report, (decision,), config())
-    assert not result.routes and result.deferred
+    assert result.routes
+    assert not result.deferred
 
 
 def test_shared_provider_capacity_is_not_copied_to_routes():
@@ -1259,7 +1232,6 @@ def test_issue_shows_measured_operational_window_and_preserves_published_claim()
             "generated_output": 100,
             "count_basis": "input",
             "control": "input:v2",
-            "successful_run_ids": ["10001", "10002"],
         },
     }
     body = render_body(
@@ -1268,22 +1240,9 @@ def test_issue_shows_measured_operational_window_and_preserves_published_claim()
     )
     assert "`hard_input_ceiling` = 9,000" in body
     assert "`input_context_limit` = 9,100" in body
+    assert "Proposed `output_context_limit`: 4,096" in body
     assert "provider claim 8,000" in body
-    assert "two distinct successful weekly runs" not in body
-
-    discovery["input_characterization"]["successful_run_ids"] = ["10001"]
-    deferred_body = render_body(
-        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
-        run_date=TODAY.isoformat(),
-    )
-    assert "currently verified: 1" in deferred_body
-
-    discovery["input_characterization"]["successful_run_ids"] = [{"malformed": True}]
-    malformed_body = render_body(
-        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
-        run_date=TODAY.isoformat(),
-    )
-    assert "currently verified: 0" in malformed_body
+    assert "one successful authenticated discovery run" in body
 
 
 def test_input_priority_supporting_counts_do_not_claim_full_requested_output():

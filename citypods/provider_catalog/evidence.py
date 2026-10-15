@@ -1826,7 +1826,7 @@ def verified_discovery_history(
                 now=stamp,
             )
             found, run_counts, run_attempts, run_call_counts = [], {}, set(), {}
-            run_input_successes = set()
+            successful_input_evidence = set()
             for session in payload["sessions"]:
                 metadata = session["session"]
                 identity = metadata["identity"]
@@ -1859,12 +1859,12 @@ def verified_discovery_history(
                         and type(item.reported_output) is int
                         and item.reported_output >= 0
                     ):
-                        run_input_successes.add(
-                            (
-                                item.request.identity,
-                                item.request.parser_version,
-                                item.request.fixture_version,
-                                item.request.control,
+                        successful_input_evidence.add(
+                            digest(
+                                {
+                                    "request": asdict(item.request),
+                                    "observation": asdict(item),
+                                }
                             )
                         )
                 if unique_attempts:
@@ -1894,9 +1894,7 @@ def verified_discovery_history(
                         }
                     ),
                     "call_counts": run_call_counts,
-                    "input_successes": [
-                        [*signature, run_id] for signature in sorted(run_input_successes)
-                    ],
+                    "successful_input_evidence": sorted(successful_input_evidence),
                 }
             )
         except (

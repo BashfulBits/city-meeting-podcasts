@@ -2131,3 +2131,26 @@ def test_input_characterization_keeps_rejection_estimates_out_of_verified_bounds
     assert result["rejected_estimates"][0]["local_input_estimate"] == 12100
     assert result["rejected_estimates"][0]["provider_scale_estimate"] == 11000
     assert "refused" not in result
+
+    from citypods.provider_catalog.evidence import digest
+
+    passing_digest = digest({"request": asdict(passed.request), "observation": asdict(passed)})
+    characterization_args = (
+        [{"axis": "input", "admitted": 10000, "refused": None, "control": "input:v2"}],
+        [passed],
+    )
+    assert not _discovery_input_characterization(
+        *characterization_args,
+        identity="physical",
+        parser_version="parser",
+        successful_evidence=set(),
+    )
+    assert (
+        _discovery_input_characterization(
+            *characterization_args,
+            identity="physical",
+            parser_version="parser",
+            successful_evidence={passing_digest},
+        )["admitted_input"]
+        == 10000
+    )

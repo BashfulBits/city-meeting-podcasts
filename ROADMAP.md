@@ -722,8 +722,8 @@ one-time scan of already-configured routes remains separate and unimplemented. #
 `input_context_limit` from the larger of the published context claim and admitted input plus actual
 generated output. It preserves the provider claim/source in route comments and the addition PR;
 output-context values remain sourced from provider/catalog or LiteLLM claims, with missing values
-deferred for maintainer input. A cap offer waits for matching admitted-input evidence from two
-distinct successful workflow runs.
+deferred for maintainer input. One successful authenticated discovery run is sufficient; this is
+new-route onboarding, not a weekly re-probe of that route.
 
 **Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
 quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing
