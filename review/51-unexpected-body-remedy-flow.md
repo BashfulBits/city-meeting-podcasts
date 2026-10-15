@@ -1389,10 +1389,12 @@ default-effort evaluation coverage, and JEV's pilot-versus-dispatch distinction 
 the evaluation records. It does not change `config/remedy.yml`, enable runtime routing, publish
 feeds, or merge PRs.
 
-**Remaining production gates:** reconcile exact route catalog entries; complete any remaining
-durable P2 policy, evidence and decision-ledger contracts; and implement JEV through the documented
-review/49 dispatch API. The local JEV pilot used in the diagnostic does not satisfy that integration
-gate. Until these gates pass, production publication remains manual.
+**Maintainer acceptance update (2026-10-15):** the evidence and methods already preserved under
+`evals/remedy/` satisfy the P1 evaluation acceptance criterion. Do not block P3 on another model
+comparison or completion of review/49's separate weekly judge league. P3 reuses the merged review/49
+Worker and JEV adapter. This changes the implementation gate only; runtime verification of exact
+physical route, serving identity, reasoning controls, and current admission remains required. The
+production remedy configuration remains shadowed until those checks pass.
 
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
@@ -1429,7 +1431,7 @@ Worker handles. Stable recipe hashes make enqueue/reconciliation idempotent acro
 runs. A terminal failure or missing/unknown result cannot be promoted to a vote. Append P2 decision
 events only for human dispositions; those events may reference the P3 report artifact.
 
-**P3 daily caller implementation (PR #2447, not yet merged):** `scripts/remedy_p3_daily.py` runs
+**P3 daily caller implementation (PR #2447, merged 2026-10-15):** `scripts/remedy_p3_daily.py` runs
 from a dedicated daily GitHub Actions workflow. `citypods.remedy_p3_runner` submits the initial
 Sol/GLM Flash pair, then one DeepSeek/JEV adjudication round only after a recorded disagreement;
 subsequent daily invocations reconcile the existing Worker handle by its stable recipe hash and
@@ -1439,13 +1441,14 @@ model and exact route ID before they enter the separate observation log. JEV use
 `JevBackend` wire adapter, with explicit A/B/C/D options and strict expected-question matching;
 malformed choices or probabilities remain raw evidence and resolve to the manual issue candidate.
 
-The scheduled caller currently writes an exclusive Actions report artifact and has no feed-file,
-GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed
-or exact route admissions/effort controls fail validation. This implementation PR advances the
-daily dispatch and persistence stage; it does not claim P3 is operationally complete. Remaining P3
-work is to bind consensus candidates to the bounded proposal/issue publication contract and finish
-the durable P2 review/ledger connection, then exercise the enabled schedule only after exact route
-admissions and JEV dispatch qualification are available. No provider calls were made by this PR.
+The merged scheduled caller writes an exclusive Actions report artifact and has no feed-file,
+GitHub issue/PR, or P2 ledger write path. It remains closed while `config/remedy.yml` is shadowed or
+exact route admissions/effort controls fail validation. P1 acceptance removes the need for another
+comparison; it does not establish unobserved serving-family identity or effort controls. Remaining
+P3 implementation is the bounded proposal/issue publisher and the P2 human-disposition command that
+records issue outcomes through the append-only ledger. After those ship, the schedule still needs an
+authorized runtime admission and a monitored end-to-end cycle before P3 is operationally complete.
+No provider calls were made by PR #2447.
 
 **P3 implementation contract:** `citypods.audit_remedy.build_p3_review_decision` accepts two
 route-bound `P3Vote` records, their deterministic validator outcomes, optional one-round
@@ -1502,9 +1505,21 @@ the production P3 dispatch integration.
 Tests must cover strict input validation, empty-admission holds, exact consensus and adjudication
 replay, manual checkbox output, no input/output overwrite, and proof that CLI execution makes no
 network or GitHub calls. The report must retain the original route/model/reasoning provenance and
-raw response hashes from each vote. The remaining dispatch integration stays gated on separately
-approved route admissions, dispatch-bound JEV qualification, and the still-gated P2 workflow
-connection.
+raw response hashes from each vote.
+
+`citypods.remedy_p3_publication.validated_p3_plan` is the report-to-feed mutation boundary. It
+accepts only a `pr_candidate` with passing deterministic validators, binds it to the exact current
+source evidence hash, resolves episode IDs locally, and re-runs `validate_proposals` against the
+current feed catalog. A publisher must apply only this returned plan, run `verify_remedy_mutations`,
+and create a human-review PR; it must never push to main or merge. Manual issues must preserve the
+per-feed options and provide a structured `/citypods-decision` action. The issue command must
+authenticate a repository writer, bind the action to the exact issue/evidence and current ledger
+parents, and use `record_decision_action` so the human outcome is appended under the remedy lease.
+Model votes remain in the P3 observation log and never become P2 decisions.
+
+The remaining production integration is bounded GitHub publication and its P2 issue-command
+handoff. Runtime activation remains separately gated on exact route admissions, serving identity,
+and verified reasoning controls.
 
 **Evaluation record:** `evals/remedy/results/prompt-comparison-2026-10-14/` preserves the 540-job
 three-prompt comparison and scoring tools. On the original prompt, Sol + GLM Flash agreed

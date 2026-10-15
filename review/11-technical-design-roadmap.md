@@ -242,11 +242,7 @@ and the maintainer accepted the gathered P1 evaluation evidence as sufficient to
 implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
 production route configuration remains unchanged. P3's pure consensus decision engine and manual
 issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
-the local replay tool and daily Worker caller/append-only observation log are in PR #2447. The daily
-caller remains report-artifact-only and closed by shadow mode or missing exact route/effort
-admissions. P3 still needs bounded GitHub proposal/issue publication and its durable P2 workflow
-connection before it is operationally complete; serving-family, effort and JEV dispatch gates remain
-explicit. P4–P5 stay
+the local replay tool and daily Worker caller/append-only observation log shipped in [PR #2447](https://github.com/BashfulBits/city-meeting-podcasts/pull/2447), merged 2026-10-15. The daily caller remains report-artifact-only and closed by shadow mode or missing exact route/effort admissions. The maintainer accepted the existing `evals/remedy/` evidence for the P1 evaluation criterion; a second broad comparison and review/49's weekly league are not P3 prerequisites. P3 still needs bounded GitHub proposal/issue publication and its durable P2 human-disposition connection before it is operationally complete. Serving-family, effort and runtime admission checks remain explicit. P4–P5 stay
 predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
