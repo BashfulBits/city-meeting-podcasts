@@ -1072,6 +1072,14 @@ GitHub, feed-write or admission-override path; it supplies an empty trusted-admi
 therefore fails closed. A future trusted dispatch integration must supply validated runtime
 admissions and remains separate from this report-only replay tool.
 
+`citypods.remedy_p3_observations` persists completed P3 Worker responses as strict,
+content-addressed objects under `state/remedy/p3-observations/<source>/`. Appends and reconstruction
+use the shared remedy maintenance lease and verify the object after writing. Repeated collection of
+the same recipe/role is idempotent; a conflicting result is rejected. Pending Worker handles stay
+in the existing deferred-request registry. P3 votes remain separate from
+`citypods.remedy_ledger`'s human dispositions. This storage contract is implemented, while the
+daily Worker caller and scheduled workflow remain pending.
+
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same
 allowlist in `policy_json`, where the Worker intersects it with the permitted logical models and

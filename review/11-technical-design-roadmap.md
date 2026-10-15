@@ -253,8 +253,10 @@ it does not silently reorder the unrelated Phase-H queue or change production ro
 
 The maintainer selected a dedicated daily P3 Worker workflow on 2026-10-15 so the initial judge
 round, disagreement adjudication, and report can complete across two or three daily invocations.
-This does not change review/49's separate weekly judge-audit cadence. The caller must resume stable
-Worker recipe hashes from the durable P2 decision ledger, reuse review/49's JEV adapter, and pin
+This does not change review/49's separate weekly judge-audit cadence. The caller resumes stable
+Worker recipe hashes from the existing deferred-request registry and stores completed model votes
+in the separate append-only P3 observation log; the P2 decision ledger remains for human
+dispositions and may reference the resulting report. Reuse review/49's JEV adapter and pin
 DeepSeek to `beatapi_deepseek_v4_1_flash_free`; JEV currently has only one catalog route. These are
 design decisions, not an activated schedule or route change.
 

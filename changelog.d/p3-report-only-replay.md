@@ -8,3 +8,8 @@
 - **Worker route pinning.** Queue-only dispatch can now narrow a logical model pool to explicit
   physical route IDs. Pins cannot widen the model policy, and unavailable pinned routes do not
   fall back to another provider.
+- **P3 observation storage.** Completed model responses now have a strict append-only record
+  separate from P2 human dispositions. It binds the Worker recipe, request/evidence/config/policy
+  hashes, route/model provenance, response and collection time; writes use the remedy lease and
+  verify read-back. Pending jobs remain in the existing deferred-request registry. The daily P3
+  caller and schedule are still pending.
