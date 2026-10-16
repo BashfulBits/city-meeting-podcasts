@@ -128,7 +128,10 @@ collecting, plus items assigned this pass) per unit of route capacity from the W
 `?routes=1` view. The route view alone cannot see queue depth (both Gemma models showed full
 capacity while 2,600 packets waited), so the backlog is counted from the ledger's pending markers.
 A subject keeps the judge that already answered it or has a packet in flight: the ledger key
-includes the model, so switching would ask a second judge the same question. The meeting-level
+includes the model, so switching would ask a second judge the same question. The sibling
+`max_outstanding_packets` limit applies to each judge model separately (the purpose's room is the sum),
+because a total limit let a 2,800-packet Gemma 31B backlog stop every new packet reaching Gemma 26B;
+the anchor's limit stays a total. The meeting-level
 `choose` question uses the same rule over models independent of every producer in the meeting.
 Gemma packets are capped at 8,500 estimated tokens (was 10,000): the Worker reserves estimate x its
 1.4 input ratio plus about 1,900 forecast output, which must fit AI Studio's 14,400-token minute

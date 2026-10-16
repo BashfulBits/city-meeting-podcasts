@@ -94,6 +94,9 @@ class JudgingContext:
     # Worker per model (read while collecting) and items assigned so far this pass.
     sibling_recipes: dict[str, set[str]] = field(default_factory=dict)
     sibling_assigned: Counter = field(default_factory=Counter)
+    # model -> packets it may still take this pass under the sibling outstanding limit, which
+    # applies to each judge model separately (set by _apply_backpressure; empty: unlimited).
+    sibling_room: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -272,14 +275,32 @@ def _count_superseded_outstanding(
                 if isinstance(outputs[recipe], JobHandle):
                     purpose = str(marker.get("purpose") or "")
                     stats.outstanding.setdefault(purpose, set()).add(recipe)
+                    if purpose == SIBLING_PURPOSE:
+                        ctx.sibling_recipes.setdefault(
+                            str(marker.get("judge_model") or ""), set()
+                        ).add(recipe)
                     stats.counts["superseded_pending"] += 1
 
 
 def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
-    """Shrink each purpose's run cap to the room left under its outstanding-packet limit."""
+    """Shrink each purpose's run cap to the room left under its outstanding-packet limit.
+
+    The sibling limit applies to each judge model on its own: a backlog on one model (2,800
+    Gemma 31B packets, 2026-10-16) must not stop the pool's other models taking new work, so the
+    purpose's room is the sum of every sibling model's room.
+    """
+    ctx.sibling_room.clear()
     for purpose, limit in ctx.max_outstanding.items():
         outstanding = len(stats.outstanding.get(purpose, ()))
         room = max(0, int(limit) - outstanding)
+        if purpose == SIBLING_PURPOSE:
+            ctx.sibling_room.update(
+                {
+                    model: max(0, int(limit) - len(ctx.sibling_recipes.get(model, ())))
+                    for model in ctx.sibling.models
+                }
+            )
+            room = sum(ctx.sibling_room.values())
         stats.counts[f"outstanding:{purpose}"] = outstanding
         if ctx.run_caps_lock is not None:
             ctx.run_caps_lock.acquire()
@@ -461,7 +482,7 @@ def _pick_sibling(
 
     def load(model: str) -> float:
         weight = ctx.sibling_headroom.get(model, 1.0)
-        if weight <= 0:
+        if weight <= 0 or ctx.sibling_room.get(model, 1) <= 0:
             return float("inf")
         per_packet = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)[1]
         waiting = len(ctx.sibling_recipes.get(model, ())) + ctx.sibling_assigned[model] / per_packet
@@ -554,6 +575,9 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
             if ctx.stop is not None and ctx.stop():
                 stats.counts["stopped"] += 1
                 return _finish(ordered, ctx, stats)
+            if role == "sibling" and ctx.sibling_room.get(model, 1) <= 0:
+                stats.counts[f"run_cap_outstanding:{purpose}"] += 1
+                break
             if ctx.dry_run:
                 # A rehearsal of one real pass: it spends the shared run caps (submitting nothing),
                 # so its counts and its bounded planning match what a scheduled run would send.
@@ -561,6 +585,8 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                     stats.counts[f"run_cap:{purpose}"] += 1
                     break
                 stats.counts[f"dry_run_packets:{role}"] += 1
+                if role == "sibling" and model in ctx.sibling_room:
+                    ctx.sibling_room[model] -= 1
                 stats.counts["dry_run_items"] += len(packet.items)
                 stats.counts["dry_run_estimated_tokens"] += sum(
                     item_size(backend, item) for item in packet.items
@@ -577,6 +603,8 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                 stats.counts[f"errored:{type(exc).__name__}"] += 1
                 continue
             stats.counts[f"packets:{role}"] += 1
+            if role == "sibling" and model in ctx.sibling_room:
+                ctx.sibling_room[model] -= 1
             stats.counts["items_submitted"] += len(packet.items)
             if isinstance(outcome, JobResult):
                 _record(packet, backend.parse(packet, outcome.output), stats)
