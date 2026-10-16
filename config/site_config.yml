@@ -167,22 +167,26 @@ llm_lanes:
     telemetry: {producer: chapter_locator, unit: episode, completion: consumed, scope: retained_catalog}
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
     # stable recipe model for packets up to 76,000 internal estimated input tokens; larger packets
-    # are pinned to Kimi K3. This empirically-derived cutoff stays below the largest accepted V4
-    # packet (76,546) and above the largest observed rejected boundary (81,301). GLM 5.3 Flash is
-    # documented as optional small-context capacity and DeepSeek V4.1 Flash as optional large-
-    # context capacity; neither is wired into production until capacity needs justify it.
+    # go to DeepSeek V4.1 Flash with Kimi K3 as its companion. This empirically-derived cutoff
+    # stays below the largest accepted V4 packet (76,546) and above the largest observed rejected
+    # boundary (81,301). GLM 5.3 Flash is documented as optional small-context capacity and is not
+    # wired into production.
     models:
       - "deepseek/deepseek-v4-flash"
+      - "deepseek/deepseek-v4.1-flash"
       - "moonshotai/kimi-k3"
-    # Each request is pinned to one size-selected model, so the worker writes one model index.
+    # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
+    # tokens, the V4.1 Flash + Kimi K3 pair (two indexes, so five write units). Kimi K3 was retired
+    # upstream on 2026-10-15; the Worker skips its blocked route and V4.1 takes the work.
     dispatch_shape: per_model
-    # Twelve scheduled runs/day; 134 admits/run, with the daily reservation as the hard 1,600-job
-    # cap. A pinned request costs four ingress write units (three bookkeeping + one model index).
+    # Twelve scheduled runs/day; 134 admits/run, with the daily reservation as the hard
+    # cap (7,200 units: 1,600 jobs plus the extra index on large packets). A pinned request costs
+    # four ingress write units (three bookkeeping + one model index), five for large packets.
     # Raised from 800/day (2026-10-16): DeepSeek V4 Flash routes had ~1,800/day spare while the
     # lane was limited only by this producer-side cap.
     max_dispatches_per_run: 134
     reserved_write_units: 4300
-    daily_write_units: 6400
+    daily_write_units: 7200
   topic-tags:tagger:
     telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
