@@ -1830,3 +1830,22 @@ def test_model_headroom_is_empty_when_the_worker_cannot_be_read():
 
     backend = _RouteStatsBackend(error="down")
     assert dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=backend) == {}
+
+
+def test_model_headroom_ignores_malformed_rows_instead_of_aborting():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    payload = {
+        "now": 1_000,
+        "routes": {
+            "all": [
+                "not-a-row",
+                {"route_id": "gemma_4_31b_primary", "capacity": float("nan"), "blocked_until": "x"},
+                {"route_id": "gemma_4_31b_secondary", "capacity": -3, "blocked_until": True},
+            ]
+        },
+    }
+    got = dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=_RouteStatsBackend(payload))
+    routes = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
+    # NaN counts as unknown (1.0), a negative capacity as 0, a non-numeric block is ignored.
+    assert got["google/gemma-4-31b-it"] == 1.0 + 0.0 + (len(routes) - 2)

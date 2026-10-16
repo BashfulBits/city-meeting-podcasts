@@ -3722,7 +3722,9 @@ def dispatch_v2_model_headroom(models: Sequence[str], *, backend: Any = None) ->
         print(f"llm route stats lookup failed ({exc}); balancing by backlog only", flush=True)
         return {}
     now = data.get("now")
-    by_route = {str(row.get("route_id")): row for row in data["routes"]["all"]}
+    by_route = {
+        str(row.get("route_id")): row for row in data["routes"]["all"] if isinstance(row, Mapping)
+    }
     headroom: dict[str, float] = {}
     for model in models:
         total = 0.0
@@ -3731,11 +3733,20 @@ def dispatch_v2_model_headroom(models: Sequence[str], *, backend: Any = None) ->
             if row is None:
                 total += 1.0
                 continue
-            blocked = row.get("blocked_until") or 0
-            if isinstance(now, (int, float)) and blocked > now:
+            blocked = row.get("blocked_until")
+            if (
+                isinstance(now, (int, float))
+                and isinstance(blocked, (int, float))
+                and not isinstance(blocked, bool)
+                and blocked > now
+            ):
                 continue
             capacity = row.get("capacity")
-            total += float(capacity) if isinstance(capacity, (int, float)) else 1.0
+            if isinstance(capacity, (int, float)) and not isinstance(capacity, bool):
+                value = float(capacity)
+                total += max(0.0, value) if math.isfinite(value) else 1.0
+            else:
+                total += 1.0
         headroom[model] = total
     return headroom
 
