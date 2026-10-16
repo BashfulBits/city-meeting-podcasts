@@ -24,7 +24,9 @@ What it enforces (``config/remedy.yml`` ``limits``):
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -58,6 +60,55 @@ def parse_markers(body: str | None) -> tuple[str, ...]:
     """The decision ids an artifact body carries markers for (sorted, unique)."""
     text = body or ""
     return tuple(sorted(set(_MARKER.findall(text)) | set(_LEGACY_MARKER.findall(text))))
+
+
+BINDING_FIELDS = (
+    "city",
+    "source_key",
+    "policy_id",
+    "normalized_label",
+    "evidence_hash",
+    "config_hash",
+    "policy_hash",
+    "recording_refs",
+)
+_BINDING = re.compile(r"<!-- citypods:remedy:binding:v1:([0-9a-f]{64}):([A-Za-z0-9_=-]+) -->")
+
+
+def render_binding(decision_id: str, binding: Mapping[str, Any]) -> str:
+    """The facts a ledger event for ``decision_id`` needs, carried in the artifact's own body.
+
+    A PR or issue closed or merged later is turned into a decision event from this binding, so the
+    artifact is self-describing and the feedback path needs no copy of the evidence."""
+    marker(decision_id)
+    missing = [name for name in BINDING_FIELDS if name not in binding]
+    if missing:
+        raise ValueError(f"binding is missing {missing}")
+    payload = json.dumps(
+        {name: binding[name] for name in BINDING_FIELDS}, sort_keys=True, separators=(",", ":")
+    )
+    token = base64.urlsafe_b64encode(payload.encode()).decode()
+    return f"<!-- citypods:remedy:binding:v1:{decision_id}:{token} -->"
+
+
+def parse_bindings(body: str | None) -> dict[str, dict[str, Any]]:
+    """Every well-formed binding in a body, by decision id; malformed ones are left out."""
+    found: dict[str, dict[str, Any]] = {}
+    for decision, token in _BINDING.findall(body or ""):
+        try:
+            value = json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+        except (ValueError, UnicodeError):
+            continue
+        if isinstance(value, dict) and set(value) == set(BINDING_FIELDS):
+            found[decision] = value
+    return found
+
+
+def branch_matches(head_ref: str | None, decision_ids: Iterable[str]) -> bool:
+    """Whether a head ref is the branch these decisions derive (the hash binds the set)."""
+    if not head_ref or not re.fullmatch(r"fix/remedy-[a-z0-9-]+-[0-9a-f]{12}", head_ref):
+        return False
+    return head_ref.rsplit("-", 1)[-1] == group_hash(decision_ids)
 
 
 def slug_component(value: str, *, name: str, limit: int = 40) -> str:
@@ -112,6 +163,10 @@ class LedgerView:
     state: str
     disposition: str | None
     evidence_hash: str
+    # The tip is an explicit reopening (`/remedy reopen`) of a settled or rejected decision.
+    reopened: bool = False
+    # What the tip event refers to: the rejected PR, for a refinement issue to answer.
+    artifact_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -126,7 +181,12 @@ class Artifact:
     decision_ids: tuple[str, ...]
     reopened_at: tuple[datetime, ...] = ()
     head_ref: str | None = None
-    actor: str = ""
+    actor: str = ""  # who opened it
+    # What reconciliation needs to recognize and settle an artifact like a webhook would.
+    body: str = ""
+    head_repo: str = ""
+    settled_by: str = ""  # who merged or closed it
+    settled_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -312,20 +372,22 @@ def plan_publications(
     reopen_ids: dict[int, list[Candidate]] = defaultdict(list)
     reopen_artifacts: dict[int, Artifact] = {}
     fresh: list[Candidate] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for candidate in candidates:
-        if candidate.decision_id in seen:
+        identity = (candidate.decision_id, candidate.kind)
+        if identity in seen:
             skipped.append(Skipped(candidate.decision_id, "duplicate_candidate"))
             continue
-        seen.add(candidate.decision_id)
+        seen.add(identity)
         view = ledger.get(candidate.decision_id)
         same_evidence = view is not None and view.evidence_hash == candidate.evidence_hash
         if view is not None and same_evidence:
             if view.state in TERMINAL_STATES:
                 skipped.append(Skipped(candidate.decision_id, "terminal_disposition_current"))
                 continue
-            if view.disposition == "rejected":
-                # A rejection of this exact evidence does not regenerate; it needs new evidence.
+            if view.disposition == "rejected" and candidate.refines is None:
+                # A rejection of this exact evidence does not regenerate a PR; it needs new
+                # evidence. (A refinement issue answering the rejection is the way forward.)
                 skipped.append(Skipped(candidate.decision_id, "rejected_unchanged_evidence"))
                 continue
         existing = [
@@ -490,6 +552,16 @@ def plan_report(plan: PublicationPlan) -> dict[str, Any]:
     }
 
 
+def _login(actor: Any) -> str:
+    """A GraphQL actor's login in the REST form: a Bot is ``<login>[bot]`` there, bare here."""
+    if not isinstance(actor, Mapping):
+        return ""
+    login = str(actor.get("login") or "")
+    if login and actor.get("__typename") == "Bot" and not login.endswith("[bot]"):
+        return f"{login}[bot]"
+    return login
+
+
 def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
     """Build a snapshot from a GraphQL ``search`` result of marked PRs and issues.
 
@@ -511,11 +583,28 @@ def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
             state = "merged"
         elif state not in ("open", "closed"):
             continue
-        reopened = tuple(
-            datetime.fromisoformat(str(item["createdAt"]).replace("Z", "+00:00"))
+        events = [
+            item
             for item in ((node.get("timelineItems") or {}).get("nodes") or [])
             if isinstance(item, Mapping) and item.get("createdAt")
+        ]
+
+        def _when(value: Any) -> datetime:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+        reopened = tuple(
+            _when(item["createdAt"]) for item in events if item.get("__typename") != "ClosedEvent"
         )
+        closes = [item for item in events if item.get("__typename") == "ClosedEvent"]
+        last_close = max(closes, key=lambda item: item["createdAt"], default=None)
+        if state == "merged":
+            settled_by = _login(node.get("mergedBy"))
+            settled_at = _when(node["mergedAt"]) if node.get("mergedAt") else None
+        elif state == "closed" and last_close is not None:
+            settled_by = _login(last_close.get("actor"))
+            settled_at = _when(last_close["createdAt"])
+        else:
+            settled_by, settled_at = "", None
         artifacts.append(
             Artifact(
                 kind=kind,
@@ -526,7 +615,11 @@ def parse_snapshot(payload: Mapping[str, Any]) -> GitHubSnapshot:
                 decision_ids=ids,
                 reopened_at=reopened,
                 head_ref=node.get("headRefName"),
-                actor=str((node.get("author") or {}).get("login") or ""),
+                actor=_login(node.get("author")),
+                body=str(node.get("body") or ""),
+                head_repo=str((node.get("headRepository") or {}).get("nameWithOwner") or ""),
+                settled_by=settled_by,
+                settled_at=settled_at,
             )
         )
     info = payload.get("pageInfo") or {}

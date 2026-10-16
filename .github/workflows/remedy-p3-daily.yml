@@ -80,6 +80,11 @@ jobs:
           retention-days: 1
 
   publish:
+    # One writer of the remedy PR and issue set at a time, with the feedback and reopen workflows.
+    concurrency:
+      group: remedy-taxonomy-writes
+      cancel-in-progress: false
+      queue: max
     needs: p3
     if: >-
       github.ref == 'refs/heads/main' && needs.p3.outputs.report_ready_count != '0'

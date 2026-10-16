@@ -34,7 +34,7 @@ from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY, LLMReq
 from citypods.compute.structured import register_response_model
 from citypods.judging.backends import Evidence, Item, JevBackend, Packet
 from citypods.judging.tasks import QuestionSpec, Subject
-from citypods.remedy_evaluation import RemedyConfig, validate_admission
+from citypods.remedy_evaluation import RemedyConfig, config_fingerprint, validate_admission
 from citypods.remedy_p3_observations import (
     P3Observation,
     append_observation,
@@ -368,7 +368,7 @@ class P3DailyRunner:
         self.lease_factory = lease_factory
         self.config = config
         self.repo_root = str(repo_root)
-        self.config_hash = canonical_hash(config.model_dump(mode="json"))
+        self.config_hash = config_fingerprint(config)
 
     def _load(self, source_key: str, finding_id: str) -> tuple[P3Observation, ...]:
         lease = self.lease_factory()
