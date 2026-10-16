@@ -297,12 +297,17 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   assert.deepEqual(map["deepseek/deepseek-v4.1-flash"], [
     "nvidia_deepseek_v4_1_flash_free",
     "beatapi_deepseek_v4_1_flash_free",
+    "beatapi_secondary_deepseek_v4_1_flash_free",
   ]);
   assert.deepEqual(map["deepseek/deepseek-v4-flash"], [
     "orcarouter_deepseek_v4_flash_free",
     "beatapi_deepseek_v4_flash_free",
+    "beatapi_secondary_deepseek_v4_flash_free",
   ]);
-  assert.deepEqual(map["deepseek/deepseek-v4-pro"], ["beatapi_deepseek_v4_pro_free"]);
+  assert.deepEqual(map["deepseek/deepseek-v4-pro"], [
+    "beatapi_deepseek_v4_pro_free",
+    "beatapi_secondary_deepseek_v4_pro_free",
+  ]);
   assert.equal(
     modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"
@@ -315,7 +320,11 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   };
   assert.deepEqual(
     routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
-    ["nvidia_deepseek_v4_1_flash_free", "beatapi_deepseek_v4_1_flash_free"]
+    [
+      "nvidia_deepseek_v4_1_flash_free",
+      "beatapi_deepseek_v4_1_flash_free",
+      "beatapi_secondary_deepseek_v4_1_flash_free",
+    ]
   );
 });
 
