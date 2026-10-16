@@ -199,6 +199,11 @@ DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 # are spent once per run, not re-created for every episode.
 _SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text", "judge"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
+# The judge lane's wall-clock budget when `defaults.judge_run_time_budget_minutes` is unset: its
+# 2-hour cron interval, so the window (this x `budget_safety`) plus setup and the persistence tail
+# ends before the next scheduled pass. The run-history record uses the same value.
+JUDGE_RUN_TIME_BUDGET_MINUTES = 120
+
 _RECORD_BACKED_LANES = frozenset(
     {
         "transcribe",
@@ -3285,7 +3290,9 @@ def _build_impl(
         elif lane == "judge":
             # The judge lane reads persisted candidates and enqueues queue-only v2 packets; its run
             # caps bound the work, and this window bounds a pass over a large backlog.
-            judge_window_min = float(defaults.get("judge_run_time_budget_minutes", 90))
+            judge_window_min = float(
+                defaults.get("judge_run_time_budget_minutes", JUDGE_RUN_TIME_BUDGET_MINUTES)
+            )
             judge_deadline_secs = judge_window_min * 60 * safety
             remaining_secs = max(0.0, judge_deadline_secs - (time.monotonic() - enrich_phase_start))
             deadline = (time.monotonic() + remaining_secs) if judge_window_min > 0 else None
@@ -4099,7 +4106,11 @@ def _build_impl(
                 _history_safety = 1.0
             elif lane in {"tag", "moments", "judge"}:
                 budget_key = f"{lane}_run_time_budget_minutes"
-                _history_window_min = float(defaults.get(budget_key, 240))
+                _history_window_min = float(
+                    defaults.get(
+                        budget_key, JUDGE_RUN_TIME_BUDGET_MINUTES if lane == "judge" else 240
+                    )
+                )
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
