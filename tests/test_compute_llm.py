@@ -1788,3 +1788,64 @@ def test_provenance_records_only_applied_lane_effort(monkeypatch, supported):
     if supported:
         params["reasoning_effort"] = "high"
     assert result.request_params_hash == canonical_hash(params)
+
+
+# ---- model headroom from the Worker's cheap route view ---------------------------------------
+
+
+class _RouteStatsBackend:
+    class config:  # noqa: N801 - mimics LLMBackendConfig's attribute access
+        dispatch_v2_url = "https://worker.example"
+
+    def __init__(self, payload=None, error=None):
+        self.payload, self.error = payload, error
+
+    def dispatch_v2_route_stats(self):
+        if self.error:
+            raise LLMBackendError(self.error)
+        return self.payload
+
+
+def test_model_headroom_sums_route_capacity_and_zeroes_blocked_routes():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    routes = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"]}
+    assert {"gemma_4_31b_primary", "gemma_4_31b_secondary"} <= routes
+    payload = {
+        "now": 1_000,
+        "routes": {
+            "all": [
+                {"route_id": "gemma_4_31b_primary", "capacity": 0.5, "blocked_until": 0},
+                {"route_id": "gemma_4_31b_secondary", "capacity": 1.0, "blocked_until": 5_000},
+            ]
+        },
+    }
+    got = dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=_RouteStatsBackend(payload))
+    # 0.5 (primary) + 0 (blocked secondary) + 1.0 for each route with no ledger row yet.
+    assert got["google/gemma-4-31b-it"] == 0.5 + (len(routes) - 2)
+
+
+def test_model_headroom_is_empty_when_the_worker_cannot_be_read():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    backend = _RouteStatsBackend(error="down")
+    assert dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=backend) == {}
+
+
+def test_model_headroom_ignores_malformed_rows_instead_of_aborting():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    payload = {
+        "now": 1_000,
+        "routes": {
+            "all": [
+                "not-a-row",
+                {"route_id": "gemma_4_31b_primary", "capacity": float("nan"), "blocked_until": "x"},
+                {"route_id": "gemma_4_31b_secondary", "capacity": -3, "blocked_until": True},
+            ]
+        },
+    }
+    got = dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=_RouteStatsBackend(payload))
+    routes = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
+    # NaN counts as unknown (1.0), a negative capacity as 0, a non-numeric block is ignored.
+    assert got["google/gemma-4-31b-it"] == 1.0 + 0.0 + (len(routes) - 2)
