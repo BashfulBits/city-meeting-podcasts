@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The detailed stats snapshot is metered, and route capacity has a cheap view.** On 2026-10-13 a
+  review/51 evaluation polling `/v2/stats?detail=1` before every request (about 80,000 rows read
+  a call, 4.65 million in three hours) exhausted the Durable Object's 5,000,000 daily row-read
+  allowance, so the dispatch Worker refused every call, including the judge lane's enqueue, until
+  the 00:00 UTC reset. `/v2/stats?routes=1` now returns the route inventory at a cost that does not
+  grow with retained jobs, the evaluation uses it, and `detail=1` serves a cached copy for 5 minutes
+  and computes at most 24 fresh snapshots a UTC day (then the last copy, or HTTP 429).
+
 - **CivicPlus protocol-relative embed and HLS resolution.** Support protocol-relative URLs (`//...`)
   and normalize insecure or schemeless embed and stream URLs to HTTPS in `CivicPlusProvider`,
   resolving media extraction failures across CivicPlus cities (fixes #2296).
