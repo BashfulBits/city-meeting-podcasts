@@ -1617,6 +1617,25 @@ frozen evaluation gold in `human-dispositions-2026-10-15.json`.
 
 ### P4 — bounded PRs, issue refinement and recovery
 
+**Report-only stage (2026-10-15).** `citypods/remedy_queue.py` is the pure planner the gate below
+asks to run first. `plan_publications(candidates, ledger, snapshot, limits=..., now=...)` returns what
+a run would open, update, reopen and leave queued, and `scripts/remedy_p3_publish.py` writes it to
+the publication report as `publication_plan` with `mode: report_only`. **It performs no write and the
+publisher keeps its current behaviour**, so the plan is for inspection against what the publisher does.
+It enforces the limits in `config/remedy.yml`: PRs of at most `decisions_per_pr` decisions for one city
+and feed with one approval outcome, a new body never beside an automatic alias; `prs_per_rolling_week`
+counting every marked PR opened or reopened by anyone in the preceding seven days and `open_prs`
+counting those open now (closing frees an open slot, never the weekly count); `active_directional_issues`;
+oldest-first per city, round-robin across cities; whatever does not fit stays queued with reason and age.
+It never republishes: a marked open artifact is updated (no slot), a closed or merged one is left
+alone unless `/remedy reopen` asked (a reopening is an admission), and a decision whose current
+evidence was rejected or already settled does not regenerate. Markers are
+`<!-- citypods:remedy:v1:<decision_id> -->`, one per participating decision; P3's first issues'
+`citypods:remedy-p3:key=` still names its decision. Branches are
+`fix/remedy-<city>-<family>-<group_hash>` from the decision ids. An incomplete GitHub listing reserves
+nothing. **Not in this stage:** the isolated-worktree apply, manifest-limited staging, publication of the
+plan, `remedy-feedback.yml` and `/remedy reopen` (the live stage).
+
 **Gate:** P2/P3 are implemented; all external writes first run in report-only mode for inspection.
 **Permitted files:** new `citypods/remedy_queue.py`, `scripts/remedy_unexpected_bodies.py`,
 `scripts/remedy_commands.py`, new `scripts/remedy_feedback.py`, `scripts/audit_feeds.py`,

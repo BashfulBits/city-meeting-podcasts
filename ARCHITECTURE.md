@@ -1118,6 +1118,10 @@ are stored as an additive typed event field under the remedy lease. Old events o
 retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence
 hold stays open. The publisher does not merge PRs or write feed configuration on main. No P3 calls
 or publication are enabled by the repository's current shadow configuration.
+Remedy publication planning (review/51 P4, report-only): `citypods/remedy_queue.py` plans what the
+P3 publisher would open, update or leave queued within `config/remedy.yml`'s limits (packing, rolling
+week, open caps, round-robin by city, stable decision markers and branches); the publisher records it
+as `publication_plan` and writes nothing from it yet.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
 substitution. `run_immediate` enforces them locally; queue-only v2 dispatch now carries the same
