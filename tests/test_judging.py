@@ -39,6 +39,7 @@ from citypods.judging.tasks import (
     registered,
     task,
 )
+from citypods.storage.base import StorageReadUnavailable
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jev" / "answers_2026_09_30.json"
 LANES = load_lanes()
@@ -1275,3 +1276,61 @@ def test_a_pass_sends_new_work_to_the_candidate_with_headroom_and_never_switches
     runner.run([ep], _ctx(dispatch, sibling_headroom={GEMMA_31B: 3.0, GEMMA_26B: 0.0}))
     models = {r["judge_model"] for r in _tag_judgments(ep) if r["judge_role"] == "sibling"}
     assert models == {GEMMA_26B}
+
+
+# ---- a storage outage while collecting must not abort the lane (run 38971148564, 2026-10-16) ----
+
+
+def _unavailable_dispatch(dispatch, down):
+    """A look_up that raises StorageReadUnavailable while ``down`` is truthy."""
+
+    def look_up(recipe):
+        if down["on"]:
+            raise StorageReadUnavailable(f"state/llm_deferred/judge-{recipe}.json", OSError("x"))
+        return dispatch.records.get(recipe)
+
+    return look_up
+
+
+def test_an_unreadable_record_keeps_its_marker_and_never_aborts_the_pass():
+    dispatch = FakeDispatch()
+    down = {"on": False}
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch, max_outstanding={"judge:sibling": 5}))
+    assert _all_pending(ep)
+    dispatch.answer(anchor_p=0.9)
+    down["on"] = True
+    ctx = _ctx(dispatch, max_outstanding={"judge:anchor": 5, "judge:sibling": 5})
+    ctx.look_up = _unavailable_dispatch(dispatch, down)
+    stats = runner.run([ep], ctx)  # does not raise
+    assert stats.counts["lookup_unavailable"] >= 1
+    assert _all_pending(ep)  # the markers stay for a later pass
+    assert not _tag_judgments(ep)
+    # The unreadable packets still count against the outstanding limits.
+    assert stats.counts["outstanding:judge:anchor"] >= 1
+    assert stats.counts["outstanding:judge:sibling"] >= 1
+    # Storage recovers: the answers are collected.
+    down["on"] = False
+    ctx2 = _ctx(dispatch)
+    ctx2.look_up = _unavailable_dispatch(dispatch, down)
+    recovered = runner.run([ep], ctx2)
+    assert (
+        recovered.counts["judgments_appended"] >= 1 and not recovered.counts["lookup_unavailable"]
+    )
+
+
+def test_lookups_stop_after_a_few_unreadable_records_in_one_pass():
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch))
+    calls = []
+
+    def look_up(recipe):
+        calls.append(recipe)
+        raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("down"))
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run([ep], ctx)
+    assert len(calls) <= runner._MAX_UNREADABLE_LOOKUPS
+    assert stats.counts["lookup_unavailable"] >= len(calls)
