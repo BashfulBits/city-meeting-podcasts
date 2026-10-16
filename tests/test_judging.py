@@ -20,7 +20,13 @@ from citypods.judging.backends import (
     choose_options,
     ensure_contract,
 )
-from citypods.judging.families import RULE_FAMILY, adjudicator_for, family_of, sibling_for
+from citypods.judging.families import (
+    RULE_FAMILY,
+    adjudicator_for,
+    family_of,
+    sibling_candidates,
+    sibling_for,
+)
 from citypods.judging.packing import pack
 from citypods.judging.subjects import tag_subject_id
 from citypods.judging.tasks import (
@@ -187,6 +193,10 @@ def test_moment_evidence_is_the_quote_with_context():
     assert "We will fix the bridge" in t1.text and "budget line 55" in t1.text
     assert "Agenda item: Rezoning" in spec.evidence(subject, "T2", TEXTS).text
     assert spec.evidence(subject, "T0", TEXTS) is None
+
+
+GEMMA_31B = "google/gemma-4-31b-it"
+GEMMA_26B = "google/gemma-4-26b-a4b-it"
 
 
 # ---- families ----------------------------------------------------------------------------------
@@ -1124,13 +1134,22 @@ def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit():
     limits = {"judge:anchor": 1, "judge:sibling": 1}
     first_ep, second_ep = _episode(uid="ep-a"), _episode(uid="ep-b")
     first = runner.run([first_ep], _ctx(dispatch, max_outstanding=limits))
-    assert first.counts["packets:anchor"] == 1 and first.counts["packets:sibling"] == 1
+    # One packet for the rule candidate (Gemma 31B) and one for the Gemini-produced tag (Nemotron).
+    assert first.counts["packets:anchor"] == 1 and first.counts["packets:sibling"] == 2
     assert first.counts["outstanding:judge:anchor"] == 0
     held = runner.run([first_ep, second_ep], _ctx(dispatch, max_outstanding=limits))
-    assert held.counts["packets:anchor"] == 0 and held.counts["packets:sibling"] == 0
+    assert held.counts["packets:anchor"] == 0
     assert held.counts["outstanding:judge:anchor"] == 1
     assert held.counts["run_cap_outstanding:judge:anchor"] == 1
-    assert not _any_pending(second_ep)
+    # The sibling limit is per judge model: Gemma 31B holds its one packet, so the new episode's
+    # sibling work goes to Gemma 26B instead of waiting behind it.
+    assert held.counts["packets:sibling"] == 1
+    sibling_models = {p.judge_model for p, _ in dispatch.submitted.values() if p.role == "sibling"}
+    assert {GEMMA_31B, GEMMA_26B} <= sibling_models
+    full = runner.run(
+        [first_ep, second_ep, _episode(uid="ep-c")], _ctx(dispatch, max_outstanding=limits)
+    )
+    assert full.counts["packets:sibling"] == 0 and full.counts["packets:anchor"] == 0
     dispatch.answer()
     freed = runner.run([first_ep, second_ep], _ctx(dispatch, max_outstanding=limits))
     assert freed.counts["packets:anchor"] == 1 and _any_pending(second_ep)
@@ -1138,11 +1157,11 @@ def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit():
 
 def test_the_outstanding_limit_never_raises_a_tighter_run_cap():
     dispatch = FakeDispatch()
-    caps = {"judge:anchor": 0, "judge:sibling": 5}
+    caps = {"judge:anchor": 0, "judge:sibling": 1}
     ctx = _ctx(dispatch, run_caps=caps, max_outstanding={"judge:anchor": 50, "judge:sibling": 2})
     stats = runner.run([_episode()], ctx)
     assert stats.counts["packets:anchor"] == 0
-    assert caps["judge:anchor"] == 0 and caps["judge:sibling"] <= 2
+    assert caps["judge:anchor"] == 0 and caps["judge:sibling"] <= 1
 
 
 def test_the_judge_stage_hands_the_runner_its_ratio_and_outstanding_limits(monkeypatch):
@@ -1188,9 +1207,71 @@ def test_packets_waiting_for_superseded_subjects_still_count_as_outstanding():
     held = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
     assert held.counts["superseded_pending"] >= 1
     assert held.counts["outstanding:judge:anchor"] == 1
-    assert held.counts["packets:anchor"] == 0 and held.counts["packets:sibling"] == 0
+    assert held.counts["packets:anchor"] == 0
+    # Gemma 31B and Nemotron are at their limit with the superseded packets; Gemma 26B is not.
+    assert held.counts["packets:sibling"] == 1
     # Once the Worker answers, the old packets stop counting.
     dispatch.answer()
     freed = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
     assert freed.counts["outstanding:judge:anchor"] == 0
     assert freed.counts["packets:anchor"] == 1
+
+
+# ---- sibling choice by load (review/53 PR4 follow-up, 2026-10-16) ---------------------------
+
+
+def test_the_sibling_slot_is_a_pool_of_independent_candidates():
+    sibling = LANES["judge:sibling"]
+    assert sibling_candidates(None, sibling, FAMILIES) == (GEMMA_31B, GEMMA_26B)
+    assert sibling_candidates(GEMINI, sibling, FAMILIES) == (
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    )
+    assert sibling_candidates("acme/new-model", sibling, FAMILIES) == ()
+    assert sibling_for(None, sibling, FAMILIES) == GEMMA_31B
+
+
+def test_gemma_sibling_packets_fit_the_ai_studio_minute_budget():
+    # The Worker reserves estimate x input ratio (1.4) plus the forecast output (about 1,900)
+    # against a 14,400-token minute budget; a larger packet could never be admitted there.
+    for model in (GEMMA_31B, GEMMA_26B):
+        ceiling, _items = runner.SIBLING_CEILINGS[model]
+        assert ceiling * 1.4 + 1_900 <= 14_400
+
+
+def test_a_new_subject_goes_to_the_least_loaded_candidate_and_keeps_it():
+    ctx = _ctx(FakeDispatch())
+    candidates = (GEMMA_31B, GEMMA_26B)
+    assert runner._pick_sibling(candidates, set(), ctx) == GEMMA_31B  # tie: lane order
+    ctx.sibling_recipes[GEMMA_31B] = {f"r{i}" for i in range(40)}
+    assert runner._pick_sibling(candidates, set(), ctx) == GEMMA_26B
+    # A subject already judged (or in flight) by 31b keeps it, however loaded it is.
+    assert runner._pick_sibling(candidates, {GEMMA_31B}, ctx) == GEMMA_31B
+    # A model with no usable routes is skipped while another has some.
+    ctx.sibling_recipes.clear()
+    ctx.sibling_assigned.clear()
+    ctx.sibling_headroom = {GEMMA_31B: 2.0, GEMMA_26B: 0.0}
+    assert runner._pick_sibling(candidates, set(), ctx) == GEMMA_31B
+
+
+def test_assignments_in_one_pass_spread_across_candidates_by_headroom():
+    ctx = _ctx(FakeDispatch())
+    ctx.sibling_headroom = {GEMMA_31B: 2.0, GEMMA_26B: 1.0}
+    picks = [runner._pick_sibling((GEMMA_31B, GEMMA_26B), set(), ctx) for _ in range(75)]
+    assert picks.count(GEMMA_31B) == 50 and picks.count(GEMMA_26B) == 25
+
+
+def test_a_pass_sends_new_work_to_the_candidate_with_headroom_and_never_switches():
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    first = runner.run([ep], _ctx(dispatch, sibling_headroom={GEMMA_31B: 0.0, GEMMA_26B: 1.0}))
+    assert first.counts["packets:sibling"] == 1
+    [packet] = [p for p, _ in dispatch.submitted.values() if p.role == "sibling"]
+    assert packet.judge_model == GEMMA_26B
+    # The packet is in flight under 26b; 31b regaining headroom must not re-ask the same
+    # question of a second judge.
+    again = runner.run([ep], _ctx(dispatch, sibling_headroom={GEMMA_31B: 3.0, GEMMA_26B: 0.0}))
+    assert again.counts["packets:sibling"] == 0
+    dispatch.answer(anchor_p=0.9)
+    runner.run([ep], _ctx(dispatch, sibling_headroom={GEMMA_31B: 3.0, GEMMA_26B: 0.0}))
+    models = {r["judge_model"] for r in _tag_judgments(ep) if r["judge_role"] == "sibling"}
+    assert models == {GEMMA_26B}
