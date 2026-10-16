@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge sibling Gemma capacity.** Gemma sibling packets shrink from 10,000 to 8,500 estimated
+  tokens so the Worker's reservation (ratio 1.4 plus forecast output) fits AI Studio's 14,400-token
+  minute budget; 10,000 never fit and stranded about 2,600 queued packets on idle keys. New
+  subjects now go to the less-loaded of Gemma 31B and 26B (packets waiting, route capacity from the
+  Worker's cheap `?routes=1`) and keep the judge that answered them. The sibling outstanding-packet
+  limit now applies per judge model, so one model's backlog no longer blocks the others. NVIDIA's
+  Gemma 31B route moves
+  from 20 to 800 requests a day, held to one of its three shared concurrency slots.
+
 - **Chapter locator overflow.** Packets above 76,000 estimated tokens now list DeepSeek V4.1 Flash
   first with Kimi K3 as its companion, so the Worker routes around Kimi's retired NVIDIA route
   (end of life 2026-10-15) instead of stalling large packets. Large requests cost five ingress
