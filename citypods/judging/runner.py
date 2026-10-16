@@ -28,7 +28,12 @@ from citypods.judging.backends import (
     Packet,
     choose_options,
 )
-from citypods.judging.families import UNKNOWN_FAMILY, family_of, sibling_for
+from citypods.judging.families import (
+    UNKNOWN_FAMILY,
+    choose_sibling_candidates,
+    family_of,
+    sibling_candidates,
+)
 from citypods.judging.packing import item_size, pack
 from citypods.judging.tasks import (
     EpisodeTexts,
@@ -43,10 +48,13 @@ ANCHOR_PURPOSE = "judge:anchor"
 SIBLING_PURPOSE = "judge:sibling"
 
 # Chat sibling ceilings (review/53 PR3 "Packing"): Gemma's AI Studio routes have a 14,400-token
-# hard ceiling and a 16k TPM, so about 10,000 estimated input tokens; Nemotron 3 Super about 24,000.
+# hard ceiling and a 14,400-token minute budget. The Worker reserves estimate x its input ratio
+# (1.4 for these keys) plus the forecast output (about 1,900), so a packet must stay under
+# (14,400 - 1,900) / 1.4 = about 8,900 estimated tokens or it can never be admitted there
+# (10,000 was measured to strand ~2,600 queued packets, 2026-10-16). Nemotron 3 Super about 24,000.
 SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
-    "google/gemma-4-31b-it": (10_000, 25),
-    "google/gemma-4-26b-a4b-it": (10_000, 25),
+    "google/gemma-4-31b-it": (8_500, 25),
+    "google/gemma-4-26b-a4b-it": (8_500, 25),
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": (24_000, 25),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
@@ -79,6 +87,13 @@ class JudgingContext:
     # the room left, so a backlog the providers drain slowly cannot grow the Worker queue without
     # bound (the PR4 shadow run queued ~8,500 jobs, adding ~3,300 a day against ~700 claimed).
     max_outstanding: dict[str, int] = field(default_factory=dict)
+    # model -> usable route capacity from the Worker's cheap route view (0 when blocked). A missing
+    # model counts as 1.0, so with no reading the choice is by backlog alone.
+    sibling_headroom: dict[str, float] = field(default_factory=dict)
+    # Per-pass load that decides which sibling takes a new subject: packets still waiting at the
+    # Worker per model (read while collecting) and items assigned so far this pass.
+    sibling_recipes: dict[str, set[str]] = field(default_factory=dict)
+    sibling_assigned: Counter = field(default_factory=Counter)
 
 
 @dataclass
@@ -187,7 +202,12 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
             record = outputs[recipe]
             if isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
-                stats.outstanding.setdefault(str(marker.get("purpose") or ""), set()).add(recipe)
+                purpose = str(marker.get("purpose") or "")
+                stats.outstanding.setdefault(purpose, set()).add(recipe)
+                if purpose == SIBLING_PURPOSE:
+                    ctx.sibling_recipes.setdefault(str(marker.get("judge_model") or ""), set()).add(
+                        recipe
+                    )
                 continue
             ledger.drop_pending(subject, marker)
             if not isinstance(record, JobResult):
@@ -361,7 +381,11 @@ def plan(
             per_question = [q for q in spec.questions if q.kind != "choose"]
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
-                sibling = sibling_for(subject.producer_model, ctx.sibling, ctx.families)
+                sibling = _pick_sibling(
+                    sibling_candidates(subject.producer_model, ctx.sibling, ctx.families),
+                    _models_used(subject),
+                    ctx,
+                )
                 if sibling is None:
                     stats.counts["no_independent_sibling"] += 1
                     if family_of(subject.producer_model, ctx.families) == UNKNOWN_FAMILY:
@@ -407,14 +431,45 @@ def plan(
     return units
 
 
-def choose_sibling(
-    subjects: Sequence[Subject], sibling: LaneConfig, families: Mapping[str, str]
+def _models_used(subject: Subject) -> set[str]:
+    """Judge models that already have a judgment or an in-flight packet for this subject."""
+    return {
+        str(row.get("judge_model"))
+        for row in (*ledger.judgments(subject), *ledger.pending(subject))
+        if row.get("judge_model")
+    }
+
+
+def _pick_sibling(
+    candidates: Sequence[str], used: set[str], ctx: JudgingContext | None
 ) -> str | None:
-    """One sibling for a whole meeting's choose question: independent of every producer in it."""
-    producer_families = {family_of(s.producer_model, families) for s in subjects}
-    if UNKNOWN_FAMILY in producer_families:
+    """The sibling for a subject with no recorded judge: the least-loaded independent candidate.
+
+    A subject keeps the sibling that already judged it (or has a packet in flight): the ledger key
+    includes the judge model, so switching would re-ask the same question of a second judge.
+    Otherwise the candidate with the fewest packets waiting at the Worker, plus the items already
+    assigned this pass, per unit of route headroom wins, ties going to lane order. A model whose
+    routes are all blocked has no headroom and is skipped while another candidate has some.
+    """
+    if not candidates:
         return None
-    return next((m for m in sibling.models if families.get(m) not in producer_families), None)
+    for model in candidates:
+        if model in used:
+            return model
+    if ctx is None or len(candidates) == 1:
+        return candidates[0]
+
+    def load(model: str) -> float:
+        weight = ctx.sibling_headroom.get(model, 1.0)
+        if weight <= 0:
+            return float("inf")
+        per_packet = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)[1]
+        waiting = len(ctx.sibling_recipes.get(model, ())) + ctx.sibling_assigned[model] / per_packet
+        return waiting / weight
+
+    chosen = min(enumerate(candidates), key=lambda pair: (load(pair[1]), pair[0]))[1]
+    ctx.sibling_assigned[chosen] += 1
+    return chosen
 
 
 def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
@@ -422,7 +477,11 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     if not choose or len(subjects) < 2:
         return
     question = choose[0]
-    sibling = choose_sibling(subjects, ctx.sibling, ctx.families)
+    sibling = _pick_sibling(
+        choose_sibling_candidates([s.producer_model for s in subjects], ctx.sibling, ctx.families),
+        _models_used(subjects[0]),
+        ctx,
+    )
     judges = [("anchor", ctx.anchor.primary_model)] + ([("sibling", sibling)] if sibling else [])
     for reverse, order in ((False, ""), (True, "_r")):
         options = choose_options(subjects, reverse=reverse)
@@ -479,6 +538,8 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     ctx.texts_for = cached_texts
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
     all_subjects = [s for ep in ordered for spec in ctx.tasks for s in spec.subjects(ep)]
+    ctx.sibling_recipes.clear()
+    ctx.sibling_assigned.clear()
     _collect(all_subjects, ctx, stats)
     _apply_backpressure(ctx, stats)
     units = plan(ordered, ctx, stats, _item_budget(ctx), bounded=True)
@@ -590,7 +651,11 @@ def episode_needs_judging(
                 )
                 for r in rows
             }
-            judge_model = sibling_for(subject.producer_model, sibling, families)
+            judge_model = _pick_sibling(
+                sibling_candidates(subject.producer_model, sibling, families),
+                _models_used(subject),
+                None,
+            )
             judges = [("anchor", anchor_model)] + (
                 [("sibling", judge_model)] if judge_model else []
             )
@@ -622,7 +687,11 @@ def episode_needs_judging(
             first = subjects[0]
             asked = {(r.get("question_id"), r.get("judge_model")) for r in ledger.judgments(first)}
             judges = [anchor_model]
-            meeting_sibling = choose_sibling(subjects, sibling, families)
+            meeting_sibling = _pick_sibling(
+                choose_sibling_candidates([s.producer_model for s in subjects], sibling, families),
+                _models_used(first),
+                None,
+            )
             if meeting_sibling:
                 judges.append(meeting_sibling)
             for model in judges:

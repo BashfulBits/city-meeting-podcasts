@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from citypods.compute.llm_lanes import LaneConfig
 
@@ -41,23 +41,56 @@ def family_of(model: str | None, families: Mapping[str, str]) -> str:
     return families.get(normalize_model(str(model)), UNKNOWN_FAMILY)
 
 
-def sibling_for(
+def sibling_candidates(
     producer_model: str | None, sibling: LaneConfig, families: Mapping[str, str]
-) -> str | None:
-    """The first active sibling model whose family differs from the producer's.
+) -> tuple[str, ...]:
+    """Every active sibling of the first slot that has one independent of the producer.
 
-    Slots are tried in order (``google`` before ``non_google``); within a slot, active models in
-    lane order. Returns None only if no active sibling is independent of the producer.
+    Slots are tried in order (``google`` before ``non_google``); within the slot, active models in
+    lane order. Empty only if no active sibling is independent of the producer (or the producer's
+    family is unknown). A slot is a pool of interchangeable judges, so any of them may be chosen
+    by load (``runner._pick_sibling``); a later slot is used only when the earlier one has none.
     """
     producer = family_of(producer_model, families)
     if producer == UNKNOWN_FAMILY:
-        return None
+        return ()
     slots = sibling.slot_models or {"all": sibling.models}
     for name in sorted(slots):
-        for model in slots[name]:
-            if model in sibling.models and families.get(model) != producer:
-                return model
-    return None
+        found = tuple(
+            model
+            for model in slots[name]
+            if model in sibling.models and families.get(model) != producer
+        )
+        if found:
+            return found
+    return ()
+
+
+def sibling_for(
+    producer_model: str | None, sibling: LaneConfig, families: Mapping[str, str]
+) -> str | None:
+    """The first sibling candidate: the stable default when load is unknown."""
+    found = sibling_candidates(producer_model, sibling, families)
+    return found[0] if found else None
+
+
+def choose_sibling_candidates(
+    producer_models: Sequence[str | None], sibling: LaneConfig, families: Mapping[str, str]
+) -> tuple[str, ...]:
+    """Siblings independent of every producer in a meeting, from the first slot that has one."""
+    producer_families = {family_of(model, families) for model in producer_models}
+    if UNKNOWN_FAMILY in producer_families:
+        return ()
+    independent = [m for m in sibling.models if families.get(m) not in producer_families]
+    if not independent:
+        return ()
+    slots = sibling.slot_models or {}
+
+    def slot_of(model: str) -> str:
+        return next((name for name in sorted(slots) if model in slots[name]), "")
+
+    first = slot_of(independent[0])
+    return tuple(model for model in independent if slot_of(model) == first)
 
 
 def adjudicator_for(

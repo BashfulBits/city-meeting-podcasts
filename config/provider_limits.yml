@@ -1095,8 +1095,12 @@ routes:
     rpm: 4
     # Paused 2026-09-23: 172s median / 531s p90 calls occupied shared NVIDIA concurrency
     # needed by Nemotron 3 Ultra. Maintainer-approved reopening at 20 RPD, 2026-10-09, for
-    # health monitoring and calibration; the shared-concurrency cost remains worth observing.
-    rpd: 20
+    # health monitoring and calibration; raised to 800 RPD on 2026-10-16 to absorb the judge
+    # sibling's packets that AI Studio's 14,400-token window cannot admit. The route holds at most
+    # ONE of the provider's three concurrency slots (below), so slow Gemma calls cannot take the
+    # slots Nemotron Ultra, DeepSeek V4.1 and the adjudicator need; at the 172 s median that is
+    # about 500 calls a day, so 800 is a ceiling, not a target.
+    rpd: 800
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1104,8 +1108,9 @@ routes:
     # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
     # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
     # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
+    # coexistence caveat as split_cap_multiplier. Held at 1 (2026-10-16, with the 800 RPD raise)
+    # so this route never takes more than one of the provider's three shared slots.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
