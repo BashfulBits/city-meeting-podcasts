@@ -41,7 +41,10 @@ def token_headroom(transport, client, storage, route, request_tokens, coordinati
     now = datetime.now(UTC)
     worker_used = None
     if not coordination_bypass:
-        stats = client._request("GET", "v2/stats?detail=1&limit=100")
+        # The route inventory alone. The detailed snapshot scans every retained and queued job;
+        # polled before each request it read 4.65 million rows in three hours on 2026-10-13 and
+        # exhausted the Worker's free-tier read allowance.
+        stats = client._request("GET", "v2/stats?routes=1&limit=100")
         observed = stats.get("now")
         if type(observed) is not int or not 0 <= now.timestamp() * 1000 - observed <= 60000:
             raise ValueError("Groq Worker token usage is stale or invalid")

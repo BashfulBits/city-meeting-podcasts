@@ -624,3 +624,45 @@ test("counter-only stats is authenticated, mutually exclusive and never calls hi
   coordinator.rateFailureStats = async () => { throw new Error("storage unavailable"); };
   assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 500);
 });
+
+test("routes-only stats is authenticated, exclusive and never touches the detailed snapshot", async () => {
+  const env = createMockEnv();
+  const coordinator = env.LLM_SCHEDULER.getByName();
+  coordinator.stats = coordinator.detailedStats = coordinator.detailedStatsGuarded = () => {
+    throw new Error("unexpected stats scan");
+  };
+  const seen = [];
+  coordinator.routeInventoryStats = async (now, limit) => {
+    seen.push(limit);
+    return { now, routes: { total: 0, all: [] } };
+  };
+  const request = (query, auth = true) => new Request(`https://worker.test/v2/stats?${query}`,
+    { headers: auth ? { authorization: "Bearer secret-token" } : {} });
+  assert.equal((await handleRequest(request("routes=1", false), env)).status, 401);
+  assert.equal((await handleRequest(request("routes=1&detail=1"), env)).status, 400);
+  assert.equal((await handleRequest(request("routes=1&rate_failures=1"), env)).status, 400);
+  const ok = await handleRequest(request("routes=1&limit=100"), env);
+  assert.equal(ok.status, 200);
+  assert.deepEqual((await ok.json()).routes, { total: 0, all: [] });
+  assert.deepEqual(seen, [100]);
+});
+
+test("a spent detailed-stats allowance is a 429 that names the cheaper views", async () => {
+  const env = createMockEnv();
+  const coordinator = env.LLM_SCHEDULER.getByName();
+  coordinator.detailedStatsGuarded = async () => ({
+    ok: false,
+    error: "detail_stats_budget_exhausted",
+    detail: "use /v2/stats?routes=1",
+  });
+  const response = await handleRequest(
+    new Request("https://worker.test/v2/stats?detail=1", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env
+  );
+  assert.equal(response.status, 429);
+  const body = await response.json();
+  assert.equal(body.error, "detail_stats_budget_exhausted");
+  assert.match(body.detail, /routes=1/);
+});

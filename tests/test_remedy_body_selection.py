@@ -650,6 +650,16 @@ def test_groq_daily_tokens_include_both_stores_and_production_reserve(groq):
     assert groq.token_headroom(transport, client, object(), route, 23060)[0]
 
 
+def test_groq_daily_usage_reads_only_the_cheap_route_inventory(groq):
+    """2026-10-13: polling the detailed snapshot before every request exhausted the Worker's
+    free-tier read allowance. The headroom check reads the routes-only view."""
+    route, stats, _client, transport = quota_fixture(groq, 1000, 1000)
+    paths = []
+    client = SimpleNamespace(_request=lambda method, path: paths.append((method, path)) or stats)
+    groq.token_headroom(transport, client, object(), route, 23060)
+    assert paths == [("GET", "v2/stats?routes=1&limit=100")]
+
+
 @pytest.mark.parametrize("problem", ["missing", "partial", "stale", "negative", "nan", "boolean"])
 def test_groq_invalid_daily_usage_holds_requests(groq, problem):
     route, stats, client, transport = quota_fixture(groq)

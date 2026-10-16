@@ -108,6 +108,11 @@ MAX_UPSTREAM_CAPACITY_RETRIES: 8
 # on that model, so it gets this many retries, not the upstream budget, then fails to its producer.
 MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES: 1
 MAX_5XX_RETRIES: 1
+# The detailed /v2/stats snapshot scans every retained and queued job (about 80,000 rows read in
+# production). A copy younger than the cache window is served as is, and at most the daily count of
+# fresh snapshots is computed. Use /v2/stats?routes=1 for route capacity.
+DETAILED_STATS_CACHE_SECONDS: 300
+DETAILED_STATS_MAX_PER_UTC_DAY: 24
 MAX_5XX_BACKOFF_SECONDS: 300
 MAX_ROUTE_BUFFER_SECONDS: 120
 COMPLETED_RETENTION_DAYS: 38

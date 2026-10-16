@@ -133,6 +133,8 @@ async function exerciseAll(fixture) {
   recorder.start();
   await run("enqueueBatch", () => coordinator.enqueueBatch(jobs));
   await run("stats", () => coordinator.stats(now));
+  // The cheap route view that replaced polling the detailed snapshot (2026-10-13 read-quota outage).
+  await run("routeInventoryStats", () => coordinator.routeInventoryStats(now, 100));
   await run("rateFailureStats", () => coordinator.rateFailureStats(now));
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
