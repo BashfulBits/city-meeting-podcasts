@@ -176,11 +176,13 @@ llm_lanes:
       - "moonshotai/kimi-k3"
     # Each request is pinned to one size-selected model, so the worker writes one model index.
     dispatch_shape: per_model
-    # Twelve scheduled runs/day; 67 admits/run, with the daily reservation as the hard 800-job cap.
-    # A pinned request costs four ingress write units (three bookkeeping + one model index): 800*4.
-    max_dispatches_per_run: 67
-    reserved_write_units: 2170
-    daily_write_units: 3200
+    # Twelve scheduled runs/day; 134 admits/run, with the daily reservation as the hard 1,600-job
+    # cap. A pinned request costs four ingress write units (three bookkeeping + one model index).
+    # Raised from 800/day (2026-10-16): DeepSeek V4 Flash routes had ~1,800/day spare while the
+    # lane was limited only by this producer-side cap.
+    max_dispatches_per_run: 134
+    reserved_write_units: 4300
+    daily_write_units: 6400
   topic-tags:tagger:
     telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and

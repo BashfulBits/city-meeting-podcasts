@@ -54,7 +54,7 @@ MISTRAL_CONTEXT_TOKENS = 256_000
 DEEPSEEK_FREE_CONTEXT_TOKENS = 200_000
 NEMOTRON_CONTEXT_TOKENS = 1_000_000
 GEMINI_CONTEXT_TOKENS = 1_048_576
-LOCATOR_OUTPUT_TOKEN_RESERVE = 16_384
+LOCATOR_OUTPUT_TOKEN_RESERVE = 20_000
 # Research-only shadow selection bands. Production uses the explicit empirically-derived split
 # below; this ladder remains for old shadow/evaluation callers.
 _LOCATOR_MODEL_BANDS: tuple[tuple[int, tuple[str, ...]], ...] = (
