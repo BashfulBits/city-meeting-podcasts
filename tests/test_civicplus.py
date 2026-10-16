@@ -221,3 +221,74 @@ def test_recorded_fixture_parses():
     eps = parse_civicmedia_feed(fixture_bytes("civicplus", "gainesville-tx"))
     assert eps
     assert all(e.media_kind == "hls" and e.published is not None for e in eps)
+
+
+def test_resolve_media_url_handles_protocol_relative_embed_and_m3u8(monkeypatch):
+    provider = CivicPlusProvider()
+    protocol_relative_watch = (
+        "<html><body>\n"
+        '<iframe id="videoPlayer"\n'
+        '  src="//civplus.tikiliveapi.com/embed?'
+        'scheme=embedVod&amp;videoId=160681&amp;autoplay=yes"></iframe>\n'
+        "</body></html>\n"
+    )
+    protocol_relative_embed = """
+    <html><script>
+    source: "//wms.civplus.tikiliveapi.com/vodhttporigin/160681/playlist.m3u8?token=abc"
+    </script></html>
+    """
+    fake = FakeSession(
+        {
+            "CivicMedia?VID=285": FakeResponse(protocol_relative_watch),
+            "/embed?": FakeResponse(protocol_relative_embed),
+        }
+    )
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+    validated = []
+    monkeypatch.setattr(
+        "citypods.providers.civicplus.validate_source_url",
+        lambda *a, **kw: validated.append((a, kw)),
+    )
+
+    eps = parse_civicmedia_feed(SAMPLE)
+    url = provider.resolve_media_url(eps[0], {"feed_url": "x"})
+    assert url == "https://wms.civplus.tikiliveapi.com/vodhttporigin/160681/playlist.m3u8?token=abc"
+    assert fake.requested[1].startswith("https://civplus.tikiliveapi.com/embed?")
+    assert validated == [((url,), {"resolve": True})]
+
+
+def test_resolve_media_url_upgrades_http_embed_to_https(monkeypatch):
+    provider = CivicPlusProvider()
+    http_watch = """
+    <html><body>
+    <script>var p = "http://civplus.tikiliveapi.com/embed?videoId=159920";</script>
+    </body></html>
+    """
+    fake = FakeSession(
+        {
+            "CivicMedia?VID=285": FakeResponse(http_watch),
+            "/embed?": FakeResponse(EMBED_PAGE),
+        }
+    )
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+    monkeypatch.setattr("citypods.providers.civicplus.validate_source_url", lambda *a, **kw: None)
+
+    eps = parse_civicmedia_feed(SAMPLE)
+    url = provider.resolve_media_url(eps[0], {"feed_url": "x"})
+    assert url.startswith("https://")
+    assert fake.requested[1].startswith("https://civplus.tikiliveapi.com/embed?")
+
+
+def test_resolve_media_url_rejects_unauthorized_host_protocol_relative(monkeypatch):
+    provider = CivicPlusProvider()
+    evil_watch = """
+    <html><body>
+    <iframe src="//eviltikiliveapi.com/embed?videoId=160681"></iframe>
+    </body></html>
+    """
+    fake = FakeSession({"CivicMedia?VID=285": FakeResponse(evil_watch)})
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+
+    eps = parse_civicmedia_feed(SAMPLE)
+    with pytest.raises(ProviderError, match="unexpected embed host"):
+        provider.resolve_media_url(eps[0], {"feed_url": "x"})
