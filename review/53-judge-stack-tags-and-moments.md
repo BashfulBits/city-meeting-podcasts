@@ -111,7 +111,7 @@ maintainer can swap them by hand.
 | Lane | Active | Eligible, not active |
 |---|---|---|
 | `judge:anchor` | `typesafe/jev-1.13` | none |
-| `judge:sibling` slot A | `google/gemma-4-31b-it`, `google/gemma-4-26b-a4b-it` | none |
+| `judge:sibling` slot A | `google/gemma-4-31b-it`, `google/gemma-4-26b-a4b-it` (a pool: a new subject goes to the less-loaded one, see below) | none |
 | `judge:sibling` slot B | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | `qwen/qwen3.8-27b` |
 | `judge:adjudicator` | `zai/glm-5.3-flash`, `deepseek/deepseek-v4.1-flash` (NVIDIA leg only) | none yet |
 
@@ -120,6 +120,23 @@ record (30/30 on the easy set), and its 200k-token daily cap makes it a poor pri
 substitute. Its cap is shared with `r6-judge` until PR10 retires that lane. Eligible models are
 validated like active ones (family known, route exists, independence rules hold) so a swap cannot
 introduce an invalid panel.
+
+**Sibling choice by load (2026-10-16).** A slot is a pool, not a failover order. `sibling_candidates`
+returns every active model of the first slot with one independent of the producer, and the runner
+gives a new subject to the candidate with the fewest packets waiting at the Worker (read while
+collecting, plus items assigned this pass) per unit of route capacity from the Worker's cheap
+`?routes=1` view. The route view alone cannot see queue depth (both Gemma models showed full
+capacity while 2,600 packets waited), so the backlog is counted from the ledger's pending markers.
+A subject keeps the judge that already answered it or has a packet in flight: the ledger key
+includes the model, so switching would ask a second judge the same question. The sibling
+`max_outstanding_packets` limit applies to each judge model separately (the purpose's room is the sum),
+because a total limit let a 2,800-packet Gemma 31B backlog stop every new packet reaching Gemma 26B;
+the anchor's limit stays a total. The meeting-level
+`choose` question uses the same rule over models independent of every producer in the meeting.
+Gemma packets are capped at 8,500 estimated tokens (was 10,000): the Worker reserves estimate x its
+1.4 input ratio plus about 1,900 forecast output, which must fit AI Studio's 14,400-token minute
+budget, and 10,000 never could. Gemma 26B's judging quality is not yet measured; its judgments are
+calibrated per judge and its disagreements go to the adjudicator.
 
 ## Cross-series order (maintainer goal, 2026-10-09)
 

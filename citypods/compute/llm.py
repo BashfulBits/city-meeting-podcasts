@@ -2950,6 +2950,36 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 ingress status returned a malformed response")
         return data
 
+    def dispatch_v2_route_stats(self) -> Mapping[str, Any]:
+        """Return the v2 Worker's cheap per-route view (``GET /v2/stats?routes=1``).
+
+        Read-only and unmetered: one row per route that has a ledger, never the job scan that
+        ``?detail=1`` does (about 79,000 Durable Object rows a call, the 2026-10-13 outage).
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 route stats require LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/stats?routes=1")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 route stats request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 route stats returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 route stats returned malformed JSON") from exc
+        if not isinstance(data, Mapping) or not isinstance(
+            (data.get("routes") or {}).get("all"), list
+        ):
+            raise LLMBackendError("LLM dispatch v2 route stats returned a malformed response")
+        return data
+
     def dispatch_v2_calibration(self, route_id: str, prompt_family: str) -> Mapping[str, Any]:
         """Return the input ratio the v2 claim applies to ``route_id`` and ``prompt_family``.
 
@@ -3668,6 +3698,57 @@ def dispatch_v2_ingress_open(
         print(f"llm ingress preflight for {purpose!r} failed ({exc}); closing lane", flush=True)
         return False, {"open": False, "purpose": purpose, "reasons": ["preflight_unavailable"]}
     return bool(status.get("open")), status
+
+
+def dispatch_v2_model_headroom(models: Sequence[str], *, backend: Any = None) -> dict[str, float]:
+    """Usable route capacity per logical model, from the Worker's cheap route view.
+
+    A model's headroom is the sum, over its catalog routes, of each route's ``capacity`` fraction
+    (0 while the route is blocked). A route the Worker has no ledger for yet counts as fully
+    available. Empty when no Worker is configured or the read fails: callers then treat every
+    model as equally available and decide by their own backlog.
+    """
+    client = backend if hasattr(backend, "dispatch_v2_route_stats") else None
+    if client is None:
+        try:
+            client = LiteLLMBackend(LLMBackendConfig.from_env())
+        except ValueError:
+            return {}
+    if not client.config.dispatch_v2_url:
+        return {}
+    try:
+        data = client.dispatch_v2_route_stats()
+    except LLMBackendError as exc:
+        print(f"llm route stats lookup failed ({exc}); balancing by backlog only", flush=True)
+        return {}
+    now = data.get("now")
+    by_route = {
+        str(row.get("route_id")): row for row in data["routes"]["all"] if isinstance(row, Mapping)
+    }
+    headroom: dict[str, float] = {}
+    for model in models:
+        total = 0.0
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            row = by_route.get(str(route.route_id))
+            if row is None:
+                total += 1.0
+                continue
+            blocked = row.get("blocked_until")
+            if (
+                isinstance(now, (int, float))
+                and isinstance(blocked, (int, float))
+                and not isinstance(blocked, bool)
+                and blocked > now
+            ):
+                continue
+            capacity = row.get("capacity")
+            if isinstance(capacity, (int, float)) and not isinstance(capacity, bool):
+                value = float(capacity)
+                total += max(0.0, value) if math.isfinite(value) else 1.0
+            else:
+                total += 1.0
+        headroom[model] = total
+    return headroom
 
 
 _V2_LEARNED_INPUT_RATIOS: dict[tuple[str, str], float | None] = {}
