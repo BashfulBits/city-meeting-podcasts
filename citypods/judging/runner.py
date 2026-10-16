@@ -27,10 +27,9 @@ from citypods.judging.backends import (
     JevBackend,
     Packet,
     choose_options,
-    estimate_tokens,
 )
 from citypods.judging.families import UNKNOWN_FAMILY, family_of, sibling_for
-from citypods.judging.packing import pack
+from citypods.judging.packing import item_size, pack
 from citypods.judging.tasks import (
     EpisodeTexts,
     Evidence,
@@ -73,6 +72,13 @@ class JudgingContext:
     run_caps_lock: Any = None
     # Plan and pack only: count what would be sent and submit nothing (the PR4 rehearsal).
     dry_run: bool = False
+    # The Worker's learned input ratio for the JEV route (None: unreadable, so packets are sized
+    # for the unmeasured default). Packets must stay under the route's ceiling once scaled by it.
+    anchor_input_ratio: float | None = None
+    # purpose -> most packets that may be waiting at the Worker at once. A pass submits only into
+    # the room left, so a backlog the providers drain slowly cannot grow the Worker queue without
+    # bound (the PR4 shadow run queued ~8,500 jobs, adding ~3,300 a day against ~700 claimed).
+    max_outstanding: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -84,6 +90,8 @@ class JudgingStats:
     episodes_unavailable: set[str] = field(default_factory=set)
     # Episodes the bounded plan reached this pass; only these can be found complete.
     episodes_planned: set[str] = field(default_factory=set)
+    # purpose -> recipes of packets still waiting at the Worker (read while collecting).
+    outstanding: dict[str, set[str]] = field(default_factory=dict)
 
 
 class TextsUnavailable(Exception):
@@ -154,8 +162,10 @@ def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:
     }
 
 
-def _backend_for(role: str, model: str):
-    return JevBackend() if role == "anchor" else _sibling_backend(model)
+def _backend_for(role: str, model: str, ctx: JudgingContext | None = None):
+    if role == "anchor":
+        return JevBackend(ctx.anchor_input_ratio if ctx is not None else None)
+    return _sibling_backend(model)
 
 
 def _record(packet: Packet, rows, stats: JudgingStats) -> None:
@@ -177,6 +187,7 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
             record = outputs[recipe]
             if isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
+                stats.outstanding.setdefault(str(marker.get("purpose") or ""), set()).add(recipe)
                 continue
             ledger.drop_pending(subject, marker)
             if not isinstance(record, JobResult):
@@ -211,6 +222,55 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
             if not rows:
                 stats.counts["answer_missing"] += 1
             _record(packet, rows, stats)
+    _count_superseded_outstanding(subjects, ctx, stats, outputs)
+
+
+def _count_superseded_outstanding(
+    subjects: Sequence[Subject],
+    ctx: JudgingContext,
+    stats: JudgingStats,
+    outputs: dict[str, Any],
+) -> None:
+    """Count packets still waiting at the Worker for subjects that are no longer current.
+
+    A candidate whose evidence changes gets a new subject id, so its old subject's pending markers
+    are never visited by the loop above while the packet they name is still queued. They stay in
+    the episode's ``judging`` block, so they are read from there and added to the outstanding
+    count: otherwise repeated candidate changes could admit packets past the outstanding limit."""
+    current = {subject.subject_id for subject in subjects}
+    stores = {id(subject.store): subject.store for subject in subjects}
+    for store in stores.values():
+        for subject_id, entry in (store.get("subjects") or {}).items():
+            if subject_id in current or not isinstance(entry, dict):
+                continue
+            for marker in entry.get("pending") or []:
+                recipe = str((marker or {}).get("recipe_hash") or "")
+                if not recipe:
+                    continue
+                if recipe not in outputs:
+                    outputs[recipe] = ctx.look_up(recipe)
+                if isinstance(outputs[recipe], JobHandle):
+                    purpose = str(marker.get("purpose") or "")
+                    stats.outstanding.setdefault(purpose, set()).add(recipe)
+                    stats.counts["superseded_pending"] += 1
+
+
+def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
+    """Shrink each purpose's run cap to the room left under its outstanding-packet limit."""
+    for purpose, limit in ctx.max_outstanding.items():
+        outstanding = len(stats.outstanding.get(purpose, ()))
+        room = max(0, int(limit) - outstanding)
+        stats.counts[f"outstanding:{purpose}"] = outstanding
+        if ctx.run_caps_lock is not None:
+            ctx.run_caps_lock.acquire()
+        try:
+            left = ctx.run_caps.get(purpose)
+            ctx.run_caps[purpose] = room if left is None else min(left, room)
+        finally:
+            if ctx.run_caps_lock is not None:
+                ctx.run_caps_lock.release()
+        if room == 0:
+            stats.counts[f"run_cap_outstanding:{purpose}"] += 1
 
 
 def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext) -> list[tuple]:
@@ -420,10 +480,11 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
     all_subjects = [s for ep in ordered for spec in ctx.tasks for s in spec.subjects(ep)]
     _collect(all_subjects, ctx, stats)
+    _apply_backpressure(ctx, stats)
     units = plan(ordered, ctx, stats, _item_budget(ctx), bounded=True)
     for (role, model), judge_units in sorted(units.items()):
         purpose = ANCHOR_PURPOSE if role == "anchor" else SIBLING_PURPOSE
-        backend = _backend_for(role, model)
+        backend = _backend_for(role, model, ctx)
         result = pack(judge_units, backend, purpose=purpose, role=role, judge_model=model)
         stats.counts["payload_too_large"] += result.payload_too_large
         if result.units_split:
@@ -441,7 +502,7 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                 stats.counts[f"dry_run_packets:{role}"] += 1
                 stats.counts["dry_run_items"] += len(packet.items)
                 stats.counts["dry_run_estimated_tokens"] += sum(
-                    estimate_tokens(item.text()) for item in packet.items
+                    item_size(backend, item) for item in packet.items
                 )
                 continue
             if not _take_run_slot(ctx, purpose):

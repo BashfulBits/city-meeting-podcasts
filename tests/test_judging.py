@@ -1050,3 +1050,147 @@ def test_one_judge_pass_across_sources_gives_the_caps_to_the_newest_episodes(mon
     )
     assert _any_pending(new) and not _any_pending(old)
     assert stat.ran == 0 and ctx.judge_backend.jobs
+
+
+def _wire_tokens(backend, packet):
+    """What the producer estimates for the job: chars/4 of the serialized request."""
+    from citypods.judging.backends import estimate_tokens
+
+    return estimate_tokens(json.dumps(backend.build(packet).inputs["systemone"], sort_keys=True))
+
+
+def _escaped_item(subject_id, size):
+    """An item whose JSON form is much larger than its text: quotes and newlines escape."""
+    text = ('he said "yes"\nthen left\n' * size)[: size * 4]
+    subject = Subject("tag", subject_id, "ep", None, None, {})
+    return Item(
+        QuestionSpec("q", "validate", "Is it?"), "T1", make_evidence("T1", text), (subject,)
+    )
+
+
+@pytest.mark.parametrize("ratio", [None, 1.0, 1.15, 1.4])
+def test_jev_packets_fit_the_route_ceiling_as_the_producer_estimates_them(ratio):
+    """The first PR4 runs sized packets by item text alone; the JSON the producer sends is larger,
+    so about 45 of 110 anchor packets a run were failed by the Worker as over the input ceiling."""
+    import math
+
+    from citypods.judging.backends import JEV_HARD_INPUT_CEILING, JEV_UNMEASURED_RATIO
+
+    backend = JevBackend(ratio)
+    units = [[_escaped_item(f"s{i}", 900)] for i in range(120)]
+    result = pack(units, backend, purpose="judge:anchor", role="anchor", judge_model="jev")
+    assert result.packets and result.payload_too_large == 0
+    effective = max(1.0, ratio) if ratio else JEV_UNMEASURED_RATIO
+    for packet in result.packets:
+        scaled = math.ceil(_wire_tokens(backend, packet) * effective)
+        assert scaled <= JEV_HARD_INPUT_CEILING, (len(packet.items), scaled)
+    # The text-only measure the runs used would have let packets through that exceed it.
+    text_backend = type(
+        "TextOnly",
+        (),
+        {
+            "max_total_tokens": JEV_HARD_INPUT_CEILING,
+            "max_items": 60,
+            "max_question_tokens": 28_000,
+        },
+    )()
+    old = pack(units, text_backend, purpose="judge:anchor", role="anchor", judge_model="jev")
+    assert any(_wire_tokens(JevBackend(1.0), p) > JEV_HARD_INPUT_CEILING for p in old.packets)
+
+
+def test_a_higher_learned_ratio_makes_smaller_jev_packets():
+    assert JevBackend(1.4).max_total_tokens < JevBackend(1.0).max_total_tokens
+    # A ratio below 1 never enlarges a packet past the ceiling, and an unreadable one errs small.
+    assert JevBackend(0.5).max_total_tokens == JevBackend(1.0).max_total_tokens
+    assert JevBackend(None).max_total_tokens < JevBackend(1.0).max_total_tokens
+
+
+def test_the_jev_sizing_constants_match_the_route_catalog():
+    import yaml
+
+    from citypods.judging.backends import JEV_HARD_INPUT_CEILING, JEV_ROUTE_ID
+
+    catalog = yaml.safe_load(
+        (Path(__file__).parent.parent / "config" / "provider_limits.yml").read_text()
+    )
+    routes = [r for r in catalog["routes"] if r.get("route_id") == JEV_ROUTE_ID]
+    assert len(routes) == 1
+    assert routes[0]["hard_input_ceiling"] == JEV_HARD_INPUT_CEILING
+
+
+def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit():
+    """The PR4 shadow run queued ~8,500 jobs and added ~3,300 a day against ~700 claimed."""
+    dispatch = FakeDispatch()
+    limits = {"judge:anchor": 1, "judge:sibling": 1}
+    first_ep, second_ep = _episode(uid="ep-a"), _episode(uid="ep-b")
+    first = runner.run([first_ep], _ctx(dispatch, max_outstanding=limits))
+    assert first.counts["packets:anchor"] == 1 and first.counts["packets:sibling"] == 1
+    assert first.counts["outstanding:judge:anchor"] == 0
+    held = runner.run([first_ep, second_ep], _ctx(dispatch, max_outstanding=limits))
+    assert held.counts["packets:anchor"] == 0 and held.counts["packets:sibling"] == 0
+    assert held.counts["outstanding:judge:anchor"] == 1
+    assert held.counts["run_cap_outstanding:judge:anchor"] == 1
+    assert not _any_pending(second_ep)
+    dispatch.answer()
+    freed = runner.run([first_ep, second_ep], _ctx(dispatch, max_outstanding=limits))
+    assert freed.counts["packets:anchor"] == 1 and _any_pending(second_ep)
+
+
+def test_the_outstanding_limit_never_raises_a_tighter_run_cap():
+    dispatch = FakeDispatch()
+    caps = {"judge:anchor": 0, "judge:sibling": 5}
+    ctx = _ctx(dispatch, run_caps=caps, max_outstanding={"judge:anchor": 50, "judge:sibling": 2})
+    stats = runner.run([_episode()], ctx)
+    assert stats.counts["packets:anchor"] == 0
+    assert caps["judge:anchor"] == 0 and caps["judge:sibling"] <= 2
+
+
+def test_the_judge_stage_hands_the_runner_its_ratio_and_outstanding_limits(monkeypatch):
+    from citypods import stages
+    from citypods.judging.backends import JEV_ROUTE_ID
+
+    seen = {}
+
+    def spy(episodes, judging):
+        seen["ctx"] = judging
+        return runner.JudgingStats()
+
+    monkeypatch.setattr(runner, "run", spy)
+    asked = []
+
+    def learned(route_id, family, *, backend=None):
+        asked.append((route_id, family))
+        return 1.17
+
+    monkeypatch.setattr("citypods.compute.llm.dispatch_v2_learned_input_ratio", learned)
+    ctx = _stage_ctx(enabled=True)
+    ctx.judging_config["max_outstanding_packets"] = {"anchor": 7, "sibling": 9}
+    ep = _episode()
+    ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+    stages.JudgeStage().process(None, SimpleNamespace(slug="x"), [ep], ctx)
+    assert asked == [(JEV_ROUTE_ID, "judge")]
+    assert seen["ctx"].anchor_input_ratio == 1.17
+    assert seen["ctx"].max_outstanding == {"judge:anchor": 7, "judge:sibling": 9}
+
+
+def test_packets_waiting_for_superseded_subjects_still_count_as_outstanding():
+    """A candidate whose evidence changes gets a new subject id, so its old pending markers are
+    never visited while the packet they name is still queued; they must still hold the limit."""
+    dispatch = FakeDispatch()
+    limits = {"judge:anchor": 1, "judge:sibling": 1}
+    ep = _episode(uid="ep-a")
+    first = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert first.counts["packets:anchor"] == 1
+    store = _subjects(ep)[0].store
+    # Supersede every subject: the entries (and their pending markers) stay, under ids no
+    # current subject has.
+    store["subjects"] = {f"old-{key}": entry for key, entry in store["subjects"].items()}
+    held = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert held.counts["superseded_pending"] >= 1
+    assert held.counts["outstanding:judge:anchor"] == 1
+    assert held.counts["packets:anchor"] == 0 and held.counts["packets:sibling"] == 0
+    # Once the Worker answers, the old packets stop counting.
+    dispatch.answer()
+    freed = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
+    assert freed.counts["outstanding:judge:anchor"] == 0
+    assert freed.counts["packets:anchor"] == 1

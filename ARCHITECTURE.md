@@ -1328,7 +1328,10 @@ context scan, `llm_rate_probe.py` and the weekly live gateway contract probe. Ju
 in `llm_families`, which the lane compiler enforces. The judge stack itself (`citypods/judging/`) runs as
 `JudgeStage` in its own `judge` lane (`.github/workflows/judge.yml`, every two hours): a task-spec
 registry (`tag`, `moment`), evidence by context tier, per-entry sibling choice by family, greedy
-packing (JEV up to 58,000 estimated tokens and 60 questions). Judgments are an episode artifact
+packing (JEV packets are sized as the producer estimates the request, the serialized questions, times
+the Worker's learned input ratio for the route, so they stay under its 58,000-token ceiling; 60 questions).
+A pass submits only into the room left under `judging.max_outstanding_packets` per judge, and a judge
+lane the Worker's ingress preflight reports closed starts with no packets. Judgments are an episode artifact
 block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
 `unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
 written. The stage runs once across every source (`run_judge_across_sources`), planning the newest

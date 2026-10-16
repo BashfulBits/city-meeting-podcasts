@@ -3003,6 +3003,8 @@ def _build_impl(
     # of already-completed results continue. Same URL precedence as
     # LLMBackendConfig.from_env().
     v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
+    judge_closed_caps: dict[str, int] = {}
+    judging_config_enabled = bool((site_config.get("judging") or {}).get("enabled"))
     if not dry_run and phase != "render" and v2_url:
         closed = _closed_llm_lanes(
             {
@@ -3013,8 +3015,16 @@ def _build_impl(
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
                 "r6-judge": moments_config.get("enabled"),
+                # The judge lanes are preflighted only for the judge lane's own run: a Worker that
+                # is down or refusing ingress would otherwise cost a full planning pass (about 50
+                # minutes) and end in a red run (2026-10-13: HTTP 500 on every enqueue).
+                "judge:anchor": lane == "judge" and judging_config_enabled,
+                "judge:sibling": lane == "judge" and judging_config_enabled,
             }
         )
+        for judge_purpose in ("judge:anchor", "judge:sibling"):
+            if judge_purpose in closed:
+                judge_closed_caps[judge_purpose] = 0
         if "topic-tags:tagger" in closed:
             tag_max_dispatches = 0
         if "topic-tags:prelabeler" in closed:
@@ -3457,6 +3467,8 @@ def _build_impl(
         moment_backend=moment_backend,
         judge_backend=judge_backend,
         judging_config=judging_config,
+        # A judge lane the Worker reports closed starts with no packets to send this run.
+        judge_run_caps=judge_closed_caps,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),

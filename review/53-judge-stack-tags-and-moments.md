@@ -406,7 +406,10 @@ no row and an `answer_missing` count.
 **Packing** (`packing.py`): greedy, deterministic, recent-first by `Episode.published`; never splits
 an item or truncates evidence; an item over the ceiling alone is counted `payload-too-large` (the
 existing blocked outcome) and skipped. Ceilings: JEV 58,000 total and 28,000 state-plus-largest, 60
-questions; Gemma 10,000 tokens, 25 items; Nemotron 3 Super 24,000 tokens, 25 items; adjudicators
+questions, **measured as the producer estimates the job** (chars/4 of the serialized `systemone`
+request, not of each item's text) and scaled by the Worker's learned input ratio for the route with a
+5% margin (1.25 when the ratio cannot be read), because the Worker compares exactly that figure with
+the route's `hard_input_ceiling` (decided 2026-10-15, see the PR4 acceptance record); Gemma 10,000 tokens, 25 items; Nemotron 3 Super 24,000 tokens, 25 items; adjudicators
 20 questions and their route ceiling. Moment questions for one meeting stay in one packet when
 they fit. A meeting too large for the judge is split, not skipped (decided 2026-10-10 after the PR4
 dry run, where every meeting over 7 candidates lost its sibling and over 19 lost both judges): its
@@ -454,6 +457,24 @@ a dry run within every ceiling; then three days with judgments appended for both
 judges every day; zero change to `display`, `admission` or moment publication (before/after
 comparison of sampled records); no JEV `request_defect` except genuine oversize; BeatAPI chat
 routes admitted only while no JEV job was queued; DO rows under the enqueue stop each day.
+
+**Acceptance, first pass (2026-10-15): not accepted.** The dated measurements, the per-criterion
+table and the root cause of each finding are in
+[`evidence/2026-10-15-judge-pr4-first-pass.md`](evidence/2026-10-15-judge-pr4-first-pass.md). In
+short: the 2026-10-13 failure was the Durable Object's daily read allowance spent by an evaluation
+polling the Worker's detailed snapshot (not the judge); about 45 anchor packets a run were failed by
+the Worker because packets were sized by item text rather than by the request (fixed in the PR that
+carries this record, which also bounds the judge's share of the Worker queue and preflights the judge
+lanes); request-size admission, the per-task and per-judge counts, the display before/after
+comparison, the chat-route yield check and the read-allowance check remain open.
+
+**Remaining to accept PR4** (evidence gate, after the sizing and metering changes are deployed): three
+consecutive days with the budget monitor reporting zero `job_unroutable` and
+`input_over_route_ceiling` for `judge:anchor`, the judge's `errored` and `replanned` near zero outside
+genuine cancellations, the Worker's queued count not rising day over day, a per-task, per-judge
+judgment count each day, the before/after display comparison, and the Durable Object rows read under 2
+million on every one of those days.
+
 
 ### PR5 — Adjudication, calibration sample, quote check, stability (review/49 P2)
 

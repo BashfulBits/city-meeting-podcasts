@@ -25,6 +25,13 @@ class PackResult:
     units_split: int = 0
 
 
+def item_size(backend: Any, item: Item) -> int:
+    """The item's estimated tokens as the judge's request will carry it (the backend knows the
+    wire format; a backend without ``item_tokens`` is sized by the item's text)."""
+    sizer = getattr(backend, "item_tokens", None)
+    return sizer(item) if sizer is not None else estimate_tokens(item.text())
+
+
 def _fits(items: Sequence[Item], sizes: Sequence[int], backend: Any) -> bool:
     return (
         bool(items)
@@ -76,7 +83,7 @@ def pack(
     for unit in units:
         if not unit:
             continue
-        sizes = [estimate_tokens(item.text()) for item in unit]
+        sizes = [item_size(backend, item) for item in unit]
         if _fits(unit, sizes, backend):
             place(unit, sizes)
             continue
@@ -85,7 +92,7 @@ def pack(
         # Too large whole: fall back to the unit's parts, then to single items; only an item that
         # cannot fit on its own is skipped.
         for part in _split(unit) if len(unit) > 1 else [list(unit)]:
-            part_sizes = [estimate_tokens(item.text()) for item in part]
+            part_sizes = [item_size(backend, item) for item in part]
             if _fits(part, part_sizes, backend):
                 place(part, part_sizes)
                 continue
