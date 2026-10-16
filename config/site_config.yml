@@ -328,8 +328,8 @@ llm_lanes:
       - "deepseek/deepseek-v4.1-flash"
     dispatch_shape: per_model
     max_dispatches_per_run: 33
-    # 920 from PR5, when adjudication starts dispatching; zero until then.
-    reserved_write_units: 0
+    # 920 from PR5, when adjudication starts dispatching (a 3% sample plus contested items).
+    reserved_write_units: 920
     daily_write_units: 1600
   remedy:p3:
     telemetry: {producer: remedy, unit: finding, completion: consumed, scope: sample}
@@ -449,7 +449,9 @@ judging:
   # Most packets of each judge that may wait at the Worker at once; a pass submits only into the
   # room left (about two runs of the lane's per-run cap), so a backlog the providers drain slowly
   # cannot grow the Worker queue without bound.
-  max_outstanding_packets: {anchor: 240, sibling: 480}
+  max_outstanding_packets: {anchor: 240, sibling: 480, adjudicator: 66}
+  # Review/53 PR5: the adjudicator judges contested items and the calibration sample; data only.
+  adjudication: {enabled: true}
 moments:
   enabled: true
   mode: "manual"  # manual | auto; global kill switch back to manual

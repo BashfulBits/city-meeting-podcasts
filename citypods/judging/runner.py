@@ -12,7 +12,6 @@ themselves are never written, in shadow mode or otherwise.
 
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -21,7 +20,20 @@ from typing import Any
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.judging import ledger
+from citypods.judging.adjudication import (
+    adjudication_unbuildable_key,
+    adjudicator_for_group,
+    choose_due,
+    due_questions,
+    in_sample,
+    pending_adjudication,
+    sibling_model_of,
+    subject_adjudicator,
+)
 from citypods.judging.backends import (
+    REASON_MAX,
+    STABILITY_ORDER,
+    AdjudicatorBackend,
     ChatJudgeBackend,
     Item,
     JevBackend,
@@ -35,6 +47,7 @@ from citypods.judging.families import (
     sibling_candidates,
 )
 from citypods.judging.packing import item_size, pack
+from citypods.judging.quotes import quote_valid
 from citypods.judging.tasks import (
     EpisodeTexts,
     Evidence,
@@ -46,6 +59,15 @@ from citypods.judging.tasks import (
 
 ANCHOR_PURPOSE = "judge:anchor"
 SIBLING_PURPOSE = "judge:sibling"
+ADJUDICATOR_PURPOSE = "judge:adjudicator"
+PURPOSES = {
+    "anchor": ANCHOR_PURPOSE,
+    "sibling": SIBLING_PURPOSE,
+    "adjudicator": ADJUDICATOR_PURPOSE,
+}
+# Adjudicator packets: up to 20 questions (review/53 PR5) under a ceiling every adjudicator route
+# clears; the BeatAPI DeepSeek leg, with a 128,000-token context, is the smallest.
+ADJUDICATOR_CEILING = (60_000, 20)
 
 # Chat sibling ceilings (review/53 PR3 "Packing"): Gemma's AI Studio routes have a 14,400-token
 # hard ceiling and a 14,400-token minute budget. The Worker reserves estimate x its input ratio
@@ -87,6 +109,13 @@ class JudgingContext:
     # the room left, so a backlog the providers drain slowly cannot grow the Worker queue without
     # bound (the PR4 shadow run queued ~8,500 jobs, adding ~3,300 a day against ~700 claimed).
     max_outstanding: dict[str, int] = field(default_factory=dict)
+    # PR5: the adjudicator lane (None: adjudication is off) and the shares of subjects it samples.
+    adjudicator: LaneConfig | None = None
+    calibration_sample_rate: float = 0.0
+    stability_sample_rate: float = 0.0
+    # Transcripts one pass may read to check the quotes of answers it collects; an answer whose
+    # evidence cannot be read yet waits (its marker stays) for a later pass.
+    quote_check_reads: int = 400
     # model -> usable route capacity from the Worker's cheap route view (0 when blocked). A missing
     # model counts as 1.0, so with no reading the choice is by backlog alone.
     sibling_headroom: dict[str, float] = field(default_factory=dict)
@@ -151,11 +180,6 @@ def _return_run_slot(ctx: JudgingContext, purpose: str) -> None:
             give()
 
 
-def in_sample(subject_id: str, rate: float) -> bool:
-    bucket = int(hashlib.sha256(subject_id.encode()).hexdigest()[:8], 16) % 10_000
-    return bucket < int(rate * 10_000)
-
-
 def _sibling_backend(model: str) -> ChatJudgeBackend:
     total, items = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)
     return ChatJudgeBackend(max_total_tokens=total, max_items=items)
@@ -180,10 +204,25 @@ def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:
     }
 
 
+def _adjudicator_backend() -> AdjudicatorBackend:
+    total, items = ADJUDICATOR_CEILING
+    return AdjudicatorBackend(max_total_tokens=total, max_items=items)
+
+
 def _backend_for(role: str, model: str, ctx: JudgingContext | None = None):
     if role == "anchor":
         return JevBackend(ctx.anchor_input_ratio if ctx is not None else None)
+    if role == "adjudicator":
+        return _adjudicator_backend()
     return _sibling_backend(model)
+
+
+def _base_question_id(question_id: str) -> str:
+    """A stored question id without its order suffix (``_r`` reversed, ``_s`` stability)."""
+    for suffix in ("_r", STABILITY_ORDER):
+        if question_id.endswith(suffix):
+            return question_id.removesuffix(suffix)
+    return question_id
 
 
 def _record(packet: Packet, rows, stats: JudgingStats) -> None:
@@ -192,11 +231,73 @@ def _record(packet: Packet, rows, stats: JudgingStats) -> None:
             stats.counts["judgments_appended"] += 1
 
 
-def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats) -> None:
-    """Turn finished in-flight questions into judgments; drop markers that can never finish."""
+class _Defer:
+    """Sentinel: an answer's evidence cannot be read yet, so its marker waits for a later pass."""
+
+
+DEFER = _Defer()
+
+
+def _choose_text(spec: TaskSpec, group: Sequence[Subject], options) -> str | None:
+    by_id = {subject.subject_id: subject for subject in group}
+    try:
+        return "\n".join(f"{letter}: {by_id[sid].payload.get('quote')}" for letter, sid in options)
+    except KeyError:
+        return None
+
+
+def _evidence_text(
+    subject: Subject,
+    item: Item,
+    marker: Mapping[str, Any],
+    ctx: JudgingContext,
+    episodes: Mapping[str, Any],
+    read: set[str],
+) -> str | _Defer | None:
+    """The evidence a chat judge was sent, rebuilt from the transcript, for its quote check.
+
+    ``None`` when it cannot be rebuilt identically (the digest differs, the episode is gone):
+    the row is kept with ``quote_valid`` unset. ``DEFER`` when the transcript cannot be read now
+    (an outage, or this pass's read budget is spent): the marker stays for the next pass."""
     from citypods.judging.tasks import task as task_spec
 
+    episode = episodes.get(subject.episode_uid)
+    if episode is None:
+        return None
+    uid = subject.episode_uid
+    if uid not in read and len(read) >= ctx.quote_check_reads:
+        return DEFER
+    try:
+        texts = ctx.texts_for(episode)
+    except TextsUnavailable:
+        return DEFER
+    read.add(uid)
+    spec = task_spec(subject.task)
+    if item.question.kind == "choose":
+        text = _choose_text(spec, spec.subjects(episode), item.options)
+        evidence = make_evidence(item.tier, text) if text is not None else None
+    else:
+        evidence = spec.evidence(subject, item.tier, texts)
+    if evidence is None or evidence.digest != item.evidence.digest:
+        return None
+    return evidence.text
+
+
+def _collect(
+    subjects: Sequence[Subject],
+    ctx: JudgingContext,
+    stats: JudgingStats,
+    episodes: Mapping[str, Any] | None = None,
+) -> None:
+    """Turn finished in-flight questions into judgments; drop markers that can never finish.
+
+    A chat judge's or adjudicator's answer is stored with ``quote_valid``: whether the quote in its
+    reason occurs in the evidence it was sent (review/53 PR5)."""
+    from citypods.judging.tasks import task as task_spec
+
+    episodes = episodes or {}
     outputs: dict[str, Any] = {}
+    read: set[str] = set()
     for subject in subjects:
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
@@ -212,15 +313,15 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
                         recipe
                     )
                 continue
-            ledger.drop_pending(subject, marker)
             if not isinstance(record, JobResult):
                 # No record (a failed submission, a cancelled or structurally blocked packet): the
                 # question becomes due again and is re-planned for the current judges. This is the
                 # Slice 3a rebatch branch -- never an unchanged-recipe resubmission.
+                ledger.drop_pending(subject, marker)
                 stats.counts["replanned"] += 1
                 continue
             question_id = str(marker.get("question_id") or "")
-            question = task_spec(subject.task).question(question_id.removesuffix("_r"))
+            question = task_spec(subject.task).question(_base_question_id(question_id))
             tier = str(marker["context_tier"])
             item = Item(
                 question=question,
@@ -230,18 +331,35 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
                 subjects=(subject,),
                 sample=str(marker.get("sample") or "routine"),
                 options=tuple(tuple(pair) for pair in marker.get("options") or ()),
-                order="_r" if question_id.endswith("_r") else "",
+                order=question_id[len(question.id) :],
                 asked_qid=str(marker["qid"]),
             )
+            role = str(marker.get("judge_role") or "")
             packet = Packet(
                 str(marker.get("purpose") or ""),
-                str(marker.get("judge_role") or ""),
+                role,
                 str(marker["judge_model"]),
                 (item,),
             )
             rows = _backend_for(packet.role, packet.judge_model).parse(packet, record.output)
+            evidence_text: str | _Defer | None = None
+            if role != "anchor" and rows:
+                evidence_text = _evidence_text(subject, item, marker, ctx, episodes, read)
+                if evidence_text is DEFER:
+                    stats.counts["quote_check_deferred"] += 1
+                    continue  # keep the marker: the answer is recorded once it can be checked
+            ledger.drop_pending(subject, marker)
             for _subject, row in rows:
                 row["packet_id"] = recipe
+                if role != "anchor":
+                    if isinstance(evidence_text, str):
+                        row["quote_valid"] = quote_valid(row.get("reason"), evidence_text)
+                        stats.counts[f"quote_{'valid' if row['quote_valid'] else 'invalid'}"] += 1
+                    else:
+                        stats.counts["quote_unchecked"] += 1
+                    if row.get("reason"):
+                        # Checked in full above; the stored copy stays short.
+                        row["reason"] = str(row["reason"])[:REASON_MAX]
             if not rows:
                 stats.counts["answer_missing"] += 1
             _record(packet, rows, stats)
@@ -438,6 +556,22 @@ def plan(
                                 evidence.digest,
                             )
                             if ledger.has_key(subject, key):
+                                # Judged already; a sampled subject is asked once more, worded
+                                # differently, so the report can count the judge's flips (PR5).
+                                if _stability_due(subject, question, model, tier, sample, key, ctx):
+                                    stats.episodes_with_work.add(subject.episode_uid)
+                                    units.setdefault((role, model), []).append(
+                                        [
+                                            Item(
+                                                question,
+                                                tier,
+                                                evidence,
+                                                (subject,),
+                                                "stability",
+                                                order=STABILITY_ORDER,
+                                            )
+                                        ]
+                                    )
                                 continue
                             item = Item(question, tier, evidence, (subject,), sample)
                             stats.episodes_with_work.add(subject.episode_uid)
@@ -450,6 +584,29 @@ def plan(
                 if items:
                     units.setdefault(judge, []).append(items)
     return units
+
+
+def _stability_due(
+    subject: Subject,
+    question,
+    model: str,
+    tier: str,
+    sample: str,
+    key: tuple,
+    ctx: JudgingContext,
+) -> bool:
+    """Whether this already-judged question should be asked again as a stability probe.
+
+    A deterministic ``stability_sample_rate`` share of subjects, at the first tier on the routine
+    pass, once the original answer is recorded (a pending one has nothing to compare with yet)."""
+    if sample != "routine" or ctx.stability_sample_rate <= 0:
+        return False
+    if not in_sample(f"{subject.subject_id}:stability", ctx.stability_sample_rate):
+        return False
+    if not any(ledger.key_of(row) == key for row in ledger.judgments(subject)):
+        return False
+    again = (key[0], f"{question.id}{STABILITY_ORDER}", *key[2:])
+    return not ledger.has_key(subject, again)
 
 
 def _models_used(subject: Subject) -> set[str]:
@@ -493,6 +650,13 @@ def _pick_sibling(
     return chosen
 
 
+def _choose_evidence(spec: TaskSpec, subjects: Sequence[Subject], options) -> Evidence:
+    """The evidence for a meeting's choose question: each option's quote beside its letter."""
+    by_id = {s.subject_id: s for s in subjects}
+    lines = [f"{letter}: {by_id[sid].payload.get('quote')}" for letter, sid in options]
+    return make_evidence(spec.first_tier, "\n".join(lines))
+
+
 def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     choose = [q for q in spec.questions if q.kind == "choose"]
     if not choose or len(subjects) < 2:
@@ -506,9 +670,7 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     judges = [("anchor", ctx.anchor.primary_model)] + ([("sibling", sibling)] if sibling else [])
     for reverse, order in ((False, ""), (True, "_r")):
         options = choose_options(subjects, reverse=reverse)
-        by_id = {s.subject_id: s for s in subjects}
-        lines = [f"{letter}: {by_id[sid].payload.get('quote')}" for letter, sid in options]
-        evidence = make_evidence(spec.first_tier, "\n".join(lines))
+        evidence = _choose_evidence(spec, subjects, options)
         for role, model in judges:
             key_subject = subjects[0]
             key = (
@@ -526,6 +688,151 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
                     question, spec.first_tier, evidence, tuple(subjects), "routine", options, order
                 )
             )
+
+
+def _largest_tier_evidence(spec: TaskSpec, subject: Subject, texts: EpisodeTexts):
+    """The evidence at the largest tier this task's builder can produce for the subject."""
+    for tier in reversed(spec.tiers):
+        evidence = spec.evidence(subject, tier, texts)
+        if evidence is not None:
+            return tier, evidence
+    return None
+
+
+def plan_adjudication(
+    episodes: Sequence[Any],
+    ctx: JudgingContext,
+    stats: JudgingStats,
+    item_budget: int | None = None,
+    *,
+    bounded: bool = False,
+) -> dict[tuple[str, str], list[list[Item]]]:
+    """Units for the adjudicator: contested subject-questions and the calibration sample.
+
+    Each goes to an adjudicator independent of its producer and its sibling, at the largest
+    context tier, asked the same way whether it was contested or sampled. A transcript is read
+    only for an episode that has something due. ``bounded`` stops at ``ctx.stop`` and at
+    ``item_budget`` items (the adjudicator's run cap times its packet size)."""
+    units: dict[tuple[str, str], list[list[Item]]] = {}
+    lane = ctx.adjudicator
+    if lane is None:
+        return units
+    anchor_model = ctx.anchor.primary_model
+    planned = 0
+    for ep in episodes:
+        if bounded:
+            if ctx.stop is not None and ctx.stop():
+                stats.counts["adjudication_plan_stopped"] += 1
+                break
+            if item_budget is not None and planned >= item_budget:
+                stats.counts["adjudication_budget_reached"] += 1
+                break
+        texts: EpisodeTexts | None = None
+        for spec in ctx.tasks:
+            subjects = spec.subjects(ep)
+            if not subjects:
+                continue
+            work = [
+                (subject, due)
+                for subject in subjects
+                for due in due_questions(
+                    subject,
+                    spec,
+                    anchor_model=anchor_model,
+                    calibration_rate=ctx.calibration_sample_rate,
+                )
+            ]
+            group_due = choose_due(
+                subjects,
+                spec,
+                anchor_model=anchor_model,
+                calibration_rate=ctx.calibration_sample_rate,
+            )
+            if not work and group_due is None:
+                continue
+            if texts is None:
+                try:
+                    texts = ctx.texts_for(ep)
+                except TextsUnavailable:
+                    stats.counts["texts_unavailable"] += 1
+                    stats.episodes_unavailable.add(_episode_uid(ep))
+                    break
+            meeting: dict[str, list[Item]] = {}
+            for subject, due in work:
+                model = subject_adjudicator(subject, due.question.id, lane, ctx.families)
+                if model is None:
+                    stats.counts["no_independent_adjudicator"] += 1
+                    continue
+                built = _largest_tier_evidence(spec, subject, texts)
+                if built is None:
+                    stats.counts["adjudication_unbuildable"] += 1
+                    if texts.identity and not ctx.dry_run:
+                        ledger.mark_unbuildable(
+                            subject,
+                            adjudication_unbuildable_key(due.question, model),
+                            texts.identity,
+                        )
+                    continue
+                tier, evidence = built
+                key = (
+                    subject.subject_id,
+                    due.question.id,
+                    model,
+                    due.question.prompt_version,
+                    tier,
+                    evidence.digest,
+                )
+                if ledger.has_key(subject, key):
+                    continue
+                stats.episodes_with_work.add(subject.episode_uid)
+                stats.counts[f"adjudication_{due.sample}"] += 1
+                item = Item(due.question, tier, evidence, (subject,), due.sample)
+                if spec.selection_policy == "top_k_per_group":
+                    meeting.setdefault(model, []).append(item)
+                else:
+                    units.setdefault(("adjudicator", model), []).append([item])
+                    planned += 1
+            if group_due is not None:
+                key_subject = subjects[0]
+                model = adjudicator_for_group(
+                    subjects,
+                    sibling_model_of(key_subject, group_due.question.id),
+                    lane,
+                    ctx.families,
+                )
+                if model is None:
+                    stats.counts["no_independent_adjudicator"] += 1
+                else:
+                    for order, reverse in (("", False), ("_r", True)):
+                        options = choose_options(subjects, reverse=reverse)
+                        evidence = _choose_evidence(spec, subjects, options)
+                        key = (
+                            key_subject.subject_id,
+                            f"{group_due.question.id}{order}",
+                            model,
+                            group_due.question.prompt_version,
+                            spec.first_tier,
+                            evidence.digest,
+                        )
+                        if ledger.has_key(key_subject, key):
+                            continue
+                        stats.episodes_with_work.add(key_subject.episode_uid)
+                        stats.counts[f"adjudication_{group_due.sample}"] += 1
+                        meeting.setdefault(model, []).append(
+                            Item(
+                                group_due.question,
+                                spec.first_tier,
+                                evidence,
+                                tuple(subjects),
+                                group_due.sample,
+                                options,
+                                order,
+                            )
+                        )
+            for model, items in meeting.items():
+                units.setdefault(("adjudicator", model), []).append(items)
+                planned += len(items)
+    return units
 
 
 def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
@@ -559,13 +866,24 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     ctx.texts_for = cached_texts
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
     all_subjects = [s for ep in ordered for spec in ctx.tasks for s in spec.subjects(ep)]
+    episodes_by_uid = {_episode_uid(ep): ep for ep in ordered}
     ctx.sibling_recipes.clear()
     ctx.sibling_assigned.clear()
-    _collect(all_subjects, ctx, stats)
+    _collect(all_subjects, ctx, stats, episodes_by_uid)
     _apply_backpressure(ctx, stats)
     units = plan(ordered, ctx, stats, _item_budget(ctx), bounded=True)
+    adjudicator_left = ctx.run_caps.get(ADJUDICATOR_PURPOSE)
+    follow_up = plan_adjudication(
+        ordered,
+        ctx,
+        stats,
+        None if adjudicator_left is None else max(0, adjudicator_left) * ADJUDICATOR_CEILING[1],
+        bounded=True,
+    )
+    for judge, judge_units in follow_up.items():
+        units.setdefault(judge, []).extend(judge_units)
     for (role, model), judge_units in sorted(units.items()):
-        purpose = ANCHOR_PURPOSE if role == "anchor" else SIBLING_PURPOSE
+        purpose = PURPOSES[role]
         backend = _backend_for(role, model, ctx)
         result = pack(judge_units, backend, purpose=purpose, role=role, judge_model=model)
         stats.counts["payload_too_large"] += result.payload_too_large
@@ -624,6 +942,8 @@ def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:
     examined and stays dirty. Their texts are cached, so this re-plan reads no transcript."""
     episodes = [ep for ep in episodes if _episode_uid(ep) in stats.episodes_planned]
     due = plan(episodes, ctx, JudgingStats())
+    for judge, judge_units in plan_adjudication(episodes, ctx, JudgingStats()).items():
+        due.setdefault(judge, []).extend(judge_units)
     due_episodes = {
         subject.episode_uid
         for units in due.values()
@@ -650,6 +970,9 @@ def episode_needs_judging(
     sibling: LaneConfig,
     families: Mapping[str, str],
     all_tiers_sample_rate: float,
+    adjudicator: LaneConfig | None = None,
+    calibration_sample_rate: float = 0.0,
+    stability_sample_rate: float = 0.0,
 ) -> bool:
     """Whether a pass would find work for this episode, from stored judgments alone.
 
@@ -710,6 +1033,27 @@ def episode_needs_judging(
                         if skipped.get(key) == identity:
                             continue
                         return True
+            if stability_sample_rate > 0 and in_sample(
+                f"{subject.subject_id}:stability", stability_sample_rate
+            ):
+                for _role, model in judges:
+                    for question in spec.questions:
+                        if question.kind == "choose":
+                            continue
+                        base = (question.id, model, question.prompt_version, spec.first_tier)
+                        again = (f"{question.id}{STABILITY_ORDER}", *base[1:])
+                        if base in present and again not in present:
+                            return True
+        if adjudicator is not None and pending_adjudication(
+            subjects,
+            spec,
+            anchor_model=anchor_model,
+            calibration_rate=calibration_sample_rate,
+            adjudicator=adjudicator,
+            families=families,
+            identity=identity,
+        ):
+            return True
         choose = [q for q in spec.questions if q.kind == "choose"]
         if choose and len(subjects) >= 2:
             first = subjects[0]

@@ -19,8 +19,12 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.judging.tasks import Evidence, QuestionSpec, Subject
 
 JUDGE_CONTRACT = "judge-answers-v1"
+# The stored reason is trimmed to REASON_MAX after the quote check. The reply schema allows more, so
+# one verbose answer cannot discard the 20 others in its packet; the prompts still ask for 300.
 REASON_MAX = 300
+REASON_CONTRACT_MAX = 1_000
 CHOICE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+STABILITY_ORDER = "_s"
 
 
 @dataclass(frozen=True)
@@ -34,7 +38,9 @@ class Item:
     sample: str = "routine"
     # choose only: option letter -> subject_id, in the order asked
     options: tuple[tuple[str, str], ...] = ()
-    order: str = ""  # choose only: "" or "_r" (reversed order)
+    # "" for the routine question, "_r" for a choose question asked with reversed options, "_s" for
+    # a stability re-ask: the same question, differently worded and answered from scratch.
+    order: str = ""
     # Set when an answer is collected from a pending marker: the qid the question was asked with.
     asked_qid: str = ""
 
@@ -56,6 +62,13 @@ class Item:
     def text(self) -> str:
         # For choose, the evidence already lists each option as "<letter>: <quote>"; subject ids
         # never reach a judge.
+        if self.order == STABILITY_ORDER:
+            # Review/53 PR5 stability probe: the evidence first and the question reworded and put
+            # after it, so a judge that merely repeats its first reading of the layout is caught.
+            return (
+                f"{self.evidence.text}\n\nAnswer the following about the evidence above, from "
+                f"scratch and without assuming an earlier answer: {self.question.instruction}"
+            )
         return f"{self.question.instruction}\n\n{self.evidence.text}"
 
 
@@ -92,7 +105,7 @@ def ensure_contract():
         verdict: bool | None = None  # validate: supported; gate: flagged
         level: int | None = Field(default=None, ge=0, le=10)  # grade: index into levels
         choice: str | None = Field(default=None, max_length=4)  # choose: option letter
-        reason: str = Field(default="", max_length=REASON_MAX)
+        reason: str = Field(default="", max_length=REASON_CONTRACT_MAX)
 
     class Response(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -248,7 +261,9 @@ class ChatJudgeBackend:
         "Never rewrite or create a candidate. For each item return its id and exactly the field "
         "its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it "
         "must be held back); grade -> level (0 = lowest listed level); choose -> choice (the "
-        "option letter). Put a short quote from the evidence in reason."
+        "option letter). In reason (at most 300 characters), copy a short passage from the "
+        'evidence word for word and put it in double quotes ("..."); an answer whose quote is '
+        "not in the evidence is discarded."
     )
 
     def build(self, packet: Packet) -> InferenceJob:
@@ -315,6 +330,27 @@ class ChatJudgeBackend:
                     )
                 )
         return rows
+
+
+class AdjudicatorBackend(ChatJudgeBackend):
+    """The third judge, asked only about contested items and a calibration sample (PR5).
+
+    It is told to try to disprove the claim, so it cannot simply defer to the earlier answers, and
+    it is never shown them: a contested item and a sampled one read the same, which keeps the
+    adjudicator's agreement with the judges measurable where they agreed."""
+
+    role = "adjudicator"
+
+    SYSTEM = (
+        "You are the adjudicator. Decide every item using only the evidence given with it. Try to "
+        "disprove the claim being tested: answer that it is supported only if the evidence leaves "
+        "no reasonable way to read it otherwise. Never rewrite or create a candidate. For each "
+        "item return its id and exactly the field its kind asks for: validate -> verdict (true if "
+        "supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest "
+        "listed level); choose -> choice (the option letter). In reason (at most 300 characters), "
+        "copy the short passage that decides the item from the evidence word for word and put it "
+        'in double quotes ("..."); an answer whose quote is not in the evidence is discarded.'
+    )
 
 
 def estimate_tokens(text: str) -> int:

@@ -1334,7 +1334,12 @@ registry (`tag`, `moment`), evidence by context tier, per-entry sibling choice b
 packing (JEV packets are sized as the producer estimates the request, the serialized questions, times
 the Worker's learned input ratio for the route, so they stay under its 58,000-token ceiling; 60 questions).
 A pass submits only into the room left under `judging.max_outstanding_packets` per judge, and a judge
-lane the Worker's ingress preflight reports closed starts with no packets. Judgments are an episode artifact
+lane the Worker's ingress preflight reports closed starts with no packets. Adjudication (review/53 PR5,
+`judging.adjudication.enabled`) puts contested subject-questions and a 3% calibration sample to a
+third, independent judge at the largest context tier, and a chat judge's or adjudicator's quoted
+evidence is checked mechanically (`quote_valid`; false rows are kept but ignored as votes); 2% of
+subjects are also re-asked, worded differently, as stability probes. All of it is data only: nothing
+reads these judgments to decide until the calibration report (PR7). Judgments are an episode artifact
 block of their own, `judging` (per subject: append-only `judgments`, `pending` recipe pointers,
 `unbuildable` tiers), owned only by the `judge` lane, so candidates other lanes own are never
 written. The stage runs once across every source (`run_judge_across_sources`), planning the newest

@@ -414,14 +414,31 @@ class FakeDispatch:
         self.records[packet.recipe_hash] = handle
         return handle
 
-    def answer(self, anchor_p=0.9, sibling=True):
-        for recipe, (_packet, job) in self.submitted.items():
-            output = answer_job(job, anchor_p=anchor_p, sibling=sibling)
+    def answer(self, anchor_p=0.9, sibling=True, *, verdicts=None, bad_quotes=()):
+        """Answer every submitted packet; ``verdicts`` overrides a chat role's verdict and
+        ``bad_quotes`` names roles whose reasons quote text that is not in the evidence."""
+        for recipe, (packet, job) in self.submitted.items():
+            verdict = (verdicts or {}).get(packet.role, sibling)
+            output = answer_job(
+                job, anchor_p=anchor_p, sibling=verdict, bad_quote=packet.role in bad_quotes
+            )
             self.records[recipe] = JobResult(task="judge", recipe_hash=recipe, output=output)
         self.submitted.clear()
 
 
-def answer_job(job, *, anchor_p=0.9, sibling=True):
+def _quoted(item_text, *, bad=False):
+    """A reason quoting the evidence word for word (or text that appears nowhere in it)."""
+    if bad:
+        return '"words that appear nowhere in this evidence"'
+    tail = item_text
+    for marker in ("Transcript:", "Quote: ", "A: "):
+        if marker in item_text:
+            tail = item_text.split(marker, 1)[1]
+            break
+    return '"' + " ".join(tail.split()[:5]) + '"'
+
+
+def answer_job(job, *, anchor_p=0.9, sibling=True, bad_quote=False):
     """A plausible reply to one judge job: JEV answers keyed by qid, or a sibling chat reply."""
     if "systemone" in job.inputs:
         answers = {}
@@ -437,7 +454,7 @@ def answer_job(job, *, anchor_p=0.9, sibling=True):
     answers = []
     for entry in items:
         kind = entry["kind"]
-        answer = {"id": entry["id"], "reason": "quoted"}
+        answer = {"id": entry["id"], "reason": _quoted(entry["item"], bad=bad_quote)}
         if kind in ("validate", "gate"):
             answer["verdict"] = sibling if kind == "validate" else False
         elif kind == "grade":
@@ -1215,6 +1232,354 @@ def test_packets_waiting_for_superseded_subjects_still_count_as_outstanding():
     freed = runner.run([ep], _ctx(dispatch, max_outstanding=limits))
     assert freed.counts["outstanding:judge:anchor"] == 0
     assert freed.counts["packets:anchor"] == 1
+
+
+# ---- review/53 PR5: adjudication, quote check, calibration sample, stability -----------------
+
+ADJ = LANES["judge:adjudicator"]
+
+
+def _adj_ctx(dispatch, tasks=("tag",), **extra):
+    extra.setdefault("adjudicator", ADJ)
+    extra.setdefault("calibration_sample_rate", 0.0)
+    return _ctx(dispatch, tasks=tasks, **extra)
+
+
+def _adjudicator_packets(dispatch):
+    return [(p, j) for p, j in dispatch.submitted.values() if p.role == "adjudicator"]
+
+
+def _judged_contested(ep, **extra):
+    """Run a tag episode through anchor and sibling with the anchor saying yes, the sibling no."""
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch, **extra))
+    dispatch.answer(anchor_p=0.9, verdicts={"sibling": False})
+    return dispatch
+
+
+def test_quotes_must_occur_verbatim_in_the_evidence():
+    from citypods.judging.quotes import normalize, quote_valid
+
+    evidence = "Council voted\n 5-2   to approve the Elm Street rezoning on Tuesday night"
+    assert quote_valid('He said "voted 5-2 to approve the" it', evidence)
+    # Typographic quotes, apostrophes and whitespace are normalised on both sides.
+    assert quote_valid("\u201cto approve the Elm Street rezoning\u201d", evidence)
+    assert quote_valid('"the council\'s rezoning vote"', "Tonight the council\u2019s rezoning vote")
+    assert quote_valid('"Council voted ... Tuesday night"', evidence)
+    # Not in the evidence, altered, or case-changed: invalid.
+    assert not quote_valid('"voted 5-2 to reject the rezoning"', evidence)
+    assert not quote_valid('"COUNCIL VOTED 5-2 to approve"', evidence)
+    # No quote at all, a quote too short to prove anything, or a missing reason: invalid.
+    assert not quote_valid("the evidence clearly supports it", evidence)
+    assert not quote_valid('"rezoning"', evidence)
+    assert not quote_valid(None, evidence)
+    # One bad quote among good ones sinks the reason.
+    assert not quote_valid('"voted 5-2 to approve" and "something never said here"', evidence)
+    assert normalize("a b — c") == "a b - c"
+
+
+def test_a_contested_subject_goes_to_an_independent_adjudicator_at_the_largest_tier():
+    ep = _episode()
+    dispatch = _judged_contested(ep)
+    result = runner.run([ep], _adj_ctx(dispatch))
+    packets = _adjudicator_packets(dispatch)
+    assert result.counts["packets:adjudicator"] == len(packets) >= 1
+    assert result.counts["adjudication_contested"] == 2  # the rule tag and the Gemini tag
+    for packet, job in packets:
+        assert packet.purpose == "judge:adjudicator" and packet.judge_model in ADJ.models
+        assert {item.tier for item in packet.items} == {"T2"}
+        assert {item.sample for item in packet.items} == {"contested"}
+        assert job.inputs["messages"][0]["content"].startswith("You are the adjudicator")
+        assert job.inputs["llm_policy"].allowed_models == (packet.judge_model,)
+    # Independent of each entry's producer and sibling: the Gemini tag (Google) judged by the
+    # NVIDIA sibling gets an adjudicator from neither family.
+    families = {FAMILIES[p.judge_model] for p, _ in packets}
+    assert not families & {"google", "nvidia"}
+
+
+def test_an_adjudicators_answer_is_recorded_with_its_quote_check():
+    ep = _episode()
+    dispatch = _judged_contested(ep)
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer(verdicts={"adjudicator": True})
+    stats = runner.run([ep], _adj_ctx(dispatch))
+    rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "adjudicator"]
+    assert len(rows) == 2 and stats.counts["quote_valid"] >= 2
+    assert {r["quote_valid"] for r in rows} == {True}
+    assert {r["sample"] for r in rows} == {"contested"} and {r["value"] for r in rows} == {True}
+    assert {r["context_tier"] for r in rows} == {"T2"}
+    # The sibling's answers were quote-checked too, and nothing is adjudicated twice.
+    assert {r["quote_valid"] for r in _tag_judgments(ep) if r["judge_role"] == "sibling"} == {True}
+    assert not _adjudicator_packets(dispatch)
+    assert ep.uid in stats.episodes_complete
+
+
+def test_an_answer_whose_quote_is_not_in_the_evidence_is_unsupported_and_ignored():
+    ep = _episode()
+    dispatch = _judged_contested(ep)
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer(verdicts={"adjudicator": True}, bad_quotes=("adjudicator",))
+    stats = runner.run([ep], _adj_ctx(dispatch))
+    rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "adjudicator"]
+    assert stats.counts["quote_invalid"] == 2
+    assert {r["quote_valid"] for r in rows} == {False}  # kept, never modified or deleted
+    # An unsupported sibling answer no longer counts as a vote: the subject stops being contested
+    # on it, so the evidence of disagreement is only what is supported.
+    from citypods.judging import adjudication
+
+    [subject] = [s for s in _subjects(ep) if s.payload.get("source_kind") == "rule"]
+    assert adjudication._by_tier(subject, "supported", "adjudicator", None) == {}
+
+
+def test_only_supported_votes_decide_whether_a_subject_is_contested():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer(anchor_p=0.9, verdicts={"sibling": False}, bad_quotes=("sibling",))
+    runner.run([ep], _adj_ctx(dispatch))
+    # The dissenting sibling's quote was not in the evidence: its vote is unsupported, so the
+    # subject is not contested and, with no calibration sample, nothing goes to the adjudicator.
+    assert not _adjudicator_packets(dispatch)
+
+
+def test_agreeing_judges_are_adjudicated_only_in_the_calibration_sample():
+    ep = _episode()
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch, calibration_sample_rate=1.0))
+    dispatch.answer(anchor_p=0.95, verdicts={"sibling": True})
+    result = runner.run([ep], _adj_ctx(dispatch, calibration_sample_rate=1.0))
+    assert result.counts["adjudication_calibration"] == 2
+    assert result.counts["adjudication_contested"] == 0
+    assert {i.sample for p, _ in _adjudicator_packets(dispatch) for i in p.items} == {"calibration"}
+    # A contested item and a sampled one read the same to the adjudicator: it is never told.
+    for _packet, job in _adjudicator_packets(dispatch):
+        assert "contested" not in json.dumps(job.inputs["messages"]).lower()
+
+    quiet = FakeDispatch()
+    runner.run([_episode(uid="ep-q")], _adj_ctx(quiet))
+    quiet.answer(anchor_p=0.95, verdicts={"sibling": True})
+    none = runner.run([_episode(uid="ep-q")], _adj_ctx(quiet))
+    assert not _adjudicator_packets(quiet) and none.counts["adjudication_calibration"] == 0
+
+
+def test_the_calibration_sample_is_a_deterministic_share():
+    from citypods.judging.adjudication import in_sample
+
+    keys = [f"subject-{i}:supported:calibration" for i in range(4000)]
+    chosen = [k for k in keys if in_sample(k, 0.03)]
+    assert 70 <= len(chosen) <= 170  # about 3% of 4,000
+    assert chosen == [k for k in keys if in_sample(k, 0.03)]
+    assert not any(in_sample(k, 0.0) for k in keys) and all(in_sample(k, 1.0) for k in keys)
+
+
+def test_a_probability_in_the_escalation_band_is_contested_even_when_the_judges_agree():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer(anchor_p=0.55, verdicts={"sibling": True})  # both say yes; the anchor is unsure
+    waiting = runner.run([ep], _adj_ctx(dispatch))  # the anchor escalates to T2 first
+    assert waiting.counts["packets:anchor"] == 1 and not _adjudicator_packets(dispatch)
+    assert waiting.counts["adjudication_contested"] == 0
+    dispatch.answer(anchor_p=0.55, verdicts={"sibling": True})  # still unsure at T2
+    result = runner.run([ep], _adj_ctx(dispatch))
+    assert result.counts["adjudication_contested"] == 1
+
+    settled = FakeDispatch()
+    other = _episode(uid="ep-s", llm=[])
+    runner.run([other], _adj_ctx(settled))
+    settled.answer(anchor_p=0.55, verdicts={"sibling": True})
+    runner.run([other], _adj_ctx(settled))
+    settled.answer(anchor_p=0.95, verdicts={"sibling": True})  # T2 settles it above the band
+    done = runner.run([other], _adj_ctx(settled))
+    assert done.counts["adjudication_contested"] == 0 and not _adjudicator_packets(settled)
+
+
+def test_grades_are_contested_only_beyond_one_level():
+    from citypods.judging.adjudication import _contested
+
+    spec = task("moment")
+    grade = spec.question("usefulness")
+    assert not _contested(spec, grade, {"T1": 2.0}, {"T1": 3})
+    assert _contested(spec, grade, {"T1": 0.4}, {"T1": 3})
+    gate = spec.question("publishable")
+    assert _contested(spec, gate, {"T1": 0.9}, {"T1": False})
+    assert not _contested(spec, gate, {"T1": 0.9}, {"T1": True})
+
+
+def test_a_meetings_choose_question_is_contested_when_the_winner_flips_with_order():
+    moments = [_moment("We will fix the bridge", 600), _moment("Taxes will not rise", 900)]
+    ep = _episode(tags=[], llm=[], moments=moments)
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch, tasks=("moment",)))
+    dispatch.answer()  # the anchor always answers "A": the winner flips when the order does
+    result = runner.run([ep], _adj_ctx(dispatch, tasks=("moment",)))
+    group = [
+        item
+        for p, _ in _adjudicator_packets(dispatch)
+        for item in p.items
+        if item.question.kind == "choose"
+    ]
+    assert result.counts["adjudication_contested"] >= 2
+    assert sorted(i.question_id for i in group) == ["best", "best_r"]
+    assert len({i.evidence.digest for i in group}) == 2  # both option orders
+    assert all(len(i.subjects) == 2 and i.options for i in group)
+
+
+def test_adjudication_is_off_without_an_adjudicator_lane():
+    ep = _episode()
+    dispatch = _judged_contested(ep, adjudicator=None)
+    runner.run([ep], _ctx(dispatch))
+    assert not _adjudicator_packets(dispatch)
+
+
+def test_an_episode_is_dirty_while_its_adjudication_is_due_and_clean_after():
+    ep = _episode()
+    ep.transcript_key = "t.vtt"
+    kwargs = {
+        "anchor": LANES["judge:anchor"],
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+        "calibration_sample_rate": 0.0,
+    }
+    dispatch = _judged_contested(ep)
+    runner.run([ep], _ctx(dispatch))  # collect the answers; adjudication is not asked for yet
+    assert not runner.episode_needs_judging(ep, [task("tag")], **kwargs)
+    assert runner.episode_needs_judging(ep, [task("tag")], adjudicator=ADJ, **kwargs)
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer(verdicts={"adjudicator": True})
+    runner.run([ep], _adj_ctx(dispatch))
+    assert not runner.episode_needs_judging(ep, [task("tag")], adjudicator=ADJ, **kwargs)
+
+
+def test_an_answer_that_cannot_be_quote_checked_yet_waits_and_is_recorded_later():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer()
+
+    def down(_ep):
+        raise runner.TextsUnavailable("storage outage")
+
+    broken = _adj_ctx(dispatch)
+    broken.texts_for = down
+    waiting = runner.run([ep], broken)
+    assert waiting.counts["quote_check_deferred"] >= 1
+    assert not [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert _any_pending(ep)  # the sibling's marker stays until its quote can be checked
+    recovered = runner.run([ep], _adj_ctx(dispatch))
+    assert [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert recovered.counts["quote_valid"] >= 1
+
+
+def test_the_quote_check_reads_a_bounded_number_of_transcripts_a_pass():
+    eps = [_episode(uid=f"ep-{i}", llm=[]) for i in range(3)]
+    dispatch = FakeDispatch()
+    runner.run(eps, _adj_ctx(dispatch))
+    dispatch.answer()
+    stats = runner.run(eps, _adj_ctx(dispatch, quote_check_reads=1))
+    assert stats.counts["quote_check_deferred"] >= 2
+    finished = runner.run(eps, _adj_ctx(dispatch))
+    assert (
+        all([r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"] for ep in eps)
+        and finished.counts["quote_check_deferred"] == 0
+    )
+
+
+def test_a_sampled_subject_is_asked_again_worded_differently_and_flips_are_recorded():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    ctx = lambda: _ctx(dispatch, stability_sample_rate=1.0)  # noqa: E731
+    runner.run([ep], ctx())
+    # Nothing to compare with until the first answers are in.
+    assert not [i for p, _ in dispatch.submitted.values() for i in p.items if i.order == "_s"]
+    dispatch.answer(anchor_p=0.9)
+    runner.run([ep], ctx())
+    probes = [i for p, _ in dispatch.submitted.values() for i in p.items if i.order == "_s"]
+    assert probes and {i.sample for i in probes} == {"stability"}
+    assert {i.question_id for i in probes} == {"supported_s"}
+    assert all(i.text().startswith(i.evidence.text) for i in probes)  # evidence first, reworded
+    dispatch.answer(anchor_p=0.1)  # the anchor changes its mind when asked again
+    runner.run([ep], ctx())
+    rows = _tag_judgments(ep)
+    asked = [r for r in rows if r["question_id"] == "supported_s"]
+    assert {r["judge_role"] for r in asked} == {"anchor", "sibling"}
+    assert {r["sample"] for r in asked} == {"stability"}
+    # Asked once only.
+    final = runner.run([ep], ctx())
+    assert final.counts["items_submitted"] == 0
+
+    from citypods.judging.report import summarize
+
+    record = {"published": "2026-10-01T00:00:00Z", "judging": ep.judging, "llm_tag_candidates": []}
+    stability = summarize([record])["stability"]
+    anchor = next(v for k, v in stability.items() if "jev" in k)
+    assert anchor == {"pairs": 1, "flips": 1}
+
+
+def test_the_judge_stage_enables_adjudication_only_by_config(monkeypatch):
+    from citypods import stages
+
+    seen = []
+
+    def spy(episodes, judging):
+        seen.append(judging)
+        return runner.JudgingStats()
+
+    monkeypatch.setattr(runner, "run", spy)
+    monkeypatch.setattr(
+        "citypods.compute.llm.dispatch_v2_learned_input_ratio", lambda *a, **k: None
+    )
+    for adjudication in (None, {"enabled": False}, {"enabled": True}):
+        ctx = _stage_ctx(enabled=True)
+        ctx.judging_config.update(
+            {
+                "calibration_sample_rate": 0.05,
+                "stability_sample_rate": 0.04,
+                "max_outstanding_packets": {"anchor": 1, "sibling": 2, "adjudicator": 3},
+            }
+        )
+        if adjudication is not None:
+            ctx.judging_config["adjudication"] = adjudication
+        ep = _episode()
+        ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+        stages.JudgeStage().process(None, SimpleNamespace(slug="x"), [ep], ctx)
+        judging = seen[-1]
+        on = bool(adjudication and adjudication["enabled"])
+        assert (judging.adjudicator is not None) is on
+        assert ("judge:adjudicator" in ctx.judge_run_caps) is on
+        assert judging.calibration_sample_rate == 0.05 and judging.stability_sample_rate == 0.04
+        assert judging.max_outstanding == {
+            "judge:anchor": 1,
+            "judge:sibling": 2,
+            "judge:adjudicator": 3,
+        }
+    assert stages.JudgeStage.PURPOSES == ("judge:anchor", "judge:sibling", "judge:adjudicator")
+
+
+def test_one_overlong_reason_does_not_discard_its_packets_other_answers():
+    """CodeRabbit CLI review of PR5: the reply schema used to cap `reason` at the stored length, so
+    one verbose adjudicator rejected the whole reply (up to 20 answers)."""
+    from citypods.judging.backends import REASON_MAX
+
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    # Answer the sibling packets with a 700-character reason on every item.
+    for recipe, (packet, job) in list(dispatch.submitted.items()):
+        reply = answer_job(job, sibling=True)
+        if packet.role == "sibling":
+            body = json.loads(reply["choices"][0]["message"]["content"])
+            for answer in body["answers"]:
+                quote = answer["reason"]
+                answer["reason"] = f"{quote} " + "and so on " * 70
+            reply = {"choices": [{"message": {"content": json.dumps(body)}}]}
+        dispatch.records[recipe] = JobResult(task="judge", recipe_hash=recipe, output=reply)
+    dispatch.submitted.clear()
+    runner.run([ep], _adj_ctx(dispatch))
+    rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert rows and all(len(r["reason"]) <= REASON_MAX for r in rows)
+    assert {r["quote_valid"] for r in rows} == {True}  # checked against the full reason
 
 
 # ---- sibling choice by load (review/53 PR4 follow-up, 2026-10-16) ---------------------------
