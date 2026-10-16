@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator overflow.** Packets above 76,000 estimated tokens now list DeepSeek V4.1 Flash
+  first with Kimi K3 as its companion, so the Worker routes around Kimi's retired NVIDIA route
+  (end of life 2026-10-15) instead of stalling large packets. Large requests cost five ingress
+  units (daily budget 7,200); small packets are unchanged.
+
 - **Second BeatAPI account.** Add `BEATAPI_API_KEY_SECONDARY` as the `beatapi_secondary`
   provider with the five chat routes at the primary's limits (1 call/min, single-flight, no
   top-up), doubling the BeatAPI free-chat capacity that the DeepSeek V4/V4.1/V4 Pro and GPT-6
