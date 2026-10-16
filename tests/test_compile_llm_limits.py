@@ -60,7 +60,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # genuine V4 Pro route (BeatAPI, 2026-10-07), never NVIDIA's v4.1.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
     assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
-        "beatapi_deepseek_v4_pro_free"
+        "beatapi_deepseek_v4_pro_free",
+        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
@@ -104,13 +105,16 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_routes_map"][deepseek_key] == [
         "orcarouter_deepseek_v4_flash_free",
         "beatapi_deepseek_v4_flash_free",
+        "beatapi_secondary_deepseek_v4_flash_free",
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
         "nvidia_deepseek_v4_1_flash_free",
         "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_secondary_deepseek_v4_1_flash_free",
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
-        "beatapi_deepseek_v4_pro_free"
+        "beatapi_deepseek_v4_pro_free",
+        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
@@ -1024,15 +1028,22 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)
     beatapi = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi"]
+    secondary = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi_secondary"]
     chat = [r for r in beatapi if r["api_shape"] != "systemone"]
     assert chat and all(r["tier"] == "backup" for r in chat)
+    # The second account carries the same five chat routes, on its own window, and never
+    # yields: JEV runs on the primary account.
+    assert len(secondary) == len(chat)
+    assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
     # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
     jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
     assert jev["tier"] is None and jev["api_shape"] == "systemone"
     assert all(r["yields_to"] == ["beatapi_jev_1_13_free"] for r in chat)
     # Every other route is primary by omission.
     assert all(
-        r["tier"] is None for r in worker["routes_by_id"].values() if r["provider"] != "beatapi"
+        r["tier"] is None
+        for r in worker["routes_by_id"].values()
+        if r["provider"] not in {"beatapi", "beatapi_secondary"}
     )
 
 

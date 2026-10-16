@@ -302,7 +302,8 @@ text below, all deliberate:
   (`run_judge_across_sources`). Planning is newest first across the catalog, bounded by the run
   caps, and packets span sources. The lanes' run caps live on `StageContext`, shared and locked.
   The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
-  preload and has its own window (`judge_run_time_budget_minutes`, default 90).
+  preload and has its own window (`judge_run_time_budget_minutes`, 120 = its cron interval; 102 minutes at
+  the 0.85 safety factor, measured from before the state restore).
 - **Tag subjects come only from the canonical ledger** `Episode.llm_tag_candidates` (rule and LLM
   rows; `Episode.tags` is the projection derived from it), skipping `historical` rows and
   de-duplicated by subject id. **Producer identities are normalized** before the family lookup:

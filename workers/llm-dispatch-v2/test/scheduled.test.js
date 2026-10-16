@@ -67,7 +67,7 @@ function makeEnv(overrides = {}) {
   const { storage } = createMockSqlStorage();
   const coordinatorEnv = {
     MAX_JOBS_PER_UTC_DAY: "5000",
-    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "25600",
     MAX_BUNDLE_JOBS: "4",
     MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4",
     MAX_CONCURRENT_ROUTE_LANES: "5",
@@ -97,7 +97,7 @@ function makeEnv(overrides = {}) {
     MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
-    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "25600",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     B2_ENDPOINT: `https://${B2_HOST}`,
