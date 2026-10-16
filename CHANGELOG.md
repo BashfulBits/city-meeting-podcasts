@@ -15,6 +15,49 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator overflow.** Packets above 76,000 estimated tokens now list DeepSeek V4.1 Flash
+  first with Kimi K3 as its companion, so the Worker routes around Kimi's retired NVIDIA route
+  (end of life 2026-10-15) instead of stalling large packets. Large requests cost five ingress
+  units (daily budget 7,200); small packets are unchanged.
+
+- **Second BeatAPI account.** Add `BEATAPI_API_KEY_SECONDARY` as the `beatapi_secondary`
+  provider with the five chat routes at the primary's limits (1 call/min, single-flight, no
+  top-up), doubling the BeatAPI free-chat capacity that the DeepSeek V4/V4.1/V4 Pro and GPT-6
+  pools share. JEV stays on the primary account, which chat load no longer competes with.
+  Requires the Worker secret.
+
+- **Chapter locator capacity.** Raise the per-run dispatch cap from 67 to 134 and the daily
+  ingress budget to 1,600 jobs, and reserve 20,000 output tokens per packet (was 16,384) so long
+  chapter lists fit.
+
+- **The judge lane's wall-clock window is its cron interval (120 minutes), not 90.** On
+  2026-10-16 a catch-up pass spent its whole 76.5-minute window collecting 11,688 answers and
+  stopped planning before it submitted anything. The window is now 120 minutes x 0.85 = 102,
+  leaving about 18 minutes of the two-hour cadence for setup and the persistence tail. The
+  run-history record used a 240-minute fallback for this lane; both now read the same value.
+
+- **Judge packets are sized as the Worker measures them, and the judge stops outrunning the queue.**
+  JEV packets were sized by each item's text, so about 45 of 110 anchor packets a run exceeded the
+  route's input ceiling once the serialized request was counted, were failed by the Worker and
+  returned to the planner (the 43 to 52 `LLMBackendError` and about 1,500 re-planned items a run).
+  Packets are now sized from the serialized questions and the Worker's learned input ratio. A pass
+  also submits only into the room under `judging.max_outstanding_packets` (anchor 240, sibling 480),
+  so its share of the Worker queue (8,485 jobs on 2026-10-15) cannot keep growing. The judge lanes
+  join the ingress preflight, so a Worker that is down or refusing ingress costs no planning pass.
+  Records the first PR4 acceptance pass in review/53.
+
+- **The detailed stats snapshot is metered, and route capacity has a cheap view.** On 2026-10-13 a
+  review/51 evaluation polling `/v2/stats?detail=1` before every request (about 80,000 rows read
+  a call, 4.65 million in three hours) exhausted the Durable Object's 5,000,000 daily row-read
+  allowance, so the dispatch Worker refused every call, including the judge lane's enqueue, until
+  the 00:00 UTC reset. `/v2/stats?routes=1` now returns the route inventory at a cost that does not
+  grow with retained jobs, the evaluation uses it, and `detail=1` serves a cached copy for 5 minutes
+  and computes at most 24 fresh snapshots a UTC day (then the last copy, or HTTP 429).
+
+- **CivicPlus protocol-relative embed and HLS resolution.** Support protocol-relative URLs (`//...`)
+  and normalize insecure or schemeless embed and stream URLs to HTTPS in `CivicPlusProvider`,
+  resolving media extraction failures across CivicPlus cities (fixes #2296).
+
 - **Document P3 route admission evidence.** Record the four selected physical routes, evaluated
   chat settings, identity and serving-family holds, and the gap between evaluation budgets and the
   current Worker caller. Runtime remains shadowed pending verified Worker evidence and admission.

@@ -46,7 +46,7 @@ AGENDA_PROMPT_VERSION = "agenda-flow"
 # THIS STRING FEEDS build_locator_job()'s recipe_hash directly (unlike
 # stages.CHAPTER_LOCATOR_PIPELINE_VERSION, which does not -- see that constant's own comment).
 # Bumped v1 -> v2: every dispatched locator job was missing an explicit max_tokens, silently
-# falling back to LiteLLMBackend's generic 1024-token default instead of the 16384 tokens
+# falling back to LiteLLMBackend's generic 1024-token default instead of the 20000 tokens
 # select_locator_models() already assumes as LOCATOR_OUTPUT_TOKEN_RESERVE when fitting a request
 # into a route's context window (see build_locator_job's own comment). Responses were routinely
 # truncated mid-JSON. Bumping this is what changes the recipe hash so a fresh dispatch cannot be
