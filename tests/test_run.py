@@ -4498,3 +4498,32 @@ def test_build_only_requires_shadow_lane_when_enabled(
     else:
         assert _build(tmp_path, cities)
         assert "topic-tags:prelabeler-shadow" not in lookups
+
+
+def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout():
+    """2026-10-16: a catch-up pass spent a 76.5-minute window collecting 11,688 answers and stopped
+    planning before it submitted anything. The window follows the repo's rule that a lane's budget
+    equals its cron interval, with `budget_safety` reserving the tail."""
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parent.parent
+    defaults = yaml.safe_load((root / "config" / "site_config.yml").read_text())["defaults"]
+    workflow = yaml.safe_load((root / ".github" / "workflows" / "judge.yml").read_text())
+    cron = workflow[True]["schedule"][0]["cron"]
+    interval = 60 * int(re.search(r"\*/(\d+)", cron.split()[1]).group(1))
+    # The effective budget, as run.py reads it: the config value, else the code default.
+    window = defaults.get("judge_run_time_budget_minutes", run.JUDGE_RUN_TIME_BUDGET_MINUTES)
+    assert defaults["judge_run_time_budget_minutes"] == window  # and it is set explicitly
+    assert window == interval == run.JUDGE_RUN_TIME_BUDGET_MINUTES
+    # The window ends with time to spare for setup and the persistence tail before the next pass.
+    assert window * defaults["budget_safety"] <= interval - 15
+    # And the step's own timeout is still the backstop above it.
+    step = next(
+        s
+        for s in workflow["jobs"]["judge"]["steps"]
+        if s.get("name", "").startswith("Judge persisted")
+    )
+    assert step["timeout-minutes"] > window
