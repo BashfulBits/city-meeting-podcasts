@@ -557,6 +557,35 @@ shows earlier answers, so a contested item and a sampled one read the same.
 - A human answer is one vote: a disagreement queues full-context adjudication; repeated
   audit-versus-adjudicator disagreement on a task files a ticket. Nothing flips automatically.
 
+**As built (2026-10-15).** `citypods/judging/probes.py`, `audit.py`, `audit_cli.py`; workflows
+`judge-audit.yml` (Mondays 13:00 UTC) and `judge-audit-promote.yml`; family `judge-audit` in
+`scripts/resolve_review_issue.py`.
+- **Probes.** `evals/judge/<task>/gold.json` (`[]` at first) is validated strictly (binary questions
+  only, 12,000-character evidence). Each judge with live work in a pass gets up to
+  `judging.probes.per_pass` (2) probes inside its normal packets (`sample "probe"`); a probe's answers
+  live in the ledger of the episode whose packet carried it, under `probe:<id>`, and it is asked of a
+  judge at most once per host episode, in an order that rotates with judge and host. Reported per
+  judge as asked, scored, correct, unsupported (bad quote) and accuracy, **non-gating** until a task
+  has 20. Probes never enter live agreement or backfill statistics.
+- **Weekly audit.** `package` settles batches older than six days, then selects from claims that have
+  both an anchor and a sibling reading: adjudicator disagreement (score 3), judge disagreement (2),
+  closeness to 0.5 within 0.15 (up to 2), the noisiest judge (1) and a judge first seen in the last
+  14 days after others (1), plus two random; at most 12, `min(12, n)` shrinking to 4 once every task
+  has 20 probes and every judge scores 95% or more, and halving (floor 2) after a discarded batch. A
+  quiet week publishes nothing. Each claim is one child issue under a weekly parent through the shared
+  review pipeline: the claim framed to disprove, the evidence at the largest tier first, the rubric,
+  a meeting-page `#t=` link for moments, and three boxes (Supported, Not supported, Uncertain). No
+  verdict, probability or judge name is shown.
+- **One vote.** Answers go to `state/judge_audit/answers.json` (replaceable until the batch settles).
+  Finalized answers are imported by the judge lane as `judge_role "audit"` rows (`value` null for
+  Uncertain, so they are in no statistic). A person who disagrees with either judge makes the question
+  due for full-context adjudication unless it was already adjudicated; nothing flips. Three or more
+  audit-versus-adjudicator disagreements on a task in 28 days file a ticket.
+- **Self-limiting.** A task whose Uncertain share in a batch exceeds 30% has that batch's labels
+  discarded for the task, its next batch halved, and a ticket naming the failing item types.
+- **Promotion.** `judge-audit-promote.yml` (dispatch with the item id) turns a finalized Supported or
+  Not supported answer into a `gold.json` entry in a pull request.
+
 ### PR7 — Calibration report and threshold proposal
 
 `python -m citypods.judging.calibrate --task <task>` computes, per question kind, from the

@@ -1,0 +1,62 @@
+name: Weekly judge audit
+
+# Review/53 PR6: at most 12 binary claims a week, chosen by expected information, framed to
+# disprove, with every judge's verdict hidden until answered. A quiet week publishes nothing.
+# Answers are ingested by the shared review-issue-resolve workflow (family `judge-audit`).
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: judge-audit-state
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  package:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - name: Settle old batches and package this week's claims
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: python -m citypods.cli judge-audit package --config-dir config --out-dir judge-audit
+      - name: Publish the audit batch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/publish_review_batch.py \
+            --manifest judge-audit/review-batch.json \
+            --family judge-audit --label agent:judge-audit \
+            --parent-title "Weekly judge audit $(date -u +%G-W%V)" \
+            --child-title "Judge audit {candidate_id}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: File tickets the audit asked for
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/file_judge_audit_tickets.py --manifest judge-audit/review-batch.json

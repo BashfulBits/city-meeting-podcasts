@@ -370,6 +370,10 @@ def main(argv: list[str] | None = None) -> int:
         "r6-review", help="record an authenticated R6 Good/Borderline/Reject review"
     )
     r6.add_argument("r6_review_args", nargs=argparse.REMAINDER)
+    audit_parser = sub.add_parser(
+        "judge-audit", help="weekly blind human audit of the judge stack (review/53 PR6)"
+    )
+    audit_parser.add_argument("judge_audit_args", nargs=argparse.REMAINDER)
     r7 = sub.add_parser(
         "speaker-review", help="maintain R7 golden voice references and calibration"
     )
@@ -451,6 +455,10 @@ def main(argv: list[str] | None = None) -> int:
         from citypods import llm_tag_review
 
         return llm_tag_review.main(args.llm_evaluation_args)
+    if args.command == "judge-audit":
+        from citypods.judging import audit_cli
+
+        return audit_cli.main(args.judge_audit_args)
     if args.command == "r6-review":
         from citypods import moment_review
 

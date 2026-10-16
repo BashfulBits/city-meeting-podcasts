@@ -47,6 +47,12 @@ from citypods.judging.families import (
     sibling_candidates,
 )
 from citypods.judging.packing import item_size, pack
+from citypods.judging.probes import (
+    Probe,
+    is_probe_subject,
+    order_key,
+    probe_subject,
+)
 from citypods.judging.quotes import quote_valid
 from citypods.judging.tasks import (
     EpisodeTexts,
@@ -116,6 +122,13 @@ class JudgingContext:
     # Transcripts one pass may read to check the quotes of answers it collects; an answer whose
     # evidence cannot be read yet waits (its marker stays) for a later pass.
     quote_check_reads: int = 400
+    # PR6: human-verified probes asked invisibly of each judge that has live work this pass, up to
+    # ``probes_per_pass`` per judge, each probe once per judge and prompt version.
+    probes: Sequence[Probe] = ()
+    probes_per_pass: int = 0
+    # PR6: finalized weekly-audit answers as ledger rows by subject id; each is appended to its
+    # subject's ledger once (the judge lane is the only writer of the ``judging`` block).
+    audit_rows: Mapping[str, Sequence[Mapping[str, Any]]] = field(default_factory=dict)
     # model -> usable route capacity from the Worker's cheap route view (0 when blocked). A missing
     # model counts as 1.0, so with no reading the choice is by backlog alone.
     sibling_headroom: dict[str, float] = field(default_factory=dict)
@@ -261,6 +274,11 @@ def _evidence_text(
     (an outage, or this pass's read budget is spent): the marker stays for the next pass."""
     from citypods.judging.tasks import task as task_spec
 
+    if is_probe_subject(subject.subject_id):
+        probe = next((p for p in ctx.probes if p.subject_id == subject.subject_id), None)
+        if probe is None or probe.digest != item.evidence.digest:
+            return None
+        return probe.evidence
     episode = episodes.get(subject.episode_uid)
     if episode is None:
         return None
@@ -298,7 +316,7 @@ def _collect(
     episodes = episodes or {}
     outputs: dict[str, Any] = {}
     read: set[str] = set()
-    for subject in subjects:
+    for subject in [*subjects, *_probe_subjects(subjects)]:
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
             if recipe not in outputs:
@@ -366,6 +384,89 @@ def _collect(
     _count_superseded_outstanding(subjects, ctx, stats, outputs)
 
 
+def _import_audit(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats) -> None:
+    """Append finalized human audit answers to their subjects' ledgers (one vote each)."""
+    if not ctx.audit_rows:
+        return
+    for subject in subjects:
+        for row in ctx.audit_rows.get(subject.subject_id, ()):
+            if ledger.append_judgment(subject, row):
+                stats.counts["audit_imported"] += 1
+                stats.episodes_with_work.add(subject.episode_uid)
+
+
+def _probe_subjects(subjects: Sequence[Subject]) -> list[Subject]:
+    """Probe subjects with answers in flight: they live in the ledger of the episode that carried
+    them, under ``probe:<id>``, so a pass over that episode's subjects must collect them too."""
+    found: list[Subject] = []
+    stores = {id(subject.store): (subject.store, subject.episode_uid) for subject in subjects}
+    for store, uid in stores.values():
+        for subject_id, entry in (store.get("subjects") or {}).items():
+            if is_probe_subject(subject_id) and isinstance(entry, dict) and entry.get("pending"):
+                found.append(
+                    Subject(
+                        task=str(entry.get("task") or ""),
+                        subject_id=subject_id,
+                        episode_uid=uid,
+                        group=None,
+                        producer_model=None,
+                        payload={},
+                        store=store,
+                    )
+                )
+    return found
+
+
+def _add_probes(
+    units: dict[tuple[str, str], list[list[Item]]], ctx: JudgingContext, stats: JudgingStats
+) -> None:
+    """Mix due probes into each judge's live packets (review/53 PR6).
+
+    Only a judge with live work this pass gets any, so a probe never costs a packet of its own. A
+    probe's subject lives in the ledger of the first live item's episode (its host), and is asked
+    of a judge at most once per host and prompt version. The order rotates with the judge and the
+    host, so over passes every probe reaches every judge in a different sequence; the report
+    counts asks."""
+    from citypods.judging.tasks import task as task_spec
+
+    if not ctx.probes or ctx.probes_per_pass <= 0:
+        return
+    for (role, model), judge_units in list(units.items()):
+        host = next(
+            (item.subjects[0] for unit in judge_units for item in unit if item.subjects), None
+        )
+        if host is None:
+            continue
+        added = 0
+        for probe in sorted(ctx.probes, key=lambda p: order_key(p, f"{model}|{host.subject_id}")):
+            if added >= ctx.probes_per_pass:
+                break
+            question = task_spec(probe.task).question(probe.question_id)
+            subject = probe_subject(probe, host)
+            key = (
+                subject.subject_id,
+                question.id,
+                model,
+                question.prompt_version,
+                probe.tier,
+                probe.digest,
+            )
+            if any(ledger.key_of(r) == key for r in ledger.judgments(subject)) or ledger.has_key(
+                subject, key
+            ):
+                continue
+            item = Item(
+                question,
+                probe.tier,
+                make_evidence(probe.tier, probe.evidence),
+                (subject,),
+                "probe",
+            )
+            judge_units.append([item])
+            added += 1
+            stats.counts[f"probes_asked:{role}"] += 1
+
+
 def _count_superseded_outstanding(
     subjects: Sequence[Subject],
     ctx: JudgingContext,
@@ -382,7 +483,7 @@ def _count_superseded_outstanding(
     stores = {id(subject.store): subject.store for subject in subjects}
     for store in stores.values():
         for subject_id, entry in (store.get("subjects") or {}).items():
-            if subject_id in current or not isinstance(entry, dict):
+            if subject_id in current or is_probe_subject(subject_id) or not isinstance(entry, dict):
                 continue
             for marker in entry.get("pending") or []:
                 recipe = str((marker or {}).get("recipe_hash") or "")
@@ -870,6 +971,7 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     ctx.sibling_recipes.clear()
     ctx.sibling_assigned.clear()
     _collect(all_subjects, ctx, stats, episodes_by_uid)
+    _import_audit(all_subjects, ctx, stats)
     _apply_backpressure(ctx, stats)
     units = plan(ordered, ctx, stats, _item_budget(ctx), bounded=True)
     adjudicator_left = ctx.run_caps.get(ADJUDICATOR_PURPOSE)
@@ -882,6 +984,7 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     )
     for judge, judge_units in follow_up.items():
         units.setdefault(judge, []).extend(judge_units)
+    _add_probes(units, ctx, stats)
     for (role, model), judge_units in sorted(units.items()):
         purpose = PURPOSES[role]
         backend = _backend_for(role, model, ctx)
@@ -973,6 +1076,7 @@ def episode_needs_judging(
     adjudicator: LaneConfig | None = None,
     calibration_sample_rate: float = 0.0,
     stability_sample_rate: float = 0.0,
+    audit_rows: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
 ) -> bool:
     """Whether a pass would find work for this episode, from stored judgments alone.
 
@@ -986,11 +1090,24 @@ def episode_needs_judging(
         return False
     identity = transcript_identity(ep)
     anchor_model = anchor.primary_model
+    store = getattr(ep, "judging", None)
+    if isinstance(store, dict) and any(
+        isinstance(entry, dict) and entry.get("pending")
+        for subject_id, entry in (store.get("subjects") or {}).items()
+        if is_probe_subject(subject_id)
+    ):
+        return True  # a probe answer is in flight; its episode collects it
     for spec in tasks:
         subjects = spec.subjects(ep)
         for subject in subjects:
             if ledger.pending(subject):
                 return True
+            existing = {ledger.key_of(row) for row in ledger.judgments(subject)}
+            if any(
+                ledger.key_of(r) not in existing
+                for r in (audit_rows or {}).get(subject.subject_id, ())
+            ):
+                return True  # a finalized audit answer waits to be imported
             rows = ledger.judgments(subject)
             skipped = ledger.unbuildable(subject)
             present = {
