@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge survives a storage read outage.** A `StorageReadUnavailable` while reading a pending
+  packet's record no longer aborts the judge lane (run 38971148564 failed 29 minutes in this way,
+  before it could plan or submit). The marker stays, the packet counts as outstanding, and a later
+  pass collects it; after three unreadable records in one pass the rest are not tried.
+
 - **Judge sibling Gemma capacity.** Gemma sibling packets shrink from 10,000 to 8,500 estimated
   tokens so the Worker's reservation (ratio 1.4 plus forecast output) fits AI Studio's 14,400-token
   minute budget; 10,000 never fit and stranded about 2,600 queued packets on idle keys. New
