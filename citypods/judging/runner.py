@@ -43,6 +43,7 @@ from citypods.judging.tasks import (
     make_evidence,
     transcript_identity,
 )
+from citypods.storage.base import StorageReadUnavailable
 
 ANCHOR_PURPOSE = "judge:anchor"
 SIBLING_PURPOSE = "judge:sibling"
@@ -192,8 +193,34 @@ def _record(packet: Packet, rows, stats: JudgingStats) -> None:
             stats.counts["judgments_appended"] += 1
 
 
+# A pending packet whose record could not be read this pass (storage outage). Its marker stays and
+# it counts as outstanding, exactly like a packet still waiting at the Worker.
+_UNREADABLE = object()
+# After this many unreadable records in one pass the rest are not tried: a store that is down would
+# otherwise make every one of thousands of markers wait out its own retry budget.
+_MAX_UNREADABLE_LOOKUPS = 3
+
+
+def _look_up(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
+    """The packet's record, or ``_UNREADABLE`` when storage is unavailable for it (never raises)."""
+    if stats.counts["lookup_unavailable"] >= _MAX_UNREADABLE_LOOKUPS:
+        stats.counts["lookup_unavailable"] += 1
+        return _UNREADABLE
+    try:
+        return ctx.look_up(recipe)
+    except StorageReadUnavailable as exc:
+        stats.counts["lookup_unavailable"] += 1
+        print(f"[judge] record read unavailable for {exc.key}; keeping its marker", flush=True)
+        return _UNREADABLE
+
+
 def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats) -> None:
-    """Turn finished in-flight questions into judgments; drop markers that can never finish."""
+    """Turn finished in-flight questions into judgments; drop markers that can never finish.
+
+    A record that cannot be read right now (``StorageReadUnavailable``, a transient storage outage)
+    is not a missing record: its marker stays and counts as outstanding, and a later pass collects
+    it. One unreadable object must never abort the whole lane.
+    """
     from citypods.judging.tasks import task as task_spec
 
     outputs: dict[str, Any] = {}
@@ -201,9 +228,9 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
             if recipe not in outputs:
-                outputs[recipe] = ctx.look_up(recipe) if recipe else None
+                outputs[recipe] = _look_up(ctx, recipe, stats) if recipe else None
             record = outputs[recipe]
-            if isinstance(record, JobHandle):
+            if record is _UNREADABLE or isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
                 purpose = str(marker.get("purpose") or "")
                 stats.outstanding.setdefault(purpose, set()).add(recipe)
@@ -271,8 +298,8 @@ def _count_superseded_outstanding(
                 if not recipe:
                     continue
                 if recipe not in outputs:
-                    outputs[recipe] = ctx.look_up(recipe)
-                if isinstance(outputs[recipe], JobHandle):
+                    outputs[recipe] = _look_up(ctx, recipe, stats)
+                if outputs[recipe] is _UNREADABLE or isinstance(outputs[recipe], JobHandle):
                     purpose = str(marker.get("purpose") or "")
                     stats.outstanding.setdefault(purpose, set()).add(recipe)
                     if purpose == SIBLING_PURPOSE:
