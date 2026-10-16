@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator capacity.** Raise the per-run dispatch cap from 67 to 134 and the daily
+  ingress budget to 1,600 jobs, and reserve 20,000 output tokens per packet (was 16,384) so long
+  chapter lists fit.
+
 - **The judge lane's wall-clock window is its cron interval (120 minutes), not 90.** On
   2026-10-16 a catch-up pass spent its whole 76.5-minute window collecting 11,688 answers and
   stopped planning before it submitted anything. The window is now 120 minutes x 0.85 = 102,
