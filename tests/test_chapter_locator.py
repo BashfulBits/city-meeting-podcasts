@@ -9,17 +9,22 @@ import pytest
 from citypods.chapter_locator import (
     DEEPSEEK_FREE_CONTEXT_TOKENS,
     DEEPSEEK_FREE_LOCATOR_MODEL,
+    DEEPSEEK_V41_LOCATOR_MODEL,
     GEMINI_CONTEXT_TOKENS,
     GEMINI_LOCATOR_MODEL,
+    KIMI_LOCATOR_MODEL,
     LOCATOR_CONTRACT,
     LOCATOR_OUTPUT_TOKEN_RESERVE,
     MISTRAL_CONTEXT_TOKENS,
     MISTRAL_LOCATOR_MODEL,
     NEMOTRON_CONTEXT_TOKENS,
     NEMOTRON_LOCATOR_MODEL,
+    PRODUCTION_LOCATOR_MODEL,
     LocatorAgendaItem,
+    LocatorUnit,
     build_locator_request,
     build_locator_units,
+    build_production_locator_request,
     ensure_locator_contract,
     locator_units_from_vtt,
     locator_units_from_words,
@@ -341,3 +346,33 @@ def test_request_rejects_ambiguous_or_empty_inputs():
         )
     with pytest.raises(ValueError, match="evidence text"):
         build_locator_request([LocatorAgendaItem(index=0, title="Item", evidence_text="")], [unit])
+
+
+def _production_request(unit_count: int):
+    item = LocatorAgendaItem(
+        index=0,
+        title="Call to order",
+        display_ref="1.",
+        evidence_text="1. Call to Order",
+        locator_cues=("1.",),
+    )
+    units = [
+        LocatorUnit(id=f"u{i}", start=float(i), end=float(i + 1), text="word " * 60)
+        for i in range(unit_count)
+    ]
+    return build_production_locator_request([item], units)
+
+
+def test_production_locator_pins_small_packets_to_v4_flash_alone():
+    request = _production_request(50)
+
+    assert request.models == (PRODUCTION_LOCATOR_MODEL,)
+    assert request.model == PRODUCTION_LOCATOR_MODEL
+
+
+def test_production_locator_sends_large_packets_to_v41_with_kimi_as_companion():
+    request = _production_request(1200)
+
+    assert request.input_tokens > 76_000
+    assert request.models == (DEEPSEEK_V41_LOCATOR_MODEL, KIMI_LOCATOR_MODEL)
+    assert request.model == DEEPSEEK_V41_LOCATOR_MODEL

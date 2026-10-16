@@ -44,6 +44,9 @@ GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 PRODUCTION_LOCATOR_MODEL = lane_for("chapter-locator").primary_model
 PRODUCTION_LOCATOR_MODELS = lane_for("chapter-locator").models
 KIMI_LOCATOR_MODEL = "moonshotai/kimi-k3"
+# Companion overflow model for packets above the V4 Flash band. NVIDIA retired Kimi K3 on
+# 2026-10-15 (HTTP 410), so V4.1 Flash is listed first; the Worker skips a blocked route.
+DEEPSEEK_V41_LOCATOR_MODEL = "deepseek/deepseek-v4.1-flash"
 # Saved V4 Flash telemetry accepted packets through 76,546 internal estimated tokens and
 # repeatedly rejected packets from 81,301. Keep a small margin below the observed accepted edge.
 DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS = 76_000
@@ -524,15 +527,15 @@ def build_production_locator_request(
         from citypods.compute.llm_policy import estimate_tokens
 
         input_tokens = estimate_tokens(list(messages))
-    model = (
-        PRODUCTION_LOCATOR_MODEL
+    models = (
+        (PRODUCTION_LOCATOR_MODEL,)
         if input_tokens <= DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS
-        else KIMI_LOCATOR_MODEL
+        else (DEEPSEEK_V41_LOCATOR_MODEL, KIMI_LOCATOR_MODEL)
     )
     return LocatorRequest(
         messages=messages,
-        model=model,
-        models=(model,),
+        model=models[0],
+        models=models,
         input_tokens=input_tokens,
     )
 
@@ -547,6 +550,7 @@ __all__ = [
     "LOCATOR_CONTRACT",
     "LOCATOR_OUTPUT_TOKEN_RESERVE",
     "LOCATOR_ROUTING_VERSION",
+    "DEEPSEEK_V41_LOCATOR_MODEL",
     "KIMI_LOCATOR_MODEL",
     "LocatorAgendaItem",
     "LocatorAnchor",

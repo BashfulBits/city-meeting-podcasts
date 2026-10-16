@@ -24,9 +24,10 @@
     },
     "chapter-locator": {
       "reserved_write_units": 4300,
-      "daily_write_units": 6400,
+      "daily_write_units": 7200,
       "models": [
         "deepseek/deepseek-v4-flash",
+        "deepseek/deepseek-v4.1-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
