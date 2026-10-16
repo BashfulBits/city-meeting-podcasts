@@ -4514,7 +4514,9 @@ def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout(
     workflow = yaml.safe_load((root / ".github" / "workflows" / "judge.yml").read_text())
     cron = workflow[True]["schedule"][0]["cron"]
     interval = 60 * int(re.search(r"\*/(\d+)", cron.split()[1]).group(1))
-    window = defaults["judge_run_time_budget_minutes"]
+    # The effective budget, as run.py reads it: the config value, else the code default.
+    window = defaults.get("judge_run_time_budget_minutes", run.JUDGE_RUN_TIME_BUDGET_MINUTES)
+    assert defaults["judge_run_time_budget_minutes"] == window  # and it is set explicitly
     assert window == interval == run.JUDGE_RUN_TIME_BUDGET_MINUTES
     # The window ends with time to spare for setup and the persistence tail before the next pass.
     assert window * defaults["budget_safety"] <= interval - 15
