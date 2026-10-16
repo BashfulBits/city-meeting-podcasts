@@ -593,6 +593,11 @@ defaults:
   # Topic tag lane budget: 140m window × 0.85 safety = 119m cutoff. Guarantees graceful persist
   # well before tag.yml's 165m step timeout, while actively stopping as soon as quotas fill.
   tag_run_time_budget_minutes: 140
+  # Judge lane budget (review/53): == its 2h cron interval, so the window is 120m x 0.85 = 102m and
+  # the remaining ~18m covers setup (~4m) and the persistence tail (~8m measured on 2026-10-16). A
+  # catch-up pass that collects thousands of answers (11,688 on 2026-10-16) spent the old 76.5m
+  # window before it could plan and submit anything. The step timeout (165m) still bounds the run.
+  judge_run_time_budget_minutes: 120
   # Queue-only LLM lanes use each feature's max_dispatches_per_run count as their safety boundary.
   # Cloudflare Dispatch v2 owns provider pacing and quota enforcement after the bounded batch lands.
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
