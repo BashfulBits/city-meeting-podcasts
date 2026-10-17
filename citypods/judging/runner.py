@@ -210,23 +210,31 @@ _MAX_UNREADABLE_STREAK = 3
 _RECOVERY_WAIT_SECONDS = 300.0
 _RECOVERY_PROBE_SECONDS = 30.0
 _sleep = time.sleep
+_monotonic = time.monotonic
 
 
 def _wait_for_storage(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
-    """Probe ``recipe`` until it reads or the pass's recovery budget is spent."""
-    while stats.lookup_waited < _RECOVERY_WAIT_SECONDS:
-        pause = min(_RECOVERY_PROBE_SECONDS, _RECOVERY_WAIT_SECONDS - stats.lookup_waited)
-        _sleep(pause)
-        stats.lookup_waited += pause
-        try:
-            record = ctx.look_up(recipe)
-        except StorageReadUnavailable:
-            stats.counts["lookup_probe_failed"] += 1
-            continue
-        stats.lookup_streak = 0
-        stats.counts["lookup_recovered"] += 1
-        print(f"[judge] storage readable again after {stats.lookup_waited:.0f}s", flush=True)
-        return record
+    """Probe ``recipe`` until it reads or the pass's recovery budget is spent.
+
+    The budget is wall-clock time, probes included: a failing read can itself take tens of
+    seconds, so only the time actually spent here counts against ``_RECOVERY_WAIT_SECONDS``."""
+    started = _monotonic()
+    deadline = started + (_RECOVERY_WAIT_SECONDS - stats.lookup_waited)
+    try:
+        while (remaining := deadline - _monotonic()) > 0:
+            _sleep(min(_RECOVERY_PROBE_SECONDS, remaining))
+            try:
+                record = ctx.look_up(recipe)
+            except StorageReadUnavailable:
+                stats.counts["lookup_probe_failed"] += 1
+                continue
+            stats.lookup_streak = 0
+            stats.counts["lookup_recovered"] += 1
+            waited = stats.lookup_waited + _monotonic() - started
+            print(f"[judge] storage readable again after {waited:.0f}s", flush=True)
+            return record
+    finally:
+        stats.lookup_waited += _monotonic() - started
     stats.lookup_gave_up = True
     print("[judge] storage still unavailable; skipping record reads for this pass", flush=True)
     return _UNREADABLE
