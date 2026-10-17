@@ -59,6 +59,7 @@ SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
     "google/gemma-4-31b-it": (8_500, 25),
     "google/gemma-4-26b-a4b-it": (8_500, 25),
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": (24_000, 25),
+    "openrouter/nvidia/nemotron-3.5-super-vl:free": (24_000, 25),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
 

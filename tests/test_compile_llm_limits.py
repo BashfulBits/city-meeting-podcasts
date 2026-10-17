@@ -129,11 +129,18 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     )
     assert compiled["model_aliases"]["nvidia/nemotron-3-ultra-550b-a55b"] == nemotron_key
 
-    nemotron_super_key = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
-    # OpenRouter's own canonical name for this model family, now also reachable via NVIDIA build
-    # direct (added 2026-08-29) -- unlike Ultra, Super had no shared model_key before this change.
-    assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
-    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
+    nemotron_35_super_key = "openrouter/nvidia/nemotron-3.5-super-vl:free"
+    # OpenRouter's canonical name for the 3.5 Super VL family, reachable via both direct NVIDIA
+    # and OpenRouter broker legs. Legacy 3 Super selectors coalesce as aliases to this pool.
+    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 2
+    assert (
+        compiled["model_aliases"]["openrouter/nvidia/nemotron-3-super-120b-a12b:free"]
+        == nemotron_35_super_key
+    )
+    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_35_super_key
+    assert (
+        compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl-120b-a12b"] == nemotron_35_super_key
+    )
 
     codestral_key = "mistral/codestral-2508"
     codestral_routes = compiled["model_routes_map"][codestral_key]
