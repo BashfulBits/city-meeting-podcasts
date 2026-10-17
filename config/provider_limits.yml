@@ -304,9 +304,12 @@ providers:
     # beside slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash), each capped at concurrency 1.
     # Raised 3 -> 4 on 2026-10-17 when Gemma 4 31B got a second slot (800 RPD, route concurrency 2):
     # Gemma takes at most two of the four, leaving two for Ultra, V4.1 and the overflow routes
-    # (each capped at 1). Measured 2026-10-17: three overlapping Gemma requests to NVIDIA all
-    # returned 200 (two at full speed), so the 2026-08-29 "overlap is rejected with a fast 429"
-    # finding no longer holds for this model; watch `upstream_capacity` 429s on NVIDIA routes.
+    # (each capped at 1). Measured 2026-10-17: three overlapping requests (Gemma 4 31B x2 plus
+    # Nemotron 3 Super) all returned 200 in four rounds, and three overlapping Gemma requests did
+    # too, so the 2026-08-29 "overlap is rejected with a fast 429" finding no longer holds. NOT
+    # verified: a fourth simultaneous call (no other served model was available to probe), and the
+    # benefit of the second Gemma slot is under 2x -- two concurrent Gemma calls each ran at
+    # 5-6 tokens/s against 19 alone. Watch `upstream_capacity` 429s on NVIDIA routes.
     concurrency: 4
     accounts:
       - id: primary
