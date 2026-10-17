@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+`/v2/stats` exposes purpose-level ingress usage and the latest 24 hourly queue/throughput
+snapshots. Purpose usage reads the small `(utc_day, purpose)` primary-key ledger; hourly points
+live in the scheduler singleton and are written only by hourly maintenance. Completion, failure,
+and retry totals are maintained in existing scheduler writes, without scanning job history.
+
+Consumer contract: burndown starts empty and fills at hourly maintenance. Timestamps are UTC epoch
+milliseconds. Queue depth is point-in-time; ingested, completed, failed, and retried are cumulative
+for the current UTC day. Outcome counters start at deployment, with no historical backfill.
+
 - **A route whose provider keeps saying its pool is full now backs off to one call a day.** After
   an `upstream_capacity` failure the route's cooldown doubles from 60 s up to 24 hours (it was
   15 s up to 5 minutes, about 288 probes a day). On 2026-10-17 the OpenRouter free Gemma routes
