@@ -706,10 +706,11 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
 
 As of the maintainer's 2026-10-09 reopening decision, OpenRouter's Gemma 4 31B/26B free routes
 and NVIDIA's Gemma 4 31B route each have a 20-RPD allowance. They are eligible for ordinary dispatch
-and scarce-quota health observation; NVIDIA calls still share the provider's concurrency of three.
-On 2026-10-16 NVIDIA's Gemma 4 31B allowance was raised to 800 RPD with the route held to one of
-the provider's three slots (`concurrency: 1`), to take the judge sibling packets AI Studio's
-14,400-token minute budget cannot admit; OpenRouter's two routes stay at 20.
+and scarce-quota health observation; NVIDIA calls share the provider's concurrency.
+On 2026-10-16 NVIDIA's Gemma 4 31B allowance was raised to 800 RPD, and on 2026-10-17 the route got
+two of the provider's four slots (`concurrency: 2`, provider `concurrency: 4`, `MAX_ACTIVE_BUNDLES:
+5`), to take the judge sibling packets AI Studio's 14,400-token minute budget cannot admit;
+OpenRouter's two routes stay at 20.
 This is a limited reopening for fresh monitoring, not evidence that the historical failures or
 concurrency pressure have cleared. Routine scarce-route checks normally run 28 days apart; the
 bounded daily early-failure path can check sooner. Slice 5 context calibration remains separately gated.

@@ -302,9 +302,12 @@ providers:
     tpm: 100000
     # Raised 2 -> 3 on 2026-09-23 while Gemma was paused so Nemotron 3 Ultra could keep a slot
     # beside slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash), each capped at concurrency 1.
-    # Gemma reopens at 20 RPD on 2026-10-09 for monitoring/calibration; its long calls may again
-    # compete for these shared slots. The provider concurrency ceiling remains 3.
-    concurrency: 3
+    # Raised 3 -> 4 on 2026-10-17 when Gemma 4 31B got a second slot (800 RPD, route concurrency 2):
+    # Gemma takes at most two of the four, leaving two for Ultra, V4.1 and the overflow routes
+    # (each capped at 1). Measured 2026-10-17: three overlapping Gemma requests to NVIDIA all
+    # returned 200 (two at full speed), so the 2026-08-29 "overlap is rejected with a fast 429"
+    # finding no longer holds for this model; watch `upstream_capacity` 429s on NVIDIA routes.
+    concurrency: 4
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
@@ -1108,9 +1111,10 @@ routes:
     # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
     # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
     # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier. Held at 1 (2026-10-16, with the 800 RPD raise)
-    # so this route never takes more than one of the provider's three shared slots.
-    concurrency: 1
+    # coexistence caveat as split_cap_multiplier. Held at 1 on 2026-10-16 (with the 800 RPD raise),
+    # then 2 on 2026-10-17: at the 172 s median one slot is ~20 calls/hour, and the judge sibling
+    # backlog needs more. Two of the provider's four shared slots at most.
+    concurrency: 2
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

@@ -1248,7 +1248,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_deepseek_v4_1_flash_free",
@@ -1290,7 +1290,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_gemma_4_31b_it_free",
@@ -1304,7 +1304,7 @@
       "rpm": 4,
       "rpd": 800,
       "tpm": 36000,
-      "concurrency": 1,
+      "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1329,7 +1329,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1369,7 +1369,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
@@ -1407,7 +1407,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
@@ -1446,7 +1446,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "orcarouter_deepseek_v4_flash_free",
