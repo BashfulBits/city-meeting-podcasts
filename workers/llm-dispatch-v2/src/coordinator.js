@@ -1698,11 +1698,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * gateway_limit -- factored out so authorizeRetry (mid-lease 429) and completeBatch (a final,
    * non-429 upstream_capacity outcome such as an empty 2xx) apply the identical backoff instead
    * of drifting apart. */
-  _upstreamCapacityBlockedUntil(streak, now) {
-    const baseCooldown = this._upstreamCapacityCooldownSeconds();
-    const maxCooldown = this._upstreamCapacityMaxCooldownSeconds();
-    const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, streak - 1));
-    return now + Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5));
+  _upstreamCapacityBlockedUntil(streak, now, saturated = false) {
+    // `saturated`: the provider itself said its pool is full (failure_class upstream_capacity), as
+    // opposed to a gateway limit or an unusable reply. Such a route that keeps failing is
+    // probed less and less, down to one call per day (2026-10-17: the OpenRouter free Gemma routes
+    // returned 116 upstream_capacity failures and no successes while every probe cost a call).
+    // The streak resets on the route's first success, so a route that recovers is back in use.
+    const baseCooldown = saturated
+      ? this._envInt("UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS", 60)
+      : this._upstreamCapacityCooldownSeconds();
+    const maxCooldown = saturated
+      ? this._envInt("UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS", 86400)
+      : this._upstreamCapacityMaxCooldownSeconds();
+    const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, Math.min(streak, 40) - 1));
+    // Jitter spreads probes but never lengthens the wait past the configured maximum.
+    return now + Math.min(maxCooldown * 1000, Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5)));
   }
 
   /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
@@ -5544,7 +5554,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         case "upstream_capacity": {
           const streak = (ledger.upstream_capacity_streak || 0) + 1;
-          const blockedUntil = this._upstreamCapacityBlockedUntil(streak, now);
+          const blockedUntil = this._upstreamCapacityBlockedUntil(streak, now, true);
           // Clearing throttle_streak/buffer_seconds here is not housekeeping -- it is the
           // conclusion this classification licenses. The provider just told us its own pool is
           // saturated, which is positive evidence our pacing is NOT the problem, so any own-rate
@@ -6300,7 +6310,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
                                  blocked_until = MAX(COALESCE(blocked_until, 0), ?),
                                  last_provider_status = ? WHERE route_id = ?`,
               streak,
-              this._upstreamCapacityBlockedUntil(streak, now),
+              this._upstreamCapacityBlockedUntil(
+                streak,
+                now,
+                result.failure_class === "upstream_capacity"
+              ),
               result.provider_status_code ?? null,
               job.lease_route_id
             );

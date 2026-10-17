@@ -3466,3 +3466,16 @@ test("learned Orca caps remove oversized queue heads so short work can drain", a
   assert.deepEqual((await coordinator.claimDispatchWindow(now + 1, 25)).jobs.map((j) => j.id),
     ["orca-3"]);
 });
+
+test("a saturated route backs off from 60 s up to one probe a day; other upstream classes stay at 5 minutes", () => {
+  const { coordinator } = makeCoordinator({});
+  const now = 1_000_000;
+  const wait = (streak, saturated) => coordinator._upstreamCapacityBlockedUntil(streak, now, saturated) - now;
+  assert.ok(wait(1, true) >= 60_000 && wait(1, true) <= 90_000);
+  assert.ok(wait(4, true) >= 480_000 && wait(4, true) <= 720_000, "doubles each failure");
+  for (const streak of [12, 13, 200]) {
+    assert.equal(wait(streak, true) <= 86_400_000, true, "jitter never exceeds the day");
+  }
+  assert.ok(wait(20, true) > 43_200_000, "a long streak waits most of a day");
+  assert.ok(wait(20, false) <= 300_000, "gateway limits and bad replies keep the 5 minute ceiling");
+});
