@@ -410,9 +410,9 @@ test("GET /v2/calibration reports the ratio the claim applies to a route and pro
   const coordinator = env2.LLM_SCHEDULER.get();
   coordinator._getSql().exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
-    "gemma_4_31b_primary:google/gemma-4-31b-it:tag",
-    JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+     VALUES (?, 0, 64, ?, 0)`,
+    "pool:google/gemma-4-31b-it:tag",
+    JSON.stringify({ r: Array(64).fill(1.3), o: Array(64).fill(200) })
   );
   const res = await worker.fetch(
     new Request("http://localhost/v2/calibration?route_id=gemma_4_31b_primary&prompt_family=tag", {
@@ -425,8 +425,9 @@ test("GET /v2/calibration reports the ratio the claim applies to a route and pro
   assert.equal(body.model, "google/gemma-4-31b-it");
   assert.equal(body.input_ratio_prior, 1.4);
   assert.equal(body.input_ratio_p95, 1.3);
-  assert.equal(body.input_ratio_samples, 16);
-  // Gemma's 1.2x headroom on the learned p95 lifts it above the 1.4 prior.
+  assert.equal(body.input_ratio_samples, 64);
+  // A full window hands over from the 1.4 prior to the learned tail: Gemma's 1.2x headroom on the
+  // learned p95 of 1.3 is 1.56.
   assert.ok(Math.abs(body.input_ratio_effective - 1.56) < 1e-9);
   assert.equal(body.hard_input_ceiling, 14400);
   assert.equal(body.hard_input_ceiling_tolerance, 0);

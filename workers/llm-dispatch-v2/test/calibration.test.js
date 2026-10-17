@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  CALIBRATION_FULL_SAMPLES,
   CALIBRATION_MIN_SAMPLES,
   CALIBRATION_WINDOW,
   MIN_OUTPUT_RESERVE,
@@ -65,7 +66,7 @@ test("the sample window is bounded and ignores template-dominated tiny prompts",
   assert.deepEqual(tiny.o, [4]);
 });
 
-test("calibrationFor keeps the prior until enough samples, then follows the recent p95", () => {
+test("calibrationFor seeds from the prior, blends as samples accrue, and hands over at 64", () => {
   const route = { input_token_ratio: 1.2 };
   const few = { r: [1.5, 1.5], o: [100, 100] };
   assert.deepEqual(calibrationFor(route, few), {
@@ -78,18 +79,30 @@ test("calibrationFor keeps the prior until enough samples, then follows the rece
     outputSamples: 2,
   });
 
-  // 16 recent samples: ratios mostly 1.0 with one 1.4 outlier; outputs ~300 with one 600.
-  const r = Array(CALIBRATION_MIN_SAMPLES - 1).fill(1.0).concat([1.4]);
-  const o = Array(CALIBRATION_MIN_SAMPLES - 1).fill(300).concat([600]);
-  const result = calibrationFor(route, { r, o });
-  // p95 of 16 samples is the 16th value, so the outlier sets both (conservative on purpose).
-  assert.equal(result.inputRatio, 1.4);
-  assert.equal(result.outputForecast, 750); // ceil(600 * 1.25)
+  // 16 samples (the first blend point): the prior still carries 75% of the weight, so one 1.4
+  // outlier among ratios of 1.0 moves the reservation only part of the way from 1.2 to 1.4.
+  const r16 = Array(CALIBRATION_MIN_SAMPLES - 1).fill(1.0).concat([1.4]);
+  const o16 = Array(CALIBRATION_MIN_SAMPLES - 1).fill(300).concat([600]);
+  const early = calibrationFor(route, { r: r16, o: o16 });
+  assert.ok(Math.abs(early.inputRatio - (0.75 * 1.2 + 0.25 * 1.4)) < 1e-9);
+  // With 16-63 outputs the largest stands in for the unreliable p95.
+  assert.equal(early.outputForecast, 750); // ceil(600 * 1.25)
 
-  // The effective ratio never drops below the route's own catalog prior -- it can only add to
-  // it, so a well-behaved recent window (here, below the prior) still reserves at the prior.
-  const low = calibrationFor(route, { r: Array(20).fill(0.98), o: Array(20).fill(10) });
-  assert.equal(low.inputRatio, 1.2);
+  // A full window of 64: the learned tail stands alone and the prior is NOT a floor. Ratios are
+  // 1.0 with one 1.4 outlier: the p99 is that outlier, so the reservation keeps protecting it.
+  const r64 = Array(CALIBRATION_FULL_SAMPLES - 1).fill(1.0).concat([1.4]);
+  const o64 = Array(CALIBRATION_FULL_SAMPLES - 1).fill(300).concat([600]);
+  const full = calibrationFor(route, { r: r64, o: o64 });
+  assert.equal(full.inputRatio, 1.4);
+  // The output reserve is then a real p95 (300), not the single large sample.
+  assert.equal(full.outputForecast, 375);
+
+  // A well-behaved full window below the prior now reserves BELOW it (1.0, not 1.2).
+  const low = calibrationFor(route, {
+    r: Array(CALIBRATION_FULL_SAMPLES).fill(0.98),
+    o: Array(CALIBRATION_FULL_SAMPLES).fill(10),
+  });
+  assert.equal(low.inputRatio, 0.98);
   assert.equal(low.outputForecast, MIN_OUTPUT_RESERVE);
 });
 
@@ -129,16 +142,16 @@ test("learnedCeilings ignores entries older than the TTL and resolves contradict
 });
 
 test("admission uses a lower quantile than reservation and packing, and is not floored by the prior", () => {
-  // Prior 1.4, traffic measuring 1.0-1.2 over 20 samples: p75 = 1.1 (index 14), p95 = 1.15 (index 18).
+  // Prior 1.4, a full window (64) of traffic measuring 1.0-1.2: p75 = 1.1, p95 = 1.15, p99 = 1.2.
   const route = { input_token_ratio: 1.4, provider: "gemini", model: "google/gemma-4-31b-it" };
-  const r = [...Array(10).fill(1.0), ...Array(5).fill(1.1), ...Array(4).fill(1.15), 1.2];
-  const result = calibrationFor(route, { r, o: Array(20).fill(100) });
-  // Reservation keeps the safe tail and the prior floor (unchanged by piece 2)...
-  assert.equal(result.inputRatio, 1.4);
-  // ...admission follows p75 x a small headroom, below the prior and the reservation ratio...
+  const r = [...Array(40).fill(1.0), ...Array(12).fill(1.1), ...Array(11).fill(1.15), 1.2];
+  const result = calibrationFor(route, { r, o: Array(64).fill(100) });
+  // Reservation: max(p95 x 1.2 gemma headroom = 1.38, p99 = 1.2) -- the safe tail, learned...
+  assert.ok(Math.abs(result.inputRatio - 1.15 * 1.2) < 1e-9);
+  // ...admission follows p75 x a small headroom, below the reservation ratio...
   assert.ok(Math.abs(result.admitRatio - 1.1 * ADMIT_HEADROOM) < 1e-9);
   assert.ok(result.admitRatio < result.inputRatio);
-  // ...and packing targets the p95 tail with its own headroom, not the prior.
+  // ...and packing targets the p95 tail with its own headroom.
   assert.ok(Math.abs(result.packRatio - 1.15 * PACK_HEADROOM) < 1e-9);
   // Until enough samples exist all three are the prior.
   const few = calibrationFor(route, { r: [1.0, 1.0], o: [100, 100] });

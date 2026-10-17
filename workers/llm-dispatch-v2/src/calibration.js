@@ -22,9 +22,11 @@
  * This module replaces that with two bounded, decaying signals kept per estimates key (a ring of
  * the most recent CALIBRATION_WINDOW completions):
  *
- *   input ratio    = max(route prior, p95(observed_input / input_token_estimate) * headroom),
- *                    else the route's catalog `input_token_ratio` prior until the sample gate.
- *   output reserve = min(max_tokens, ceil(p95(observed_output) * OUTPUT_RESERVE_HEADROOM)), else
+ *   input ratio    = the route's catalog `input_token_ratio` prior until CALIBRATION_MIN_SAMPLES
+ *                    exist, then a blend of the prior and the learned tail that hands over
+ *                    completely at CALIBRATION_FULL_SAMPLES (review/55 piece 1): the prior is a
+ *                    seed worth ~CALIBRATION_FULL_SAMPLES pseudo-samples, not a floor.
+ *   output reserve = min(max_tokens, ceil(tail(observed_output) * OUTPUT_RESERVE_HEADROOM)), else
  *                    the job's full max_tokens until CALIBRATION_MIN_SAMPLES exist.
  *
  * Under-forecasting one job is recoverable: completeBatch settles every successful reservation to
@@ -32,8 +34,13 @@
  * an own_tpm 429 still backs the route off.
  */
 
-export const CALIBRATION_WINDOW = 32;
+// A ring of 128 completions per (tokenizer family, prompt family): a p95 over 16-32 samples is the
+// second-largest sample, not a percentile. Below CALIBRATION_MIN_SAMPLES only the prior is used;
+// between it and CALIBRATION_FULL_SAMPLES the learned tail is blended in with a linearly shrinking
+// weight on the prior; from CALIBRATION_FULL_SAMPLES the learned percentiles stand alone.
+export const CALIBRATION_WINDOW = 128;
 export const CALIBRATION_MIN_SAMPLES = 16;
+export const CALIBRATION_FULL_SAMPLES = 64;
 // The route-wide TPM budget already includes a 10% safety margin. Add a separate headroom to
 // the learned input ratio so a p95-calibrated prompt does not spend that same margin twice.
 // Gemma's paired corpus had p95 1.16 but a 1.48 maximum; 1.2x headroom plus the existing 0.9
@@ -177,35 +184,48 @@ export function recordCalibrationSample(summary, { inputEstimate, observedInput,
 }
 
 /** The effective input ratio and output-reserve forecast for one route/model/prompt family. */
+/** Weight left on the route prior after n samples: 1 below the minimum, 0 from the full gate. */
+function priorWeight(n) {
+  if (n < CALIBRATION_MIN_SAMPLES) return 1;
+  return Math.max(0, 1 - n / CALIBRATION_FULL_SAMPLES);
+}
+
 export function calibrationFor(route, summary) {
   const parsed = summary || { r: [], o: [] };
-  const inputRatioP95 =
-    parsed.r.length >= CALIBRATION_MIN_SAMPLES ? percentile(parsed.r, 0.95) : null;
+  const n = parsed.r.length;
+  const prior = routeInputTokenRatio(route);
+  const weight = priorWeight(n);
+  const learned = n >= CALIBRATION_MIN_SAMPLES;
+  const inputRatioP95 = learned ? percentile(parsed.r, 0.95) : null;
   const inputHeadroom =
     route?.provider === "gemini" && String(route?.model || "").startsWith("google/gemma-4-")
       ? INPUT_RATIO_HEADROOM
       : 1;
-  const inputRatio = Math.max(
-    routeInputTokenRatio(route),
-    inputRatioP95 == null ? 0 : inputRatioP95 * inputHeadroom
-  );
-  // Admission ratio: p75 x a small headroom once enough samples exist, never above the reservation
-  // ratio and, unlike it, not floored by the route prior. Packing ratio: the p95 tail (or the
-  // prior until it exists).
-  const inputRatioP75 =
-    parsed.r.length >= CALIBRATION_MIN_SAMPLES ? percentile(parsed.r, ADMIT_QUANTILE) : null;
-  const admitRatio =
-    inputRatioP75 == null
-      ? inputRatio
-      : Math.min(inputRatio, Math.max(MIN_RATIO, inputRatioP75 * ADMIT_HEADROOM));
-  const packRatio =
-    inputRatioP95 == null
-      ? routeInputTokenRatio(route)
-      : Math.max(MIN_RATIO, inputRatioP95 * PACK_HEADROOM);
+  const blend = (learnedRatio) =>
+    Math.min(MAX_RATIO, Math.max(MIN_RATIO, weight * prior + (1 - weight) * learnedRatio));
+  // Reservation: the safe tail -- p95 x headroom, or the p99 (about the window's largest samples)
+  // if that is higher, so a rare high-ratio prompt keeps protecting the minute quota while it is
+  // still in the window.
+  const inputRatio = learned
+    ? blend(Math.max(inputRatioP95 * inputHeadroom, percentile(parsed.r, 0.99)))
+    : prior;
+  // Admission: p75 x a small headroom, never above the reservation ratio.
+  const admitRatio = learned
+    ? Math.min(inputRatio, blend(percentile(parsed.r, ADMIT_QUANTILE) * ADMIT_HEADROOM))
+    : inputRatio;
+  // Packing: the p95 tail with its own headroom.
+  const packRatio = learned ? blend(inputRatioP95 * PACK_HEADROOM) : prior;
+  // Output reserve: with 16-63 samples the largest sample stands in for the (unreliable) p95.
+  const outputTail =
+    parsed.o.length >= CALIBRATION_FULL_SAMPLES
+      ? percentile(parsed.o, 0.95)
+      : parsed.o.length >= CALIBRATION_MIN_SAMPLES
+        ? Math.max(...parsed.o)
+        : null;
   const outputForecast =
-    parsed.o.length >= CALIBRATION_MIN_SAMPLES
-      ? Math.max(MIN_OUTPUT_RESERVE, Math.ceil(percentile(parsed.o, 0.95) * OUTPUT_RESERVE_HEADROOM))
-      : null;
+    outputTail == null
+      ? null
+      : Math.max(MIN_OUTPUT_RESERVE, Math.ceil(outputTail * OUTPUT_RESERVE_HEADROOM));
   return {
     inputRatio,
     admitRatio,
