@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge no longer spends its first 12 minutes re-parsing the site config.** The dirtiness check
+  asked `load_families()` for the family map once per candidate episode and each call re-parsed
+  the 60 KB site config (25,283 episodes, about 0.06 s each locally, ten-plus minutes on the
+  runner) before any judging began. It is now cached per path like `load_lanes()`.
+
 - **Judge reads pending-packet records in parallel, with a bounded wait.** Collecting about 2,800
   pending records one at a time took 14 minutes on a healthy store (0.3 s each) and stalled for
   hours when runner reads to storage hung (2026-10-17). Records are now fetched by 8 workers within
