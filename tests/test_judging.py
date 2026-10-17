@@ -803,7 +803,7 @@ def test_two_run_stages_passes_submit_then_keep_collecting(monkeypatch):
     ctx.lane = "judge"
     monkeypatch.setattr(
         "citypods.compute.llm_deferred.look_up_deferred",
-        lambda storage, recipe: ctx.judge_backend.records.get(recipe),
+        lambda storage, recipe, **_: ctx.judge_backend.records.get(recipe),
     )
     run_stages(None, _city(), [ep], [JudgeStage()], ctx, quiet=True)
     first = len(ctx.judge_backend.jobs)
@@ -1336,6 +1336,7 @@ def test_a_permanent_outage_waits_a_bounded_time_then_skips_the_rest(monkeypatch
     ep = _episode(llm=[])
     runner.run([ep], _ctx(dispatch))
     clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_prefetch_records", lambda *a, **k: {})  # the sequential path
     monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
     calls = []
 
@@ -1361,6 +1362,7 @@ def test_a_short_outage_is_waited_out_and_the_pass_still_collects(monkeypatch):
     runner.run([ep], _ctx(dispatch))
     dispatch.answer(anchor_p=0.9)
     clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_prefetch_records", lambda *a, **k: {})  # the sequential path
     monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
     failures = {"left": runner._MAX_UNREADABLE_STREAK + 2}  # the trip, then two failed probes
 
@@ -1378,3 +1380,77 @@ def test_a_short_outage_is_waited_out_and_the_pass_still_collects(monkeypatch):
     # Two failed probes, then a third that reads: three probe intervals of waiting.
     assert stats.counts["lookup_probe_failed"] == 2
     assert clock.now == 3 * runner._RECOVERY_PROBE_SECONDS
+
+
+# ---- pending records are read in parallel, within a budget (slow runner storage, 2026-10-17) ----
+
+
+def _pending_episodes(count):
+    dispatch = FakeDispatch()
+    episodes = [_episode(uid=f"ep-{i}") for i in range(count)]
+    runner.run(episodes, _ctx(dispatch))
+    return dispatch, episodes
+
+
+def test_pending_records_are_read_concurrently_and_collected():
+    import threading
+
+    dispatch, episodes = _pending_episodes(6)
+    dispatch.answer(anchor_p=0.9)
+    threads: set[int] = set()
+    gate = threading.Barrier(2, timeout=5)
+
+    def look_up(recipe):
+        threads.add(threading.get_ident())
+        try:
+            gate.wait()  # two reads must be in flight together for this to pass
+        except threading.BrokenBarrierError:
+            pass
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)
+    assert len(threads) >= 2
+    assert stats.counts["prefetch_records"] >= 2 and not stats.counts["prefetch_failed"]
+    assert stats.counts["judgments_appended"] >= 1
+
+
+def test_a_failed_prefetch_read_is_retried_on_the_sequential_path():
+    dispatch, episodes = _pending_episodes(3)
+    dispatch.answer(anchor_p=0.9)
+    seen: dict[str, int] = {}
+
+    def look_up(recipe):
+        seen[recipe] = seen.get(recipe, 0) + 1
+        if seen[recipe] == 1:  # the parallel read fails, the sequential retry succeeds
+            raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)
+    assert stats.counts["prefetch_failed"] >= 2
+    assert stats.counts["judgments_appended"] >= 1 and not stats.counts["lookup_skipped"]
+
+
+def test_reads_still_running_at_the_budget_leave_their_markers_pending(monkeypatch):
+    import threading
+
+    dispatch, episodes = _pending_episodes(4)
+    release = threading.Event()
+
+    def look_up(recipe):
+        release.wait(timeout=10)  # a stalled connection
+        return dispatch.records.get(recipe)
+
+    monkeypatch.setattr(runner, "_PREFETCH_BUDGET_SECONDS", 0.2)
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    try:
+        stats = runner.run(episodes, ctx)  # returns at the budget, does not wait for the reads
+    finally:
+        release.set()
+    assert stats.counts["prefetch_timed_out"] >= 1
+    assert all(_all_pending(ep) for ep in episodes)
+    assert stats.counts["outstanding:judge:anchor"] >= 0

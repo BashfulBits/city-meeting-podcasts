@@ -16,6 +16,7 @@ import hashlib
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -240,6 +241,72 @@ def _wait_for_storage(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> 
     return _UNREADABLE
 
 
+# Pending-packet records are independent small reads, so they are fetched concurrently before the
+# sequential collect below. Sequentially, ~2,800 records at ~0.3 s each is 14 minutes on a healthy
+# store and unbounded on a slow one (runner reads stalled 2026-10-17). The whole prefetch is
+# bounded: records not read by then stay pending and are collected on a later pass.
+_PREFETCH_WORKERS = 8
+_PREFETCH_BUDGET_SECONDS = 600.0
+
+
+def _prefetch_records(
+    subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats
+) -> dict[str, Any]:
+    """Records for every pending packet of ``subjects``, read in parallel within a time budget.
+
+    Holds only records that were read (a result, a handle, or ``None`` for a missing one) and
+    ``_UNREADABLE`` for reads still unfinished at the budget. A read that failed is left out so the
+    sequential path retries it under the outage breaker."""
+    recipes = list(
+        dict.fromkeys(
+            str(marker.get("recipe_hash") or "")
+            for subject in subjects
+            for marker in ledger.pending(subject)
+            if marker.get("recipe_hash")
+        )
+    )
+    if len(recipes) < 2:
+        return {}
+    started = _monotonic()
+    deadline = started + _PREFETCH_BUDGET_SECONDS
+    records: dict[str, Any] = {}
+    failed = 0
+    executor = ThreadPoolExecutor(max_workers=min(_PREFETCH_WORKERS, len(recipes)))
+    futures = {executor.submit(ctx.look_up, recipe): recipe for recipe in recipes}
+    pending = set(futures)
+    try:
+        while pending and (remaining := deadline - _monotonic()) > 0:
+            done, pending = wait(pending, timeout=min(remaining, 30.0), return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    records[futures[future]] = future.result()
+                except StorageReadUnavailable:
+                    failed += 1
+                except Exception:  # noqa: BLE001 -- retried sequentially, where it surfaces
+                    failed += 1
+            if done and len(records) % 500 < len(done):
+                print(
+                    f"[judge] read {len(records)}/{len(recipes)} pending records "
+                    f"in {_monotonic() - started:.0f}s ({failed} unavailable)",
+                    flush=True,
+                )
+    finally:
+        for future in pending:
+            future.cancel()
+            records[futures[future]] = _UNREADABLE
+        executor.shutdown(wait=False, cancel_futures=True)
+    stats.counts["prefetch_records"] = len(recipes)
+    stats.counts["prefetch_failed"] = failed
+    if pending:
+        stats.counts["prefetch_timed_out"] = len(pending)
+        print(
+            f"[judge] record reads still running after {_PREFETCH_BUDGET_SECONDS:.0f}s: "
+            f"{len(pending)} left pending for a later pass",
+            flush=True,
+        )
+    return records
+
+
 def _look_up(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
     """The packet's record, or ``_UNREADABLE`` when storage is unavailable for it (never raises)."""
     if stats.lookup_gave_up:
@@ -268,7 +335,7 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
     """
     from citypods.judging.tasks import task as task_spec
 
-    outputs: dict[str, Any] = {}
+    outputs: dict[str, Any] = _prefetch_records(subjects, ctx, stats)
     for subject in subjects:
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
