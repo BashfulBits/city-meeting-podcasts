@@ -76,8 +76,9 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "sambanova_gemma_4_31b_it_primary" in worker["model_routes_map"]["google/gemma-4-31b-it"]
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
-    # Raised 2 -> 3 (2026-09-23) so Nemotron 3 Ultra always keeps an NVIDIA slot.
-    assert worker["providers"]["nvidia"]["concurrency"] == 3
+    # Raised 2 -> 3 (2026-09-23) so Nemotron 3 Ultra always keeps an NVIDIA slot; 3 -> 4
+    # (2026-10-17) with Gemma 4 31B's second slot.
+    assert worker["providers"]["nvidia"]["concurrency"] == 4
     assert gemma["request_start_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
