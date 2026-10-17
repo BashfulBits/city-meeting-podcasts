@@ -1746,7 +1746,11 @@ class JudgeStage(LLMProducerStage):
         sibling = lane_for("judge:sibling")
         # Size JEV packets with the Worker's own input ratio for the route (None when it cannot be
         # read: the packer then assumes the unmeasured default and errs small).
-        from citypods.compute.llm import dispatch_v2_learned_input_ratio, dispatch_v2_model_headroom
+        from citypods.compute.llm import (
+            dispatch_v2_learned_input_ratio,
+            dispatch_v2_model_headroom,
+            dispatch_v2_pack_ceilings,
+        )
         from citypods.judging.backends import JEV_ROUTE_ID
 
         anchor_ratio = dispatch_v2_learned_input_ratio(
@@ -1765,6 +1769,11 @@ class JudgeStage(LLMProducerStage):
             sibling.models, backend=getattr(backend, "_backend", backend)
         )
         print(f"[judge] sibling route headroom={sibling_headroom or 'unread'}", flush=True)
+        # Packet sizes follow what the Worker will admit on each model's smallest route.
+        sibling_pack_ceilings = dispatch_v2_pack_ceilings(
+            sibling.models, "judge", backend=getattr(backend, "_backend", backend)
+        )
+        print(f"[judge] sibling packing ceilings={sibling_pack_ceilings or 'unread'}", flush=True)
         with ctx.judge_run_caps_lock:
             ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
             ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
@@ -1788,6 +1797,7 @@ class JudgeStage(LLMProducerStage):
             dry_run=dry_run,
             anchor_input_ratio=anchor_ratio,
             sibling_headroom=sibling_headroom,
+            sibling_pack_ceilings=sibling_pack_ceilings,
             max_outstanding={
                 purpose: int(limit)
                 for purpose, limit in (

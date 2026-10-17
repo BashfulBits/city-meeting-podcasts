@@ -1849,3 +1849,38 @@ def test_model_headroom_ignores_malformed_rows_instead_of_aborting():
     routes = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
     # NaN counts as unknown (1.0), a negative capacity as 0, a non-numeric block is ignored.
     assert got["google/gemma-4-31b-it"] == 1.0 + 0.0 + (len(routes) - 2)
+
+
+class _PackCeilingBackend:
+    class config:  # noqa: N801 - mimics LLMBackendConfig's attribute access
+        dispatch_v2_url = "https://worker.example"
+
+    def __init__(self, by_model):
+        self.by_model = by_model
+
+    def dispatch_v2_pack_ceiling(self, model, prompt_family):
+        value = self.by_model[model]
+        if isinstance(value, Exception):
+            raise value
+        return {
+            "model": model,
+            "prompt_family": prompt_family,
+            "pack_ceiling_input_estimate": value,
+        }
+
+
+def test_pack_ceilings_keep_only_models_the_worker_states_a_limit_for():
+    from citypods.compute.llm import dispatch_v2_pack_ceilings
+
+    backend = _PackCeilingBackend(
+        {
+            "google/gemma-4-31b-it": 12_345,
+            "a/none": None,
+            "a/bad": 0,
+            "a/down": LLMBackendError("x"),
+        }
+    )
+    got = dispatch_v2_pack_ceilings(
+        ["google/gemma-4-31b-it", "a/none", "a/bad", "a/down"], "judge", backend=backend
+    )
+    assert got == {"google/gemma-4-31b-it": 12_345}

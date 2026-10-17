@@ -961,7 +961,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
 test("near misses over the calibrated ceiling drain only when nothing else is dispatchable", async () => {
   // 2026-09-25: producer-sized 10,000-token Gemma batches (14,000 at the 1.4 prior) met a learned
   // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400,
-  // filling the claim lookahead while nothing else could run.
+  // filling the claim lookahead while nothing else could run. Since review/55 piece 2 the size gate
+  // uses the lower ADMISSION ratio (p75 x 1.05), so that exact case is simply admitted; the near
+  // miss below is a route whose traffic measures 1.45 (admission 1.52 -> 15,225 > 14,400).
   const coordinatorWith = (tolerance) => {
     const { coordinator, sql } = makeCoordinator({
       MAX_BUNDLE_JOBS: "4",
@@ -983,7 +985,7 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
       `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
        VALUES (?, 0, 16, ?, 0)`,
       "gemma-ai-studio:google/gemma-4-31b-it:tags",
-      JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+      JSON.stringify({ r: Array(16).fill(1.45), o: Array(16).fill(200) })
     );
     return coordinator;
   };
@@ -1089,6 +1091,44 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   assert.deepEqual(plan.jobs, []);
   assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 1);
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
+});
+
+test("packingCeiling is the smallest free route's limit over the p95 packing ratio", async () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-roomy"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-roomy": {
+        provider: "sambanova",
+        upstream_model: "gemma-4-31b-it",
+        rpm: 20,
+        rpd: 20,
+        tpm: 90000,
+        input_token_ratio: 1.2,
+        free: true,
+        input_context_limit: 131072,
+        output_context_limit: 32768,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  // 16 samples at 1.2 -> packing ratio 1.2 x 1.05 = 1.26 on the ceilinged route.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:judge",
+    JSON.stringify({ r: Array(16).fill(1.2), o: Array(16).fill(200) })
+  );
+  const status = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  const ceilinged = status.routes.find((r) => r.route_id === "gemma-ai-studio");
+  const roomy = status.routes.find((r) => r.route_id === "gemma-roomy");
+  assert.equal(ceilinged.input_estimate_limit, Math.floor(10000 / 1.26));
+  assert.ok(roomy.input_estimate_limit > ceilinged.input_estimate_limit);
+  assert.equal(status.pack_ceiling_input_estimate, ceilinged.input_estimate_limit);
+  assert.equal(await coordinator.packingCeiling("no/such-model", "judge"), null);
+  // It only reads: no ledger row is created for a route that has none.
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id='gemma-roomy'")][0].n, 0);
 });
 
 test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {

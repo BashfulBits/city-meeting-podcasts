@@ -40,6 +40,13 @@ export const CALIBRATION_MIN_SAMPLES = 16;
 // TPM multiplier keeps that measured tail within Google's 16k input-token/minute quota.
 export const INPUT_RATIO_HEADROOM = 1.2;
 export const OUTPUT_RESERVE_HEADROOM = 1.25;
+// Two quantiles for two purposes (review/55 piece 2). Reservation and PACKING stay on the safe tail
+// (p95, above); ADMISSION to a route's size gates uses a lower quantile, because a wrong guess costs
+// one cheap refused call (the job then overflows to a sibling and the route learns the refusal)
+// while a wrong rejection strands the job on an idle route.
+export const ADMIT_QUANTILE = 0.75;
+export const ADMIT_HEADROOM = 1.05;
+export const PACK_HEADROOM = 1.05;
 // Guards against a single tiny completion (e.g. "ok") ever producing a near-zero reserve.
 export const MIN_OUTPUT_RESERVE = 64;
 const MIN_RATIO = 0.25;
@@ -92,6 +99,25 @@ export function learnedCeilings(route, now = Date.now(), ttlMs = LEARNED_CEILING
     else acceptedMax = 0;
   }
   return { acceptedMax, rejectedMin };
+}
+
+/**
+ * The largest chars/4 input estimate a packet may carry and still be admissible on this route,
+ * from the route's tightest known size limit (configured ceiling, a learned refusal, the Gemini
+ * per-minute input quota, the context window) divided by the PACKING ratio. Null when the route
+ * states no such limit.
+ */
+export function packingInputLimit(route, packRatio, now = Date.now()) {
+  const limits = [];
+  const ceiling = hardInputCeilingLimit(route);
+  if (Number.isFinite(ceiling)) limits.push(ceiling);
+  const { rejectedMin } = learnedCeilings(route, now);
+  if (rejectedMin > 0) limits.push(rejectedMin - 1);
+  const context = Number(route?.input_context_limit);
+  if (Number.isFinite(context) && context > 0) limits.push(context);
+  if (limits.length === 0) return null;
+  const ratio = Number.isFinite(packRatio) && packRatio > 0 ? packRatio : routeInputTokenRatio(route);
+  return Math.floor(Math.min(...limits) / ratio);
 }
 
 /** A raw chars/4 estimate expressed in the route's own tokenizer units. */
@@ -161,12 +187,27 @@ export function calibrationFor(route, summary) {
     routeInputTokenRatio(route),
     inputRatioP95 == null ? 0 : inputRatioP95 * inputHeadroom
   );
+  // Admission ratio: p75 x a small headroom once enough samples exist, never above the reservation
+  // ratio and, unlike it, not floored by the route prior. Packing ratio: the p95 tail (or the
+  // prior until it exists).
+  const inputRatioP75 =
+    parsed.r.length >= CALIBRATION_MIN_SAMPLES ? percentile(parsed.r, ADMIT_QUANTILE) : null;
+  const admitRatio =
+    inputRatioP75 == null
+      ? inputRatio
+      : Math.min(inputRatio, Math.max(MIN_RATIO, inputRatioP75 * ADMIT_HEADROOM));
+  const packRatio =
+    inputRatioP95 == null
+      ? routeInputTokenRatio(route)
+      : Math.max(MIN_RATIO, inputRatioP95 * PACK_HEADROOM);
   const outputForecast =
     parsed.o.length >= CALIBRATION_MIN_SAMPLES
       ? Math.max(MIN_OUTPUT_RESERVE, Math.ceil(percentile(parsed.o, 0.95) * OUTPUT_RESERVE_HEADROOM))
       : null;
   return {
     inputRatio,
+    admitRatio,
+    packRatio,
     outputForecast,
     inputRatioP95,
     inputRatioSamples: parsed.r.length,
