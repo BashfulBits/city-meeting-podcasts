@@ -5,10 +5,13 @@ import {
   CALIBRATION_WINDOW,
   MIN_OUTPUT_RESERVE,
   calibrationFor,
+  ADMIT_HEADROOM,
   LEARNED_CEILING_TTL_MS,
+  PACK_HEADROOM,
   hardInputCeilingLimit,
   learnedCeilings,
   outputReserveFor,
+  packingInputLimit,
   parseCalibrationSummary,
   recordCalibrationSample,
   routeInputTokenRatio,
@@ -67,6 +70,8 @@ test("calibrationFor keeps the prior until enough samples, then follows the rece
   const few = { r: [1.5, 1.5], o: [100, 100] };
   assert.deepEqual(calibrationFor(route, few), {
     inputRatio: 1.2,
+    admitRatio: 1.2,
+    packRatio: 1.2,
     outputForecast: null,
     inputRatioP95: null,
     inputRatioSamples: 2,
@@ -121,4 +126,48 @@ test("learnedCeilings ignores entries older than the TTL and resolves contradict
       input_rejected_min: 15000, input_rejected_at: now - 10 }, now),
     { acceptedMax: 0, rejectedMin: 15000 }
   );
+});
+
+test("admission uses a lower quantile than reservation and packing, and is not floored by the prior", () => {
+  // Prior 1.4, traffic measuring 1.0-1.2 over 20 samples: p75 = 1.1 (index 14), p95 = 1.15 (index 18).
+  const route = { input_token_ratio: 1.4, provider: "gemini", model: "google/gemma-4-31b-it" };
+  const r = [...Array(10).fill(1.0), ...Array(5).fill(1.1), ...Array(4).fill(1.15), 1.2];
+  const result = calibrationFor(route, { r, o: Array(20).fill(100) });
+  // Reservation keeps the safe tail and the prior floor (unchanged by piece 2)...
+  assert.equal(result.inputRatio, 1.4);
+  // ...admission follows p75 x a small headroom, below the prior and the reservation ratio...
+  assert.ok(Math.abs(result.admitRatio - 1.1 * ADMIT_HEADROOM) < 1e-9);
+  assert.ok(result.admitRatio < result.inputRatio);
+  // ...and packing targets the p95 tail with its own headroom, not the prior.
+  assert.ok(Math.abs(result.packRatio - 1.15 * PACK_HEADROOM) < 1e-9);
+  // Until enough samples exist all three are the prior.
+  const few = calibrationFor(route, { r: [1.0, 1.0], o: [100, 100] });
+  assert.deepEqual([few.inputRatio, few.admitRatio, few.packRatio], [1.4, 1.4, 1.4]);
+});
+
+test("packingInputLimit is the tightest known size limit over the packing ratio", () => {
+  const now = 1_000_000;
+  // Configured ceiling 14,400 at pack ratio 1.2 -> 12,000 chars/4 tokens.
+  assert.equal(packingInputLimit({ hard_input_ceiling: 14400 }, 1.2, now), 12000);
+  // A learned refusal at 9,000 provider tokens tightens it (one below the refusal).
+  assert.equal(
+    packingInputLimit(
+      { hard_input_ceiling: 14400, input_rejected_min: 9000, input_rejected_at: now - 5 },
+      1.0,
+      now
+    ),
+    8999
+  );
+  // A route that has served more than its configured ceiling is not limited to it.
+  assert.equal(
+    packingInputLimit(
+      { hard_input_ceiling: 10000, input_accepted_max: 13000, input_accepted_at: now - 5 },
+      1.0,
+      now
+    ),
+    13000
+  );
+  // A context window bounds a route with no configured ceiling; no limits at all -> null.
+  assert.equal(packingInputLimit({ input_context_limit: 100000 }, 1.25, now), 80000);
+  assert.equal(packingInputLimit({}, 1.2, now), null);
 });

@@ -1478,3 +1478,26 @@ def test_reads_still_running_at_the_budget_leave_their_markers_pending(monkeypat
     assert stats.counts["prefetch_timed_out"] >= 1
     assert all(_all_pending(ep) for ep in episodes)
     assert stats.counts["still_pending"] >= len(episodes)
+
+
+# ---- packet ceilings follow what the Worker will admit (review/55 piece 2) --------------------
+
+
+def test_sibling_packets_track_the_workers_packing_ceiling():
+    default = runner.SIBLING_CEILINGS[GEMMA_31B][0]
+    # No Worker figure: the configured safe default.
+    assert runner._sibling_backend(GEMMA_31B).max_total_tokens == default
+    assert runner._sibling_backend(GEMMA_31B, {}).max_total_tokens == default
+    # A tighter Worker ceiling shrinks packets (90% of it)...
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_total_tokens == 5_400
+    # ...a roomier one grows them, but never past 1.5x the default...
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 20_000}).max_total_tokens == int(
+        default * runner.PACK_CEILING_GROWTH
+    )
+    # ...and never above the safe share of what the Worker admits, however small.
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 500}).max_total_tokens == 450
+    # The item cap is untouched.
+    assert (
+        runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_items
+        == (runner.SIBLING_CEILINGS[GEMMA_31B][1])
+    )

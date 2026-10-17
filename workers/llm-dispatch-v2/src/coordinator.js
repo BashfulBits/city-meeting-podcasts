@@ -52,6 +52,7 @@ import {
   LEARNED_CEILING_TTL_MS,
   learnedCeilings,
   outputReserveFor,
+  packingInputLimit,
   parseCalibrationSummary,
   recordCalibrationSample,
   routeInputTokenRatio,
@@ -1628,8 +1629,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         learnedCeilings(route, now).acceptedMax
       );
       if (!Number.isFinite(limit)) return false;
-      const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
-      if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
+      // The ADMISSION ratio, like the claim's size gates (pacing.js): the structural check must
+      // never fail a job those gates would let through.
+      const { admitRatio } = this._calibration(route, job.prompt_family, calibrationCache);
+      if (scaledInputTokens(job.input_token_estimate, admitRatio) <= limit) return false;
     }
     return true;
   }
@@ -4491,6 +4494,54 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * this route and prompt family, so a producer can size jobs to the Worker's own ceiling check.
    * One estimates row read; writes nothing. Null for a route the catalog does not know.
    */
+  /**
+   * Read-only producer preflight for PACKING (`GET /v2/calibration?model=`): the largest chars/4
+   * input estimate a packet may carry and still be admissible on the SMALLEST free route of the
+   * model, from each route's tightest size limit (configured ceiling, learned refusal, context
+   * window) over its p95 packing ratio. Null `pack_ceiling_input_estimate` when no route states a
+   * limit. Selects only (no ledger row is created for a route that has none).
+   */
+  async packingCeiling(model, promptFamily) {
+    const limits = this._dispatchLimits();
+    const canonical = canonicalModelName(String(model || ""), limits);
+    const routeIds = limits?.model_routes_map?.[canonical];
+    if (!Array.isArray(routeIds) || routeIds.length === 0) return null;
+    const sql = this._getSql();
+    const now = Date.now();
+    const family = String(promptFamily || "");
+    const routes = [];
+    let ceiling = null;
+    for (const routeId of routeIds) {
+      const stored = limits.routes_by_id?.[routeId];
+      // Only an explicit zero daily quota pauses a route; null means unspecified (unlimited).
+      if (!stored || !stored.free || (stored.rpd != null && Number(stored.rpd) === 0)) continue;
+      const row = [...sql.exec(
+        `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
+                prompt_cap_estimate
+           FROM routes WHERE route_id = ?`,
+        routeId
+      )][0] || {};
+      const route = { ...stored, ...row, route_id: routeId, model: canonical };
+      const calibration = this._calibration(route, family);
+      let limit = packingInputLimit(route, calibration.packRatio, now);
+      // A learned free-prompt cap is a RAW estimate limit (admission compares it before scaling).
+      const promptCap = Number(route.prompt_cap_estimate) || 0;
+      if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
+      routes.push({
+        route_id: routeId,
+        pack_ratio: calibration.packRatio,
+        input_estimate_limit: limit,
+      });
+      if (limit != null) ceiling = ceiling == null ? limit : Math.min(ceiling, limit);
+    }
+    return {
+      model: canonical,
+      prompt_family: family,
+      pack_ceiling_input_estimate: ceiling,
+      routes,
+    };
+  }
+
   async calibrationStatus(routeId, promptFamily) {
     const stored = this._dispatchLimits()?.routes_by_id?.[routeId];
     if (!stored) return null;
@@ -4505,6 +4556,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       input_ratio_p95: effective.inputRatioP95,
       input_ratio_samples: effective.inputRatioSamples,
       input_ratio_effective: effective.inputRatio,
+      input_ratio_admit: effective.admitRatio,
+      input_ratio_pack: effective.packRatio,
       hard_input_ceiling: Number(route.hard_input_ceiling) || null,
       hard_input_ceiling_tolerance: Number(route.hard_input_ceiling_tolerance) || 0,
     };
@@ -4895,7 +4948,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const providerLedger = route.provider
           ? getMergedProvider(route.provider, providerCfg)
           : null;
-        const { inputRatio, outputForecast } = this._calibration(
+        const { inputRatio, admitRatio, outputForecast } = this._calibration(
           route,
           job.prompt_family,
           calibrationCache
@@ -4903,6 +4956,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return {
           estimateFloor,
           inputRatio,
+          admitRatio,
           outputForecast,
           callDurationCeilingMs,
           providerConfig: providerCfg,
@@ -5209,7 +5263,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         let workingRoute = getMergedRoute(route);
         const providerCfg = dispatchLimits.providers?.[route.provider];
         for (const job of routeJobs) {
-          const { inputRatio, outputForecast } = this._calibration(
+          const { inputRatio, admitRatio, outputForecast } = this._calibration(
             route,
             job.prompt_family,
             calibrationCache
@@ -5220,6 +5274,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const waitResult = computeRouteLaneWait(workingRoute, job, laneTime, now, {
             estimateFloor,
             inputRatio,
+            admitRatio,
             outputForecast,
             providerConfig: providerCfg,
             providerLedger,

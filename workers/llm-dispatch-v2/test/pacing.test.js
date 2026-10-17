@@ -440,3 +440,17 @@ test("a learned refusal skips the route, the drain pass re-tests it, and a learn
   const old = { ...base, input_rejected_min: 8000, input_rejected_at: now - 8 * 24 * 3600 * 1000 };
   assert.notEqual(at(old, 9000), null);
 });
+
+test("the size gates use the admission ratio while the reservation keeps the conservative one", () => {
+  const now = Date.now();
+  const route = { provider: "gemini", rpm: 30, tpm: 14400, hard_input_ceiling: 14400, input_token_ratio: 1.4 };
+  const job = { input_token_estimate: 11_000, max_output_token_estimate: 500 };
+  // Conservatively 11,000 x 1.4 = 15,400 > 14,400: refused by the ceiling.
+  assert.equal(earliestSafeStart(route, job, now, now, { inputRatio: 1.4 }), null);
+  // At the admission ratio 1.15 it is 12,650: admitted, but still reserved at the conservative ratio.
+  const start = earliestSafeStart(route, job, now, now, { inputRatio: 1.4, admitRatio: 1.15 });
+  assert.notEqual(start, null);
+  assert.equal(start.reservation, 15_400);
+  // The admission ratio can never exceed the conservative one.
+  assert.equal(earliestSafeStart(route, job, now, now, { inputRatio: 1.4, admitRatio: 2.0 }), null);
+});

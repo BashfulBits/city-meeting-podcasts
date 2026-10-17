@@ -59,13 +59,22 @@ both numbers (0 = none/expired). Rejections are deliberately not used for the te
 from a statistical ratio. Today only `free_prompt_cap` writes anything like it
 (`routes.prompt_cap_estimate`, never decays, rejected side only).
 
-### 2. Two percentiles for two purposes — *planned*
+### 2. Two percentiles for two purposes — *shipped in the third PR*
 
-- **Packing** uses a safe tail (p95-p99). The Worker publishes a per-model packing ceiling
-  (smallest route limit minus output reserve, divided by the ratio) through `/v2/calibration`;
-  Python reads it at run start instead of using hard-coded packet ceilings.
-- **Admission** uses a lower quantile (about p75): a wrong guess costs one cheap rejected call
-  (pieces 3/4 make that safe), a wrong rejection strands the job on an idle route.
+- **Packing** uses a safe tail: the p95 ratio x 1.05 (`packRatio`). `GET /v2/calibration?model=&prompt_family=`
+  returns `pack_ceiling_input_estimate`: the smallest free route's tightest size limit (configured
+  ceiling, a learned refusal, the context window) over that ratio, with the per-route detail. The
+  judge reads it at run start and sizes sibling packets to 90% of it, up to 1.5x
+  the configured ceiling (which stays the safe default when the Worker is unreadable).
+- **Admission** uses a lower quantile: p75 x 1.05 (`admitRatio`), not floored by the route prior
+  once 16 samples exist, never above the reservation ratio. It drives only the size gates (configured
+  ceiling, learned bounds, the Gemini per-minute input quota, and the structural "exceeds every
+  route" check). Reservation, the rolling input window and TPM accounting keep the conservative
+  ratio. A wrong guess costs one cheap refused call (pieces 3/4 make that safe); a wrong rejection
+  strands the job on an idle route.
+- Correction to the 2026-10-16 diagnosis: Gemini-provider reservations count input only, so the
+  AI Studio limit was the size gate (estimate x 1.4 against a 14,400 ceiling, i.e. 10,285 raw), and
+  the producer's 10,000 target excluded the system prompt and framing.
 
 ### 1. Estimator — *planned*
 
