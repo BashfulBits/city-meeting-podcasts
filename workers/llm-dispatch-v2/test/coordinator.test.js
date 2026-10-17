@@ -1527,7 +1527,10 @@ test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy 
   assert.equal(row.throttle_streak, 0, "upstream_capacity must not increase throttle_streak");
   assert.equal(row.buffer_seconds, 0, "upstream_capacity must not add buffer_seconds");
   assert.equal(row.upstream_capacity_streak, 1);
-  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least 15s");
+  assert.ok(
+    row.blocked_until >= now + 60_000 && row.blocked_until <= now + 90_000,
+    "saturated cooldown must use the 60s base"
+  );
   assert.equal(row.last_failure_class, "upstream_capacity");
 });
 
@@ -1667,7 +1670,10 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
 
   const row = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
   assert.equal(row.upstream_capacity_streak, 1);
-  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least the base 15s, same as authorizeRetry's");
+  assert.ok(
+    row.blocked_until >= now + 60_000 && row.blocked_until <= now + 90_000,
+    "saturated cooldown must use the 60s base"
+  );
 });
 
 test("an empty structured reply requeues the job, stands the route down and is counted (review/48 R10)", async () => {
@@ -3529,4 +3535,38 @@ test("concurrent guarded snapshots share one computation, and a failed one is no
   let recovered = 0;
   coordinator.detailedStats = async (now) => ({ now, marker: ++recovered });
   assert.equal((await coordinator.detailedStatsGuarded(t0 + 400_001, 30)).marker, 1);
+});
+
+test("a declined upstream_capacity 429 advances the cooldown ladder once, not once per handler", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-once', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-once/request.json', ?, ?
+    )`,
+    now, now
+  );
+  await coordinator.authorizeRetry("j-once", "ltok", "att-1", now, null, "upstream_capacity");
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-once",
+      lease_token: "ltok",
+      attempt_id: "att-1",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "terminal_error",
+      provider_status_code: 429,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+  const row = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.ok(row.blocked_until <= now + 90_000, "still the first rung");
 });

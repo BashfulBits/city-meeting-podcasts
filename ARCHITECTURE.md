@@ -995,7 +995,10 @@ free-tier pool exhaustion with "free tier can only be used in opencode") apply a
 (`UPSTREAM_CAPACITY_COOLDOWN_SECONDS`) and immediately retry on an available sibling route within the
 same call without deferring the job, while daily quota exhaustion (`own_rpd`) blocks the route until the
 provider's zoned midnight, and Mistral zero-provisioned limits (`x-ratelimit-limit-req-minute: 0`) trigger
-a `payment_required` day-to-month backoff ladder. V2 also unwraps Gemini's one-element error arrays
+a `payment_required` day-to-month backoff ladder. In the V2 Worker a route whose provider keeps
+answering `upstream_capacity` (its pool is full) doubles its cooldown from 60 s up to one probe a day
+(`UPSTREAM_CAPACITY_SATURATED_*`); its first success resets the ladder, while gateway limits and
+unusable replies keep the 15 s to 5 minute ladder. V2 also unwraps Gemini's one-element error arrays
 and structured retry delays in memory; actionable provider 503 overloads and 504 timeouts use the
 upstream-capacity budget, while explicit input/context-limit failures briefly quarantine the route
 and requeue once for sibling-route selection. A 410 Gone (retired model) is `route_unavailable`: the

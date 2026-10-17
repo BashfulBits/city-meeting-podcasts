@@ -104,6 +104,11 @@ MAX_429_RETRIES: 1
 MAX_429_BACKOFF_SECONDS: 60
 UPSTREAM_CAPACITY_COOLDOWN_SECONDS: 15
 UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
+# A route whose provider keeps answering upstream_capacity (its pool is full) doubles its cooldown
+# from 60 s up to one probe per day; its first success resets the ladder. Gateway limits and
+# unusable replies keep the 15 s to 300 s ladder above.
+UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS: 60
+UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS: 86400
 # AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
 # fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.
