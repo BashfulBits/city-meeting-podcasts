@@ -696,6 +696,14 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python
   `RoutingStorage` control-plane prefixes.
 
+  **Input-size rejections** (`route_input_limit`: a provider's "input too long" answer, or one request
+  larger than the whole minute quota, classified from "Limit L, Requested R" with no "Used"): the job
+  records the rejecting route in `jobs.size_excluded_routes` and `routesEligibleFor` skips that route
+  for that job only, so it requeues straight onto a sibling route of the same model. It spends no
+  transient (5xx) retry and the route is *not* stood down for other jobs (that used to strand the
+  small packets behind one large one). When every route of the model has rejected it, it fails with
+  `terminal_reason: input_too_large` and the producer re-packs it. See review/55.
+
 As of the maintainer's 2026-10-09 reopening decision, OpenRouter's Gemma 4 31B/26B free routes
 and NVIDIA's Gemma 4 31B route each have a 20-RPD allowance. They are eligible for ordinary dispatch
 and scarce-quota health observation; NVIDIA calls still share the provider's concurrency of three.

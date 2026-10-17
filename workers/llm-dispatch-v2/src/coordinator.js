@@ -27,6 +27,7 @@ import {
   routeFitsContext,
   routeIdsOutsideModelPool,
   routesEligibleFor,
+  sizeExcludedRoutes,
 } from "./routes.js";
 import {
   availableTokenBudget,
@@ -299,6 +300,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "terminal_reason",
     "terminal_catalog_digest",
     "queue_models",
+    "size_excluded_routes",
     "token_reservation",
     "purpose",
     "schema_retry_count",
@@ -906,6 +908,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         reservation_rpd_day_key     TEXT NOT NULL DEFAULT '',
         reservation_tpm_window_start INTEGER NOT NULL DEFAULT 0,
         queue_models                TEXT,
+        size_excluded_routes        TEXT,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -1086,6 +1089,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Before the clustering migration and the trigger replacement below: both create the
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
+    // Routes that rejected this job for size (route_input_limit): a per-job exclusion, so the
+    // requeued job moves to a sibling route without standing the route down for other jobs.
+    this._ensureColumn("jobs", "size_excluded_routes", "TEXT");
     this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
     this._runSchemaInitStep("replace job priority trigger", () => {
       const [trigger] = [...sql.exec(
@@ -1357,6 +1363,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["terminal_reason", "TEXT"],
       ["terminal_catalog_digest", "TEXT"],
       ["queue_models", "TEXT"],
+      ["size_excluded_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
@@ -2603,7 +2610,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  result_key = NULL, terminal_reason = NULL, terminal_catalog_digest = NULL,
                  lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
-                 transient_retry_count = 0, queue_models = ?, created_at = ?, updated_at = ?
+                 transient_retry_count = 0, queue_models = ?, size_excluded_routes = NULL,
+                 created_at = ?, updated_at = ?
                WHERE id = ?`,
               job.request_digest,
               providerIdempotencyKey,
@@ -3806,6 +3814,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const routesByModel = dispatchLimits?.model_routes_map || {};
     const catalog = dispatchLimits?.routes_by_id || {};
 
+    const sizeExcluded = sizeExcludedRoutes(job);
     const models = new Set();
     for (const rawModel of allowedModels) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -3815,6 +3824,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
         const route = catalog[routeId];
         if (!route) return false;
+        // A route that already rejected this job for size can no longer take it, so a model all of
+        // whose routes did is not an index entry for it.
+        if (sizeExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
         return routeFitsContext(route, inputTokens, outputTokens);
       });
@@ -5710,13 +5722,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const isPromptCap = result.failure_class === "free_prompt_cap";
-        const isRouteInputLimit = result.failure_class === "route_input_limit" || isPromptCap;
+        // A provider "input too long" answer is about THIS job's size against THIS route's limit.
+        // It excludes the route for the job (below) and requeues it onto a sibling route of the
+        // same model; it neither stands the route down for other (smaller) jobs nor spends the
+        // transient 5xx budget. The learned per-route ceiling that keeps similar jobs away is
+        // recorded by the route-ceiling tracker, not by quarantining the route.
+        const isSizeRejection = result.failure_class === "route_input_limit";
+        const isRouteInputLimit = isSizeRejection || isPromptCap;
         // The route's model is retired (410 -- classify.js rule 8). Not this job's fault, so it
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
-        const blockedUntil = isTransientRouteFailure || isRouteInputLimit
+        const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
+        const sizeExcluded = isSizeRejection
+          ? new Set([...sizeExcludedRoutes(job), job.lease_route_id].filter(Boolean))
+          : null;
+        const nextSizeExcludedRoutes = sizeExcluded
+          ? JSON.stringify([...sizeExcluded])
+          : (job.size_excluded_routes ?? null);
+        // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
+        // producer (terminal_reason input_too_large), which re-packs it smaller.
+        const sizeRoutesLeft = isSizeRejection
+          ? routesEligibleFor(
+              { ...job, size_excluded_routes: nextSizeExcludedRoutes },
+              this._dispatchLimits(),
+              this._dispatchLimits()
+            ).length
+          : 0;
         // An upstream/gateway failure is by definition not this job's fault and recurs on its own
         // schedule, so it gets its own, larger budget rather than sharing the single 5xx slot.
         // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
@@ -5731,10 +5764,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetry5xx =
           isTransientRouteFailure &&
           job.transient_retry_count < _retryCeiling(this._max5xxRetries());
-        const shouldRetryRouteInputLimit =
-          isRouteInputLimit &&
-          job.transient_retry_count < _retryCeiling(isPromptCap
-            ? this._maxUpstreamCapacityRetries() : this._max5xxRetries());
+        const shouldRetryRouteInputLimit = isSizeRejection
+          ? sizeRoutesLeft > 0
+          : isPromptCap &&
+            job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
@@ -5752,14 +5785,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
           job.transient_retry_count < (isSingleModelJob
             ? this._maxSingleModelOutputBudgetRetries()
             : _retryCeiling(this._maxUpstreamCapacityRetries()));
-        const shouldRequeue =
-          shouldRetryOutputBudget ||
-          shouldRetryRouteUnavailable ||
-          shouldRetry5xx ||
-          shouldRetryRouteInputLimit ||
-          isPaymentRequired ||
-          isRateLimitTerminal ||
-          isUpstreamRetryable;
+        // A classified size rejection is decided only by whether a sibling route is left: it may
+        // arrive as a retryable 4xx/5xx outcome, and the transient predicates must not requeue a
+        // job with no route left (or spend their budget on one that has).
+        const shouldRequeue = isSizeRejection
+          ? shouldRetryRouteInputLimit
+          : shouldRetryOutputBudget ||
+            shouldRetryRouteUnavailable ||
+            shouldRetry5xx ||
+            shouldRetryRouteInputLimit ||
+            isPaymentRequired ||
+            isRateLimitTerminal ||
+            isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -5828,14 +5865,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
           // with no index row and holding a stale lease -- claimDispatchWindow can never select it
           // again, stranding it silently.
-          const queueModels = this._modelsToIndex(job);
+          const queueModels = this._modelsToIndex({
+            ...job,
+            size_excluded_routes: nextSizeExcludedRoutes,
+          });
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
-                             queue_models=?, attempts = MAX(0, attempts - ?), updated_at=?
+                             queue_models=?, size_excluded_routes=?,
+                             attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
-            nextTransientRetryCount,
+            // A size rejection is not a transient failure: it leaves the 5xx budget untouched.
+            isSizeRejection ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
+            nextSizeExcludedRoutes,
             uncountedAttempt,
             now,
             result.job_id
@@ -5852,10 +5895,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
         } else {
           sql.exec(
-            "UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=? WHERE id=?",
+            `UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=?,
+                             terminal_reason = COALESCE(?, terminal_reason)
+             WHERE id=?`,
             newState,
             uncountedAttempt,
             now,
+            isSizeRejection && newState === "failed" ? "input_too_large" : null,
             result.job_id
           );
         }
@@ -6066,12 +6112,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               cap, cap, result.provider_status_code, result.failure_class, job.lease_route_id
             );
           } else if (isRouteInputLimit) {
-            // Quarantine a route that cannot serve this input shape, letting the requeued job
-            // select a longer-context sibling without a durable per-job exclusion list.
+            // The route stays selectable for every other job: this job carries its own exclusion
+            // (jobs.size_excluded_routes), so a rejection of one large packet no longer stands the
+            // route down for the small ones behind it.
             sql.exec(
-              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
-                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
-              blockedUntil,
+              "UPDATE routes SET last_provider_status = ?, last_failure_class = ? " +
+                "WHERE route_id = ?",
               result.provider_status_code ?? null,
               result.failure_class,
               job.lease_route_id
