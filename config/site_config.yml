@@ -307,11 +307,12 @@ llm_lanes:
     # qualified to be swapped into slot B by a league (review/49 P6) or by hand.
     models:
       - "google/gemma-4-31b-it"
-      - "google/gemma-4-26b-a4b-it"
       - "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    # Gemma 4 26B was removed: under 40% of its judge replies parsed (2026-10-17; it loops to the
+    # output limit on mixed-kind packets, see PR #2476). Re-add it only after a fix is verified.
     eligible_models: ["qwen/qwen3.8-27b"]
     slots:
-      google: ["google/gemma-4-31b-it", "google/gemma-4-26b-a4b-it"]
+      google: ["google/gemma-4-31b-it"]
       non_google: ["openrouter/nvidia/nemotron-3-super-120b-a12b:free", "qwen/qwen3.8-27b"]
     dispatch_shape: per_model
     max_dispatches_per_run: 166

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +44,21 @@ from citypods.storage.base import StorageReadUnavailable
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jev" / "answers_2026_09_30.json"
 LANES = load_lanes()
+# The pool mechanics (headroom, per-model room, no switching) are tested against a two-model Google
+# slot whatever the repository config dispatches; Gemma 4 26B was removed from it on 2026-10-17.
+_SIBLING = LANES["judge:sibling"]
+LANES["judge:sibling"] = dataclasses.replace(
+    _SIBLING,
+    models=(
+        "google/gemma-4-31b-it",
+        "google/gemma-4-26b-a4b-it",
+        *[m for m in _SIBLING.models if m != "google/gemma-4-31b-it"],
+    ),
+    slots=tuple(
+        (name, (*members, "google/gemma-4-26b-a4b-it") if name == "google" else members)
+        for name, members in _SIBLING.slots
+    ),
+)
 FAMILIES = load_families()
 GEMINI = "gemini/gemini-3.1-flash-lite"
 
