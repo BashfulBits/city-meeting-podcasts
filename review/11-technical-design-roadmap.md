@@ -1872,6 +1872,9 @@ manual-only sanitized error-body diagnostics follow-up precedes a repeat at the 
 manual artifact may include up to 4 KiB of HTTP error response text after redacting the active
 credential and generated probe prompt; scheduled artifacts remain body-free. This does not widen
 route/dimension authority or enable runtime updates.
+Since 2026-10-17 the dispatch Worker also *learns* each route's accepted and refused input sizes
+from production traffic ([review/55](55-adaptive-input-token-admission.md)); any probe-based
+maintenance designed under #2264 should treat those learned values as the primary evidence.
 
 The former automatic runtime request-ceiling design is now Deferred under
 [review/54](54-provider-limit-characterization.md) and [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
