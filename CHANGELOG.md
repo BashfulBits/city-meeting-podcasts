@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Input-ratio estimator pooled across routes, with a longer window and no prior floor.**
+  Observations are pooled per (tokenizer family, prompt family) so every route serving a model
+  shares one ring of 128 samples, not 32 per route. Percentiles are used from 64 samples; from 16
+  to 63 they are blended with the route prior, and from 64 the prior is a seed, not a floor
+  (reservation = max(p95 x headroom, p99); admission p75; packing p95). Output reserve gets the
+  same treatment. Review/55 piece 1.
+
 - **Admission and packing use different percentiles.** The size gates (configured ceiling, learned
   bounds, Gemini minute quota, structural check) now use an admission ratio, p75 x 1.05 and no
   longer floored by the route prior; reservation and TPM accounting keep the conservative ratio.
