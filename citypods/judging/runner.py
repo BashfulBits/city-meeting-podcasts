@@ -249,14 +249,67 @@ _PREFETCH_WORKERS = 8
 _PREFETCH_BUDGET_SECONDS = 600.0
 
 
+def _read_batch(
+    recipes: Sequence[str],
+    ctx: JudgingContext,
+    deadline: float,
+    records: dict[str, Any],
+    stats: JudgingStats,
+) -> bool:
+    """Read ``recipes`` in parallel into ``records``; True when storage looks down.
+
+    Stops as soon as ``_MAX_UNREADABLE_STREAK`` reads in a row fail with nothing read in between
+    (a store that is down fails every read, each after its own deadline). Reads still running at
+    ``deadline`` are stored as ``_UNREADABLE``; reads cancelled by a trip are left out."""
+    executor = ThreadPoolExecutor(max_workers=min(_PREFETCH_WORKERS, len(recipes)))
+    futures = {executor.submit(ctx.look_up, recipe): recipe for recipe in recipes}
+    pending = set(futures)
+    streak = 0
+    tripped = False
+    started = _monotonic()
+    try:
+        while pending and not tripped and (remaining := deadline - _monotonic()) > 0:
+            done, pending = wait(pending, timeout=min(remaining, 30.0), return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    records[futures[future]] = future.result()
+                    streak = 0
+                except Exception:  # noqa: BLE001 -- retried later, where a real error surfaces
+                    stats.counts["prefetch_failed"] += 1
+                    streak += 1
+                    tripped = tripped or streak >= _MAX_UNREADABLE_STREAK
+            if done and len(records) % 500 < len(done):
+                print(
+                    f"[judge] read {len(records)}/{len(futures)} pending records "
+                    f"in {_monotonic() - started:.0f}s "
+                    f"({stats.counts['prefetch_failed']} unavailable)",
+                    flush=True,
+                )
+    finally:
+        for future in pending:
+            future.cancel()
+            if not tripped:
+                records[futures[future]] = _UNREADABLE
+        executor.shutdown(wait=False, cancel_futures=True)
+    if pending and not tripped:
+        stats.counts["prefetch_timed_out"] += len(pending)
+        print(
+            f"[judge] record reads still running at the budget: {len(pending)} left pending "
+            "for a later pass",
+            flush=True,
+        )
+    return tripped
+
+
 def _prefetch_records(
     subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats
 ) -> dict[str, Any]:
     """Records for every pending packet of ``subjects``, read in parallel within a time budget.
 
-    Holds only records that were read (a result, a handle, or ``None`` for a missing one) and
-    ``_UNREADABLE`` for reads still unfinished at the budget. A read that failed is left out so the
-    sequential path retries it under the outage breaker."""
+    Holds records that were read (a result, a handle, or ``None`` for a missing one) and
+    ``_UNREADABLE`` for those that could not be. When consecutive reads fail the store is treated
+    as down: the pass waits (bounded, ``_wait_for_storage``) for it to come back and retries the
+    rest once in parallel; if it does not come back the rest keep their markers this pass."""
     recipes = list(
         dict.fromkeys(
             str(marker.get("recipe_hash") or "")
@@ -267,43 +320,22 @@ def _prefetch_records(
     )
     if len(recipes) < 2:
         return {}
-    started = _monotonic()
-    deadline = started + _PREFETCH_BUDGET_SECONDS
-    records: dict[str, Any] = {}
-    failed = 0
-    executor = ThreadPoolExecutor(max_workers=min(_PREFETCH_WORKERS, len(recipes)))
-    futures = {executor.submit(ctx.look_up, recipe): recipe for recipe in recipes}
-    pending = set(futures)
-    try:
-        while pending and (remaining := deadline - _monotonic()) > 0:
-            done, pending = wait(pending, timeout=min(remaining, 30.0), return_when=FIRST_COMPLETED)
-            for future in done:
-                try:
-                    records[futures[future]] = future.result()
-                except StorageReadUnavailable:
-                    failed += 1
-                except Exception:  # noqa: BLE001 -- retried sequentially, where it surfaces
-                    failed += 1
-            if done and len(records) % 500 < len(done):
-                print(
-                    f"[judge] read {len(records)}/{len(recipes)} pending records "
-                    f"in {_monotonic() - started:.0f}s ({failed} unavailable)",
-                    flush=True,
-                )
-    finally:
-        for future in pending:
-            future.cancel()
-            records[futures[future]] = _UNREADABLE
-        executor.shutdown(wait=False, cancel_futures=True)
     stats.counts["prefetch_records"] = len(recipes)
-    stats.counts["prefetch_failed"] = failed
-    if pending:
-        stats.counts["prefetch_timed_out"] = len(pending)
-        print(
-            f"[judge] record reads still running after {_PREFETCH_BUDGET_SECONDS:.0f}s: "
-            f"{len(pending)} left pending for a later pass",
-            flush=True,
-        )
+    records: dict[str, Any] = {}
+    deadline = _monotonic() + _PREFETCH_BUDGET_SECONDS
+    for attempt in range(2):
+        todo = [recipe for recipe in recipes if recipe not in records]
+        if not todo or not _read_batch(todo, ctx, deadline, records, stats):
+            break
+        recovered = _wait_for_storage(ctx, todo[0], stats) if attempt == 0 else _UNREADABLE
+        if recovered is _UNREADABLE:
+            stats.lookup_gave_up = True
+            break
+        records[todo[0]] = recovered
+    unread = [recipe for recipe in recipes if recipe not in records]
+    for recipe in unread:
+        records[recipe] = _UNREADABLE
+    stats.counts["lookup_unavailable"] += len(unread)
     return records
 
 

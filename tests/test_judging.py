@@ -1416,22 +1416,46 @@ def test_pending_records_are_read_concurrently_and_collected():
     assert stats.counts["judgments_appended"] >= 1
 
 
-def test_a_failed_prefetch_read_is_retried_on_the_sequential_path():
-    dispatch, episodes = _pending_episodes(3)
+def test_a_blip_during_the_prefetch_is_waited_out_and_the_rest_retried(monkeypatch):
+    dispatch, episodes = _pending_episodes(4)
     dispatch.answer(anchor_p=0.9)
-    seen: dict[str, int] = {}
+    clock = _FakeClock(monkeypatch)
+    calls = {"n": 0}
 
     def look_up(recipe):
-        seen[recipe] = seen.get(recipe, 0) + 1
-        if seen[recipe] == 1:  # the parallel read fails, the sequential retry succeeds
+        calls["n"] += 1
+        if calls["n"] <= runner._MAX_UNREADABLE_STREAK + 1:  # the trip, then one failed probe
             raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
         return dispatch.records.get(recipe)
 
     ctx = _ctx(dispatch)
     ctx.look_up = look_up
     stats = runner.run(episodes, ctx)
-    assert stats.counts["prefetch_failed"] >= 2
-    assert stats.counts["judgments_appended"] >= 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["prefetch_failed"] >= runner._MAX_UNREADABLE_STREAK
+    assert stats.counts["lookup_recovered"] == 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["judgments_appended"] >= 1
+    # Reads already in flight when it tripped may absorb the extra failure, so one or two probes.
+    assert runner._RECOVERY_PROBE_SECONDS <= clock.now <= 2 * runner._RECOVERY_PROBE_SECONDS
+
+
+def test_a_prefetch_during_a_full_outage_gives_up_after_the_recovery_wait(monkeypatch):
+    dispatch, episodes = _pending_episodes(4)
+    clock = _FakeClock(monkeypatch)
+    calls = []
+
+    def look_up(recipe):
+        calls.append(recipe)
+        raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("down"))
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)  # does not raise
+    # A few failed reads trip it, the bounded wait probes, and the rest are never read one by one.
+    probes = int(runner._RECOVERY_WAIT_SECONDS / runner._RECOVERY_PROBE_SECONDS)
+    assert len(calls) <= runner._PREFETCH_WORKERS + probes + runner._MAX_UNREADABLE_STREAK
+    assert clock.now == runner._RECOVERY_WAIT_SECONDS
+    assert stats.counts["lookup_unavailable"] >= 2 and stats.counts["judgments_appended"] == 0
+    assert all(_all_pending(ep) for ep in episodes)
 
 
 def test_reads_still_running_at_the_budget_leave_their_markers_pending(monkeypatch):
@@ -1453,4 +1477,4 @@ def test_reads_still_running_at_the_budget_leave_their_markers_pending(monkeypat
         release.set()
     assert stats.counts["prefetch_timed_out"] >= 1
     assert all(_all_pending(ep) for ep in episodes)
-    assert stats.counts["outstanding:judge:anchor"] >= 0
+    assert stats.counts["still_pending"] >= len(episodes)
