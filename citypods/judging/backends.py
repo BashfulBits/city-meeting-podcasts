@@ -237,17 +237,7 @@ class JevBackend:
 class ChatJudgeBackend:
     role = "sibling"
 
-    def __init__(
-        self,
-        *,
-        max_total_tokens: int,
-        max_items: int,
-        output_reservation: int = 2048,
-        output_cap: int | None = None,
-    ):
-        """``output_cap`` sends that many output tokens instead of the route's own limit. A model
-        that can fall into a repetition loop (Gemma 4 26B) then stops in seconds, not at 32,768."""
-        self.output_cap = output_cap
+    def __init__(self, *, max_total_tokens: int, max_items: int, output_reservation: int = 2048):
         self.max_total_tokens = max_total_tokens
         self.max_question_tokens = max_total_tokens
         self.max_items = max_items
@@ -282,11 +272,8 @@ class ChatJudgeBackend:
                 ],
                 "structured_output": JUDGE_CONTRACT,
                 "llm_policy": _policy(packet.purpose, packet.judge_model),
-                **(
-                    {"max_tokens": self.output_cap}
-                    if self.output_cap
-                    else {"max_tokens": self.output_reservation, "max_tokens_mode": "route_max"}
-                ),
+                "max_tokens": self.output_reservation,
+                "max_tokens_mode": "route_max",
             },
             recipe_hash=packet.recipe_hash,
         )

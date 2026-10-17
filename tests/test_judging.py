@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +44,21 @@ from citypods.storage.base import StorageReadUnavailable
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jev" / "answers_2026_09_30.json"
 LANES = load_lanes()
+# The pool mechanics (headroom, per-model room, no switching) are tested against a two-model Google
+# slot whatever the repository config dispatches; Gemma 4 26B was removed from it on 2026-10-17.
+_SIBLING = LANES["judge:sibling"]
+LANES["judge:sibling"] = dataclasses.replace(
+    _SIBLING,
+    models=(
+        "google/gemma-4-31b-it",
+        "google/gemma-4-26b-a4b-it",
+        *[m for m in _SIBLING.models if m != "google/gemma-4-31b-it"],
+    ),
+    slots=tuple(
+        (name, (*members, "google/gemma-4-26b-a4b-it") if name == "google" else members)
+        for name, members in _SIBLING.slots
+    ),
+)
 FAMILIES = load_families()
 GEMINI = "gemini/gemini-3.1-flash-lite"
 
@@ -1501,19 +1517,3 @@ def test_sibling_packets_track_the_workers_packing_ceiling():
         runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_items
         == (runner.SIBLING_CEILINGS[GEMMA_31B][1])
     )
-
-
-def test_chat_backend_output_cap_replaces_route_max():
-    from citypods.judging.runner import SIBLING_OUTPUT_CAPS, _sibling_backend
-
-    ensure_contract()
-    subject = Subject("tag", "s1", "ep", None, None, {})
-    item = Item(
-        QuestionSpec("supported", "validate", "x"), "T1", make_evidence("T1", "e"), (subject,)
-    )
-    packet = Packet("judge:sibling", "sibling", "google/gemma-4-26b-a4b-it", (item,))
-    capped = _sibling_backend("google/gemma-4-26b-a4b-it").build(packet).inputs
-    assert capped["max_tokens"] == SIBLING_OUTPUT_CAPS["google/gemma-4-26b-a4b-it"]
-    assert "max_tokens_mode" not in capped
-    open_ended = _sibling_backend("google/gemma-4-31b-it").build(packet).inputs
-    assert open_ended["max_tokens_mode"] == "route_max"
