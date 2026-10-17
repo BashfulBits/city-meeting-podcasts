@@ -530,6 +530,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
         rows_written_today                  INTEGER NOT NULL DEFAULT 0,
         claim_empty_count_today             INTEGER NOT NULL DEFAULT 0,
+        completed_today                     INTEGER NOT NULL DEFAULT 0,
+        failed_today                         INTEGER NOT NULL DEFAULT 0,
+        retried_today                        INTEGER NOT NULL DEFAULT 0,
+        hourly_burndown_json                 TEXT NOT NULL DEFAULT '[]',
         claim_reason_counts_json            TEXT NOT NULL DEFAULT '{}',
         last_claim_at                       INTEGER,
         last_claim_result                   TEXT NOT NULL DEFAULT '',
@@ -647,6 +651,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "queued_job_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "completed_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "failed_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "retried_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "hourly_burndown_json", "TEXT NOT NULL DEFAULT '[]'");
+    this._ensureColumn("scheduler", "catalog_digest", "TEXT");
+    this._ensureColumn("scheduler", "catalog_rescue_cursor", "TEXT");
+    this._ensureColumn("scheduler", "catalog_rescue_complete", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "lease_count_today", "INTEGER NOT NULL DEFAULT 0");
     const addedRowCounter = this._ensureColumn(
       "scheduler",
@@ -1519,6 +1530,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sql.exec(
         `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
          ingress_write_units_today = 0, claim_empty_count_today = 0, lease_count_today = 0,
+         completed_today = 0, failed_today = 0, retried_today = 0,
          rows_written_today = 0, claim_reason_counts_json = '{}' WHERE id = 1`,
         today
       );
@@ -2059,7 +2071,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
          ingress_write_units_today = ingress_write_units_today + ?,
-         queued_job_count = queued_job_count + 1 WHERE id = 1`,
+         queued_job_count = queued_job_count + 1,
+         retried_today = retried_today + 1 WHERE id = 1`,
         writeUnits
       );
       sql.exec(
@@ -2090,10 +2103,40 @@ export class LLMSchedulerDO extends DurableObjectBase {
         `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
                 ingress_write_units_today, queued_job_count, rows_written_today,
                 next_maintenance_alarm_at, last_claim_at, last_claim_result,
-                last_claim_reason, claim_empty_count_today, claim_reason_counts_json
+                last_claim_reason, claim_empty_count_today, claim_reason_counts_json,
+                completed_today, failed_today, retried_today, hourly_burndown_json,
+                catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
            FROM scheduler WHERE id = 1`
       );
       const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+      const reservationConfig = this._ingressPurposeReservations();
+      const reservations = reservationConfig?.purposes || reservationConfig?.reservations || {};
+      const ingressPurposes = [...sql.exec(
+        "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
+        scheduler.utc_day
+      )];
+      const ingressByPurpose = ingressPurposes.map((row) => {
+        const quotaInfo = reservations[row.purpose];
+        const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
+        const perJob = Number(quotaInfo?.write_units_per_job) || 1;
+        const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
+        const ingested = Number(row.jobs_ingested) || 0;
+        const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
+        return {
+          purpose: row.purpose,
+          jobs_ingested: ingested,
+          write_units: Number(row.write_units) || 0,
+          daily_quota: dailyQuota,
+          percent_used: pct,
+        };
+      });
+      let burndown = [];
+      try {
+        const parsed = JSON.parse(scheduler.hourly_burndown_json || "[]");
+        if (Array.isArray(parsed)) burndown = parsed;
+      } catch {
+        // Ignore malformed legacy/manual data rather than fail the lightweight endpoint.
+      }
       const activeBundles = [...sql.exec(
         "SELECT active_call_count, lease_expires_at FROM bundles WHERE state = 'active'"
       )];
@@ -2107,6 +2150,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           active_call_count: activeCalls,
           active_expired: activeBundles.filter((row) => row.lease_expires_at <= now).length,
         },
+        ingress: {
+          enqueue_open: scheduler.rows_written_today < this._enqueueRowStop(),
+          by_purpose: ingressByPurpose,
+        },
+        burndown,
         // Leased jobs per route/provider (bounded by the in-flight caps) and any operator pause.
         in_flight: this._inFlightCounts(now),
         dispatch_pauses: this._activePauses(now),
@@ -2116,6 +2164,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           lease_count_today: scheduler.lease_count_today ?? 0,
           ingress_write_units_today: scheduler.ingress_write_units_today ?? 0,
           jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
+          completed_today: scheduler.completed_today ?? 0,
+          failed_today: scheduler.failed_today ?? 0,
+          retried_today: scheduler.retried_today ?? 0,
           next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
@@ -2125,6 +2176,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           last_reason: scheduler.last_claim_reason || null,
           empty_count_today: scheduler.claim_empty_count_today ?? 0,
           reason_counts_today: claimReasonCounts,
+        },
+        catalog_rescue: {
+          digest: scheduler.catalog_digest ?? null,
+          cursor: scheduler.catalog_rescue_cursor ?? null,
+          complete: scheduler.catalog_rescue_complete === 1,
         },
       };
     });
@@ -4223,6 +4279,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const now = Date.now();
       let settledCount = 0;
       let requeuedCount = 0;
+      let completedCount = 0;
+      let failedCount = 0;
 
       // Success settlements, folded per route and written once (P1): a bundle whose jobs share a
       // route used to rewrite that routes row once per success. Any non-success write to a route
@@ -4504,6 +4562,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", newState, now, result.job_id);
         }
         settledCount += 1;
+        if (newState === "completed") completedCount += 1;
+        if (newState === "failed") failedCount += 1;
 
         // Settle the route's provisional reservation and decay its throttle state on success.
         // Never touch rpm/rpd/tpm-window/full-token-budget bookkeeping here: those were already
@@ -4728,8 +4788,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter
         // note in _initSchema).
         sql.exec(
-          "UPDATE scheduler SET queued_job_count = queued_job_count + ? WHERE id = 1",
+          `UPDATE scheduler SET queued_job_count = queued_job_count + ?,
+           completed_today = completed_today + ?, failed_today = failed_today + ?,
+           retried_today = retried_today + ? WHERE id = 1`,
+          requeuedCount,
+          completedCount,
+          failedCount,
           requeuedCount
+        );
+      } else if (completedCount > 0 || failedCount > 0) {
+        sql.exec(
+          `UPDATE scheduler SET completed_today = completed_today + ?,
+           failed_today = failed_today + ? WHERE id = 1`,
+          completedCount,
+          failedCount
         );
       }
 
@@ -4825,16 +4897,49 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async recountQueuedJobs() {
     const sql = this._getSql();
-    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) return { queued: null, skipped: true };
+    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) {
+      return { queued: null, skipped: true };
+    }
     return this.ctx.storage.transactionSync(() => {
       this._ensureQueuedJobCounter();
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
+      const scheduler = [...sql.exec(
+        `SELECT queued_job_count, jobs_ingested_today, completed_today, failed_today,
+                retried_today, hourly_burndown_json
+           FROM scheduler WHERE id = 1`
+      )][0] || {};
+      const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+      let history = [];
+      try {
+        const parsed = JSON.parse(scheduler.hourly_burndown_json || "[]");
+        if (Array.isArray(parsed)) history = parsed;
+      } catch {
+        history = [];
+      }
+      const point = {
+        timestamp: hour,
+        queued: actual,
+        completed: Number(scheduler.completed_today) || 0,
+        ingested: Number(scheduler.jobs_ingested_today) || 0,
+        failed: Number(scheduler.failed_today) || 0,
+        retried: Number(scheduler.retried_today) || 0,
+      };
+      const latest = history[history.length - 1];
+      let nextHistory = history;
+      if (latest?.timestamp !== hour) {
+        nextHistory = [...history, point].slice(-24);
+      }
+      const historyJson = JSON.stringify(nextHistory);
       sql.exec(
-        "UPDATE scheduler SET queued_job_count = ? WHERE id = 1 AND queued_job_count <> ?",
+        `UPDATE scheduler SET queued_job_count = ?,
+         hourly_burndown_json = ?
+         WHERE id = 1 AND (queued_job_count <> ? OR hourly_burndown_json <> ?)`,
         actual,
-        actual
+        historyJson,
+        actual,
+        historyJson
       );
-      return { queued: actual };
+      return { queued: actual, burndown_sampled: nextHistory !== history };
     });
   }
 

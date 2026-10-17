@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- `/v2/stats` exposes purpose-level ingress usage and the latest 24 hourly queue/throughput
+  snapshots. Purpose usage reads the small `(utc_day, purpose)` primary-key ledger; hourly points
+  live in the scheduler singleton and are written only by hourly maintenance. Completion, failure,
+  and retry totals are maintained in existing scheduler writes, without scanning job history.
+
 - **The stuck-job reconciler can classify every lane, not just chapter-agenda/prelabeler**
   (`scripts/reconcile_stuck_chapter_agenda.py`, `.github/workflows/reconcile-stuck-chapter-agenda.yml`).
   On 2026-09-26, 10 r6-judge handles pinned to `meta-llama/llama-4-maverick` (retired from that
