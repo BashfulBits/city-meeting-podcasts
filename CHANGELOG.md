@@ -15,6 +15,19 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **NVIDIA Nemotron 3.5 Super VL routes and Nemotron 3 aliases.** Configured direct NVIDIA and
+  OpenRouter routes for `nvidia/nemotron-3.5-super-vl-120b-a12b` and
+  `openrouter/nvidia/nemotron-3.5-super-vl:free`, pooling under the canonical 3.5 Super key with
+  inherited limits. Aliased legacy Nemotron 3 Super selectors to the 3.5 pool, upgraded the
+  `judge:sibling` lane slot to 3.5 Super VL, and updated the AI Gateway probe route.
+
+- **Gemma 4 26B is removed from the judge sibling lane.** On 2026-10-17 fewer than 40% of its
+  AI Studio judge replies were usable: it falls into a repetition loop on mixed-kind packets and
+  runs to the 32,768-token limit (a direct replay reproduced it in 2 of 2 replies, and a capped
+  4,096-token reply still failed to parse), holding a key slot up to 12 minutes. It stays eligible
+  (not dispatched) and the Google slot is Gemma 4 31B alone. Packets already queued for 26B
+  still run.
+
 - **More concurrent bundles and a second NVIDIA slot for Gemma.** `MAX_ACTIVE_BUNDLES` goes from
   3 to 5 (the `active_bundle_limit` claim counter rose from 8 to 42 in four hours while slow NVIDIA
   and overflow calls held every slot), NVIDIA's provider concurrency from 3 to 4, and the NVIDIA
