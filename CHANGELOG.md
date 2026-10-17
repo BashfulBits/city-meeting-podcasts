@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge waits out a storage blip.** After three unreadable pending-packet records in a row, the
+  judge pass now probes the same record every 30 seconds (at most 300 seconds per pass) instead of
+  skipping every remaining record. Run 38984100770 lost a whole pass of collection (2,449 of
+  2,452 markers skipped, 27 judgments) to a blip of about five minutes. If storage is still down
+  after the budget, the rest keep their markers and the pass goes on.
+
 - **Judge survives a storage read outage.** A `StorageReadUnavailable` while reading a pending
   packet's record no longer aborts the judge lane (run 38971148564 failed 29 minutes in this way,
   before it could plan or submit). The marker stays, the packet counts as outstanding, and a later
