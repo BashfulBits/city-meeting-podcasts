@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Admission and packing use different percentiles.** The size gates (configured ceiling, learned
+  bounds, Gemini minute quota, structural check) now use an admission ratio, p75 x 1.05 and no
+  longer floored by the route prior; reservation and TPM accounting keep the conservative ratio.
+  `GET /v2/calibration?model=` publishes the largest packet the smallest route of a model will
+  admit (p95 packing ratio) and the judge sizes sibling packets to it. Review/55 piece 2.
+
 - **Routes learn their real input limits from traffic.** Each route now keeps the largest input
   it accepted (from `usage.prompt_tokens`) and the smallest it refused for size, in provider
   tokens, expiring after 7 days. Admission skips a route for jobs at or above its refusal point
