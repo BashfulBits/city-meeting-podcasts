@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge reads pending-packet records in parallel, with a bounded wait.** Collecting about 2,800
+  pending records one at a time took 14 minutes on a healthy store (0.3 s each) and stalled for
+  hours when runner reads to storage hung (2026-10-17). Records are now fetched by 8 workers within
+  a 10-minute budget (unread ones stay pending for a later pass), each read gets a 30 s deadline so
+  a stalled connection fails fast instead of waiting out 60 s socket timeouts and retries, and the
+  pass logs progress and failed or timed-out reads.
+
 - **Judge waits out a storage blip.** After three unreadable pending-packet records in a row, the
   judge pass now probes the same record every 30 seconds (at most 300 seconds per pass) instead of
   skipping every remaining record. Run 38984100770 lost a whole pass of collection (2,449 of
