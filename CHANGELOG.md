@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Size rejections overflow per job, not per route.** A provider "input too long" answer (or one
+  request larger than the whole minute quota) now records the rejecting route on the job
+  (`size_excluded_routes`) and requeues it onto a sibling route of the same model without spending
+  the 5xx retry or standing the route down for other jobs. If every route rejects it, it fails
+  with `input_too_large` for the producer to re-pack. Review/55 piece 4.
+
 - **Judge no longer spends its first 12 minutes re-parsing the site config.** The dirtiness check
   asked `load_families()` for the family map once per candidate episode and each call re-parsed
   the 60 KB site config (25,283 episodes, about 0.06 s each locally, ten-plus minutes on the
