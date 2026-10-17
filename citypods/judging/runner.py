@@ -13,6 +13,7 @@ themselves are never written, in shadow mode or otherwise.
 from __future__ import annotations
 
 import hashlib
+import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -111,6 +112,10 @@ class JudgingStats:
     episodes_planned: set[str] = field(default_factory=set)
     # purpose -> recipes of packets still waiting at the Worker (read while collecting).
     outstanding: dict[str, set[str]] = field(default_factory=dict)
+    # Consecutive unreadable record reads, and whether this pass has stopped trying to read them.
+    lookup_streak: int = 0
+    lookup_gave_up: bool = False
+    lookup_waited: float = 0.0
 
 
 class TextsUnavailable(Exception):
@@ -196,22 +201,62 @@ def _record(packet: Packet, rows, stats: JudgingStats) -> None:
 # A pending packet whose record could not be read this pass (storage outage). Its marker stays and
 # it counts as outstanding, exactly like a packet still waiting at the Worker.
 _UNREADABLE = object()
-# After this many unreadable records in one pass the rest are not tried: a store that is down would
-# otherwise make every one of thousands of markers wait out its own retry budget.
-_MAX_UNREADABLE_LOOKUPS = 3
+# This many unreadable reads in a row means storage itself is down, not one bad object. A down store
+# would make each of thousands of markers wait out its own retry budget, so the pass instead waits
+# for it to recover (probing the same record), for at most _RECOVERY_WAIT_SECONDS in total. If it
+# does not recover in that time the rest are not tried this pass and keep their markers: giving up
+# on the first blip (3 reads, 2026-10-17 run 38984100770) threw away a whole pass of collection.
+_MAX_UNREADABLE_STREAK = 3
+_RECOVERY_WAIT_SECONDS = 300.0
+_RECOVERY_PROBE_SECONDS = 30.0
+_sleep = time.sleep
+_monotonic = time.monotonic
+
+
+def _wait_for_storage(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
+    """Probe ``recipe`` until it reads or the pass's recovery budget is spent.
+
+    The budget is wall-clock time, probes included: a failing read can itself take tens of
+    seconds, so only the time actually spent here counts against ``_RECOVERY_WAIT_SECONDS``."""
+    started = _monotonic()
+    deadline = started + (_RECOVERY_WAIT_SECONDS - stats.lookup_waited)
+    try:
+        while (remaining := deadline - _monotonic()) > 0:
+            _sleep(min(_RECOVERY_PROBE_SECONDS, remaining))
+            try:
+                record = ctx.look_up(recipe)
+            except StorageReadUnavailable:
+                stats.counts["lookup_probe_failed"] += 1
+                continue
+            stats.lookup_streak = 0
+            stats.counts["lookup_recovered"] += 1
+            waited = stats.lookup_waited + _monotonic() - started
+            print(f"[judge] storage readable again after {waited:.0f}s", flush=True)
+            return record
+    finally:
+        stats.lookup_waited += _monotonic() - started
+    stats.lookup_gave_up = True
+    print("[judge] storage still unavailable; skipping record reads for this pass", flush=True)
+    return _UNREADABLE
 
 
 def _look_up(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
     """The packet's record, or ``_UNREADABLE`` when storage is unavailable for it (never raises)."""
-    if stats.counts["lookup_unavailable"] >= _MAX_UNREADABLE_LOOKUPS:
+    if stats.lookup_gave_up:
         stats.counts["lookup_unavailable"] += 1
+        stats.counts["lookup_skipped"] += 1
         return _UNREADABLE
     try:
-        return ctx.look_up(recipe)
+        record = ctx.look_up(recipe)
     except StorageReadUnavailable as exc:
         stats.counts["lookup_unavailable"] += 1
+        stats.lookup_streak += 1
         print(f"[judge] record read unavailable for {exc.key}; keeping its marker", flush=True)
+        if stats.lookup_streak >= _MAX_UNREADABLE_STREAK:
+            return _wait_for_storage(ctx, recipe, stats)
         return _UNREADABLE
+    stats.lookup_streak = 0
+    return record
 
 
 def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats) -> None:

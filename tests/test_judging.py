@@ -1319,18 +1319,62 @@ def test_an_unreadable_record_keeps_its_marker_and_never_aborts_the_pass():
     )
 
 
-def test_lookups_stop_after_a_few_unreadable_records_in_one_pass():
+class _FakeClock:
+    """A clock the runner's sleeps and the (slow, failing) reads advance together."""
+
+    def __init__(self, monkeypatch):
+        self.now = 0.0
+        monkeypatch.setattr(runner, "_monotonic", lambda: self.now)
+        monkeypatch.setattr(runner, "_sleep", self.sleep)
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def test_a_permanent_outage_waits_a_bounded_time_then_skips_the_rest(monkeypatch):
     dispatch = FakeDispatch()
     ep = _episode(llm=[])
     runner.run([ep], _ctx(dispatch))
+    clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
     calls = []
 
     def look_up(recipe):
         calls.append(recipe)
+        clock.now += 40.0  # a failed read waits out its own retries
         raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("down"))
 
     ctx = _ctx(dispatch)
     ctx.look_up = look_up
+    stats = runner.run([ep], ctx)  # does not raise
+    first_reads = runner._MAX_UNREADABLE_STREAK * 40.0
+    # Wall-clock bound: the budget plus at most the one probe that was already running.
+    assert clock.now - first_reads <= runner._RECOVERY_WAIT_SECONDS + 40.0
+    assert stats.lookup_gave_up and stats.counts["lookup_probe_failed"] >= 1
+    assert len(calls) < runner._MAX_UNREADABLE_STREAK + 20
+    assert _all_pending(ep)
+
+
+def test_a_short_outage_is_waited_out_and_the_pass_still_collects(monkeypatch):
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch))
+    dispatch.answer(anchor_p=0.9)
+    clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
+    failures = {"left": runner._MAX_UNREADABLE_STREAK + 2}  # the trip, then two failed probes
+
+    def look_up(recipe):
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
     stats = runner.run([ep], ctx)
-    assert len(calls) <= runner._MAX_UNREADABLE_LOOKUPS
-    assert stats.counts["lookup_unavailable"] >= len(calls)
+    assert stats.counts["lookup_recovered"] == 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["judgments_appended"] >= 1
+    # Two failed probes, then a third that reads: three probe intervals of waiting.
+    assert stats.counts["lookup_probe_failed"] == 2
+    assert clock.now == 3 * runner._RECOVERY_PROBE_SECONDS
