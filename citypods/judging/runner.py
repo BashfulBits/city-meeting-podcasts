@@ -16,6 +16,7 @@ import hashlib
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -240,6 +241,104 @@ def _wait_for_storage(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> 
     return _UNREADABLE
 
 
+# Pending-packet records are independent small reads, so they are fetched concurrently before the
+# sequential collect below. Sequentially, ~2,800 records at ~0.3 s each is 14 minutes on a healthy
+# store and unbounded on a slow one (runner reads stalled 2026-10-17). The whole prefetch is
+# bounded: records not read by then stay pending and are collected on a later pass.
+_PREFETCH_WORKERS = 8
+_PREFETCH_BUDGET_SECONDS = 600.0
+
+
+def _read_batch(
+    recipes: Sequence[str],
+    ctx: JudgingContext,
+    deadline: float,
+    records: dict[str, Any],
+    stats: JudgingStats,
+) -> bool:
+    """Read ``recipes`` in parallel into ``records``; True when storage looks down.
+
+    Stops as soon as ``_MAX_UNREADABLE_STREAK`` reads in a row fail with nothing read in between
+    (a store that is down fails every read, each after its own deadline). Reads still running at
+    ``deadline`` are stored as ``_UNREADABLE``; reads cancelled by a trip are left out."""
+    executor = ThreadPoolExecutor(max_workers=min(_PREFETCH_WORKERS, len(recipes)))
+    futures = {executor.submit(ctx.look_up, recipe): recipe for recipe in recipes}
+    pending = set(futures)
+    streak = 0
+    tripped = False
+    started = _monotonic()
+    try:
+        while pending and not tripped and (remaining := deadline - _monotonic()) > 0:
+            done, pending = wait(pending, timeout=min(remaining, 30.0), return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    records[futures[future]] = future.result()
+                    streak = 0
+                except Exception:  # noqa: BLE001 -- retried later, where a real error surfaces
+                    stats.counts["prefetch_failed"] += 1
+                    streak += 1
+                    tripped = tripped or streak >= _MAX_UNREADABLE_STREAK
+            if done and len(records) % 500 < len(done):
+                print(
+                    f"[judge] read {len(records)}/{len(futures)} pending records "
+                    f"in {_monotonic() - started:.0f}s "
+                    f"({stats.counts['prefetch_failed']} unavailable)",
+                    flush=True,
+                )
+    finally:
+        for future in pending:
+            future.cancel()
+            if not tripped:
+                records[futures[future]] = _UNREADABLE
+        executor.shutdown(wait=False, cancel_futures=True)
+    if pending and not tripped:
+        stats.counts["prefetch_timed_out"] += len(pending)
+        print(
+            f"[judge] record reads still running at the budget: {len(pending)} left pending "
+            "for a later pass",
+            flush=True,
+        )
+    return tripped
+
+
+def _prefetch_records(
+    subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats
+) -> dict[str, Any]:
+    """Records for every pending packet of ``subjects``, read in parallel within a time budget.
+
+    Holds records that were read (a result, a handle, or ``None`` for a missing one) and
+    ``_UNREADABLE`` for those that could not be. When consecutive reads fail the store is treated
+    as down: the pass waits (bounded, ``_wait_for_storage``) for it to come back and retries the
+    rest once in parallel; if it does not come back the rest keep their markers this pass."""
+    recipes = list(
+        dict.fromkeys(
+            str(marker.get("recipe_hash") or "")
+            for subject in subjects
+            for marker in ledger.pending(subject)
+            if marker.get("recipe_hash")
+        )
+    )
+    if len(recipes) < 2:
+        return {}
+    stats.counts["prefetch_records"] = len(recipes)
+    records: dict[str, Any] = {}
+    deadline = _monotonic() + _PREFETCH_BUDGET_SECONDS
+    for attempt in range(2):
+        todo = [recipe for recipe in recipes if recipe not in records]
+        if not todo or not _read_batch(todo, ctx, deadline, records, stats):
+            break
+        recovered = _wait_for_storage(ctx, todo[0], stats) if attempt == 0 else _UNREADABLE
+        if recovered is _UNREADABLE:
+            stats.lookup_gave_up = True
+            break
+        records[todo[0]] = recovered
+    unread = [recipe for recipe in recipes if recipe not in records]
+    for recipe in unread:
+        records[recipe] = _UNREADABLE
+    stats.counts["lookup_unavailable"] += len(unread)
+    return records
+
+
 def _look_up(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
     """The packet's record, or ``_UNREADABLE`` when storage is unavailable for it (never raises)."""
     if stats.lookup_gave_up:
@@ -268,7 +367,7 @@ def _collect(subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingSta
     """
     from citypods.judging.tasks import task as task_spec
 
-    outputs: dict[str, Any] = {}
+    outputs: dict[str, Any] = _prefetch_records(subjects, ctx, stats)
     for subject in subjects:
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")

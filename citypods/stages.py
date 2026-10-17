@@ -1612,6 +1612,12 @@ class MomentJudgeStage(LLMProducerStage):
         return stats
 
 
+# Seconds one pending-packet record read may take before it is reported unavailable. The records
+# are small JSON objects that normally read in a third of a second; the default client would wait
+# 60 s per socket read and retry several times, so a stalled connection cost minutes per record.
+JUDGE_RECORD_READ_SECONDS = 30
+
+
 class JudgeStage(LLMProducerStage):
     """Shadow judging of tag and moment candidates by JEV plus one sibling (review/53 PR3).
 
@@ -1769,7 +1775,11 @@ class JudgeStage(LLMProducerStage):
             sibling=sibling,
             families=load_families(),
             texts_for=texts_for,
-            look_up=lambda recipe: look_up_deferred(storage, recipe),
+            look_up=lambda recipe: look_up_deferred(
+                storage,
+                recipe,
+                deadline_at=datetime.now(UTC) + timedelta(seconds=JUDGE_RECORD_READ_SECONDS),
+            ),
             submit=submit,
             all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
             stop=ctx.stop,
