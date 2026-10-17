@@ -1434,11 +1434,11 @@
       "request_params": null,
       "reasoning_controls": null
     },
-    "openrouter_nvidia_nemotron_3_super_120b_a12b_free": {
-      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
-      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter_nvidia_nemotron_3_5_super_vl_free": {
+      "route_id": "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "openrouter",
-      "upstream_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "upstream_model": "nvidia/nemotron-3.5-super-vl:free",
       "input_context_limit": 262144,
       "output_context_limit": 262144,
       "hard_input_ceiling": 249027,
@@ -1456,7 +1456,7 @@
       "output_per_token": 0.0,
       "pricing": null,
       "reset_timezone": null,
-      "observed_on": "2026-09-12",
+      "observed_on": "2026-10-17",
       "observed_rpm": null,
       "observed_burst": null,
       "observed_input_ceiling": 249027,
@@ -1724,11 +1724,11 @@
       "request_params": null,
       "reasoning_controls": null
     },
-    "nvidia_nemotron_3_super_120b_a12b_free": {
-      "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
-      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia_nemotron_3_5_super_vl_120b_a12b_free": {
+      "route_id": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "nvidia",
-      "upstream_model": "nvidia/nemotron-3-super-120b-a12b",
+      "upstream_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "input_context_limit": 262144,
       "output_context_limit": 262144,
       "hard_input_ceiling": 249027,
@@ -1746,7 +1746,7 @@
       "output_per_token": 0.0,
       "pricing": null,
       "reset_timezone": null,
-      "observed_on": "2026-09-12",
+      "observed_on": "2026-10-17",
       "observed_rpm": null,
       "observed_burst": 5,
       "observed_input_ceiling": 249027,
@@ -2476,9 +2476,9 @@
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
       "nvidia_nemotron_3_ultra_550b_a55b_free"
     ],
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": [
-      "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
-      "nvidia_nemotron_3_super_120b_a12b_free"
+    "openrouter/nvidia/nemotron-3.5-super-vl:free": [
+      "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "nvidia_nemotron_3_5_super_vl_120b_a12b_free"
     ],
     "kilo/stepfun/step-3.7-flash:free": [
       "kilo_stepfun_step_3_7_flash_free"
@@ -2526,10 +2526,12 @@
   },
   "model_aliases": {
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+    "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "orcarouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
     "orcarouter/tencent-hy3": "tencent/hy3",
     "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
@@ -2575,8 +2577,8 @@
     "google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
     "openrouter/google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
     "nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+    "openrouter/nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",
@@ -2586,7 +2588,7 @@
     "google/gemma-4-31b-it": "google/gemma-4-31b-it",
     "nvidia/google/gemma-4-31b-it": "google/gemma-4-31b-it",
     "nvidia/nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
