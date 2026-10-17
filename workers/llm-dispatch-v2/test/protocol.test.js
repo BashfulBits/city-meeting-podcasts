@@ -6,6 +6,7 @@ import {
   sha256Hex,
   validateEnqueueBatchRequest,
   validateEnqueueJob,
+  validateReserveRequest,
   validatePollBatchRequest,
   validateResolveUnknownBatchRequest,
   validateSchemaRetryRequest,
@@ -115,4 +116,19 @@ test("validateSchemaRetryRequest and validateResolveUnknownBatchRequest", () => 
   }
   assert.equal(validateResolveUnknownBatchRequest({ attempt_ids: ["a1"] }).valid, true);
   assert.equal(validateResolveUnknownBatchRequest({ attempt_ids: [] }).valid, false);
+});
+
+
+test("context protocol rejects forged allowances, coercion and ambiguous operations", () => {
+  const common = { operation: "context_start", run_id: "123", catalog_digest: "a".repeat(64) };
+  assert.equal(validateReserveRequest(common).valid, true);
+  const admit = { ...common, operation: "context_admit", route_id: "route", dimension: "input",
+    attempt_id: "b".repeat(64), request_digest: "c".repeat(64), input_tokens: 1000, output_tokens: 256 };
+  assert.equal(validateReserveRequest(admit).valid, true);
+  for (const change of [{ allowance: 100 }, { input_tokens: true }, { output_tokens: 0 },
+    { run_id: "01" }, { operation: null }, { operation: "unknown" }, { dimension: "both" },
+    { request_digest: "bad" }, { input_tokens: Number.MAX_SAFE_INTEGER + 1 }]) {
+    assert.equal(validateReserveRequest({ ...admit, ...change }).valid, false);
+  }
+  assert.equal(validateReserveRequest({ route_id: "route", requests: 1 }).valid, true);
 });

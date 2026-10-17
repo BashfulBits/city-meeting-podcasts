@@ -1,0 +1,145 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison City Council"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning & Zoning Commission"
+      }
+    ],
+    "case_id": "recording-dfc5556c32049fce49d38785",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council",
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda (retained-agenda) titles the meeting 'Joint Meeting: Addison City Council and Planning & Zoning Commission' and item 1 calls both bodies to order with a quorum announced for each (Mayor Bruce Arfsten for Council, Chairman Chris DeFrancisco for P&Z). The provider transcript (provider-player) confirms the chair called to order both the P&Z side and the City Council side with quorums present, and the chapter list (native-source-chapters) matches the agenda items. Both bodies are therefore proven joint conveners, and under the joints policy each participant shares the recording in its configured feed: addison-tx-city-council and addison-tx-planning-and-zoning-commission. The comprehensive-plan discussion is a topic presented by staff (Ken Schmidt), so it does not assign the recording to the Comprehensive Plan Advisory Committee feed per the identity policy (convened body, not topic or presenting staff). No other supplied feed matches: the zoning-adjustment, bond, community-partnership, TIF, UDC, public-briefings, and public-input feeds cover different bodies or event types, and this formal joint work session is not a town hall/open house."
+  },
+  "attempt_id": "72afc1bd27e64af982622233840dab50",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-dfc5556c32049fce49d38785",
+  "case_input_hash": "b7e11d1e8fa123d2c384f2f4ff5759d50c758726e09fd0a5e1c567396b6ff417",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.663344500000676
+    }
+  ],
+  "end_to_end_seconds": 19.528083042001526,
+  "finished_at": "2026-10-14T18:27:09.805739+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T18:26:50.277518+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5eb841a1b9e7c7881b95123e93ee0585e5362ed23cf044c2381a7c9c16aa4585",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1364,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 931,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3485,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4849
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Addison City Council\"\n    },\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Addison Planning & Zoning Commission\"\n    }\n  ],\n  \"case_id\": \"recording-dfc5556c32049fce49d38785\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"feed_slugs\": [\"addison-tx-city-council\", \"addison-tx-planning-and-zoning-commission\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The official agenda (retained-agenda) titles the meeting 'Joint Meeting: Addison City Council and Planning & Zoning Commission' and item 1 calls both bodies to order with a quorum announced for each (Mayor Bruce Arfsten for Council, Chairman Chris DeFrancisco for P&Z). The provider transcript (provider-player) confirms the chair called to order both the P&Z side and the City Council side with quorums present, and the chapter list (native-source-chapters) matches the agenda items. Both bodies are therefore proven joint conveners, and under the joints policy each participant shares the recording in its configured feed: addison-tx-city-council and addison-tx-planning-and-zoning-commission. The comprehensive-plan discussion is a topic presented by staff (Ken Schmidt), so it does not assign the recording to the Comprehensive Plan Advisory Committee feed per the identity policy (convened body, not topic or presenting staff). No other supplied feed matches: the zoning-adjustment, bond, community-partnership, TIF, UDC, public-briefings, and public-input feeds cover different bodies or event types, and this formal joint work session is not a town hall/open house.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me work through this case.\n\nThe recording: \"Joint P&Z and City Council Meeting #1\" from Addison, TX, dated Oct 17, 2023, recording ID 276855.\n\nEvidence:\n1. `retained-agenda`: Agenda for \"Joint Meeting - Addison City Council and Planning & Zoning Commission, October 17, 2023\". It says \"Call Addison City Council and Planning & Zoning Commission Joint Meeting to Order and Announce that a Quorum is Present: Mayor Bruce Arfsten - Addison City Council, Chairman Chris DeFrancisco\". This is official evidence that both bodies jointly convened the meeting.\n\n2. `provider-player`: The Swagit player page confirms the same, plus transcript: \"THIS IS THE JOINT MEETING BETWEEN THE ADDISON CITY COUNCIL AND THE PLANNING AND ZONING COMMISSION. UM, AND I WILL NOW CALL TO ORDER THE PLANNING AND ZONING COMMISSION SIDE OF THE MEETING. AND AT THE SAME TIME, WE'LL CALL TO ORDER THE MEETING OF THE ADDISON CITY COUNCIL. WE DO HAVE A QUORUM PRESENT OF THE COUNCIL AND OF PLANNING AND ZONING.\"\n\n3. `native-source-chapters`: Chapter titles matching the agenda items.\n\nSo the convening bodies: Addison City Council and Addison Planning and Zoning Commission (joint meeting). Both proven participants.\n\nFeeds available:\n- addison-tx-city-council: \"City Council meetings for Addison.\" \u2014 matches Addison City Council.\n- addison-tx-planning-and-zoning-commission: \"Planning and Zoning Commission meetings for Addison.\" \u2014 matches P&Z Commission.\n- addison-tx-town-meetings: \"Town halls, community meetings, open houses and historical citizen input.\" \u2014 Hmm. This is a joint meeting; the agenda is a work session discussing the comprehensive plan. Is it a \"community meeting\"? The joint meeting is between two formal bodies, not a town hall. The policy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So both city-council and planning-and-zoning-commission feeds get it. The town-meetings feed is for town halls, community meetings, open houses \u2014 this is a formal joint work session of Council and P&Z, so I would not assign it there. Also \"public_comment\": routine public comment does not add Public Info feed membership \u2014 not relevant here.\n\nThe comprehensive plan topic: \"Advance Addison Comprehensive Plan project\" \u2014 but the feed \"addison-tx-comprehensive-plan-advisory-committee\" is for \"Comprehensive Plan Advisory Committee meetings for Addison.\" The convening body here is not the Comprehensive Plan Advisory Committee; the topic is the comprehensive plan, but the presenter (Ken Schmidt, staff) is presenting. Per identity policy: \"Use the convened body, not venue, topic or common members.\" So do not assign that feed.\n\nSo the answer: publication_action = assign_existing; bodies = Addison City Council (evidence: retained-agenda, provider-player) and Addison Planning and Zoning Commission (same evidence). feed_slugs = [\"addison-tx-city-council\", \"addison-tx-planning-and-zoning-commission\"]. evidence_ref_ids = all three? The evidence supporting body names and assignments: retained-agenda and provider-player primarily. native-source-chapters also confirms agenda items. I can include all three since they corroborate.\n\nmissing_evidence: none needed \u2014 the ownership is fully established. But should I note anything? The gap about whether there's a dedicated joint feed doesn't exist; policy says joints share in configured feeds. So missing_evidence = [].\n\nRationale: The agenda and player transcript prove a joint meeting convened by both the Addison City Council and the Addison Planning and Zoning Commission (quorum called for both, joint call to order). Under the joints policy, both proven participants share the recording in their configured feeds: addison-tx-city-council and addison-tx-planning-and-zoning-commission. The comprehensive-plan topic and staff presenter do not imply the Comprehensive Plan Advisory Committee convened (identity policy: convened body, not topic). No other feeds fit (zoning adjustment board, bond committees, etc. are unrelated).\n\nBody names: Use official names: \"Addison City Council\" and \"Addison Planning & Zoning Commission\" (agenda says \"Planning & Zoning Commission\"). I'll use the names as given in the agenda.\n\nFormat: single JSON object.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me work through this case.\n\nThe recording: \"Joint P&Z and City Council Meeting #1\" from Addison, TX, dated Oct 17, 2023, recording ID 276855.\n\nEvidence:\n1. `retained-agenda`: Agenda for \"Joint Meeting - Addison City Council and Planning & Zoning Commission, October 17, 2023\". It says \"Call Addison City Council and Planning & Zoning Commission Joint Meeting to Order and Announce that a Quorum is Present: Mayor Bruce Arfsten - Addison City Council, Chairman Chris DeFrancisco\". This is official evidence that both bodies jointly convened the meeting.\n\n2. `provider-player`: The Swagit player page confirms the same, plus transcript: \"THIS IS THE JOINT MEETING BETWEEN THE ADDISON CITY COUNCIL AND THE PLANNING AND ZONING COMMISSION. UM, AND I WILL NOW CALL TO ORDER THE PLANNING AND ZONING COMMISSION SIDE OF THE MEETING. AND AT THE SAME TIME, WE'LL CALL TO ORDER THE MEETING OF THE ADDISON CITY COUNCIL. WE DO HAVE A QUORUM PRESENT OF THE COUNCIL AND OF PLANNING AND ZONING.\"\n\n3. `native-source-chapters`: Chapter titles matching the agenda items.\n\nSo the convening bodies: Addison City Council and Addison Planning and Zoning Commission (joint meeting). Both proven participants.\n\nFeeds available:\n- addison-tx-city-council: \"City Council meetings for Addison.\" \u2014 matches Addison City Council.\n- addison-tx-planning-and-zoning-commission: \"Planning and Zoning Commission meetings for Addison.\" \u2014 matches P&Z Commission.\n- addison-tx-town-meetings: \"Town halls, community meetings, open houses and historical citizen input.\" \u2014 Hmm. This is a joint meeting; the agenda is a work session discussing the comprehensive plan. Is it a \"community meeting\"? The joint meeting is between two formal bodies, not a town hall. The policy \"joints\": \"Every proven participant can share the same recording in its configured feed.\" So both city-council and planning-and-zoning-commission feeds get it. The town-meetings feed is for town halls, community meetings, open houses \u2014 this is a formal joint work session of Council and P&Z, so I would not assign it there. Also \"public_comment\": routine public comment does not add Public Info feed membership \u2014 not relevant here.\n\nThe comprehensive plan topic: \"Advance Addison Comprehensive Plan project\" \u2014 but the feed \"addison-tx-comprehensive-plan-advisory-committee\" is for \"Comprehensive Plan Advisory Committee meetings for Addison.\" The convening body here is not the Comprehensive Plan Advisory Committee; the topic is the comprehensive plan, but the presenter (Ken Schmidt, staff) is presenting. Per identity policy: \"Use the convened body, not venue, topic or common members.\" So do not assign that feed.\n\nSo the answer: publication_action = assign_existing; bodies = Addison City Council (evidence: retained-agenda, provider-player) and Addison Planning and Zoning Commission (same evidence). feed_slugs = [\"addison-tx-city-council\", \"addison-tx-planning-and-zoning-commission\"]. evidence_ref_ids = all three? The evidence supporting body names and assignments: retained-agenda and provider-player primarily. native-source-chapters also confirms agenda items. I can include all three since they corroborate.\n\nmissing_evidence: none needed \u2014 the ownership is fully established. But should I note anything? The gap about whether there's a dedicated joint feed doesn't exist; policy says joints share in configured feeds. So missing_evidence = [].\n\nRationale: The agenda and player transcript prove a joint meeting convened by both the Addison City Council and the Addison Planning and Zoning Commission (quorum called for both, joint call to order). Under the joints policy, both proven participants share the recording in their configured feeds: addison-tx-city-council and addison-tx-planning-and-zoning-commission. The comprehensive-plan topic and staff presenter do not imply the Comprehensive Plan Advisory Committee convened (identity policy: convened body, not topic). No other feeds fit (zoning adjustment board, bond committees, etc. are unrelated).\n\nBody names: Use official names: \"Addison City Council\" and \"Addison Planning & Zoning Commission\" (agenda says \"Planning & Zoning Commission\"). I'll use the names as given in the agenda.\n\nFormat: single JSON object.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792002356,
+    "id": "08d19a4d5b65b1bff42a0f9e87e5ff35",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1364,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 931,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3485,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4849
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

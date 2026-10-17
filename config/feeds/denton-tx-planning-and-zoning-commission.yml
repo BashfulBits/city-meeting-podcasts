@@ -19,6 +19,8 @@ source:
     - "Planning and Zoning Special Meeting"
     - "Planning and Zoning Meeting 2"
     - "Planning and Zoning Work Session"
+    # Denton's official impact-fee archive identifies these as P&Z Commission/CIAC meetings.
+    - "Capital Improvement Advisory Committee"
 podcast_title: "Denton: Planning and Zoning Commission"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

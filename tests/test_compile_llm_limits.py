@@ -55,9 +55,14 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "routes" not in worker
     assert "structured_output_methods" not in worker
     assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
-    # One pool name per DeepSeek version (2026-09-24); the old `v4-pro` alias pool is retired.
+    # One pool name per DeepSeek version (2026-09-24): the old `v4-pro` alias that pointed at
+    # NVIDIA's v4.1 stays retired. `deepseek/deepseek-v4-pro` is now a real pool holding only a
+    # genuine V4 Pro route (BeatAPI, 2026-10-07), never NVIDIA's v4.1.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
-    assert "deepseek/deepseek-v4-pro" not in worker["model_routes_map"]
+    assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
+        "beatapi_deepseek_v4_pro_free",
+        "beatapi_secondary_deepseek_v4_pro_free",
+    ]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
     )
@@ -71,8 +76,9 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "sambanova_gemma_4_31b_it_primary" in worker["model_routes_map"]["google/gemma-4-31b-it"]
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
-    # Raised 2 -> 3 (2026-09-23) so Nemotron 3 Ultra always keeps an NVIDIA slot.
-    assert worker["providers"]["nvidia"]["concurrency"] == 3
+    # Raised 2 -> 3 (2026-09-23) so Nemotron 3 Ultra always keeps an NVIDIA slot; 3 -> 4
+    # (2026-10-17) with Gemma 4 31B's second slot.
+    assert worker["providers"]["nvidia"]["concurrency"] == 4
     assert gemma["request_start_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
@@ -92,15 +98,25 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
 def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     compiled = compile_llm_limits.compile_limits()
 
-    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only and v4.1 is NVIDIA
-    # only, so a lane or tournament contestant always knows which model answers. Lanes that want
-    # both list both names.
+    # One pool name per DeepSeek version (2026-09-24), shared across providers serving the same
+    # model (BeatAPI joined each pool 2026-10-07): v4 (0731 revision) is OrcaRouter + BeatAPI,
+    # v4.1 is NVIDIA + BeatAPI, and V4 Pro is BeatAPI alone. A lane or tournament contestant
+    # always knows which version answers. Lanes that want several list the names.
     deepseek_key = "deepseek/deepseek-v4-flash"
-    assert compiled["model_routes_map"][deepseek_key] == ["orcarouter_deepseek_v4_flash_free"]
-    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
-        "nvidia_deepseek_v4_1_flash_free"
+    assert compiled["model_routes_map"][deepseek_key] == [
+        "orcarouter_deepseek_v4_flash_free",
+        "beatapi_deepseek_v4_flash_free",
+        "beatapi_secondary_deepseek_v4_flash_free",
     ]
-    assert "deepseek/deepseek-v4-pro" not in compiled["model_routes_map"]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
+        "nvidia_deepseek_v4_1_flash_free",
+        "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_secondary_deepseek_v4_1_flash_free",
+    ]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
+        "beatapi_deepseek_v4_pro_free",
+        "beatapi_secondary_deepseek_v4_pro_free",
+    ]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
@@ -113,19 +129,25 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     )
     assert compiled["model_aliases"]["nvidia/nemotron-3-ultra-550b-a55b"] == nemotron_key
 
-    nemotron_super_key = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
-    # OpenRouter's own canonical name for this model family, now also reachable via NVIDIA build
-    # direct (added 2026-08-29) -- unlike Ultra, Super had no shared model_key before this change.
-    assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
-    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
+    nemotron_35_super_key = "openrouter/nvidia/nemotron-3.5-super-vl:free"
+    # OpenRouter's canonical name for the 3.5 Super VL family, reachable via both direct NVIDIA
+    # and OpenRouter broker legs. Legacy 3 Super selectors coalesce as aliases to this pool.
+    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 2
+    assert (
+        compiled["model_aliases"]["openrouter/nvidia/nemotron-3-super-120b-a12b:free"]
+        == nemotron_35_super_key
+    )
+    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_35_super_key
+    assert (
+        compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl-120b-a12b"] == nemotron_35_super_key
+    )
 
     codestral_key = "mistral/codestral-2508"
     codestral_routes = compiled["model_routes_map"][codestral_key]
-    # primary + secondary Mistral accounts + airforce codestral-latest route (the tertiary
-    # account was removed 2026-09-24: its key was never set on the dispatch Workers).
-    assert len(codestral_routes) == 3
+    # Native Mistral accounts were removed 2026-09-30 (metered, account-tier restricted); only the
+    # airforce codestral-latest route still serves this model key.
+    assert len(codestral_routes) == 1
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
-        "mistral",
         "airforce",
     }
     assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
@@ -152,10 +174,10 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
     )
-    codestral = compiled["routes_by_id"]["mistral_codestral_2508_primary"]
+    codestral = compiled["routes_by_id"]["mistral_codestral_airforce_primary"]
     assert (codestral["input_context_limit"], codestral["output_context_limit"]) == (
         256000,
-        256000,
+        8192,
     )
 
 
@@ -196,7 +218,7 @@ def test_hard_input_ceiling_tolerance_is_bounded_and_needs_a_ceiling(route_extra
             compile_llm_limits.compile_limits()
 
 
-def test_gemma_ai_studio_routes_carry_a_ceiling_tolerance_under_googles_quota():
+def test_gemma_ai_studio_routes_preserve_quota_headroom_without_ceiling_tolerance():
     routes = compile_llm_limits.compile_limits()["routes_by_id"]
     for route_id in (
         "gemma_4_31b_primary",
@@ -205,9 +227,8 @@ def test_gemma_ai_studio_routes_carry_a_ceiling_tolerance_under_googles_quota():
         "gemma_4_26b_secondary",
     ):
         route = routes[route_id]
-        assert route["hard_input_ceiling_tolerance"] == 0.1
-        # 14,400 x 1.1 = 15,840 stays under Google's 16,000 input tokens/minute.
-        assert route["hard_input_ceiling"] * (1 + route["hard_input_ceiling_tolerance"]) < 16000
+        assert not route.get("hard_input_ceiling_tolerance")
+        assert route["hard_input_ceiling"] == route["tpm"] == 14400
 
 
 def test_compiled_routes_resolve_a_structured_output_method_per_route():
@@ -352,8 +373,6 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
         ]
     }
     assert compiled["model_routes_map"]["mistral/codestral-2508"] == [
-        "mistral_codestral_2508_primary",
-        "mistral_codestral_2508_secondary",
         "mistral_codestral_airforce_primary",
     ]
     worker = compile_llm_limits._worker_catalog(compiled)
@@ -574,12 +593,10 @@ def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling. The 2026-08-18 `monthly_tpm: 0` hotfix was reverted on
-    # 2026-09-09: it gated nothing (no consumer reads monthly_tpm, and the compiled provider block
-    # drops it), so what actually stops consumption is now the `insufficient-budget` ->
-    # payment_required cooldown ladder. Scaled by token_estimate_buffer like any token budget.
-    mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 900_000_000
+    # `monthly_tpm` gated nothing (no consumer reads it, and the compiled provider block drops it);
+    # its only user, the native Mistral provider, was removed 2026-09-30. Consumption is stopped by
+    # the `insufficient-budget` -> payment_required cooldown ladder instead.
+    assert all("monthly_tpm" not in provider for provider in compiled["providers"].values())
 
 
 def test_validate_token_buffer_accepts_valid_formats():
@@ -1003,3 +1020,129 @@ def test_reasoning_controls_are_validated(controls, match):
         compile_llm_limits._validate_reasoning_controls(
             {"route_id": "r", "reasoning_controls": controls}
         )
+
+
+def test_qwen_daily_tokens_are_compiled_with_safety_buffer():
+    compiled = compile_llm_limits.compile_limits()
+    route = compiled["routes_by_id"]["groq_qwen_3_8_27b_primary"]
+    assert route["tpd"] == 180_000
+    assert route["rpm"] == 30
+    assert route["rpd"] == 1000
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["routes_by_id"][route["route_id"]]["tpd"] == 180_000
+
+
+def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+    beatapi = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi"]
+    secondary = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi_secondary"]
+    chat = [r for r in beatapi if r["api_shape"] != "systemone"]
+    assert chat and all(r["tier"] == "backup" for r in chat)
+    # The second account carries the same five chat routes, on its own window, and never
+    # yields: JEV runs on the primary account.
+    assert len(secondary) == len(chat)
+    assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
+    # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
+    jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
+    assert jev["tier"] is None and jev["api_shape"] == "systemone"
+    assert all(r["yields_to"] == ["beatapi_jev_1_13_free"] for r in chat)
+    # Every other route is primary by omission.
+    assert all(
+        r["tier"] is None
+        for r in worker["routes_by_id"].values()
+        if r["provider"] not in {"beatapi", "beatapi_secondary"}
+    )
+
+
+def test_route_tier_rejects_unknown_values():
+    raw = {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": {"example": {}},
+        "routes": [_route("example", "example/model", tier="fallback")],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="unknown tier"):
+            compile_llm_limits.compile_limits()
+
+
+def _compile_raw(routes):
+    raw = {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": {"example": {}},
+        "routes": routes,
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        return compile_llm_limits.compile_limits()
+
+
+@pytest.mark.parametrize(
+    ("route_extra", "match"),
+    [
+        ({"api_shape": "fax"}, "unknown api_shape"),
+        ({"request_path": "systemone"}, "request_path must be a string starting with '/'"),
+        ({"yields_to": "jev"}, "yields_to must be a list of route ids"),
+        ({"yields_to": ["a"]}, "cannot yield to itself"),
+        ({"yields_to": ["missing"]}, "yields_to unknown route"),
+    ],
+)
+def test_api_shape_request_path_and_yields_to_are_validated(route_extra, match):
+    with pytest.raises(ValueError, match=match):
+        _compile_raw([_route("a", "example/a", **route_extra)])
+
+
+def test_a_systemone_route_is_worker_only_and_carries_its_shape():
+    compiled = _compile_raw(
+        [
+            _route("jev", "example/jev", api_shape="systemone", request_path="/systemone"),
+            _route("chat", "example/chat", yields_to=["jev"]),
+        ]
+    )
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    assert worker["jev"]["api_shape"] == "systemone"
+    assert worker["jev"]["request_path"] == "/systemone"
+    assert worker["chat"]["yields_to"] == ["jev"]
+    python_routes = {
+        route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
+    }
+    # A direct LiteLLM call would send a chat completion, so only the Worker may reach it.
+    assert python_routes["jev"]["transports"] == []
+    assert python_routes["chat"]["transports"] == ["direct"]
+
+
+def test_explicit_high_max_controls_preserve_default_request_parameters():
+    for level in ("high", "max"):
+        compile_llm_limits._validate_reasoning_controls(
+            {"route_id": "evaluation", "reasoning_controls": {level: {"reasoning_effort": level}}}
+        )
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    for route_id in (
+        "gemini_3_7_flash_primary",
+        "gemini_3_7_flash_secondary",
+        "gemini_3_8_flash_primary",
+        "gemini_3_8_flash_secondary",
+    ):
+        route = worker[route_id]
+        assert route["reasoning_controls"] == {
+            "high": {"generationConfig": {"thinkingConfig": {"thinkingLevel": "HIGH"}}}
+        }
+        assert route["request_params"] is None
+
+
+def test_kimi_max_controls_match_python_worker_without_changing_defaults():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    python = {
+        route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
+    }
+    for routes in (worker, python):
+        route = routes["nvidia_kimi_k3_free"]
+        assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
+        assert route.get("request_params") is None

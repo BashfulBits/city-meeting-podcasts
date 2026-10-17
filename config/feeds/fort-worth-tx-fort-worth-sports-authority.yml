@@ -1,0 +1,20 @@
+slug: fort-worth-tx-fort-worth-sports-authority
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: FW Sports Authority, Inc.
+  body_any:
+    - Fort Worth Sports Authority
+    - FW Sports Authority, Inc. Quarterly Board Meeting May 26, 2020
+    - Fort Worth Sports Authority, Inc. Quarterly Board Meeting, August 25, 2020
+podcast_title: 'Fort Worth: Fort Worth Sports Authority, Inc. Board'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Fort Worth Sports Authority, Inc. Board recordings for Fort
+  Worth, TX.

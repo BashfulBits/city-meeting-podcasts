@@ -234,12 +234,14 @@ def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str
 # Provider-specific request parameters a route may always send. Deliberately small: each key is
 # a documented provider control (thinking/reasoning), never a way to override what the pipeline
 # sends (model, messages, response_format, max_tokens ...), which the Worker owns.
-_ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
+_ALLOWED_REQUEST_PARAMS = frozenset(
+    {"chat_template_kwargs", "reasoning_effort", "generationConfig"}
+)
 
 
 # Reasoning levels a lane may request (llm_lanes[...].reasoning); a route maps each level it
 # supports to provider-specific request parameters in `reasoning_controls`.
-_REASONING_LEVELS = frozenset({"off", "low"})
+_REASONING_LEVELS = frozenset({"off", "low", "high", "max"})
 
 
 def _validate_reasoning_controls(route: dict[str, Any]) -> None:
@@ -367,7 +369,9 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         route = dict(source)
         route.update(
             {
-                "transports": ["direct"],
+                # Only the Worker speaks non-chat API shapes (review/53 PR1): never offer such a
+                # route to a direct LiteLLM call, which would send it a chat completion.
+                "transports": ["direct"] if source.get("api_shape", "chat") == "chat" else [],
                 "direct_model": _direct_model(
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
@@ -403,6 +407,8 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+API_SHAPES = ("chat", "systemone")
+
 _WORKER_ROUTE_FIELDS = (
     "route_id",
     # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
@@ -419,6 +425,7 @@ _WORKER_ROUTE_FIELDS = (
     "account_id",
     "rpm",
     "rpd",
+    "tpd",
     "tpm",
     "concurrency",
     "request_start_margin_seconds",
@@ -435,6 +442,17 @@ _WORKER_ROUTE_FIELDS = (
     "observed_recovery_seconds",
     "retry_after_trustworthy",
     "upstream_429_default",
+    # "backup" routes are ranked after every primary route in a job's pool (coordinator.js claim
+    # ordering); absent means primary. Lets a scarce account (BeatAPI's single-flight free window,
+    # review/49 section 4c) serve as spill capacity without leaving the unified model pools.
+    "tier",
+    # How the route's provider API is spoken (review/53 PR1): "chat" (absent) or "systemone"
+    # (BeatAPI's JEV judge endpoint). `request_path` replaces the provider's chat path for this
+    # route; `yields_to` names routes that take precedence over this one while they have queued
+    # work (an ordering rule in coordinator.js, never a structural one).
+    "api_shape",
+    "request_path",
+    "yields_to",
     # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
     # job for this route (review/48 R10). Each entry lands under its own field name in the
     # compiled catalog, so order here does not matter.
@@ -943,6 +961,16 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 route["rpm"] = _scale_rate_limit(route["rpm"], split_cap_multiplier)
             if route.get("rpd") is not None:
                 route["rpd"] = _scale_rate_limit(route["rpd"], split_cap_multiplier)
+        if route.get("tpd") is not None:
+            tpd = route["tpd"]
+            if (
+                isinstance(tpd, bool)
+                or not isinstance(tpd, (int, float))
+                or tpd <= 0
+                or not math.isfinite(tpd)
+            ):
+                raise ValueError(f"route {route['route_id']} has invalid tpd: {tpd!r}")
+            route["tpd"] = _scale_rate_limit(tpd, token_estimate_buffer * split_cap_multiplier)
         if route.get("tpm") is not None and (
             token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0
         ):
@@ -1115,6 +1143,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 "own_rpm",
                 "own_tpm",
                 "own_rpd",
+                "own_tpd",
                 "unknown_429",
             ):
                 raise ValueError(
@@ -1122,6 +1151,33 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"upstream_429_default: {up_default!r}"
                 )
             route["upstream_429_default"] = str(up_default)
+
+        tier = route.get("tier")
+        if tier is not None and tier not in ("primary", "backup"):
+            raise ValueError(
+                f"route {route.get('route_id', route.get('model'))!r} has unknown tier: {tier!r}"
+            )
+
+        route_name = route.get("route_id", route.get("model"))
+        api_shape = route.get("api_shape")
+        if api_shape is not None and api_shape not in API_SHAPES:
+            raise ValueError(f"route {route_name!r} has unknown api_shape: {api_shape!r}")
+        request_path = route.get("request_path")
+        if request_path is not None and (
+            not isinstance(request_path, str) or not request_path.startswith("/")
+        ):
+            raise ValueError(
+                f"route {route_name!r} request_path must be a string starting with '/'"
+            )
+        yields_to = route.get("yields_to")
+        if yields_to is not None:
+            if not isinstance(yields_to, list) or not all(isinstance(r, str) for r in yields_to):
+                raise ValueError(f"route {route_name!r} yields_to must be a list of route ids")
+            if route_name in yields_to:
+                raise ValueError(f"route {route_name!r} cannot yield to itself")
+            unknown = [target for target in yields_to if target not in routes_by_id]
+            if unknown:
+                raise ValueError(f"route {route_name!r} yields_to unknown route(s): {unknown}")
 
         obs_on = route.get("observed_on")
         if obs_on is not None:

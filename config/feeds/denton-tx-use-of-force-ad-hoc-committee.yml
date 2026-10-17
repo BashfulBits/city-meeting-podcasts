@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Use-Of-Force Ad Hoc Committee on *"
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 2207 days ago; ad-hoc committee concluded mandate"
 podcast_title: 'Denton: Use-Of-Force Ad Hoc Committee'
 podcast_author: City of Denton, TX
 podcast_email: ''

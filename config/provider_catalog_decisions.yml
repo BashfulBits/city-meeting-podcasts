@@ -1,0 +1,16 @@
+# Maintainer decisions for provider-catalog reconciliation (review/48 R7).
+#
+# The weekly reconciler reads this file so a decision is made once, not re-litigated every week:
+#
+#   ignored       Candidates never to propose again (until `revisit_after`, if set).
+#                 provider + exact catalog model ID.
+#   acknowledged  Known states of CONFIGURED routes that are not news. A matching anomaly moves to
+#                 the issue's collapsed "Observations" instead of keeping the issue open. It
+#                 reappears if the verdict changes. `model_glob` uses fnmatch syntax.
+#
+# `/apply` on the rolling issue (Slice 2) appends to this file in its curated PR; hand edits are
+# fine too. Every entry needs a reason and a date.
+
+ignored: []
+
+acknowledged: []

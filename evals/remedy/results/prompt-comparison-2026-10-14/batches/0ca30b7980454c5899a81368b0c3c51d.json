@@ -1,0 +1,152 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "Recording-specific official evidence identifying the convening body or responsible municipal program behind Fort Worth Forward - Episode 15.",
+      "Evidence establishing whether this episode is a meeting, promotional/orientation film, or another event category covered by the publication rules."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The official player identifies the recording as Fort Worth Forward - Episode 15 but supplies only player controls and document placeholders, not a convening institution or a description of the program. The title alone does not establish Council ownership, Public Info feed membership, or eligibility for archival or exclusion rules. No existing feed assignment is proven; missing ownership evidence requires unresolved rather than an invented body or a non-government classification."
+  },
+  "attempt_id": "132feac0de5243f4a79fc210427614eb",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+  "case_input_hash": "ee7ca266e5cc719e430dd8ccf6f77af164ea24d758a1a8f6965aa8979657561d",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.457893375001731
+    }
+  ],
+  "end_to_end_seconds": 20.781895082996925,
+  "finished_at": "2026-10-14T22:45:00.853202+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T22:44:40.071172+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d6ddef90e14b4142a718399e040bd2ec885fb386a4764d9b03c4c38b8f75474a",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3557,
+        "output_tokens": 252
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 252,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3557,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3557,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3809,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-c128ed27ed345a9fbfb3b3dd\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"unresolved\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"Recording-specific official evidence identifying the convening body or responsible municipal program behind Fort Worth Forward - Episode 15.\",\"Evidence establishing whether this episode is a meeting, promotional/orientation film, or another event category covered by the publication rules.\"],\"rationale\":\"The official player identifies the recording as Fort Worth Forward - Episode 15 but supplies only player controls and document placeholders, not a convening institution or a description of the program. The title alone does not establish Council ownership, Public Info feed membership, or eligibility for archival or exclusion rules. No existing feed assignment is proven; missing ownership evidence requires unresolved rather than an invented body or a non-government classification.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792017900,
+    "id": "resp_0fb397e106676e54016ad005e54d9c819ba075fbf5263afeb1",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3557,
+          "output_tokens": 252
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 252,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3557,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3557,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3809,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

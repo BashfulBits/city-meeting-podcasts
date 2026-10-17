@@ -441,11 +441,18 @@ def main(argv: list[str] | None = None) -> int:
             return
 
         assert isinstance(exc, LLMDispatchTerminalError)
-        marker_count = discard_terminal_failure(storage, target_snapshot, handle, exc)
+        marker_count = discard_terminal_failure(
+            storage, target_snapshot, handle, exc, structural=exc.structural
+        )
         recovered_terminal_failures += 1
+        disposition = (
+            "structurally blocked; awaiting eligible route or rebatching"
+            if exc.structural
+            else f"attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}"
+        )
         print(
             f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
-            f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
+            f"({disposition}): {exc}",
             file=sys.stderr,
         )
 

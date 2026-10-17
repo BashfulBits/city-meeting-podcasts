@@ -52,7 +52,7 @@ def _step_index(job: dict, needle: str) -> int:
     ("workflow", "job_name", "step_name"),
     [
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
-        ("deploy.yml", "build-deploy", "Render feeds"),
+        ("deploy.yml", "render", "Render feeds"),
         ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
         ("moments.yml", "moments", "Produce bounded R6 moment candidates and judge assessments"),
         ("audit.yml", "audit", "Run audit"),
@@ -186,15 +186,15 @@ HEAVY_WORKFLOWS = [("audio.yml", "audio", "audio"), ("asr.yml", "transcribe", "a
 
 
 def test_workflows_use_node24_cache_actions_without_force_flag():
-    """actions/cache v5 runs on Node 24; the old force flag should not linger. Cache actions are
-    SHA-pinned to the current v5 tip (review/22 / GH#734), not the movable @v5 tag."""
+    """actions/cache v6 runs on Node 24; the old force flag should not linger. Cache actions are
+    SHA-pinned to the current v6 tip (review/22 / GH#734), not the movable @v6 tag."""
     workflow_text = "\n".join(path.read_text() for path in WORKFLOWS.glob("*.yml"))
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in workflow_text
     assert "actions/cache@v4" not in workflow_text
     assert "actions/cache/restore@v4" not in workflow_text
-    # SHA-pinned with a `# v5` readability comment; the bare movable tag must not linger.
-    assert "actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5" in workflow_text
-    assert "actions/cache@v5" not in workflow_text
+    # SHA-pinned with a `# v6` readability comment; the bare movable tag must not linger.
+    assert "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6" in workflow_text
+    assert "actions/cache@v6" not in workflow_text
 
 
 def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
@@ -227,7 +227,7 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
         "SWAGIT_PROXY_TOKEN",
     ):
         assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
-    cache_index = _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25")
+    cache_index = _step_index(job, "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
     assert cache_index >= 0
     assert job["steps"][cache_index]["with"]["path"] == "/home/runner/.cache/citypods-diarize"
     assert job["steps"].index(preflight) > cache_index
@@ -241,7 +241,10 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     defaults = yaml.safe_load(Path("config/site_config.yml").read_text())["defaults"]
     start_cutoff = float(defaults["diarize_start_cutoff_minutes"])
     backstop = float(defaults["diarize_backstop_minutes"])
-    assert start_cutoff < backstop < float(job["timeout-minutes"])
+    step_timeout = float(diarize["timeout-minutes"])
+    job_timeout = float(job["timeout-minutes"])
+    assert start_cutoff < backstop < step_timeout < job_timeout
+    assert diarize["timeout-minutes"] == 325
 
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():
@@ -918,8 +921,8 @@ def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     test_step = next(step for step in job["steps"] if step.get("name") == "Test Worker")
     assert test_step["working-directory"] == "workers/granicus-media-proxy"
     deploy = next(step for step in job["steps"] if step.get("name") == "Deploy Worker")
-    # SHA-pinned per review/22 / GH#734 (the `# v3` comment is stripped by the YAML parser).
-    assert deploy["uses"] == "cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd"
+    # SHA-pinned per review/22 / GH#734 (the `# v4` comment is stripped by the YAML parser).
+    assert deploy["uses"] == "cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0"
     assert deploy["with"]["workingDirectory"] == "workers/granicus-media-proxy"
     assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
     assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
@@ -942,9 +945,12 @@ def test_deploy_is_render_only():
         "deploy.yml must drop `actions: read` once enrich (the only Actions-API caller) moves out"
     )
     render = _step_index(job, "citypods build --phase render --no-refresh")
-    deploy = _step_index(job, "actions/deploy-pages")
+    deploy_job = wf["jobs"]["deploy"]
+    deploy = _step_index(deploy_job, "actions/deploy-pages")
     assert render >= 0 and deploy >= 0, "render and deploy steps required"
-    assert render < deploy, "deploy.yml must render before deploying"
+    assert wf["jobs"]["search"]["needs"] == "render"
+    assert deploy_job["needs"] == "search"
+    uses = " ".join(str(s.get("uses", "")) for s in deploy_job["steps"])
     # The Pages plumbing stays on deploy, not enrich.
     assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses
 
@@ -958,7 +964,9 @@ def test_deploy_scopes_storage_secrets_to_render_step_only():
         k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (job.get("env") or {})
     )
     render = next(
-        s for s in job["steps"] if s.get("run") == "citypods build --phase render --no-refresh"
+        s
+        for s in job["steps"]
+        if str(s.get("run", "")).startswith("citypods build --phase render --no-refresh")
     )
     env = render.get("env", {})
     for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):
@@ -1612,3 +1620,324 @@ def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
     assert step["timeout-minutes"] == 165
     assert "--full-prune-only" in step["run"]
     assert "--run-time-budget-minutes 120" in step["run"]
+
+
+def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config():
+    """review/48 Slice 1: observe/propose only, and every configured route can be health-checked.
+
+    The key secrets are derived from config/provider_limits.yml, so adding a provider or account
+    without wiring its key here fails CI instead of silently skipping that route's health check.
+    """
+    wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    assert wf["permissions"] == {}
+    assert job["permissions"] == {"contents": "read", "issues": "write", "actions": "read"}
+    crons = {entry["cron"] for entry in _on(wf)["schedule"]}
+    assert crons == {"17 10 * * 1", "20 8 * * *"}
+    step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
+    assert "--sync-issues" in step["run"] and "--due-only" in step["run"]
+    assert "--apply" not in step["run"] and "--open-pr" not in step["run"]
+    env = step["env"]
+    for name in (
+        "LLM_DISPATCH_V2_URL",
+        "LLM_DISPATCH_V2_AUTH_TOKEN",
+        "ARTIFICIAL_ANALYSIS_API_KEY",
+    ):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}"
+    limits = yaml.safe_load((REPO_ROOT / "config" / "provider_limits.yml").read_text())
+    # The planner health-checks the first unpaused route per (provider, upstream model), with that
+    # route's own account key; catalogs and candidates use each provider's first account.
+    needed = {
+        cfg["accounts"][0]["api_key_env"]
+        for cfg in limits["providers"].values()
+        if cfg.get("accounts")
+    }
+    seen = set()
+    for route in limits["routes"]:
+        key = (route["provider"], route["upstream_model"])
+        if route.get("rpd") == 0 or key in seen:
+            continue
+        seen.add(key)
+        accounts = limits["providers"][route["provider"]].get("accounts") or []
+        needed |= {a["api_key_env"] for a in accounts if a["id"] == route.get("account_id")}
+    for name in sorted(needed):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}", name
+
+
+def test_new_route_discovery_requires_one_explicit_manual_candidate():
+    wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["discovery_enabled"]["default"] is False
+    assert inputs["discovery_candidate"]["default"] == ""
+    assert inputs["discovery_axis"]["default"] == "all"
+    assert inputs["discovery_axis"]["options"] == ["all", "input", "output"]
+    step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert step["env"]["DISCOVERY_CANDIDATE"] == "${{ inputs.discovery_candidate }}"
+    assert step["env"]["DISCOVERY_AXIS"] == "${{ inputs.discovery_axis }}"
+    run = step["run"]
+    assert "Manual discovery requires discovery_candidate=provider/model" in run
+    assert 'args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")' in run
+    assert 'args+=(--discovery-axis "$DISCOVERY_AXIS")' in run
+    assert (
+        "DISCOVERY_SCHEDULED_ENABLED = True"
+        in (REPO_ROOT / "citypods" / "provider_catalog" / "reconcile.py").read_text()
+    )
+
+
+def test_contracts_probe_artificial_analysis_with_production_secret():
+    _wf, job = _job("contracts.yml", "artificial-analysis")
+    assert job["permissions"] == {"contents": "read"}
+    assert not job.get("needs"), "Quality contract must run independently of media probes"
+    step = next(
+        s for s in job["steps"] if s.get("name") == "Probe Artificial Analysis quality catalog"
+    )
+    assert step["env"]["ARTIFICIAL_ANALYSIS_API_KEY"] == (
+        "${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}"
+    )
+    assert "tests/live/test_artificial_analysis_contract.py -m live" in step["run"]
+    assert not step.get("continue-on-error")
+    assert not job.get("continue-on-error")
+
+
+@pytest.mark.parametrize(
+    ("workflow_file", "job_name", "step_name", "job_timeout", "step_timeout"),
+    [
+        ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates", 180, 165),
+        (
+            "moments.yml",
+            "moments",
+            "Produce bounded R6 moment candidates and judge assessments",
+            180,
+            165,
+        ),
+        ("chapter-agenda.yml", "extract", "Extract agenda candidates", 240, 225),
+        (
+            "chapter-locator.yml",
+            "locate",
+            "Locate agenda candidates in complete transcripts",
+            45,
+            38,
+        ),
+        ("llm-tournament.yml", "tournament", "Run bounded tag samples", 180, 165),
+        ("r7-diarization.yml", "diarize", "Diarize Denton pilot meetings", 330, 325),
+        ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)", 360, 330),
+        (
+            "llm-deferred-sweep.yml",
+            "sweep",
+            "Reconcile pending deferred/dispatched LLM requests",
+            360,
+            330,
+        ),
+        ("r5-benchmark.yml", "benchmark", "Run or package R5 shadow benchmark", 180, 165),
+        (
+            "tournament-tag-backfill.yml",
+            "backfill",
+            "Refresh one retained source through the normal bounded tag lane",
+            180,
+            165,
+        ),
+        (
+            "asr.yml",
+            "asr",
+            "${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}",
+            360,
+            330,
+        ),
+        (
+            "asr.yml",
+            "reconcile",
+            "Rebuild work index + reconcile dispatch leases + free-tier budget",
+            60,
+            50,
+        ),
+    ],
+)
+def test_workflow_step_level_timeouts_and_ordering(
+    workflow_file: str, job_name: str, step_name: str, job_timeout: int, step_timeout: int
+):
+    """Review/45 Initiative 6: All primary long-running steps have step-level timeouts.
+
+    Invariant: in-process cutoff < in-process backstop < step timeout < job timeout.
+    This guarantees that steps fail visibly (red) instead of the entire run being
+    cancelled (grey), allowing trailing post-processing and reporting steps to execute.
+    """
+    _wf, job = _job(workflow_file, job_name)
+    actual_job_timeout = job.get("timeout-minutes")
+    assert actual_job_timeout == job_timeout, (
+        f"{workflow_file} :: {job_name} job timeout is {actual_job_timeout}, expected {job_timeout}"
+    )
+    step = next((s for s in job["steps"] if s.get("name") == step_name), None)
+    assert step is not None, f"Step {step_name!r} not found in {workflow_file} :: {job_name}"
+    actual_step_timeout = step.get("timeout-minutes")
+    assert actual_step_timeout == step_timeout, (
+        f"{workflow_file} :: {job_name} :: {step_name} step timeout is {actual_step_timeout}, "
+        f"expected {step_timeout}"
+    )
+    assert step["timeout-minutes"] < job["timeout-minutes"]
+
+
+def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock():
+    wf, job = _job("provider-catalog-commands.yml", "apply")
+    observe, _ = _job("provider-catalog-reconcile.yml", "reconcile")
+    assert _on(wf)["issue_comment"]["types"] == ["created"]
+    assert wf["permissions"] == {}
+    assert job["permissions"] == {
+        "contents": "write",
+        "pull-requests": "write",
+        "issues": "write",
+        "actions": "read",
+    }
+    assert wf["concurrency"] == observe["concurrency"]
+    condition = job["if"]
+    assert "pull_request == null" in condition and "body == '/apply'" in condition
+    assert "author_association" in condition
+    checkout = job["steps"][0]
+    assert checkout["with"] == {"ref": "main", "persist-credentials": False, "fetch-depth": 0}
+    step = job["steps"][_step_index(job, "provider_catalog_commands.py")]
+    assert "collaborators/$ACTOR/permission" in step["run"]
+    assert "--body-file provider-catalog-command.md" in step["run"]
+    assert "jq -e '.retry_receipt'" not in step["run"]
+    assert "github.event.comment.body" not in step["run"]
+    assert all("${{ github.event" not in s.get("run", "") for s in job["steps"])
+    for provider in yaml.safe_load((REPO_ROOT / "config/provider_limits.yml").read_text())[
+        "providers"
+    ].values():
+        for account in provider.get("accounts", [])[:1]:
+            name = account["api_key_env"]
+            assert step["env"].get(name) == f"${{{{ secrets.{name} }}}}"
+
+
+def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provider_secrets():
+    wf, job = _job("provider-catalog-commands.yml", "limits")
+    assert _on(wf)["workflow_run"] == {
+        "workflows": ["Provider catalog reconciliation"],
+        "types": ["completed"],
+    }
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
+    assert job["steps"][0]["with"] == {
+        "ref": "main",
+        "fetch-depth": 0,
+        "persist-credentials": False,
+    }
+    assert "head_repository.full_name == github.repository" in job["if"]
+    assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
+    assert "--automatic-limits" in job["steps"][-1]["run"]
+    assert "secrets." not in str(job)
+    assert "download-artifact" not in str(job)  # script verifies bounded data; never executes it
+    _, producer = _job("provider-catalog-reconcile.yml", "reconcile")
+    upload = next(
+        step for step in producer["steps"] if step.get("name") == "Retain scoped rate evidence"
+    )
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
+
+
+def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock():
+    producer, _ = _job("provider-catalog-reconcile.yml", "reconcile")
+    workflow, job = _job("provider-catalog-commands.yml", "retirements")
+    assert "weekly-full" in producer["run-name"]
+    assert "daily-due-only" in producer["run-name"]
+    assert job["needs"] == "limits"
+    assert "always()" in job["if"]
+    assert "workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml'" in job["if"]
+    assert "display_title == 'Provider catalog reconciliation (weekly-full)'" in job["if"]
+    assert "head_repository.full_name == github.repository" in job["if"]
+    assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
+    assert workflow["concurrency"] == producer["concurrency"]
+    assert "--automatic-retirements" in job["steps"][-1]["run"]
+    assert job["timeout-minutes"] == 120
+    env = job["steps"][-1]["env"]
+    assert env["LLM_DISPATCH_V2_URL"] == "${{ secrets.LLM_DISPATCH_V2_URL }}"
+    assert env["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+    assert {key for key in env if key.endswith("_API_KEY")} == {
+        "AIRFORCE_API_KEY",
+        "BEATAPI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "KILO_API_KEY",
+        "NVIDIA_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ORCAROUTER_API_KEY",
+        "SAMBANOVA_API_KEY",
+        "SILICONFLOW_API_KEY",
+        "ZAI_API_KEY",
+    }
+
+
+def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
+    wf, producer = _job("provider-catalog-reconcile.yml", "reconcile")
+    run = next(s for s in producer["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert '"$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1"' in run["run"]
+    assert "--context-evidence" in run["run"]
+    upload = next(s for s in producer["steps"] if s.get("name") == "Retain scoped context evidence")
+    assert "github.event_name == 'schedule'" in upload["if"]
+    assert "github.event.schedule == '17 10 * * 1'" in upload["if"]
+    assert upload["with"]["retention-days"] == 90
+    assert wf["concurrency"]["group"] == "provider-catalog-writers"
+
+
+def test_manual_context_trigger_uses_environment_inputs_and_separate_artifact():
+    text = Path(".github/workflows/provider-catalog-reconcile.yml").read_text()
+    assert "args=(--manual-context --context-evidence" in text
+    for name in (
+        "ROUTES",
+        "DIMENSION",
+        "CALLS",
+        "INPUT",
+        "OUTPUT",
+        "INPUT_BUDGET",
+        "OUTPUT_BUDGET",
+        "PURPOSE",
+    ):
+        assert f'"$CONTEXT_{name}"' in text
+    assert "provider-catalog-manual-context-evidence-${{ github.run_id }}" in text
+    assert "Manual context canary cannot be combined with due-only" in text
+    command = text.split("        run: |", 1)[1].split("      - name:", 1)[0]
+    assert "${{ inputs." not in command
+
+
+def test_manual_context_diagnostic_artifact_uploads_even_after_failure():
+    text = Path(".github/workflows/provider-catalog-reconcile.yml").read_text()
+    step = text.split("- name: Retain manual context evidence", 1)[1]
+    assert "if: always() && github.event_name == 'workflow_dispatch'" in step
+
+
+def test_discovery_has_bounded_weekly_and_manual_time_without_extending_ordinary_runs():
+    workflow = yaml.safe_load(Path(".github/workflows/provider-catalog-reconcile.yml").read_text())
+    timeout = workflow["jobs"]["reconcile"]["timeout-minutes"]
+    assert "github.event_name == 'workflow_dispatch'" in timeout
+    assert "inputs.discovery_enabled == true" in timeout
+    assert "180 || 120" in timeout
+    assert "&& 300 ||" in timeout
+
+
+def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports():
+    workflow, job = _job("remedy-p3-daily.yml", "p3")
+    assert set(_on(workflow)) == {"schedule", "workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert "github.ref == 'refs/heads/main'" in job["if"]
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    run = next(step for step in job["steps"] if step.get("name") == "Run fail-closed daily P3 pass")
+    assert run["env"]["AUDIO_STORAGE_BACKEND"] == "routing"
+    assert "LLM_DISPATCH_V2_URL" in run["env"]
+    assert "B2_APP_KEY" in run["env"]
+    assert "R2_SECRET_ACCESS_KEY" in run["env"]
+    upload = next(step for step in job["steps"] if step.get("name") == "Upload P3 run report")
+    assert upload["if"] == "always()"
+    publication_upload = next(
+        step for step in job["steps"] if step.get("name") == "Upload publication inputs"
+    )
+    assert publication_upload["if"] == "steps.p3.outputs.report_ready_count != '0'"
+    publish = workflow["jobs"]["publish"]
+    assert publish["needs"] == "p3"
+    assert job["outputs"]["report_ready_count"] == "${{ steps.p3.outputs.report_ready_count }}"
+    assert publish["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "write",
+    }
+    assert "needs.p3.outputs.report_ready_count != '0'" in publish["if"]
+    assert any(
+        step.get("name") == "Download current-run publication inputs" for step in publish["steps"]
+    )

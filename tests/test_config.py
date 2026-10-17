@@ -7,8 +7,10 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import yaml
 
 from citypods.config import filter_city_configs, load_city_configs, load_site_config
+from citypods.records import source_key
 
 DEFAULTS = {
     "podcast_language": "en-us",
@@ -57,6 +59,73 @@ def test_loads_valid_city(tmp_path):
     assert c.metadata_retention_episodes == 10000
     assert c.source_id is None
     assert c.lifecycle.status == "active"
+
+
+def test_publication_notes_are_strict_and_feed_local(tmp_path):
+    note = {
+        "uid": "0c66fc968402fabd",
+        "provider_guid": "https://example.test/?clip=3814",
+        "note": "Consecutive proceedings.",
+        "approval_ref": "https://example.test/issues/1",
+    }
+    _write_entity(
+        tmp_path,
+        "foo-tx.yml",
+        f"publication_notes:\n  - {yaml.safe_dump(note, default_flow_style=True).strip()}\n",
+    )
+    _write(tmp_path, "foo-tx.yml", VALID + "city: foo-tx\n")
+    inherited = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert inherited.publication_notes == []
+
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID
+        + "publication_notes:\n  - "
+        + "\n    ".join(f"{key}: {value}" for key, value in note.items())
+        + "\n",
+    )
+    parsed = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert parsed.publication_notes == [note]
+
+
+@pytest.mark.parametrize(
+    "entries, message",
+    [
+        ("{}", "must contain exactly"),
+        (
+            "{uid: 0c66fc968402fabd, provider_guid: g, note: n, approval_ref: a, extra: x}",
+            "must contain exactly",
+        ),
+        (
+            "{uid: 0C66FC968402FABD, provider_guid: g, note: n, approval_ref: a}",
+            "lowercase hexadecimal",
+        ),
+        (
+            "{uid: 0c66fc968402fabd, provider_guid: '', note: n, approval_ref: a}",
+            "non-empty strings",
+        ),
+    ],
+)
+def test_publication_note_parser_rejects_malformed_entries(tmp_path, entries, message):
+    body = VALID + f"publication_notes:\n  - {entries}\n"
+    _write(tmp_path, "foo-tx.yml", body)
+    with pytest.raises(ValueError, match=message):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_note_parser_rejects_explicit_null(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "publication_notes: null\n")
+    with pytest.raises(ValueError, match="publication_notes must be a list"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_note_parser_rejects_duplicate_uids(tmp_path):
+    entry = "{uid: 0c66fc968402fabd, provider_guid: g, note: n, approval_ref: a}"
+    body = VALID + f"publication_notes:\n  - {entry}\n  - {entry}\n"
+    _write(tmp_path, "foo-tx.yml", body)
+    with pytest.raises(ValueError, match="duplicate publication note UID"):
+        load_city_configs(tmp_path, DEFAULTS)
 
 
 def test_loads_explicit_alternative_body_selectors(tmp_path):
@@ -531,3 +600,226 @@ def test_unknown_audit_block_is_preserved_in_city_extra(tmp_path):
     c = load_city_configs(tmp_path, DEFAULTS)[0]
 
     assert c.extra["audit"]["lifecycle"]["status"] == "inactive"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "null",
+        "{aggregate_family: unknown}",
+        "{aggregate_family: tif, member_names: [null]}",
+        "{aggregate_family: tif, member_names: Downtown}",
+        "{aggregate_family: tif, unexpected: true}",
+    ],
+)
+def test_invalid_aggregate_remedy_policy_fails_closed(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {policy}\n")
+    with pytest.raises(ValueError, match="remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "{}",
+        "{aggregate_family: [tif]}",
+        "{aggregate_family: null}",
+        "{member_names: [Council]}",
+        "{identity_names: []}",
+        "{identity_names: ['* Council']}",
+        "{identity_names: ['???']}",
+        "{identity_names: ['---']}",
+        "{identity_names: [null]}",
+        "{identity_names: Council}",
+        "{aggregate_family: bond, identity_names: ['Board?']}",
+    ],
+)
+def test_invalid_named_remedy_policy_fails_closed(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {policy}\n")
+    with pytest.raises(ValueError, match="remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize(
+    "family", ["tif", "pid", "bond", "charter", "redistricting", "public_input", "public_briefings"]
+)
+def test_approved_aggregate_remedy_families(tmp_path, family):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {{aggregate_family: {family}}}\n")
+    assert load_city_configs(tmp_path, DEFAULTS)[0].extra["remedy_policy"] == {
+        "aggregate_family": family
+    }
+
+
+def test_named_body_remedy_policy_preserves_exact_reviewed_names(tmp_path):
+    policy = {
+        "identity_names": ["Housing Finance Corporation"],
+        "member_names": ["Housing Finance"],
+    }
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID + "remedy_policy:\n"
+        "  identity_names: [Housing Finance Corporation]\n"
+        "  member_names: [Housing Finance]\n",
+    )
+    # A named-body policy does not acquire an aggregate family implicitly.
+    assert load_city_configs(tmp_path, DEFAULTS)[0].extra["remedy_policy"] == policy
+
+
+def test_exact_body_selectors_load_without_changing_pinned_source_identity(tmp_path):
+    first = VALID.replace("source:\n", "source:\n  body_exact: [UDC Advisory Committee]\n")
+    second = VALID.replace("slug: foo-tx", "slug: bar-tx")
+    _write(tmp_path, "foo-tx.yml", first + "source_id: shared-source\n")
+    _write(tmp_path, "bar-tx.yml", second + "source_id: shared-source\n")
+    cities = load_city_configs(tmp_path, DEFAULTS)
+    assert {city.source_id for city in cities} == {"shared-source"}
+    assert next(city for city in cities if city.slug == "foo-tx").source["body_exact"] == [
+        "UDC Advisory Committee"
+    ]
+
+
+@pytest.mark.parametrize("invalid", ["[]", "Committee", "[' ']", "['Board *']"])
+def test_invalid_exact_body_selectors_fail_config_validation(tmp_path, invalid):
+    _write(
+        tmp_path, "foo-tx.yml", VALID.replace("source:\n", f"source:\n  body_exact: {invalid}\n")
+    )
+    with pytest.raises(ValueError, match="body_exact"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def _publication_group(source_namespace):
+    return {
+        "id": "reviewed-meeting",
+        "source_key": source_namespace,
+        "identity_kind": "same_provider_guid",
+        "identity_key": "official-provider-guid",
+        "members": [
+            {
+                "uid": "a" * 16,
+                "provider_guid": "official-provider-guid",
+                "record_fingerprint": "1" * 64,
+            },
+            {
+                "uid": "b" * 16,
+                "provider_guid": "official-provider-guid",
+                "record_fingerprint": "2" * 64,
+            },
+        ],
+        "preferred_uid": "a" * 16,
+        "evidence_refs": [
+            {
+                "url": "https://foo.gov/agenda",
+                "retrieved_at": "2026-10-01T00:00:00Z",
+                "content_hash": "3" * 64,
+            }
+        ],
+        "approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/1997",
+        "exposure": {
+            "status": "historical-unknown",
+            "artifacts": [],
+            "rationale": "Historical public exposure is incomplete.",
+        },
+        "search": False,
+        "date_resolution": None,
+    }
+
+
+def test_publication_selection_is_feed_local_and_preserves_source_identity(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    baseline = load_city_configs(tmp_path, DEFAULTS)[0]
+    policy = {"version": 1, "groups": [_publication_group(source_key(baseline))]}
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    selected = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert selected.extra["publication_selection"] == policy
+    assert selected.source == baseline.source
+    assert source_key(selected) == source_key(baseline)
+    assert selected.uid_overrides == baseline.uid_overrides
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        None,
+        [],
+        {"version": True, "groups": []},
+        {"version": 1, "groups": [], "extra": True},
+        {"version": 1},
+    ],
+)
+def test_invalid_publication_selection_fails_during_config_load(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    with pytest.raises(ValueError, match="foo-tx.yml.*publication_selection"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_selection_rejects_foreign_source_namespace(tmp_path):
+    policy = {"version": 1, "groups": [_publication_group("0" * 12)]}
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    with pytest.raises(ValueError, match="source key"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_empty_publication_selection_keeps_pinned_namespace(tmp_path):
+    policy = {"version": 1, "groups": []}
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID + "source_id: shared-source\n" + yaml.safe_dump({"publication_selection": policy}),
+    )
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.extra["publication_selection"] == policy
+    assert source_key(city) == "shared-source"
+
+
+@pytest.mark.parametrize("field,value", [("version", True), ("version", "1"), ("unknown", 1)])
+def test_reviewed_remedy_policy_metadata_is_strict(tmp_path, field, value):
+    feeds = tmp_path / "feeds"
+    feeds.mkdir()
+    raw = yaml.safe_load(VALID)
+    raw["remedy_policy"] = {
+        "identity_names": ["Library Board"],
+        "policy_id": "library-board",
+        "version": 1,
+        "approval_ref": "https://github.com/example/catalog/issues/1",
+    }
+    raw["remedy_policy"][field] = value
+    (feeds / "foo-tx.yml").write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="foo-tx.yml.*remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_render_config_load_does_not_require_optional_pydantic():
+    """The base renderer must load policy-bearing feeds without the llm extra."""
+    import subprocess
+    import sys
+
+    script = """
+import importlib.abc
+import sys
+class NoPydantic(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "pydantic" or fullname.startswith("pydantic."):
+            raise ModuleNotFoundError("pydantic intentionally unavailable")
+sys.meta_path.insert(0, NoPydantic())
+from citypods.config import load_city_configs
+cities = load_city_configs("config", {})
+assert cities and any("remedy_policy" in city.extra for city in cities)
+assert "citypods.remedy_policy" not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("approval", [None, True, 123, []])
+def test_reviewed_policy_approval_type_errors_have_config_context(approval):
+    from citypods.config import validate_declaration
+
+    with pytest.raises(ValueError, match="test-feed: invalid remedy_policy"):
+        validate_declaration(
+            {
+                "identity_names": ["Library Board"],
+                "policy_id": "library",
+                "version": 1,
+                "approval_ref": approval,
+            },
+            "test-feed",
+        )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import signal
 import threading
 import time
@@ -13,6 +14,9 @@ from citypods.compute.local_process import InferenceProcessTerminated, ProcessLo
 
 
 class _FakeAsr:
+    def __init__(self, *, inference_started=None):
+        self.inference_started = inference_started
+
     class AlignmentQualityError(RuntimeError):
         pass
 
@@ -23,6 +27,8 @@ class _FakeAsr:
         self, audio_path, model, language, compute_type, beam_size, initial_prompt, cpu_threads
     ):
         if initial_prompt == "sleep":
+            if self.inference_started is not None:
+                self.inference_started.set()
             time.sleep(30)
         return TranscriptArtifacts(vtt=f"WEBVTT:{model}".encode(), words=b"{}")
 
@@ -118,9 +124,11 @@ def test_process_backend_returns_artifacts_and_reuses_worker():
         backend.close()
 
 
-@pytest.mark.skipif("fork" not in __import__("multiprocessing").get_all_start_methods(), reason="")
 def test_process_backend_can_kill_and_restart_stuck_inference():
-    backend = ProcessLocalBackend(start_method="fork", asr=_FakeAsr())
+    inference_started = multiprocessing.get_context("spawn").Event()
+    backend = ProcessLocalBackend(
+        start_method="spawn", asr=_FakeAsr(inference_started=inference_started)
+    )
     result: dict[str, object] = {}
 
     def _run():
@@ -131,19 +139,18 @@ def test_process_backend_can_kill_and_restart_stuck_inference():
 
     thread = threading.Thread(target=_run)
     thread.start()
-    deadline = time.monotonic() + 5
-    while backend._process is None and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert backend._process is not None, "worker did not start before timeout"
-    old_pid = backend._process.pid
-    assert backend.terminate_active() is True
-    thread.join(timeout=5)
-    assert not thread.is_alive()
-    assert isinstance(result["error"], InferenceProcessTerminated)
-
     try:
+        assert inference_started.wait(timeout=10), "inference did not start before timeout"
+        assert backend._process is not None
+        old_pid = backend._process.pid
+        assert backend.terminate_active() is True
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert isinstance(result["error"], InferenceProcessTerminated)
+
         restarted = backend.run_inference(_job(prompt="restart"))
         assert restarted.output.words == b"{}"
         assert backend._process.pid != old_pid
     finally:
         backend.close()
+        thread.join(timeout=5)

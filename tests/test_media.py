@@ -3920,3 +3920,75 @@ class TestValidateSegmentDecodesRealFfmpeg:
             pytest.skip("ffmpeg required for this integration check")
 
         assert _validate_segment_decodes(tmp_path / "missing.mka", "ffmpeg") is False
+
+
+class TestMediaProbeCache:
+    def test_media_probe_duration_cache_and_invalidation(self, tmp_path, monkeypatch):
+        from citypods.media import _probe_duration_secs, clear_media_probe_cache
+
+        clear_media_probe_cache()
+        test_file = tmp_path / "sample.mp3"
+        test_file.write_bytes(b"dummy audio content 123456789")
+
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            import subprocess
+
+            return subprocess.CompletedProcess(cmd, 0, stdout="12.34\n", stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        # First call populates cache
+        d1 = _probe_duration_secs(test_file)
+        assert d1 == 12.34
+        assert len(calls) == 1
+
+        # Second call hits cache (no subprocess.run call)
+        d2 = _probe_duration_secs(test_file)
+        assert d2 == 12.34
+        assert len(calls) == 1
+
+        # Modifying file invalidates cache
+        test_file.write_bytes(b"longer dummy audio content 1234567890000")
+        d3 = _probe_duration_secs(test_file)
+        assert d3 == 12.34
+        assert len(calls) == 2
+
+        # clear_media_probe_cache forces fresh call
+        clear_media_probe_cache()
+        d4 = _probe_duration_secs(test_file)
+        assert d4 == 12.34
+        assert len(calls) == 3
+
+    def test_media_probe_audio_duration_details_cache(self, tmp_path, monkeypatch):
+        from citypods.media import _probe_audio_duration_details, clear_media_probe_cache
+
+        clear_media_probe_cache()
+        test_file = tmp_path / "sample.m4a"
+        test_file.write_bytes(b"dummy m4a content")
+
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            import subprocess
+
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout='{"format": {"duration": "45.6"}, "streams": [{"duration": "45.5"}]}',
+                stderr="",
+            )
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        probe1 = _probe_audio_duration_details(test_file)
+        assert probe1.container_duration == 45.6
+        assert len(calls) == 1
+
+        # Cached hit
+        probe2 = _probe_audio_duration_details(test_file)
+        assert probe2.container_duration == 45.6
+        assert len(calls) == 1

@@ -1,0 +1,1608 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0c26ff076fc00645016aca5af0bb44819bb3748f4a3df2e16c",
+        "created": 1791646454,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 177,
+          "prompt_tokens": 2535,
+          "total_tokens": 2712,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2535,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 177,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2535,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness."
+      },
+      "duration_seconds": 16.017920167185366
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0f7b7cc81a487ce2016aca5b3a520881939cd9076d0728b827",
+        "created": 1791646528,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign recording 122398 to denton-tx-health-building-standards-commission, not denton-tx-city-council; preserve official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda for recording 122398 explicitly states that the Health and Building Standards Commission convenes a regular meeting on June 3, 2021, at 3:00 p.m. This matches the recording and the existing commission feed's explicit inclusion of provider GUID 122398. Approved policy assigns ownership to the officially convened body, not the meeting room. The Council Work Session Room is only the venue and does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment despite unknown archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 194,
+          "prompt_tokens": 2534,
+          "total_tokens": 2728,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2534,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 194,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2534,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign recording 122398 to denton-tx-health-building-standards-commission, not denton-tx-city-council; preserve official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda for recording 122398 explicitly states that the Health and Building Standards Commission convenes a regular meeting on June 3, 2021, at 3:00 p.m. This matches the recording and the existing commission feed's explicit inclusion of provider GUID 122398. Approved policy assigns ownership to the officially convened body, not the meeting room. The Council Work Session Room is only the venue and does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment despite unknown archive completeness."
+      },
+      "duration_seconds": 8.50950966682285
+    },
+    {
+      "case_id": "denton-library-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0ec82c82e891a48d016aca5b84a6808193a30d0e38691abb03",
+        "created": 1791646601,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-library-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to denton-tx-library-board without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies the convened body as the City of Denton Library Board and gives May 13, 2021 at 3:30 PM, matching the recording. Its references to the Library Advisory Board further establish the meeting's identity. Under the approved policy, the Council Work Session Room is a venue, not evidence of City Council ownership. The existing Library Board feed is therefore the supported owner. This conclusion is limited to this recording and does not establish archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 166,
+          "prompt_tokens": 2476,
+          "total_tokens": 2642,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2476,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 166,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2476,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to denton-tx-library-board without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The recording-specific official agenda identifies the convened body as the City of Denton Library Board and gives May 13, 2021 at 3:30 PM, matching the recording. Its references to the Library Advisory Board further establish the meeting's identity. Under the approved policy, the Council Work Session Room is a venue, not evidence of City Council ownership. The existing Library Board feed is therefore the supported owner. This conclusion is limited to this recording and does not establish archive completeness."
+      },
+      "duration_seconds": 8.635015750303864
+    },
+    {
+      "case_id": "denton-library-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0dbdf41fba5191ec016aca5bced0dc8195a9b251b74ac7fc52",
+        "created": 1791646675,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-library-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to denton-tx-library-board, preserving official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 120859 identifies the convened body as the Library Board and describes the May 13, 2021 Library Advisory Board meeting at 3:30 PM, matching the recording. The approved policy assigns ownership by officially convened body, not meeting room. 'Council Work Session Room' is a venue, not evidence of City Council ownership. The existing denton-tx-library-board feed matches the identified body. Archive completeness is unknown but does not prevent this recording-specific assignment.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 172,
+          "prompt_tokens": 2480,
+          "total_tokens": 2652,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2480,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 172,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2480,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to denton-tx-library-board, preserving official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 120859 identifies the convened body as the Library Board and describes the May 13, 2021 Library Advisory Board meeting at 3:30 PM, matching the recording. The approved policy assigns ownership by officially convened body, not meeting room. 'Council Work Session Room' is a venue, not evidence of City Council ownership. The existing denton-tx-library-board feed matches the identified body. Archive completeness is unknown but does not prevent this recording-specific assignment."
+      },
+      "duration_seconds": 8.350632791873068
+    },
+    {
+      "case_id": "denton-zone1-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_05c8232db64d7832016aca5c177558819bb2ca40f2e44ffb9c",
+        "created": 1791646747,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Assign recording 122084 to denton-tx-tirz-1-board without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 122084 explicitly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board on May 26, 2021, at 12:00 p.m., matching the recording. Under the approved policy, ownership follows that officially convened body, not the Council Work Session Room. The supplied TIRZ No. 1 feed represents this body and explicitly includes recording 122084; TIRZ No. 2 remains distinct. This supports the recording-specific assignment without implying archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 187,
+          "prompt_tokens": 2593,
+          "total_tokens": 2780,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2593,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 187,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2593,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Assign recording 122084 to denton-tx-tirz-1-board without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 122084 explicitly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board on May 26, 2021, at 12:00 p.m., matching the recording. Under the approved policy, ownership follows that officially convened body, not the Council Work Session Room. The supplied TIRZ No. 1 feed represents this body and explicitly includes recording 122084; TIRZ No. 2 remains distinct. This supports the recording-specific assignment without implying archive completeness."
+      },
+      "duration_seconds": 7.867249958217144
+    },
+    {
+      "case_id": "denton-zone1-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0a990d56d6514b59016aca5c5fe25c819b9a6c9a74f318ab08",
+        "created": 1791646821,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Assign recording 122084 to denton-tx-tirz-1-board, not denton-tx-city-council; preserve official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda for recording 122084 explicitly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board for a regular meeting on May 26, 2021, at noon. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is a venue, not evidence of City Council ownership. The existing TIRZ No. 1 Board feed also explicitly includes this recording's provider GUID and body label. This supports recording-specific assignment to that feed without implying archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 196,
+          "prompt_tokens": 2593,
+          "total_tokens": 2789,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2593,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 196,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2593,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Assign recording 122084 to denton-tx-tirz-1-board, not denton-tx-city-council; preserve official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda for recording 122084 explicitly convenes the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board for a regular meeting on May 26, 2021, at noon. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is a venue, not evidence of City Council ownership. The existing TIRZ No. 1 Board feed also explicitly includes this recording's provider GUID and body label. This supports recording-specific assignment to that feed without implying archive completeness."
+      },
+      "duration_seconds": 8.084221541881561
+    },
+    {
+      "case_id": "denton-zone1-wrong-zone",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_00124d6a3c599d76016aca5ca96c9087d19d809c439caa4f1d",
+        "created": 1791646895,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone1-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Retain recording 122084 in denton-tx-tirz-1-board; do not assign it to denton-tx-tirz-2-board.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and gives the matching May 26, 2021, 12:00 p.m. meeting time. Under the approved identity policy, the officially convened body determines ownership and distinct numbered boards remain distinct. The existing TIRZ No. 1 feed also explicitly includes recording 122084. Shared city and tax-increment-financing terminology do not establish identity with Zone No. 2, and the Council Work Session Room does not determine ownership. Archive completeness is unknown but is not needed to resolve this recording-specific assignment.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 224,
+          "prompt_tokens": 2595,
+          "total_tokens": 2819,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2595,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 224,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2595,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Retain recording 122084 in denton-tx-tirz-1-board; do not assign it to denton-tx-tirz-2-board.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The recording-specific official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and gives the matching May 26, 2021, 12:00 p.m. meeting time. Under the approved identity policy, the officially convened body determines ownership and distinct numbered boards remain distinct. The existing TIRZ No. 1 feed also explicitly includes recording 122084. Shared city and tax-increment-financing terminology do not establish identity with Zone No. 2, and the Council Work Session Room does not determine ownership. Archive completeness is unknown but is not needed to resolve this recording-specific assignment."
+      },
+      "duration_seconds": 9.807100125122815
+    },
+    {
+      "case_id": "denton-zone2-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0aa56899ff82654c016aca5cf36e9887d0949f0e7395910d45",
+        "created": 1791646970,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone2-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Retain recording 111521 in denton-tx-tirz-2-board without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 111521 explicitly convenes the City of Denton Tax Increment Reinvestment Zone No. 2 Board for a special called meeting on January 13, 2021, at 11:00 a.m., matching the recording. Under the approved policy, the officially convened body determines ownership, and numbered boards remain distinct. The Council Work Session Room is only the venue; references to recommendations to City Council do not make City Council the owner. The existing TIRZ No. 2 feed also explicitly includes this recording. This determination is recording-specific and does not establish archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 202,
+          "prompt_tokens": 2592,
+          "total_tokens": 2794,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2592,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 202,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2592,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "Retain recording 111521 in denton-tx-tirz-2-board without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 111521 explicitly convenes the City of Denton Tax Increment Reinvestment Zone No. 2 Board for a special called meeting on January 13, 2021, at 11:00 a.m., matching the recording. Under the approved policy, the officially convened body determines ownership, and numbered boards remain distinct. The Council Work Session Room is only the venue; references to recommendations to City Council do not make City Council the owner. The existing TIRZ No. 2 feed also explicitly includes this recording. This determination is recording-specific and does not establish archive completeness."
+      },
+      "duration_seconds": 9.443863959051669
+    },
+    {
+      "case_id": "denton-zone2-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_037f95fbf5bceead016aca5d3f296887d0978b03a76d57529d",
+        "created": 1791647044,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone2-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Assign recording 111521 to denton-tx-tirz-2-board, not denton-tx-city-council, preserving official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda explicitly convenes the Tax Increment Reinvestment Zone No. 2 Board for a special called meeting on January 13, 2021, at 11:00 a.m., matching recording 111521. The approved policy assigns ownership to the officially convened body and keeps distinct numbered boards separate. The Council Work Session Room is only the venue, and an agenda item recommending action to City Council does not make this a City Council meeting. The existing TIRZ No. 2 Board feed also explicitly includes this recording. Archive completeness is unknown but is not needed for this recording-specific assignment.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 211,
+          "prompt_tokens": 2592,
+          "total_tokens": 2803,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2592,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 211,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2592,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "Assign recording 111521 to denton-tx-tirz-2-board, not denton-tx-city-council, preserving official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda explicitly convenes the Tax Increment Reinvestment Zone No. 2 Board for a special called meeting on January 13, 2021, at 11:00 a.m., matching recording 111521. The approved policy assigns ownership to the officially convened body and keeps distinct numbered boards separate. The Council Work Session Room is only the venue, and an agenda item recommending action to City Council does not make this a City Council meeting. The existing TIRZ No. 2 Board feed also explicitly includes this recording. Archive completeness is unknown but is not needed for this recording-specific assignment."
+      },
+      "duration_seconds": 9.359253832604736
+    },
+    {
+      "case_id": "denton-zone2-wrong-zone",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0ceeec3e021ecfbe016aca5d880f1887d1b5e513bdeb36eea1",
+        "created": 1791647118,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-zone2-wrong-zone\",\"supported\":false,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Retain recording 111521 in denton-tx-tirz-2-board; do not assign it to denton-tx-tirz-1-board.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board for the January 13, 2021, 11:00 a.m. special called meeting. Its business concerns Zone Number Two (Westpark TIRZ). The existing TIRZ No. 2 feed also explicitly includes recording 111521 with the matching meeting label. Approved policy requires ownership by the officially convened body and keeps distinct numbered boards separate; shared Denton and TIRZ tokens do not establish identity with the No. 1 Board. The Council Work Session Room is a venue, not an owner. Recording-specific evidence is sufficient for this assignment without establishing archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 232,
+          "prompt_tokens": 2594,
+          "total_tokens": 2826,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2594,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 232,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2594,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-wrong-zone",
+        "supported": false,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "Retain recording 111521 in denton-tx-tirz-2-board; do not assign it to denton-tx-tirz-1-board.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board for the January 13, 2021, 11:00 a.m. special called meeting. Its business concerns Zone Number Two (Westpark TIRZ). The existing TIRZ No. 2 feed also explicitly includes recording 111521 with the matching meeting label. Approved policy requires ownership by the officially convened body and keeps distinct numbered boards separate; shared Denton and TIRZ tokens do not establish identity with the No. 1 Board. The Council Work Session Room is a venue, not an owner. Recording-specific evidence is sufficient for this assignment without establishing archive completeness."
+      },
+      "duration_seconds": 8.92368937516585
+    },
+    {
+      "case_id": "denton-health-own",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0c480433fc7ed7c6016aca5dd258388193bce788f21a90b0c6",
+        "created": 1791647191,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-8ae21a5239956847f307ceaa\",\"supported\":null,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign the supplied recording to the existing Health & Building Standards Commission feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda for recording 122398 explicitly identifies the City of Denton Health and Building Standards Commission and its regular meeting on June 3, 2021, at 3:00 p.m. This matches the supplied recording and the existing feed's explicit body_includes entry for provider_guid 122398. Ownership is established by the named convening body and exact recording match, not shared city or topic words. This conclusion is limited to the supplied recording and does not establish archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 183,
+          "prompt_tokens": 2388,
+          "total_tokens": 2571,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2388,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 183,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2388,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": null,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign the supplied recording to the existing Health & Building Standards Commission feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda for recording 122398 explicitly identifies the City of Denton Health and Building Standards Commission and its regular meeting on June 3, 2021, at 3:00 p.m. This matches the supplied recording and the existing feed's explicit body_includes entry for provider_guid 122398. Ownership is established by the named convening body and exact recording match, not shared city or topic words. This conclusion is limited to the supplied recording and does not establish archive completeness."
+      },
+      "duration_seconds": 7.98369862511754
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_035078fbb22ad1bd016aca5e1c384c8197bb668556c61b8912",
+        "created": 1791647266,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5a9bffdb8b1a44e186edac01\",\"supported\":null,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign recording 122398 to the existing Health & Building Standards Commission feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the City of Denton Health and Building Standards Commission and specifies a regular meeting on June 3, 2021, at 3:00 p.m., matching recording 122398. The existing commission feed explicitly includes the same body label and provider GUID. This establishes ownership for this recording; it does not establish archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 164,
+          "prompt_tokens": 2392,
+          "total_tokens": 2556,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2392,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 164,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2392,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": null,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign recording 122398 to the existing Health & Building Standards Commission feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda identifies the convening body as the City of Denton Health and Building Standards Commission and specifies a regular meeting on June 3, 2021, at 3:00 p.m., matching recording 122398. The existing commission feed explicitly includes the same body label and provider GUID. This establishes ownership for this recording; it does not establish archive completeness."
+      },
+      "duration_seconds": 9.509363499935716
+    },
+    {
+      "case_id": "denton-library-own",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_030149fa233a4d1b016aca5e66bb3087d09921220690732407",
+        "created": 1791647339,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-0bec25e6b2c38e4f00fc5462\",\"supported\":null,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to the existing denton-tx-library-board feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 120859 identifies the meeting as the City of Denton Library Board on May 13, 2021 at 3:30 PM, matching the supplied recording. Its public participation instructions also identify the Library Advisory Board. This establishes ownership by the existing Library Board feed, whose source body is Library Board. The Council Work Session Room is a venue, not evidence of City Council ownership, and the agenda does not identify a joint luncheon. The evidence supports this recording-specific assignment, not archive-wide completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 192,
+          "prompt_tokens": 2338,
+          "total_tokens": 2530,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2338,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 192,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2338,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-own",
+        "supported": null,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to the existing denton-tx-library-board feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 120859 identifies the meeting as the City of Denton Library Board on May 13, 2021 at 3:30 PM, matching the supplied recording. Its public participation instructions also identify the Library Advisory Board. This establishes ownership by the existing Library Board feed, whose source body is Library Board. The Council Work Session Room is a venue, not evidence of City Council ownership, and the agenda does not identify a joint luncheon. The evidence supports this recording-specific assignment, not archive-wide completeness."
+      },
+      "duration_seconds": 8.289634792134166
+    },
+    {
+      "case_id": "denton-library-council",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_00a1a26cb1bd0919016aca5eb081cc819ab5edaad84c8cf60e",
+        "created": 1791647413,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-5289302793d922ea2d6379a7\",\"supported\":null,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to the existing Library Board feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 120859 identifies the City of Denton Library Board meeting on May 13, 2021 at 3:30 PM, matching the recording. Its public participation instructions explicitly describe the Library Advisory Board meeting. This establishes the body identity covered by the existing denton-tx-library-board feed. The Council Work Session Room is a meeting location, not evidence of City Council ownership, and the agenda does not identify a joint luncheon. The determination is limited to this recording, not archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 183,
+          "prompt_tokens": 2335,
+          "total_tokens": 2518,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2335,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 183,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2335,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-council",
+        "supported": null,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to the existing Library Board feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 120859 identifies the City of Denton Library Board meeting on May 13, 2021 at 3:30 PM, matching the recording. Its public participation instructions explicitly describe the Library Advisory Board meeting. This establishes the body identity covered by the existing denton-tx-library-board feed. The Council Work Session Room is a meeting location, not evidence of City Council ownership, and the agenda does not identify a joint luncheon. The determination is limited to this recording, not archive completeness."
+      },
+      "duration_seconds": 8.926501958165318
+    },
+    {
+      "case_id": "denton-zone1-own",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_01c76b59784e63d7016aca5ef9590c8190b2e75e5130fde4fc",
+        "created": 1791647485,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-45e6435621e8f7432fd1ed36\",\"supported\":null,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Assign recording 122084 to the existing denton-tx-tirz-1-board feed.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021, at 12:00 p.m., matching the recording. The existing TIRZ No. 1 Board feed explicitly includes this exact body label and provider GUID 122084. This establishes recording-specific ownership, not merely shared city or topic wording; no archive-wide completeness conclusion is required.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 179,
+          "prompt_tokens": 2447,
+          "total_tokens": 2626,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2447,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 179,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2447,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-own",
+        "supported": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Assign recording 122084 to the existing denton-tx-tirz-1-board feed.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021, at 12:00 p.m., matching the recording. The existing TIRZ No. 1 Board feed explicitly includes this exact body label and provider GUID 122084. This establishes recording-specific ownership, not merely shared city or topic wording; no archive-wide completeness conclusion is required."
+      },
+      "duration_seconds": 7.584736958146095
+    },
+    {
+      "case_id": "denton-zone1-council",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0afc9550df9100f9016aca5f4288e487d19de3d5b472810372",
+        "created": 1791647561,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-58b25d3f8189b9da8dde30e9\",\"supported\":null,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Assign recording 122084 to the existing denton-tx-tirz-1-board feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021, at 12:00 p.m., matching the supplied recording. The approved TIRZ No. 1 Board feed explicitly includes the same body label and provider GUID 122084. This establishes recording-specific ownership, not merely a shared city or topic, and distinguishes it from the TIRZ No. 2 Board and other feeds. No archive-wide completeness conclusion is required.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 203,
+          "prompt_tokens": 2449,
+          "total_tokens": 2652,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2449,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 203,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2449,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-council",
+        "supported": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Assign recording 122084 to the existing denton-tx-tirz-1-board feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021, at 12:00 p.m., matching the supplied recording. The approved TIRZ No. 1 Board feed explicitly includes the same body label and provider GUID 122084. This establishes recording-specific ownership, not merely a shared city or topic, and distinguishes it from the TIRZ No. 2 Board and other feeds. No archive-wide completeness conclusion is required."
+      },
+      "duration_seconds": 10.029432374984026
+    },
+    {
+      "case_id": "denton-zone1-wrong-zone",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_072aa76ef857b5fd016aca5f8d5cfc8193a9118fe208118915",
+        "created": 1791647633,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-82de1ddd16a7835926fc2c2c\",\"supported\":null,\"proposed_owner\":\"denton-tx-tirz-1-board\",\"proposed_action\":\"Assign recording 122084 to the existing denton-tx-tirz-1-board feed.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021 at 12:00 p.m., matching the supplied recording. The existing TIRZ No. 1 Board feed explicitly includes the same body label and provider GUID 122084. This establishes recording-specific ownership, without relying on shared city or topic words or asserting archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 176,
+          "prompt_tokens": 2447,
+          "total_tokens": 2623,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2447,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 176,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2447,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone1-wrong-zone",
+        "supported": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "proposed_action": "Assign recording 122084 to the existing denton-tx-tirz-1-board feed.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda identifies the convening body as the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board and specifies May 26, 2021 at 12:00 p.m., matching the supplied recording. The existing TIRZ No. 1 Board feed explicitly includes the same body label and provider GUID 122084. This establishes recording-specific ownership, without relying on shared city or topic words or asserting archive completeness."
+      },
+      "duration_seconds": 8.295699750073254
+    },
+    {
+      "case_id": "denton-zone2-own",
+      "mode": "blind_owner",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_096777d476f4621c016aca5fd6c698819a8595895fdc8f7a71",
+        "created": 1791647708,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"case-89824c5032d37660ecaaab51\",\"supported\":null,\"proposed_owner\":\"denton-tx-tirz-2-board\",\"proposed_action\":\"Assign recording 111521 to the existing TIRZ No. 2 Board feed without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda explicitly identifies the convening body as the City of Denton Tax Increment Reinvestment Zone No. 2 Board and specifies a special called meeting on January 13, 2021 at 11:00 AM, matching the recording. The existing denton-tx-tirz-2-board feed also explicitly includes this exact meeting label and provider GUID 111521. This establishes recording-specific ownership, not archive completeness. The agenda's reference to a recommendation to City Council does not make City Council the convening body.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 194,
+          "prompt_tokens": 2444,
+          "total_tokens": 2638,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2444,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 194,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2444,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-zone2-own",
+        "supported": null,
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "proposed_action": "Assign recording 111521 to the existing TIRZ No. 2 Board feed without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda explicitly identifies the convening body as the City of Denton Tax Increment Reinvestment Zone No. 2 Board and specifies a special called meeting on January 13, 2021 at 11:00 AM, matching the recording. The existing denton-tx-tirz-2-board feed also explicitly includes this exact meeting label and provider GUID 111521. This establishes recording-specific ownership, not archive completeness. The agenda's reference to a recommendation to City Council does not make City Council the convening body."
+      },
+      "duration_seconds": 8.942747917026281
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:33:59.785679+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 14.636721500195563
+    },
+    {
+      "started_at": "2026-10-10T15:35:20.813490+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.309540084097534
+    },
+    {
+      "started_at": "2026-10-10T15:36:34.455806+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.365784917026758
+    },
+    {
+      "started_at": "2026-10-10T15:37:48.326132+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.919245457742363
+    },
+    {
+      "started_at": "2026-10-10T15:39:01.482830+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.611452499870211
+    },
+    {
+      "started_at": "2026-10-10T15:40:13.962542+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.153429040685296
+    },
+    {
+      "started_at": "2026-10-10T15:41:27.166525+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.80997895821929
+    },
+    {
+      "started_at": "2026-10-10T15:42:41.980268+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.354022957850248
+    },
+    {
+      "started_at": "2026-10-10T15:43:56.474132+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.343760749790817
+    },
+    {
+      "started_at": "2026-10-10T15:45:10.749123+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.10542054194957
+    },
+    {
+      "started_at": "2026-10-10T15:46:24.947177+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.767434541136026
+    },
+    {
+      "started_at": "2026-10-10T15:47:37.739278+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.515477749984711
+    },
+    {
+      "started_at": "2026-10-10T15:48:52.344333+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.1620914582163095
+    },
+    {
+      "started_at": "2026-10-10T15:50:05.573632+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.9460462080314755
+    },
+    {
+      "started_at": "2026-10-10T15:51:19.482648+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.572759416885674
+    },
+    {
+      "started_at": "2026-10-10T15:52:32.156784+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 8.979218250140548
+    },
+    {
+      "started_at": "2026-10-10T15:53:47.133351+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.811781167052686
+    },
+    {
+      "started_at": "2026-10-10T15:55:00.602204+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.767417542170733
+    }
+  ]
+}

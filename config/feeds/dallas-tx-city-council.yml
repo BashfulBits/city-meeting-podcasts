@@ -6,6 +6,7 @@ source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "City Council Agenda Meetings"   # see scripts/discover_swagit.py for other bodies
   body_any:
+    - "Council Workshop"
     - "Special Called City Council Meeting"
     - "Council Budget Workshop"
     - "Special Called City Council"
@@ -13,9 +14,10 @@ source:
     - "Special City Council"
     - "City Council Agenda - Afternoon"
     - "City Council Agenda - Morning"
+  body_exact:
+    - "City Council"
+    - "Council Workshop"
   body_includes:
-    - provider_guid: "203320"
-      body: "Saturday Redistricting Commission"
     - provider_guid: "204508"
       body: "Redistricting Town Hall"
     - provider_guid: "204507"
@@ -32,8 +34,6 @@ source:
       body: "Ballot Order Drawing"
     - provider_guid: "205567"
       body: "Ballot Order Drawing"
-    - provider_guid: "280220"
-      body: "2024 Bond CBTF and Subcommittee Chairs Meeting"
     - provider_guid: "245386"
       body: "City Council Inauguration"
     - provider_guid: "202270"

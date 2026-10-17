@@ -1,0 +1,15 @@
+import subprocess,time
+from pathlib import Path
+root=Path('/private/tmp/p1-kimi-reviewer')
+r=root/'evals/remedy/results/p1-patient-2026-10-10'
+stop=time.monotonic()+5400
+while not (r/'sol-retry-v1.json').exists():
+    if time.monotonic()>stop: raise SystemExit('Sol retry did not finish; DeepSeek not started')
+    time.sleep(20)
+with (r/'deepseek-retry-v1.log').open('x') as log:
+    code=subprocess.call(['/usr/local/bin/citypods-env','env','R2_BUCKET=citypods-spike',
+        'PYTHONPATH=.','python',str(r/'evaluate.py'),'deepseek','--retry-from',
+        str(r/'deepseek-v1.json'),'--out',str(r/'deepseek-retry-v1.json')],
+        cwd=root,stdout=log,stderr=subprocess.STDOUT)
+print('deepseek retry exit',code,flush=True)
+raise SystemExit(code)

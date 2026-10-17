@@ -83,6 +83,7 @@ class TestInterface:
             "agenda-chapter-locate",
             "moment-extraction",
             "moment-judge",
+            "judge",
         }
 
     def test_make_compute_defaults_to_local(self):

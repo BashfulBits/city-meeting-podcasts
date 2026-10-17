@@ -16,6 +16,20 @@ rather than its own file: `torch`/`torchaudio` are already a transitive pin ther
 WhisperX's own torch/torchaudio dependency, so a separate lock file would risk two
 constraint files disagreeing on the same package's pinned version.
 
+### Lane inputs (`*.in`)
+
+Each lock compiles from its own generated input, `constraints/<lane>.in`: the base dependencies
+plus that lane's extras, written from `pyproject.toml` by `scripts/lane_inputs.py` (which also
+owns the lane → extras map above). `pyproject.toml` stays the only place dependencies are
+declared; `compile_constraints.sh` regenerates the `.in` files first, and `python-compat.yml`
+fails if one is stale.
+
+They exist for Renovate: its pip-compile manager treats every lock that shares a source file as
+one project and reads current versions from the first lock only (`asr.txt`), so with
+`pyproject.toml` as the shared source the LLM stack never got an update. One source per lock
+makes each lane its own Renovate project. Installs are unchanged: workflows still run
+`pip install -e ".[extras]" -c constraints/<lane>.txt`.
+
 ## Consuming them
 
 These files are **version-pinned** (exact `==`), not hashed. They are consumed via `pip … -c`
@@ -40,6 +54,6 @@ scripts/compile_constraints.sh          # requires Docker locally
 In CI this is the **`lock.yml`** workflow (manual dispatch, and on `pyproject.toml` change). The
 `deps` job in `ci.yml` enforces that these files are in sync (recompile → `git diff --exit-code`).
 
-> `prod.txt`/`asr.txt`/`dev.txt` are generated. Do not hand-edit them — change `pyproject.toml`,
-> then recompile. `gh-cli.txt` is the one exception: it's hand-maintained (see its own header),
+> The `*.txt` locks and `*.in` inputs are generated. Do not hand-edit them — change
+> `pyproject.toml`, then recompile. `gh-cli.txt` is the one exception: it's hand-maintained (see its own header),
 > since `gh` isn't a Python package and has nothing for `pip-compile` to resolve.

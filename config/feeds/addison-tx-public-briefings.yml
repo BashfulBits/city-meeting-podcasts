@@ -1,0 +1,13 @@
+slug: addison-tx-public-briefings
+city: addison-tx
+provider: swagit
+meeting_family: public_briefings
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body_exact:
+    - Homelessness Education Seminar
+podcast_title: 'Addison: Public Briefings'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Verified public educational briefings for Addison, including the Homelessness
+  Education Seminar.

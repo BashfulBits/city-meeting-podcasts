@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree as ET
 
 import defusedxml.ElementTree as DET
@@ -24,8 +24,10 @@ from citypods.models import ChangeToken, Episode
 from citypods.providers.base import ProviderError
 from citypods.security import validate_source_url
 
-EMBED_RE = re.compile(r"https?://[\w.-]*tikiliveapi\.com/embed\?[^\"'\s]*videoId=\d+[^\"'\s]*")
-M3U8_RE = re.compile(r"https?://[^\"'\s]+\.m3u8[^\"'\s]*")
+EMBED_RE = re.compile(
+    r"(?i)(?:https?:)?//[\w.-]*tikiliveapi\.com/embed\?[^\"'\s>]*videoId=\d+[^\"'\s>]*"
+)
+M3U8_RE = re.compile(r"(?i)(?:https?:)?//[^\"'\s>]+\.m3u8[^\"'\s>]*")
 
 
 def _text(item: ET.Element, tag: str) -> str:
@@ -161,6 +163,13 @@ class CivicPlusProvider:
         if not m:
             raise ProviderError(f"no TikiLive embed URL found on {page_url}")
         embed_url = m.group(0).replace("&amp;", "&")
+        # Resolve protocol-relative or relative embed URLs against the watch page and normalize
+        # to https so third-party embed requests never travel over unencrypted cleartext HTTP.
+        embed_url = urljoin(page_url, embed_url)
+        if embed_url.startswith("//"):
+            embed_url = f"https:{embed_url}"
+        elif embed_url.startswith("http://"):
+            embed_url = f"https://{embed_url[7:]}"
         host = (urlparse(embed_url).hostname or "").lower()
         if host != "tikiliveapi.com" and not host.endswith(".tikiliveapi.com"):
             raise ProviderError(f"unexpected embed host in URL: {embed_url}")
@@ -180,6 +189,13 @@ class CivicPlusProvider:
         if not m:
             raise ProviderError(f"no HLS (.m3u8) URL found in embed {embed_url}")
         hls_url = m.group(0).replace("&amp;", "&")
+        # Resolve protocol-relative or relative HLS URLs against the embed page and normalize
+        # to https to satisfy validate_source_url's ALLOWED_SCHEMES requirement.
+        hls_url = urljoin(embed_url, hls_url)
+        if hls_url.startswith("//"):
+            hls_url = f"https:{hls_url}"
+        elif hls_url.startswith("http://"):
+            hls_url = f"https://{hls_url[7:]}"
         # M3U8_RE (unlike the sibling EMBED_RE) has no host constraint; validate explicitly
         # before handing it to ffmpeg rather than relying on preflight_media_size's size-cap
         # side effect (CR2-CP-17/MR-CP-02).

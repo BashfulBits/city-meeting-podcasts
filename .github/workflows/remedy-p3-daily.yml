@@ -1,0 +1,171 @@
+name: Daily unexpected-body P3 consensus
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remedy-p3-daily
+  cancel-in-progress: false
+
+jobs:
+  p3:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    outputs:
+      status: ${{ steps.p3.outputs.status }}
+      report_ready_count: ${{ steps.p3.outputs.report_ready_count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Run fail-closed daily P3 pass
+        id: p3
+        env:
+          AUDIO_STORAGE_BACKEND: routing
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          python scripts/remedy_p3_daily.py \
+            --repo-root . \
+            --output "$RUNNER_TEMP/remedy-p3-${GITHUB_RUN_ID}.json" \
+            --evidence-output "$RUNNER_TEMP/remedy-p3-evidence-${GITHUB_RUN_ID}.json"
+          echo "status=$(jq -r '.status' "$RUNNER_TEMP/remedy-p3-${GITHUB_RUN_ID}.json")" \
+            >> "$GITHUB_OUTPUT"
+          echo "report_ready_count=$(jq '[.findings[] | select(.status == "report_ready")] | length' \
+            "$RUNNER_TEMP/remedy-p3-${GITHUB_RUN_ID}.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload P3 run report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: remedy-p3-${{ github.run_id }}
+          path: ${{ runner.temp }}/remedy-p3-*.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload publication inputs
+        if: steps.p3.outputs.report_ready_count != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: remedy-p3-publication-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/remedy-p3-${{ github.run_id }}.json
+            ${{ runner.temp }}/remedy-p3-evidence-${{ github.run_id }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: p3
+    if: >-
+      github.ref == 'refs/heads/main' && needs.p3.outputs.report_ready_count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install publisher dependencies
+        run: |
+          pip install -e ".[dev,wer,llm,storage]" -c constraints/dev.txt
+          pip install "scikit-learn>=1.5" -c constraints/chapter-research.txt
+
+      - name: Install FFmpeg runtime libraries
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+
+      - name: Install pinned ffmpeg
+        timeout-minutes: 10
+        env:
+          FFMPEG_URL: >-
+            ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Install OCR runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils tesseract-ocr
+          pdftocairo -v
+          tesseract --version
+
+      - name: Download current-run publication inputs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: remedy-p3-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/remedy-p3-publication
+
+      - name: Publish bounded proposals and reconcile issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIO_STORAGE_BACKEND: routing
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          PATH="${FFMPEG_DIR}/bin:${PATH}" python scripts/remedy_p3_publish.py \
+            --report "$RUNNER_TEMP/remedy-p3-publication/remedy-p3-${GITHUB_RUN_ID}.json" \
+            --evidence-file "$RUNNER_TEMP/remedy-p3-publication/remedy-p3-evidence-${GITHUB_RUN_ID}.json" \
+            --repo-root . \
+            --output "$RUNNER_TEMP/remedy-p3-published-${GITHUB_RUN_ID}.json"
+
+      - name: Upload publication report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: remedy-p3-publication-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/remedy-p3-published-${{ github.run_id }}.json
+          if-no-files-found: ignore
+          retention-days: 30

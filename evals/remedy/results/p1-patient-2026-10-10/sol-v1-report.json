@@ -1,0 +1,104 @@
+{
+  "kind": "content-only-baseline-report",
+  "qualified": false,
+  "identity_gate": "held: verify returned provider identity separately",
+  "reasoning_gate": "held: default, maximum not verified",
+  "results_hash": "fa8a313048bf6a26504f91ec4148759944bde8656e69908cbf6fba5bdd228e06",
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+  "reports": [
+    {
+      "mode": "claim_support",
+      "report": {
+        "mode": "claim_support",
+        "counts": {
+          "known_truth": 9,
+          "unknown_truth": 0,
+          "correct": 9,
+          "incorrect": 0,
+          "abstained": 0,
+          "failed": 1,
+          "unattempted": 0,
+          "accepted": 4,
+          "accepted_correct": 4,
+          "critical_errors": 0
+        },
+        "accepted_precision": 1.0,
+        "supported_claim_recall": 1.0,
+        "breakdown": {
+          "owner_assignment|3b7588310856|denton:3b7588310856:health|verified": {
+            "known_truth": 2,
+            "correct": 2,
+            "incorrect": 0,
+            "abstained": 0
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:library|verified": {
+            "known_truth": 2,
+            "correct": 2,
+            "incorrect": 0,
+            "abstained": 0
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:zone1|verified": {
+            "known_truth": 3,
+            "correct": 3,
+            "incorrect": 0,
+            "abstained": 0
+          },
+          "owner_assignment|3b7588310856|denton:3b7588310856:zone2|verified": {
+            "known_truth": 2,
+            "correct": 2,
+            "incorrect": 0,
+            "abstained": 0
+          }
+        },
+        "admission_eligible_cases": 9,
+        "owner_selection": {
+          "known_truth": 0,
+          "unknown_truth": 0,
+          "evaluated": 0,
+          "correct": 0,
+          "incorrect": 0,
+          "abstained": 0,
+          "failed": 0,
+          "unattempted": 0
+        },
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0"
+      }
+    },
+    {
+      "mode": "blind_owner",
+      "report": {
+        "mode": "blind_owner",
+        "counts": {
+          "known_truth": 0,
+          "unknown_truth": 0,
+          "correct": 0,
+          "incorrect": 0,
+          "abstained": 0,
+          "failed": 0,
+          "unattempted": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "critical_errors": 0
+        },
+        "accepted_precision": null,
+        "supported_claim_recall": null,
+        "breakdown": {},
+        "admission_eligible_cases": 8,
+        "owner_selection": {
+          "known_truth": 8,
+          "unknown_truth": 0,
+          "evaluated": 8,
+          "correct": 8,
+          "incorrect": 0,
+          "abstained": 0,
+          "failed": 2,
+          "unattempted": 0
+        },
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0"
+      }
+    }
+  ]
+}

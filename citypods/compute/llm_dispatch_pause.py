@@ -20,12 +20,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 from urllib.parse import urlencode, urljoin, urlsplit
 
@@ -72,7 +75,55 @@ class PauseOutcome:
         return not self.drained or self.pause_expired
 
 
+@dataclass(frozen=True)
+class ContextSession:
+    """Server-owned weekly allowance; a repeated start never extends its deadline."""
+
+    week_start: str
+    run_id: str
+    deadline_ms: int
+    remaining_input: int
+    remaining_output: int
+    remaining_requests: int
+
+
+@dataclass(frozen=True)
+class ContextAdmission:
+    """Single-use permission. Lost responses must be abandoned, never retried."""
+
+    attempt_id: str
+
+
 class DispatchPauseClient:
+    def rate_failures(self) -> dict[str, Any]:
+        """Fetch bounded current-day counters; older Workers and partial results defer checks."""
+        data = self._request("GET", "v2/stats?rate_failures=1")
+        try:
+            day = data["utc_day"]
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError("invalid UTC day")
+            rows = data["route_failures"]
+            if (
+                data.get("kind") != "rate_failures"
+                or data.get("truncated") is not False
+                or not isinstance(rows, list)
+                or len(rows) > 384
+            ):
+                raise ValueError("unavailable bounded counters")
+            for row in rows:
+                if (
+                    row["utc_day"] != day
+                    or not isinstance(row["route_id"], str)
+                    or not row["route_id"]
+                    or row["failure_class"] not in {"own_rpm", "own_tpm", "unknown_429"}
+                    or type(row["count"]) is not int
+                    or row["count"] < 0
+                ):
+                    raise ValueError("invalid failure cell")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise DispatchPauseError("rate failure telemetry unavailable") from exc
+        return data
+
     def __init__(
         self,
         url: str | None = None,
@@ -107,18 +158,32 @@ class DispatchPauseClient:
     def _request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> dict:
         headers = {"authorization": f"Bearer {self.token}"} if self.token else {}
         url = urljoin(self.url.rstrip("/") + "/", path)
-        try:
-            response = self.session.request(
-                method, url, headers=headers, json=body, timeout=self.timeout
-            )
-        except requests.RequestException as exc:
-            raise DispatchPauseError(f"{path} request failed: {type(exc).__name__}") from exc
+        # Re-arming a pause is idempotent; admission/reservation calls must never retry.
+        attempts = 2 if method == "POST" and path == "v2/dispatch:pause" else 1
+        for attempt in range(attempts):
+            try:
+                response = self.session.request(
+                    method, url, headers=headers, json=body, timeout=self.timeout
+                )
+                break
+            except requests.RequestException as exc:
+                if attempt + 1 < attempts and isinstance(
+                    exc, (requests.Timeout, requests.ConnectionError)
+                ):
+                    logging.getLogger(__name__).warning(
+                        "pause_control_transport_retry operation=%s error=%s attempt=%d",
+                        path,
+                        type(exc).__name__,
+                        attempt + 1,
+                    )
+                    continue
+                raise DispatchPauseError(f"{path} request failed: {type(exc).__name__}") from exc
         try:
             data = response.json()
         except ValueError:
             data = {}
         if response.status_code != 200 or not isinstance(data, dict):
-            detail = data.get("detail") if isinstance(data, dict) else None
+            detail = (data.get("detail") or data.get("error")) if isinstance(data, dict) else None
             raise DispatchPauseError(f"{path} returned HTTP {response.status_code}: {detail}")
         return data
 
@@ -146,6 +211,155 @@ class DispatchPauseClient:
         return self._request(
             "POST", "v2/dispatch:reserve", {"route_id": route_id, "requests": requests_made}
         )
+
+    @staticmethod
+    def _context_session(data: Mapping[str, Any]) -> ContextSession:
+        fields = ("deadline_ms", "remaining_input", "remaining_output", "remaining_requests")
+        if (
+            not isinstance(data.get("week_start"), str)
+            or not isinstance(data.get("run_id"), str)
+            or any(type(data.get(k)) is not int or data[k] < 0 for k in fields)
+            or data["deadline_ms"] <= 0
+            or not re.fullmatch(r"[1-9][0-9]{0,19}", data["run_id"])
+            or data["remaining_input"] > 2_097_152
+            or data["remaining_output"] > 131_072
+            or data["remaining_requests"] > 24
+        ):
+            raise DispatchPauseError("invalid context session response")
+        try:
+            week = date.fromisoformat(data["week_start"])
+            if week.weekday() != 0 or week.isoformat() != data["week_start"]:
+                raise ValueError("context week must start Monday")
+        except ValueError as exc:
+            raise DispatchPauseError("invalid context week") from exc
+        return ContextSession(**{k: data[k] for k in ("week_start", "run_id", *fields)})
+
+    def start_context(self, run_id: str, catalog_digest: str) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {"operation": "context_start", "run_id": run_id, "catalog_digest": catalog_digest},
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("context session was not admitted")
+        return self._context_session(data)
+
+    def reserve_context(
+        self,
+        *,
+        run_id: str,
+        catalog_digest: str,
+        route_id: str,
+        dimension: str,
+        attempt_id: str,
+        input_tokens: int,
+        output_tokens: int,
+        request_digest: str,
+    ) -> ContextAdmission:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_admit",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                "route_id": route_id,
+                "dimension": dimension,
+                "attempt_id": attempt_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "request_digest": request_digest,
+            },
+        )
+        if (
+            data.get("ok") is not True
+            or data.get("disposition") != "new"
+            or data.get("attempt_id") != attempt_id
+        ):
+            raise DispatchPauseError("context attempt has no new single-use admission")
+        return ContextAdmission(attempt_id)
+
+    def start_manual_context(self, run_id: str, catalog_digest: str, **limits) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_start",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                **limits,
+            },
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("context session was not admitted")
+        return self._context_session(data)
+
+    def reserve_manual_context(
+        self,
+        *,
+        run_id: str,
+        catalog_digest: str,
+        route_id: str,
+        dimension: str,
+        attempt_id: str,
+        input_tokens: int,
+        output_tokens: int,
+        request_digest: str,
+    ) -> ContextAdmission:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_admit",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                "route_id": route_id,
+                "dimension": dimension,
+                "attempt_id": attempt_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "request_digest": request_digest,
+            },
+        )
+        if (
+            data.get("ok") is not True
+            or data.get("disposition") != "new"
+            or data.get("attempt_id") != attempt_id
+        ):
+            raise DispatchPauseError("context attempt has no new single-use admission")
+        return ContextAdmission(attempt_id)
+
+    def finish_manual_context(self, run_id: str, catalog_digest: str) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_finish",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+            },
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("manual context session cleanup unavailable")
+        return self._context_session(data)
+
+    def context_status(self, selection: Selection) -> dict:
+        query = urlencode(selection.body() | {"context": "1"})
+        data = self._request("GET", f"v2/dispatch:pause-status?{query}")
+        context = data.get("context")
+        if (
+            data.get("ok") is not True
+            or not isinstance(context, dict)
+            or type(context.get("enabled")) is not bool
+            or not isinstance(context.get("catalog_digest"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", context["catalog_digest"])
+            or not isinstance(context.get("routes"), dict)
+            or "session" not in context
+        ):
+            raise DispatchPauseError("invalid context status response")
+        if context["session"] is not None:
+            self._context_session(context["session"])
+        return context
 
 
 @contextmanager

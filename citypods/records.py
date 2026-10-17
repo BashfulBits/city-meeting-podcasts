@@ -221,7 +221,11 @@ def source_key(city: City) -> str:
     """
     if city.source_id:
         return city.source_id
-    src = {k: v for k, v in city.source.items() if k not in {"body", "body_any", "body_includes"}}
+    src = {
+        k: v
+        for k, v in city.source.items()
+        if k not in {"body", "body_any", "body_exact", "body_includes"}
+    }
     raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
@@ -576,6 +580,7 @@ def feed_content_hash(
             e.hosted_audio_url,
             e.video_url,
             e.media_kind,
+            *([e.publication_note] if e.publication_note else []),
         ]
         for e in sorted(episodes, key=lambda e: e.uid or "")
     ]
@@ -636,6 +641,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else "",
         "sources": [dataclasses.asdict(source) for source in ep.sources],
     }
+    if ep.publication_note:
+        payload["publication_note"] = ep.publication_note
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 
@@ -1305,6 +1312,7 @@ def episode_to_record(ep: Episode) -> dict:
             or ep.moment_video_clip
         )
         else None,
+        "judging": ep.judging or None,
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
         "llm_tag_candidates": ep.llm_tag_candidates or None,
@@ -1641,6 +1649,7 @@ def record_to_episode(rec: dict) -> Episode:
         ),
         summary=rec.get("summary") or "",
         **_moments_fields_from_rec(rec),
+        judging=rec.get("judging") if isinstance(rec.get("judging"), dict) else {},
         tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
         chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
         llm_tag_candidates=(
@@ -1820,6 +1829,7 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "generated_chapters",
         "generated_chapters_spec_hash",
         "moments",
+        "judging",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1861,6 +1871,9 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
         }
     ),
     "moments": frozenset({"moments"}),
+    # review/53: judgments live in their own block so the judge lane never rewrites the tag or
+    # moment candidates the tag/moments lanes own (and rebuild), and they never touch judgments.
+    "judge": frozenset({"judging"}),
     "chapter-agenda": frozenset({"generated_agenda_candidates"}),
     "chapter-locator": frozenset(
         {"generated_agenda_candidates", "generated_chapters", "generated_chapters_spec_hash"}
@@ -1884,6 +1897,7 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
+    "judge": frozenset({"judge"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
@@ -2323,6 +2337,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.generated_chapters_spec_hash = rec.get(
             "generated_chapters_spec_hash", ep.generated_chapters_spec_hash
         )
+        ep.judging = rec.get("judging") if isinstance(rec.get("judging"), dict) else ep.judging
         ep.tags = rec.get("tags") or ep.tags
         ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates

@@ -1,0 +1,27 @@
+{
+  "kind": "evaluation-only-default-reasoning-baseline",
+  "source_sha256": {
+    "evals/remedy/holdout/p1-denton-2026-10-10/manifest.json": "3878a978827fa9e07e475b77d4a9949d0b926df839051c1a84f275529bcc773b",
+    "evals/remedy/holdout/p1-denton-2026-10-10/gold.json": "685676a5afe412245a658e5fcb614af2bdb72016986d9b22f4f4a50e6924fda2",
+    "citypods/compute/llm_routes.json": "c3e1eb5787354bc080a721032463962cf32367d82f886510e6f3f392d873452a",
+    "config/site_config.yml": "11eaff0c8c3110af4a99500dee553707f38d5c8e998e25d4d8330c5873b2085b",
+    "evals/remedy/results/flash-lite-denton-2026-10-11/evaluate.py": "a8a790f295b14d264b205cdb9c85b4c520ca9e606110a43af3f3982179c8d854"
+  },
+  "code_commit": "0e137cc220524e7edf573a6b6385bf9ba3ea4b3a",
+  "route": "gemini_3_5_flash_lite_primary",
+  "case_count": 10,
+  "modes": [
+    "claim_support",
+    "blind_owner"
+  ],
+  "provider_call_cap": 20,
+  "request_timeout_seconds": 120,
+  "case_deadline_seconds": 150,
+  "max_output_tokens": 4096,
+  "minimum_remaining_daily_calls": 100,
+  "reasoning": "provider default, not maximum qualification",
+  "production_defaults_changed": false,
+  "verified_main_commit": "b0dbf3480e17d6ea36d06200ea100b8d60e9f4e2",
+  "current_main_tagger": "gemini/gemini-3.1-flash-lite",
+  "capacity_snapshot": "capacity-before.json"
+}

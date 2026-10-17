@@ -1,0 +1,18 @@
+slug: fort-worth-tx-emsisd-board-joint-meetings
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+    - BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES
+      OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL
+podcast_title: Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original
+  whole recordings retained.

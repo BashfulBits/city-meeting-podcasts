@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import traceback
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +18,8 @@ from citypods.compute.llm import (
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
+    _dispatch_policy_json_payload,
+    _dispatch_request_digest,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -389,6 +392,8 @@ def test_upstream_capacity_429_retries_sibling_route_without_deferring():
     assert isinstance(result, JobResult)
     assert result.output["choices"][0]["message"]["content"] == "ok"
     assert call_count == 2
+    assert result.route_id == "gemini_3_flash_preview_secondary"
+    assert result.upstream_model == ROUTE_REGISTRY[result.route_id].upstream_model
 
     budget, _ = load_llm_budget_cas(storage)
     ledger1 = budget.routes["gemini_3_flash_preview_primary"]
@@ -452,8 +457,11 @@ def test_upstream_capacity_429_retries_across_models_when_all_sibling_routes_cap
     assert budget.routes["gemini_3_5_flash_primary"].requests_minute == 1
 
 
-def test_own_rpd_429_blocks_until_next_local_midnight():
+def test_own_rpd_429_blocks_until_next_local_midnight(monkeypatch):
     """An own_rpd 429 blocks the route until the provider's next zoned midnight."""
+    # Pin the clock to local noon (PDT) so the result doesn't depend on when CI runs.
+    now = datetime(2026, 10, 8, 19, 0, tzinfo=UTC)
+    monkeypatch.setattr(LiteLLMBackend, "_now", staticmethod(lambda: now))
 
     class RateLimitedRPD(Exception):
         status_code = 429
@@ -471,7 +479,6 @@ def test_own_rpd_429_blocks_until_next_local_midnight():
         completion=completion,
         storage=storage,
     )
-    now = datetime.now(UTC)
     result = backend.run_inference(
         job(
             content="meeting text",
@@ -484,7 +491,8 @@ def test_own_rpd_429_blocks_until_next_local_midnight():
     ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.blocked_until != ""
     blocked_until = datetime.fromisoformat(ledger.blocked_until)
-    assert blocked_until > now + timedelta(minutes=5)
+    # Next America/Los_Angeles midnight (PDT = UTC-7), not the 60s retry-after.
+    assert blocked_until == datetime(2026, 10, 9, 7, 0, tzinfo=UTC)
 
 
 def test_pacing_wait_seconds_gives_up_when_nothing_will_ever_free_up():
@@ -1060,6 +1068,11 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     "nvidia": "/chat/completions",
     "airforce": "/chat/completions",
     "orcarouter": "/chat/completions",
+    # custom-beatapi is registered at `https://api.beatapi.io/v1` (2026-10-08); a chat completion
+    # through it returned 200 live. JEV's `/systemone` will join the same base in P1.
+    "beatapi": "/chat/completions",
+    # Second BeatAPI free account: same gateway slug/path, own provider block and window.
+    "beatapi_secondary": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
@@ -1067,6 +1080,18 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # `/v4/chat/completions`.
     "zai": "/v4/chat/completions",
 }
+
+
+def test_jev_posts_to_systemone_under_the_custom_beatapi_registration():
+    # review/53 PR2: the custom-beatapi provider is registered at https://api.beatapi.io/v1; JEV's
+    # route replaces the chat path with /systemone (workers/llm-dispatch-v2/src/gateway.js).
+    raw = json.loads(
+        (Path(__file__).resolve().parents[1] / "citypods/compute/llm_routes.json").read_text()
+    )
+    [jev] = [r for r in raw["routes"] if r["route_id"] == "beatapi_jev_1_13_free"]
+    assert jev["ai_gateway_slug"] == "custom-beatapi"
+    assert (jev["api_shape"], jev["request_path"]) == ("systemone", "/systemone")
+    assert jev["transports"] == []
 
 
 def test_every_custom_provider_records_how_it_is_registered():
@@ -1167,10 +1192,12 @@ def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
     monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://custom-gw.example.com/v1/custom-gw")
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("AI_GATEWAY_AUTH_TOKEN", raising=False)
-    backend, calls = _recording_backend("mistral/codestral-2508")
+    backend, calls = _recording_backend("gemini/gemini-3.6-flash")
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
-    assert calls[0]["api_base"] == "https://custom-gw.example.com/v1/custom-gw/mistral/v1"
+    assert calls[0]["api_base"] == (
+        "https://custom-gw.example.com/v1/custom-gw/google-ai-studio/v1beta"
+    )
     assert not calls[0].get("extra_headers")
 
 
@@ -1519,3 +1546,341 @@ def test_a_rebuilt_deferred_job_keeps_its_lane_timeout_and_output_mode(monkeypat
     assert seen["inputs"]["max_tokens"] == 16_384
     assert seen["inputs"]["timeout"] == 45.0
     assert seen["inputs"]["max_tokens_mode"] == "route_max"
+
+
+def test_immediate_result_records_physical_route_and_explicit_controls(monkeypatch):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    import citypods.compute.llm_scheduler as scheduler
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        route_id="mock-high",
+        upstream_model="upstream-high",
+        provider_rpm=None,
+        provider_tpm=None,
+        provider_concurrency=None,
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    monkeypatch.setattr(scheduler, "ROUTE_REGISTRY", {route.route_id: route})
+    monkeypatch.setattr(llm_module, "ROUTE_REGISTRY", {route.route_id: route})
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"model": route.upstream_model, "choices": [{"message": {"content": "done"}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=route.model), completion=completion, storage=MemStorage()
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=(route.model,),
+        allowed_route_ids=(route.route_id,),
+        require_direct=True,
+        purpose="audit-remedy",
+        deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+    )
+    result = backend.run_immediate(
+        job(
+            messages=[{"role": "user", "content": "evidence"}],
+            llm_policy=policy,
+            reasoning_level="high",
+        )
+    )
+    assert result.route_id == route.route_id
+    assert result.upstream_model == "upstream-high"
+    assert result.reasoning_level == "high"
+    params = json.loads(route.request_params_json or "{}") | {"reasoning_effort": "high"}
+    assert result.request_params_hash == canonical_hash(params)
+    assert calls[0]["extra_body"] == params
+    assert result.model == route.model
+
+
+def test_provider_default_setting_omits_reasoning_override():
+    from dataclasses import replace
+
+    from citypods.compute.llm import _lane_reasoning_level
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    request = job(reasoning_level="provider-default")
+    backend = LiteLLMBackend(LLMBackendConfig())
+    assert _lane_reasoning_level(request, route) is None
+    options = backend._provider_options(request, route.model, route=route, direct=True)
+    assert "extra_body" not in options or "reasoning_effort" not in options["extra_body"]
+
+
+def test_explicit_unsupported_effort_never_calls_provider():
+    from dataclasses import replace
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(),
+        completion=lambda **kwargs: pytest.fail("unsupported effort called"),
+    )
+    route = replace(next(iter(ROUTE_REGISTRY.values())), reasoning_controls_json="")
+    with pytest.raises(ValueError, match="does not support"):
+        backend._provider_options(job(reasoning_level="high"), route.model, route=route)
+
+
+def test_physical_route_allowlist_requires_worker_queue():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    policy = LLMRequestPolicy(
+        allowed_route_ids=("physical",), queue_only=False, require_direct=True
+    )
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(
+            job(messages=[{"role": "user", "content": "evidence"}], llm_policy=policy)
+        )
+    with pytest.raises(ValueError, match="requires queue_only dispatch"):
+        backend.enqueue_batch([job(llm_policy=policy)])
+
+
+def test_queue_payload_carries_physical_route_allowlist():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    policy = LLMRequestPolicy(
+        allowed_models=("deepseek/deepseek-v4.1-flash",),
+        allowed_route_ids=("beatapi_deepseek_v4_1_flash_free",),
+        queue_only=True,
+    )
+    payload = backend._payload(
+        job(messages=[{"role": "user", "content": "evidence"}]),
+        resolved_model="deepseek/deepseek-v4.1-flash",
+        policy=policy,
+        schema_only=True,
+    )
+
+    assert payload["allowed_models"] == ["deepseek/deepseek-v4.1-flash"]
+    assert payload["allowed_route_ids"] == ["beatapi_deepseek_v4_1_flash_free"]
+
+    coordinator_policy = _dispatch_policy_json_payload(policy, ["deepseek/deepseek-v4.1-flash"])
+    assert coordinator_policy["allowed_route_ids"] == ["beatapi_deepseek_v4_1_flash_free"]
+    assert _dispatch_request_digest(payload, policy) != _dispatch_request_digest(
+        payload,
+        LLMRequestPolicy(
+            allowed_models=("deepseek/deepseek-v4.1-flash",),
+            allowed_route_ids=("nvidia_deepseek_v4_1_flash_free",),
+            queue_only=True,
+        ),
+    )
+
+
+@pytest.mark.parametrize("policy", [None, LLMRequestPolicy(require_direct=True)])
+def test_explicit_effort_rejected_before_non_immediate_side_effects(policy):
+    backend = LiteLLMBackend(
+        LLMBackendConfig(), completion=lambda **kwargs: pytest.fail("provider called")
+    )
+    request = job(reasoning_level="high", llm_policy=policy)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce explicit reasoning_level"):
+        backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+def test_immediate_attempt_budget_bounds_schema_correction_and_records_count(limit):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response("not json" if len(calls) == 1 else '{"value":"fixed"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash"),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=limit,
+        num_retries=7,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3.5-flash",),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    if limit == 1:
+        with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+            backend.run_immediate(request)
+        assert error.value.provider_attempts == 1
+    else:
+        result = backend.run_immediate(request)
+        assert result.provider_attempts == 2
+    assert len(calls) == limit
+    assert all(call["num_retries"] == 0 for call in calls)
+
+
+def test_immediate_budget_is_shared_across_capacity_and_schema_retries():
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return structured_response("not json")
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=2,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3-flash-preview", "gemini/gemini-3.5-flash"),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+        backend.run_immediate(request)
+    assert error.value.provider_attempts == len(calls) == 2
+    ledger, _ = load_llm_budget_cas(storage)
+    assert all(not route.inflight for route in ledger.routes.values())
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, "2", 2.5])
+def test_invalid_attempt_budget_rejected_before_io(limit):
+    backend = LiteLLMBackend(LLMBackendConfig())
+    with pytest.raises(ValueError, match="positive integer"):
+        backend.run_immediate(job(max_provider_attempts=limit))
+
+
+def test_attempt_budget_cannot_be_dropped_by_deferred_or_dispatch_paths():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    request = job(max_provider_attempts=2)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce max_provider_attempts"):
+        backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_provenance_records_only_applied_lane_effort(monkeypatch, supported):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    from citypods.compute.base import JobResult
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}' if supported else "",
+    )
+    monkeypatch.setattr(llm_module, "_lane_reasoning_level", lambda job, route: "high")
+    result = llm_module._direct_result_provenance(
+        JobResult(task="llm", recipe_hash="test", output={}), job(), route
+    )
+    assert result.reasoning_level == ("high" if supported else None)
+    params = json.loads(route.request_params_json or "{}")
+    if supported:
+        params["reasoning_effort"] = "high"
+    assert result.request_params_hash == canonical_hash(params)
+
+
+# ---- model headroom from the Worker's cheap route view ---------------------------------------
+
+
+class _RouteStatsBackend:
+    class config:  # noqa: N801 - mimics LLMBackendConfig's attribute access
+        dispatch_v2_url = "https://worker.example"
+
+    def __init__(self, payload=None, error=None):
+        self.payload, self.error = payload, error
+
+    def dispatch_v2_route_stats(self):
+        if self.error:
+            raise LLMBackendError(self.error)
+        return self.payload
+
+
+def test_model_headroom_sums_route_capacity_and_zeroes_blocked_routes():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    routes = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"]}
+    assert {"gemma_4_31b_primary", "gemma_4_31b_secondary"} <= routes
+    payload = {
+        "now": 1_000,
+        "routes": {
+            "all": [
+                {"route_id": "gemma_4_31b_primary", "capacity": 0.5, "blocked_until": 0},
+                {"route_id": "gemma_4_31b_secondary", "capacity": 1.0, "blocked_until": 5_000},
+            ]
+        },
+    }
+    got = dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=_RouteStatsBackend(payload))
+    # 0.5 (primary) + 0 (blocked secondary) + 1.0 for each route with no ledger row yet.
+    assert got["google/gemma-4-31b-it"] == 0.5 + (len(routes) - 2)
+
+
+def test_model_headroom_is_empty_when_the_worker_cannot_be_read():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    backend = _RouteStatsBackend(error="down")
+    assert dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=backend) == {}
+
+
+def test_model_headroom_ignores_malformed_rows_instead_of_aborting():
+    from citypods.compute.llm import dispatch_v2_model_headroom
+
+    payload = {
+        "now": 1_000,
+        "routes": {
+            "all": [
+                "not-a-row",
+                {"route_id": "gemma_4_31b_primary", "capacity": float("nan"), "blocked_until": "x"},
+                {"route_id": "gemma_4_31b_secondary", "capacity": -3, "blocked_until": True},
+            ]
+        },
+    }
+    got = dispatch_v2_model_headroom(["google/gemma-4-31b-it"], backend=_RouteStatsBackend(payload))
+    routes = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
+    # NaN counts as unknown (1.0), a negative capacity as 0, a non-numeric block is ignored.
+    assert got["google/gemma-4-31b-it"] == 1.0 + 0.0 + (len(routes) - 2)
+
+
+class _PackCeilingBackend:
+    class config:  # noqa: N801 - mimics LLMBackendConfig's attribute access
+        dispatch_v2_url = "https://worker.example"
+
+    def __init__(self, by_model):
+        self.by_model = by_model
+
+    def dispatch_v2_pack_ceiling(self, model, prompt_family):
+        value = self.by_model[model]
+        if isinstance(value, Exception):
+            raise value
+        return {
+            "model": model,
+            "prompt_family": prompt_family,
+            "pack_ceiling_input_estimate": value,
+        }
+
+
+def test_pack_ceilings_keep_only_models_the_worker_states_a_limit_for():
+    from citypods.compute.llm import dispatch_v2_pack_ceilings
+
+    backend = _PackCeilingBackend(
+        {
+            "google/gemma-4-31b-it": 12_345,
+            "a/none": None,
+            "a/bad": 0,
+            "a/down": LLMBackendError("x"),
+        }
+    )
+    got = dispatch_v2_pack_ceilings(
+        ["google/gemma-4-31b-it", "a/none", "a/bad", "a/down"], "judge", backend=backend
+    )
+    assert got == {"google/gemma-4-31b-it": 12_345}

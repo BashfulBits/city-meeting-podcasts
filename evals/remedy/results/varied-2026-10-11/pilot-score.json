@@ -1,0 +1,435 @@
+{
+  "candidates": {
+    "astra": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "deepseek": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "flashlite": {
+      "accepted_precision": 1.0,
+      "completed_latency_seconds": {
+        "end_to_end_median": 4.04724902077578,
+        "provider_median": 1.2040202503558248
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 3,
+        "accepted_correct": 3,
+        "correct": 5,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 1,
+        "known_truth": 6,
+        "unattempted": 107,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": 0.75
+    },
+    "gemini37": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 1,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 112,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "gemini38": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 1,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 112,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "glm_flash": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "glm_full": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "kimi": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    },
+    "sol": {
+      "accepted_precision": null,
+      "completed_latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held": false,
+      "serving_family_held": false,
+      "supported_claim_recall": null
+    }
+  },
+  "gold_hash": "5da44c165605a88f3df478bd3c920ad7eb5a6b4597ff2694d214dcc83482c2e2",
+  "kind": "preliminary pilot score; not admission evidence",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "observations": {
+    "astra": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/astra-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "f00a1bbd950e16770993563890148c7e2e124f4ce056d1352d6aec51e986074a",
+        "status": "deferred"
+      }
+    ],
+    "deepseek": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/deepseek-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "a3209e29143599183e1401a3b8849b1ca9cf8f267390670d5217caadfcc7b02e",
+        "status": "deferred"
+      }
+    ],
+    "flashlite": [
+      {
+        "answer": {
+          "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "missing_evidence": [],
+          "proposed_action": "add",
+          "proposed_owner": "addison-tx-city-council",
+          "rationale": "The joint meeting explicitly includes the Addison City Council as a convening participant along with the Planning & Zoning Commission and the Comprehensive Plan Advisory Committee, supporting inclusion in the City Council feed under the joint meeting policy.",
+          "supported": true
+        },
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "c931939c216248de000289999e62aed61f1d2b0a7d851b7ae2a6bc9149642827",
+        "status": "completed"
+      },
+      {
+        "answer": {
+          "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "missing_evidence": [],
+          "proposed_action": null,
+          "proposed_owner": null,
+          "rationale": "The provided evidence only shows a general 'City Page Update' page without explicit proof linking this specific recording to the City Council feed. Therefore, the claim is unsupported.",
+          "supported": false
+        },
+        "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4989b0af919f5894.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "a3525b4efd604a5037af39c07db50fcb480cf1132f4f76e1941d55d70397ff80",
+        "status": "completed"
+      },
+      {
+        "answer": {
+          "case_id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+          "evidence_ref_ids": [
+            "provider-player",
+            "dallas-streets-archive",
+            "maintained-policy"
+          ],
+          "missing_evidence": [],
+          "proposed_action": "assign",
+          "proposed_owner": "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+          "rationale": "The recording is specifically of the 2024 Capital Bond Streets & Transportation Subcommittee Meeting. Under the family policy, identity is determined by the convened body rather than common topics or members. The maintained policy lists dallas-tx-2024-bond-streets-and-transportation-subcommittee as an allowed membership for this record, making the claim that it exclusively belongs in dallas-tx-transportation-and-infrastructure unsupported.",
+          "supported": false
+        },
+        "case_id": "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4b1e8741d6249041.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "62080cfaef19fca6fa40bd43f051d16c9929bda56f9265522748e8284d048952",
+        "status": "completed"
+      },
+      {
+        "answer": {
+          "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "missing_evidence": [],
+          "proposed_action": "publish",
+          "proposed_owner": "denton-tx-tirz-2-board",
+          "rationale": "The recording and agenda clearly document a meeting of the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, which matches the feed slug denton-tx-tirz-2-board under the established publication policy.",
+          "supported": true
+        },
+        "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4fb9987e2003d70f.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "6c885a242f04cdf1ce5b13cbcc814805394743f449eba2fbd954162dac6a2085",
+        "status": "completed"
+      },
+      {
+        "answer": {
+          "case_id": "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player",
+            "native-source-chapters"
+          ],
+          "missing_evidence": [],
+          "proposed_action": "publish",
+          "proposed_owner": "denton-tx-special-citizens-bond-advisory-committee",
+          "rationale": "The recording is explicitly for the Special Citizens Bond Advisory Committee as evidenced by the agenda and video index, and matches the feed for denton-tx-special-citizens-bond-advisory-committee.",
+          "supported": true
+        },
+        "case_id": "denton-tx-04689e3929ac104e-ownership-member-denton-tx-special-citizens-bond-advisory-committee",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-884b2a75e101f848.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "05cc91c10aba759a9a7ed2a876897d8e4dba1a02bbb11ef247742a6bc6a5ffcd",
+        "status": "completed"
+      },
+      {
+        "answer": {
+          "case_id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player",
+            "maintained-policy"
+          ],
+          "missing_evidence": [],
+          "proposed_action": "archive-only",
+          "proposed_owner": null,
+          "rationale": "The maintained local disposition policy and approved project directive explicitly state an outcome of archive-only with zero allowed body feed memberships, indicating that placing this recording in the city-council feed is unsupported.",
+          "supported": false
+        },
+        "case_id": "addison-55864-35a78fa89c7c5c5c-wrong-target",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-e239d45c6ff5b7e0.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": null,
+        "sha256": "a87fa5c7f817414446434b9fcf44b66ed14afc6d3f1ee4e21215bf86c3740688",
+        "status": "completed"
+      }
+    ],
+    "gemini37": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": "LLMBackendError",
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini37-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": "immediate provider-attempt limit reached",
+        "sha256": "d24893503e838dba64f951837b643cba8d65c3e6db34023fef59bc3ac26b5e97",
+        "status": "failed"
+      }
+    ],
+    "gemini38": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": "ServiceUnavailableError",
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini38-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 1,
+        "reason": "litellm.ServiceUnavailableError: GeminiException - {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\n    \"status\": \"UNAVAILABLE\"\n  }\n}\n",
+        "sha256": "37179b053429c2b522c93d84a40ac6f5ab2d6fc77c8f35664ef83052eb1df17f",
+        "status": "failed"
+      }
+    ],
+    "glm_flash": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_flash-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "6b8a5543f6a16f92bdaa51b438f35c51b5a8ea4be1bb42dbccdcde5996df3dfd",
+        "status": "deferred"
+      }
+    ],
+    "glm_full": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_full-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "8da11a242210585d08afafbb3fa7fcbd2153365528f749c2cfbccc95e0e080db",
+        "status": "deferred"
+      }
+    ],
+    "kimi": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/kimi-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "fb7f5fa19991ff138539178724e90eac21533db2b397bca76f252bb4e3b21428",
+        "status": "deferred"
+      }
+    ],
+    "sol": [
+      {
+        "answer": null,
+        "case_id": "addison-295839-fcc9bde16c7f47fe-member-addison-tx-city-council",
+        "error_class": null,
+        "file": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/sol-3abfd6130a75e742.json",
+        "provider_attempts_label_as_saved": 0,
+        "reason": "Production capacity/headroom unavailable",
+        "sha256": "c90650e3b4b86d050aea4d2ac4acfe79a0e958a4c9dcf13c926bd1daaa0b405e",
+        "status": "deferred"
+      }
+    ]
+  }
+}

@@ -10,7 +10,85 @@ scale; lower number = sooner.
 > full design + the exhaustive backlog in **[`review/11`](review/11-technical-design-roadmap.md)**.
 > The backlog opens for outside contribution after **1.0** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
+Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
+remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
+are being applied in bounded, evidence-backed city batches. The
+[Arlington batch](review/arlington-coverage-2026-10.md) covers two named bodies while retaining
+explicit identity/investigation holds. Exact-label selection separates committee names from
+distinct public-input formats; the
+[Addison UDC batch](review/addison-udc-coverage-2026-10.md) applies it to three historical
+committee recordings. See
+[coverage policy](review/tif-coverage-2026-10.md) and review/11.
+The [Pflugerville BOA batch](review/pflugerville-boa-coverage-2026-10.md) covers ten verified
+historical identities while documenting unavailable provider media.
+[review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
+P1 evaluation tooling shipped in #1987; physical-route admission remains separate. The P3 workflow
+shipped in #2444, #2447, and #2449, including its P2 decision handoff; runtime route admission and
+operational verification remain separate. P4–P5 have predecessor-gated build contracts. Duplicate
+publication has a separate L2 design gate before affected feeds activate.
+Maintainer preference (2026-10-04): continuing standing committees, including Council subcommittees,
+have dedicated feeds across cities; seasonal activity does not imply a temporary committee.
+Addison CPC's dedicated-feed revision is under validation in #2003, with historical recording gaps
+explicitly retained in its evidence packet. Temporary programs keep their approved family policy.
+Addison's approved Public Input/Briefings and combined Appeals presentation is being implemented
+in the bounded #2009 slice; existing URLs and historical Citizen Advisory identity remain.
+Known historical ambiguity is tracked independently of new-body discovery.
+
+Dallas GUID 272574's September 26, 2023 Bond Town Hall is now directed to Bond Program only.
+The existing Bond `*CBTF*` rule already selects it. A bounded correction removes the exact Public
+Info inclusion added by #2116; keep the case open until the correction deploys and live RSS verifies
+Bond Program presence with Public Info and Task Force absence.
+
+Approved policy templates and cross-city regression cases will serve both onboarding and
+maintenance, resolving known rules before model calls while requiring verified local identity.
+Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
+TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
+
 ## Recently shipped (summary)
+
+- **review/51 P0 historical baseline complete:** all 680 reviewed title patterns dispositioned;
+  current rule replay and deployed feed/search/archive visibility verified. Six evidence questions
+  explicitly remain open. See [final report](review/evidence/p0-completion-2026-10-09.md).
+  P1 tooling and P3 workflow implementation shipped; P3 runtime admission/operation, remaining P2
+  work, and P4–P5 remain separately gated.
+
+- **review/51 P3 implementation shipped** in PRs #2444, #2447, and #2449. The daily Worker caller,
+  bounded proposal/issue publisher, and human disposition command are implemented. Production
+  remains shadowed pending route/parameter admission and a monitored end-to-end cycle; see the
+  evaluated settings and remaining gates in [review/51](review/51-unexpected-body-remedy-flow.md).
+
+- Provider catalog paid-route decisions (#2189) and bounded structural rescue (#2191).
+  Removal planning shipped in #2193 (#2192); activation still requires coordinated deployment
+  and a recovery canary. Slice 4 rate maintenance shipped in #2201 (#2200), and disabled Slice 5
+  quota admission shipped in #2214 (#2209). Adaptive calibration and remaining activation are
+  not marked shipped.
+
+- Addison body-policy corrections and historical sweep (#2010, #2012, #2014, #2019–#2021,
+  2026-10-04): Public Input/Briefings, verified joint subscriptions, exact Council ownership,
+  Bond/TIF families and read-only unresolved tracking. Raw records, UIDs and audio preserved.
+  Historical evidence gaps and website joint discovery (#2018, R8) remain follow-ups.
+
+- Foundation historical publication selection (#2002, 2026-10-04): preserve the three existing
+  dedicated RSS winners across Foundation/combined search projections, retain every archive UID
+  and page, and correct active board lifecycle using official current evidence. Future-member
+  admission and broader Arlington coverage remain separately gated.
+
+- Inactive publication-selection v1 machinery (#1999, 2026-10-04): reviewed existing-UID
+  projection, feed/search pre-write holds and raw-page retention. City activations, future-member
+  admission and the remaining remedy-policy phases retain their separate gates.
+
+- **Purpose-bound LLM telemetry (GH#2001):** shipped in
+  [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004) on 2026-10-04.
+  Registration enforces producer/unit/coverage contracts; shared work handles track submission
+  and validated consumption, and reports discover new/retired purposes automatically. Research
+  units and partial coverage remain explicit. The later incremental ledger and P1–P7 sequencing
+  are unchanged. Frozen design: [review/52](review/52-purpose-work-telemetry.md).
+
+- **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
+  [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live
+  storage on 2026-10-04. Registry additions and retirements are discovered automatically; missing
+  purpose telemetry remains visibly unmeasured. Design and evidence: [review/50](review/50-p0-llm-verb-backlog-trend.md).
+
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence
 trim, **#21** loudness, **#23** host-all, **#122** concat, clips); **#1/#110** ASR transcripts (reuse
 provider transcripts first, self-host the rest); **#11** `<podcast:transcript>`; **#124** status
@@ -201,6 +279,42 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > mirroring H14d's provider-cycle dollar model, and prompt-management conventions all need deciding.
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
+> **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
+> Remaining contracts were initially proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
+> initially additions/ignore, paid/shadow follow-up, bounded rescue before removal, then bounded rate
+> limits and adaptive context calibration (Slice 5; review/48 §8.10–8.11).
+> The accepted and revised scope is recorded below; the original shadow follow-up is historical.
+> Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
+> Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
+> **Slice 5 priorities accepted 2026-10-09:** input calibration first, then output; a few free routes
+> for local validation, expanding to all configured free routes in the final implementation PR.
+> Conservative weekly experiments use firm reviewed budgets and fair rotation. The L3 contract
+> was accepted in merged #2208, with implementation tracked in #2209; no live probes
+> are authorized. PR #2214 (#2209) shipped disabled durable admission;
+> the final adaptive calibration implementation is prepared in
+> [PR #2218](https://github.com/BashfulBits/city-meeting-podcasts/pull/2218), with all-route offline
+> parser/eligibility coverage. Review and current-head CI remain pre-merge requirements.
+> Separate input/output canaries, recurring calibration and removal recovery gates remain.
+> The accepted §8.10–8.11 contract specifies bounded weekly input/output allowances, explicit budget-limited
+> results, provider-specific count parsers and token-aware Worker reservations before live activation.
+> The maintainer approved the token-aware Worker extension and doubled the proposed starting
+> budgets. Refinement targets 0.5% or 128 tokens, whichever is larger, across bounded weekly runs;
+> no additional blanket cap margin applies. Exact schemas, file plan and acceptance are in §8.11;
+> offline implementation precedes separately reviewed live canaries and recurring activation.
+> Separately reviewed conservative output caps are accepted; automatic additions still require
+> evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
+> Its exact budgets and implementation contract are accepted; live activation remains gated.
+> The 2026-10-11 provider-neutral probe-search follow-up separates rate recovery from input,
+> output and combined-context search. Groq is the first typed rate-rejection adapter; other
+> providers require their own verified parser before errors can steer a numeric bound. Search
+> evidence cannot alter configured TPM or Worker authority.
+> Slice 2b is tracked in #2187: paid decisions, including the approved
+> disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
+> R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
+> Bounded structural rescue shipped in #2191 (#2190); the existing queue index is reused
+> with a durable time/ID cursor. Deployment/canary must precede removal automation.
+> Later slices retain separate issues and activation gates.
+>
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
 > second in the table below, right after R1.** This is deliberate, not a mistake — the maintainer asked
 > to avoid the renumbering churn a mid-sequence insert caused last time, so new items now get the next
@@ -415,3 +529,176 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
 Items are scoped, rationalized, and cost-modeled in [`review/11`](review/11-technical-design-roadmap.md)
 (which links the deep breakout designs). The maintainer drives sequencing; once contribution opens
 (1.0), well-scoped low-cost items get labeled **good first issue**.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+
+
+Offline unresolved-recording sweep (#2013) is prepared, unmerged. The committed case register
+keeps known historical and false-inclusion cases visible; the CLI reads every cached source
+once and reports unmatched raw recordings, assignment changes and missing registered records.
+Feed assignments mean selector eligibility under the supplied config snapshot, not verified live
+RSS exposure. Sources absent from local cache remain outside this snapshot. No legacy remedy
+dispatch or scheduled notification is enabled; P2a model-policy schemas remain independently gated.
+
+
+Council ownership correction (#2015) prepared/unmerged:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony,
+preserving all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search
+attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
+until its separate #2017 correction. Registered cases remain open until human merge/deployment.
+No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
+
+
+Bond family correction (#2016) prepared/unmerged: four verified committee recordings gain
+Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
+are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
+Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
+Cases remain open for human merge and deployed projection verification.
+
+
+TIRZ ownership correction (#2017) prepared/unmerged: official dated board agenda moves only
+GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search
+attribution changes accordingly; original raw record, UID and hosted audio remain. After the
+Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
+The case remains open pending human merge and deployed subscription verification.
+
+
+Archive-only visibility (#2023): development-ready bounded contract in review/51. Six Addison
+recordings approved; retain direct archives and independent evidence obligations. Prepared code
+requires current CI and substantive CodeRabbit review before human merge.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+Recently shipped: the bounded Denton Health Commission, Library, TIRZ board and 2019 Bond
+committee feeds (#2043–#2053). Deployed ownership verification remains pending; broader
+historical coverage and model-admission gates remain active.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+Recently shipped: Arlington Environmental Task Force exact six-record feed correction #2058.
+
+Dallas #2062 exact November2023 CBTF feed correction prepared; deployment verification and remaining task-force/subcommittee census still pending.
+
+Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and remaining source census cases still pending.
+
+- Prepared: reusable Dallas Economic Development institutional aliases and separate 2024 bond
+  subcommittee subscription (#2068); deployment proof remains required for case closure.
+
+- Designed (L3): Dallas reusable Streets bond institution rules (#2081), preserving existing
+  joints/GUID exceptions; independent recording gaps and deployment proof remain required.
+
+- Prepared #2081 reusable Dallas Streets institution rules: eleven source records separated;
+  original audio/raw identity, named joints and GUID exceptions preserved. Deployment pending.
+
+- Designed (L3): Dallas2017 formal bond taskforce versus public town halls (#2083), exact
+  independent notices/source hashes; three cases remain open until deployed ownership proof.
+
+- Designed (L3): independent bounded static-search job (#2084), unchanged20minute deadline,
+  same-run record snapshot and complete-index preservation; required archive visibility check.
+
+Recently shipped: Dallas reusable Streets institution separation #2082 and distinct2017
+formal-taskforce/public-town-hall subscriptions #2085. Deployed evidence verification pending.
+
+
+- Prepared #2092: three additional verified Dallas CBTF proceedings; exact ambiguous-label
+  pins and reusable complete chairs alias preserve all prior holders. Deployment proof pending.
+
+- Prepared #2094: Dallas bond Critical Facilities exact institutional feed; original identity
+  and every prior holder preserved. Case stays open until deployed RSS/audio proof.
+
+Shipped #2086 in #2088: EMSISD participant discovery; deployed original UID/audio verified.
+
+Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
+adds one original UID with every existing holder unchanged. Deployment proof pending.
+
+Recently shipped (human merge commits): #2091 Flood, #2093 CBTF additions,
+#2095 Critical Facilities, #2087 bounded search/checkpoint persistence. Flood ownership
+verified live; remaining merged corrections await deployed evidence. Register:169 cases,
+145 resolved,24 open. Search checkpoint review gap remains explicit.
+
+Prepared #2097: exact May25 CBTF recording added from verified original proof; deployment pending.
+
+Prepared #2098: Gas Drilling Task Force participant feed for two visually verified joint
+workshops, preserving all prior holders and recording identity. Deployment remains required
+before case closure;6334 source-version discrepancy stays open.
+
+review/51 P2a shared policy/evidence foundation shipped in #2213; feed behavior is preserved.
+Recently shipped: P2b report-only retained/current coverage in #2215. Post-merge verification
+uses an explicitly local snapshot. Persistent reviewed dispositions and audit activation follow.
+All six historical evidence cases have approved closeout dispositions (169 resolved, zero open).
+
+Recently shipped review/51: P2c1 pure decision-event validation/reconstruction (#2231).
+Next: source-scoped decision persistence, then trusted entrypoints and report-only scan integration.
+Durable storage/trusted mutation and audit activation follow as separately bounded PRs.
+
+
+Recently shipped review/51: P2c2a guarded source-local decision persistence (#2237).
+Next authorized: authenticate explicit maintainer decisions and recover retries, then compare saved
+cases with current coverage in inspectable reports. Recurring alerts remain unchanged until verified.
+
+Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
+route and immediate first-run evidence review. Output and broader rotation remain separately gated.
+
+**Review/48 current status (2026-10-15).** New-route discovery, report/retry integration, automatic
+weekly input discovery and authenticated cap projection shipped in #2275, #2281, #2445 and #2448. The weekly
+run probes newly found free routes only after reachability, structured-output and strict AA gates;
+it searches input size and reports published hints, provider counts and calibrated refusal estimates.
+One successful authenticated discovery run supplies the input-cap evidence; configured routes are
+not re-probed weekly. The separate evidence-gated removal activation is in PR #2446 under #2274.
+Recovery evidence #2220 is accepted; recurring configured-route calibration remains deferred to
+[review/54](review/54-provider-limit-characterization.md)
+and #2264. The Groq pilot's first evidence review remains operational follow-up under #2221 and does
+not block new-route discovery or removal activation. No workflow edits config directly, merges, or
+deploys it.
+
+**Explicit quota configuration — L1.** A separate bounded contract will organize model/shared
+quota pools, RPM/TPM/RPD/TPD/monthly tokens and route input/output/combined caps, migrate existing
+values with provenance and scope confirmation, and preserve current adaptive dispatch feedback.
+This is distinct from deferred empirical burst/refill characterization; see review/11.

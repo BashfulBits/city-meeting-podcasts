@@ -1,0 +1,16 @@
+slug: dallas-tx-2024-bond-flood-subcommittee
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body_exact:
+    - 2024 Bond Task Force Flood
+    - 2024 Bond Flood Control & Storm Drainage Meeting
+    - 2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting
+lifecycle:
+  status: retired
+  reason: "latest observed meeting was 1131 days ago; 2024 bond subcommittee concluded mandate"
+podcast_title: 'Dallas: 2024 Bond Flood Control and Storm Drainage Subcommittee'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Dallas 2024 bond Flood Control and Storm Drainage subcommittee proceedings.

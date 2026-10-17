@@ -1,0 +1,264 @@
+{
+  "dataset": "dataset-v3",
+  "model_runs": [
+    {
+      "attempted_episodes": 6,
+      "completed_episodes": 3,
+      "counts": {
+        "anchors": 16,
+        "completed_episodes": 3,
+        "correct_item_valid_boundary": 10,
+        "episodes": 6,
+        "failed_episodes": 3,
+        "malformed_or_failed_routes": 3,
+        "provider_chapters": 17,
+        "provider_start_hits": 15,
+        "suspected_skipped_item_anchors": 3,
+        "suspected_wrong_item": 4
+      },
+      "failed_episodes": 3,
+      "metrics": {
+        "abstention_rate": 0.0,
+        "boundary_error_mean_seconds": 4.862,
+        "boundary_error_p95_seconds": 16.2,
+        "correct_item_valid_boundary_precision": 0.625,
+        "malformed_or_failed_rate": 0.5,
+        "provider_start_precision": 0.9375,
+        "provider_start_recall": 0.8824,
+        "suspected_wrong_item_rate": 0.25
+      },
+      "model": "Gemini 3.5 Flash Lite",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": 45328,
+        "latency_seconds": null
+      },
+      "packet_group": "common-core-6",
+      "provider_calls": 6,
+      "route": "gemini/gemini-3.5-flash-lite",
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "wall_clock_seconds_including_pause_and_drain": null
+    },
+    {
+      "attempted_episodes": 6,
+      "completed_episodes": 3,
+      "counts": {
+        "anchors": 18,
+        "completed_episodes": 3,
+        "correct_item_valid_boundary": 11,
+        "episodes": 6,
+        "failed_episodes": 3,
+        "malformed_or_failed_routes": 3,
+        "provider_chapters": 17,
+        "provider_start_hits": 15,
+        "suspected_skipped_item_anchors": 5,
+        "suspected_wrong_item": 6
+      },
+      "failed_episodes": 3,
+      "metrics": {
+        "abstention_rate": 0.0,
+        "boundary_error_mean_seconds": 4.897,
+        "boundary_error_p95_seconds": 16.666,
+        "correct_item_valid_boundary_precision": 0.6111,
+        "malformed_or_failed_rate": 0.5,
+        "provider_start_precision": 0.8333,
+        "provider_start_recall": 0.8824,
+        "suspected_wrong_item_rate": 0.3333
+      },
+      "model": "GLM 5.3 Flash",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": 45742,
+        "latency_seconds": null
+      },
+      "packet_group": "common-core-6",
+      "provider_calls": 11,
+      "route": "zai/glm-5.3-flash",
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "wall_clock_seconds_including_pause_and_drain": 1027
+    },
+    {
+      "attempted_episodes": 6,
+      "completed_episodes": 5,
+      "counts": {
+        "anchors": 40,
+        "completed_episodes": 5,
+        "correct_item_valid_boundary": 22,
+        "episodes": 6,
+        "failed_episodes": 1,
+        "malformed_or_failed_routes": 1,
+        "provider_chapters": 38,
+        "provider_start_hits": 31,
+        "suspected_skipped_item_anchors": 15,
+        "suspected_wrong_item": 9
+      },
+      "failed_episodes": 1,
+      "metrics": {
+        "abstention_rate": 0.0,
+        "boundary_error_mean_seconds": 2.514,
+        "boundary_error_p95_seconds": 12.244,
+        "correct_item_valid_boundary_precision": 0.55,
+        "malformed_or_failed_rate": 0.1667,
+        "provider_start_precision": 0.775,
+        "provider_start_recall": 0.8158,
+        "suspected_wrong_item_rate": 0.225
+      },
+      "model": "DeepSeek V4 Flash",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": 209897,
+        "latency_seconds": null
+      },
+      "packet_group": "common-core-6",
+      "provider_calls": 11,
+      "route": "deepseek/deepseek-v4-flash",
+      "route_id": "orcarouter_deepseek_v4_flash_free",
+      "wall_clock_seconds_including_pause_and_drain": 879.5
+    },
+    {
+      "attempted_episodes": 6,
+      "completed_episodes": 5,
+      "counts": {
+        "anchors": 30,
+        "completed_episodes": 5,
+        "correct_item_valid_boundary": 21,
+        "episodes": 6,
+        "failed_episodes": 1,
+        "malformed_or_failed_routes": 1,
+        "provider_chapters": 32,
+        "provider_start_hits": 25,
+        "suspected_skipped_item_anchors": 7,
+        "suspected_wrong_item": 8
+      },
+      "failed_episodes": 1,
+      "metrics": {
+        "abstention_rate": 0.0,
+        "boundary_error_mean_seconds": 8.685,
+        "boundary_error_p95_seconds": 37.884,
+        "correct_item_valid_boundary_precision": 0.7,
+        "malformed_or_failed_rate": 0.1667,
+        "provider_start_precision": 0.8333,
+        "provider_start_recall": 0.7812,
+        "suspected_wrong_item_rate": 0.2667
+      },
+      "model": "Nemotron 3 Super 120B A12B",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": 218395,
+        "latency_seconds": null
+      },
+      "packet_group": "common-core-6",
+      "provider_calls": 12,
+      "route": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "wall_clock_seconds_including_pause_and_drain": 777
+    },
+    {
+      "attempted_episodes": 6,
+      "completed_episodes": 0,
+      "counts": {
+        "episodes": 6,
+        "failed_episodes": 6,
+        "malformed_or_failed_routes": 6
+      },
+      "failed_episodes": 6,
+      "metrics": {
+        "abstention_rate": null,
+        "boundary_error_mean_seconds": null,
+        "boundary_error_p95_seconds": null,
+        "correct_item_valid_boundary_precision": null,
+        "malformed_or_failed_rate": 1.0,
+        "provider_start_precision": null,
+        "provider_start_recall": null,
+        "suspected_wrong_item_rate": null
+      },
+      "model": "Step 3.7 Flash",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": null,
+        "latency_seconds": null
+      },
+      "packet_group": "common-core-6",
+      "provider_calls": 12,
+      "route": "kilo/stepfun/step-3.7-flash:free",
+      "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "wall_clock_seconds_including_pause_and_drain": 460.8
+    },
+    {
+      "attempted_episodes": 2,
+      "completed_episodes": 1,
+      "counts": {
+        "anchors": 2,
+        "completed_episodes": 1,
+        "correct_item_valid_boundary": 1,
+        "episodes": 2,
+        "failed_episodes": 1,
+        "malformed_or_failed_routes": 1,
+        "provider_chapters": 3,
+        "provider_start_hits": 1,
+        "suspected_skipped_item_anchors": 0
+      },
+      "failed_episodes": 1,
+      "metrics": {
+        "abstention_rate": 0.0,
+        "boundary_error_mean_seconds": 0.522,
+        "boundary_error_p95_seconds": 0.522,
+        "correct_item_valid_boundary_precision": 0.5,
+        "malformed_or_failed_rate": 0.5,
+        "provider_start_precision": 0.5,
+        "provider_start_recall": 0.3333,
+        "suspected_wrong_item_rate": 0.0
+      },
+      "model": "Nemotron 3 Super 120B A12B",
+      "operations": {
+        "cost_usd": null,
+        "input_tokens": 167832,
+        "latency_seconds": null
+      },
+      "packet_group": "larger-than-gemini-2",
+      "provider_calls": 4,
+      "route": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "wall_clock_seconds_including_pause_and_drain": 584.744
+    },
+    {
+      "attempted_episodes": 1,
+      "completed_episodes": 0,
+      "completion_elapsed_seconds": 1103.76,
+      "failed_episodes": 1,
+      "model": "DeepSeek V4.1 Flash",
+      "observed_http_error": "502 Bad Gateway",
+      "packet_group": "common-core-partial",
+      "provider_completion_invocations": 1,
+      "quality_score": null,
+      "route": "deepseek/deepseek-v4.1-flash",
+      "route_id": "nvidia_deepseek_v4_1_flash_free",
+      "route_reservations": 1,
+      "stopped_during": "OpenAI SDK retry backoff after the first 502"
+    }
+  ],
+  "packet_groups": {
+    "common_core_6": {
+      "agenda_source": "Mistral Medium 2508 frozen inputs",
+      "estimated_chars_div_4_tokens_max": 93666,
+      "uids_omitted": true
+    },
+    "larger_than_gemini_2": {
+      "agenda_source": "Mistral Medium 2508 frozen inputs",
+      "estimated_chars_div_4_tokens": [
+        134988,
+        167686
+      ],
+      "uids_omitted": true
+    }
+  },
+  "run_date": "2026-09-26",
+  "schema_version": 1,
+  "scoring": {
+    "correct_item_metric": "strong algorithmic crosswalk proxy; not human-adjudicated",
+    "heldout_test_scored": false,
+    "provider_labels_in_requests": false,
+    "tolerance_seconds": 60
+  },
+  "split": "development"
+}

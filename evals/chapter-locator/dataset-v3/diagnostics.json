@@ -1,0 +1,149 @@
+{
+  "agenda_classes": {
+    "complete": 192
+  },
+  "duration_buckets": {
+    "development:2-to-4h": 26,
+    "development:4-to-8h": 19,
+    "development:8h-plus": 4,
+    "development:under-2h": 32,
+    "development:unknown": 15,
+    "test:2-to-4h": 24,
+    "test:4-to-8h": 14,
+    "test:8h-plus": 3,
+    "test:under-2h": 36,
+    "test:unknown": 19
+  },
+  "exclusion_reasons": {
+    "missing_generated_agenda_items": 163
+  },
+  "existing_generated_output_rows": 3453,
+  "fetch_errors": [],
+  "notes": [
+    "Selection is independent of existing generated output availability.",
+    "The selection pool may exceed the final target so known-bad agenda artifacts can be replaced.",
+    "Agenda classes are diagnostic until artifact-quality policy is reviewed.",
+    "Provider chapters are stored only in gold.json and must not be loaded by retrieval."
+  ],
+  "pool_admitted_counts": {
+    "granicus": 102,
+    "swagit": 102
+  },
+  "pool_exclusions": [
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "denton-county-tx",
+      "uid": "30d9332b8afb2142"
+    },
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "arlington-tx",
+      "uid": "3f71f08d3c57a338"
+    },
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "fort-worth-tx",
+      "uid": "f28ae055829705ec"
+    },
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "arlington-tx",
+      "uid": "9b4c3408496d4536"
+    },
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "fort-worth-tx",
+      "uid": "fc81d9bf3b6af80c"
+    },
+    {
+      "provider": "granicus",
+      "reasons": [
+        "provider_chapter_start_count_mismatch"
+      ],
+      "slug": "fort-worth-tx",
+      "uid": "f1afa3080b24979b"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "uid": "93a2249eeff45764"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "austin-tx-all-boards-and-commissions",
+      "uid": "6c2d957e3a91713e"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "uid": "8390936678e5171f"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "uid": "6d75515b263d6e28"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "addison-tx-board-of-zoning-adjustment",
+      "uid": "aa2791925d65dabb"
+    },
+    {
+      "provider": "swagit",
+      "reasons": [
+        "agenda_cap-suspected"
+      ],
+      "slug": "austin-tx-city-council",
+      "uid": "657e0912c48af4f8"
+    }
+  ],
+  "rows_pending_generation": 163,
+  "rows_with_generated_items": 29,
+  "selected_counts": {
+    "development": 96,
+    "test": 96
+  },
+  "selected_provider_split_counts": {
+    "granicus:development": 48,
+    "granicus:test": 48,
+    "swagit:development": 48,
+    "swagit:test": 48
+  },
+  "selection_pool_per_provider": 108,
+  "source_eligible_counts": {
+    "civicclerk": 5,
+    "granicus": 2158,
+    "swagit": 3672
+  },
+  "version": 3
+}

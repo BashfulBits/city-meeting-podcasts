@@ -1,0 +1,216 @@
+name: Provider catalog reconciliation
+run-name: >-
+  ${{ github.event.schedule == '17 10 * * 1' && 'Provider catalog reconciliation (weekly-full)' ||
+      github.event.schedule == '20 8 * * *' && 'Provider catalog reconciliation (daily-due-only)' ||
+      'Provider catalog reconciliation (manual)' }}
+
+# review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
+# configured free routes and canaries a few free-marked candidates -- each provider inside a v2
+# dispatch pause so production traffic cannot distort the results -- then updates ONE rolling
+# issue. It never edits config, opens PRs, merges or deploys.
+on:
+  schedule:
+    - cron: "17 10 * * 1" # weekly full run
+    # Daily: only health checks deferred because a scarce daily quota (e.g. Gemini's 20/day) was
+    # spent. 08:20 UTC is just after Pacific midnight in both PDT (07:00) and PST (08:00), when
+    # Google's quotas reset. A run with nothing deferred makes no provider calls.
+    - cron: "20 8 * * *"
+  workflow_dispatch:
+    inputs:
+      due_only:
+        description: "Only re-run checks deferred until a daily-quota reset"
+        required: false
+        default: false
+        type: boolean
+      discovery_enabled:
+        description: "Run bounded discovery for an exact candidate (qualifying routes run weekly)"
+        required: false
+        default: false
+        type: boolean
+      discovery_candidate:
+        description: "Manual candidate provider/model; weekly automatic discovery ignores this"
+        required: false
+        default: ""
+        type: string
+      discovery_axis:
+        description: "all: input search with supporting checks; input/output: isolated full search"
+        required: false
+        default: all
+        type: choice
+        options: [all, input, output]
+
+      context_canary:
+        description: "Manual context-only canary on approved routes (main only)"
+        type: boolean
+        default: false
+      context_routes:
+        description: "Comma-separated approved route IDs (1-8)"
+        type: string
+        default: "groq_gpt_oss_120b_primary"
+      context_dimension:
+        description: "Approved measurement dimensions; unsupported output is rejected"
+        type: choice
+        options: [input, output, both]
+        default: input
+      context_calls:
+        description: "Maximum calls in this run (1-8); consumes manual weekly pool"
+        type: string
+        default: "2"
+      context_input:
+        description: "Per-call input ceiling; server route and provider limits still apply"
+        type: string
+        default: "8192"
+      context_output:
+        description: "Per-call output ceiling (input mode maximum 256)"
+        type: string
+        default: "256"
+      context_input_budget:
+        description: "Run input budget (maximum 2097152); does not refill weekly pool"
+        type: string
+        default: "2097152"
+      context_output_budget:
+        description: "Run output budget (maximum 131072); does not refill weekly pool"
+        type: string
+        default: "131072"
+      context_purpose:
+        description: "Required for context canaries: purpose and tracking issue"
+        type: string
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: provider-catalog-writers
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    # Three bounded 90-minute new-route input searches plus catalog checks and cleanup.
+    timeout-minutes: >-
+      ${{ github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1' && 300 ||
+          github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 || 120 }}
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -e ".[llm]" -c constraints/prod.txt
+      - name: Reconcile provider catalogs
+        env:
+          CONTEXT_CANARY: ${{ inputs.context_canary }}
+          CONTEXT_ROUTES: ${{ inputs.context_routes }}
+          CONTEXT_DIMENSION: ${{ inputs.context_dimension }}
+          CONTEXT_CALLS: ${{ inputs.context_calls }}
+          CONTEXT_INPUT: ${{ inputs.context_input }}
+          CONTEXT_OUTPUT: ${{ inputs.context_output }}
+          CONTEXT_INPUT_BUDGET: ${{ inputs.context_input_budget }}
+          CONTEXT_OUTPUT_BUDGET: ${{ inputs.context_output_budget }}
+          CONTEXT_PURPOSE: ${{ inputs.context_purpose }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
+          DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
+          DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
+          DISCOVERY_AXIS: ${{ inputs.discovery_axis }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
+          # Exactly the keys the planner uses (test_workflows derives this set from config).
+          AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
+          BEATAPI_API_KEY: ${{ secrets.BEATAPI_API_KEY }}
+          BEATAPI_API_KEY_SECONDARY: ${{ secrets.BEATAPI_API_KEY_SECONDARY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          args=(--sync-issues)
+          if [ "$DUE_ONLY" = "true" ]; then
+            args+=(--due-only)
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            args+=(--rate-evidence provider-catalog-rate-evidence.json)
+            args+=(--discovery-evidence provider-catalog-discovery-evidence.json)
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1" ]; then
+            args+=(--context-evidence provider-catalog-context-evidence.json)
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$DISCOVERY_ENABLED" = "true" ]; then
+            args+=(--discovery-enabled --discovery-evidence provider-catalog-discovery-evidence.json)
+            if [ -z "$DISCOVERY_CANDIDATE" ]; then
+              echo "Manual discovery requires discovery_candidate=provider/model" >&2
+              exit 1
+            fi
+            args+=(--discovery-candidate "$DISCOVERY_CANDIDATE")
+            args+=(--discovery-axis "$DISCOVERY_AXIS")
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CONTEXT_CANARY" = "true" ]; then
+            if [ "$DUE_ONLY" = "true" ]; then
+              echo "Manual context canary cannot be combined with due-only" >&2
+              exit 1
+            fi
+            args=(--manual-context --context-evidence provider-catalog-context-evidence.json
+              --context-routes "$CONTEXT_ROUTES" --context-dimension "$CONTEXT_DIMENSION"
+              --context-calls "$CONTEXT_CALLS" --context-input "$CONTEXT_INPUT"
+              --context-output "$CONTEXT_OUTPUT" --context-input-budget "$CONTEXT_INPUT_BUDGET"
+              --context-output-budget "$CONTEXT_OUTPUT_BUDGET" --context-purpose "$CONTEXT_PURPOSE")
+          fi
+          python scripts/reconcile_provider_routes.py "${args[@]}"
+      - name: Retain request-cap discovery evidence
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-discovery-evidence-${{ github.run_id }}
+          path: provider-catalog-discovery-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Retain scoped rate evidence
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-rate-evidence-${{ github.run_id }}
+          path: provider-catalog-rate-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Retain scoped context evidence
+        if: github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-context-evidence-${{ github.run_id }}
+          path: provider-catalog-context-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Retain scheduled request-cap discovery evidence
+        if: always() && github.event_name == 'schedule'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-discovery-evidence-${{ github.run_id }}
+          path: provider-catalog-discovery-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Retain manual context evidence
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.context_canary == true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-manual-context-evidence-${{ github.run_id }}
+          path: provider-catalog-context-evidence.json
+          retention-days: 90
+          if-no-files-found: error

@@ -74,6 +74,25 @@ def test_content_hash_changes_with_episodes_and_fingerprint():
     assert base != feed_content_hash([_ep("g1", hosted="https://cdn/g1.m4a")], "fp0")
 
 
+def test_publication_note_changes_render_hashes_but_not_audio_or_record():
+    from citypods.records import audio_spec_hash, episode_to_record
+
+    ep = _ep("g1")
+    ep.uid = "0c66fc968402fabd"
+    before_feed = feed_content_hash([ep], "fp0")
+    before_page = meeting_page_hash(ep)
+    before_audio = audio_spec_hash(ep, max_kbps=96)
+    before_record = episode_to_record(ep)
+
+    ep.publication_note = "Consecutive proceedings."
+
+    assert feed_content_hash([ep], "fp0") != before_feed
+    assert meeting_page_hash(ep) != before_page
+    assert audio_spec_hash(ep, max_kbps=96) == before_audio
+    assert "publication_note" not in episode_to_record(ep)
+    assert episode_to_record(ep) == before_record
+
+
 def test_meeting_page_hash_tracks_transcript_and_availability_render_inputs():
     from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
 
@@ -597,6 +616,35 @@ def test_render_writes_static_search_outputs(tmp_path, fake_provider):
     assert (tmp_path / "docs" / "data" / "search" / "manifest.json").exists()
     assert (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()
     assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
+
+
+def test_render_search_handoff_preserves_complete_index(tmp_path, fake_provider, monkeypatch):
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+    output = tmp_path / "docs"
+    paths = [
+        *(output / "data" / "search").glob("*.json"),
+        output / "search" / "index.html",
+        output / "assets" / "minisearch-7.1.2.js",
+    ]
+    before = {path: path.read_bytes() for path in paths}
+    monkeypatch.setattr(run, "build_search_index", lambda *_a, **_k: pytest.fail("index build"))
+    context = tmp_path / "handoff.json"
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=output,
+        base_url="https://example.test",
+        phase="render",
+        no_refresh=True,
+        skip_search=True,
+        search_context_output=context,
+    )
+    assert {path: path.read_bytes() for path in paths} == before
+    assert "/search/" in (output / "index.html").read_text()
+    payload = json.loads(context.read_text())
+    assert payload["base_url"] == "https://example.test"
+    assert payload["feed_info"]["fake-city"] == {"has_audio": True, "has_video": True}
 
 
 def test_render_writes_city_request_page_when_public_form_configured(tmp_path, fake_provider):
@@ -1654,6 +1702,73 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
     ]
 
 
+def test_global_queue_judges_every_source_in_one_pass_then_checkpoints(monkeypatch):
+    """The capped PR4 dry run judged source by source, so the first sources alphabetically spent
+    the whole run's caps (one zoning board took every sibling packet). The judge lane now runs one
+    pass over every source's episodes, then checkpoints."""
+
+    def _city(slug):
+        return City(
+            slug=slug,
+            provider="granicus",
+            source={"feed_url": f"https://{slug}.granicus.com/f"},
+            podcast_title=slug,
+            podcast_author="A",
+            podcast_email="",
+            podcast_description="",
+            extract_audio=True,
+        )
+
+    events: list[str] = []
+
+    class _JudgeStage:
+        name = "judge"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane="judge"
+            )
+            self.stages = [_JudgeStage()]
+
+        def fetch_merge(self, city, _key):
+            return object(), [_ep(f"{city.slug}-1")], {}, 0
+
+        fetch_merge_from_records = fetch_merge  # the judge lane is record-backed
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    clock = {"now": 0.0}
+
+    def _across(stage, sources, _ctx):
+        events.append("judge:" + ",".join(sorted(city.slug for city, _eps in sources)))
+        clock["now"] += 181.0
+        return StageStats(stage.name, ran=1)
+
+    monkeypatch.setattr(run, "run_judge_across_sources", _across)
+    monkeypatch.setattr(
+        run, "run_stages", lambda *a, **k: pytest.fail("judge must not run per source")
+    )
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [_city("a"), _city("b")],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    assert events[0] == "judge:a,b"
+    assert "checkpoint" in events
+
+
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
     tmp_path, monkeypatch
 ):
@@ -1677,6 +1792,10 @@ def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass
 
     class _TagsStage:
         name = "tags"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
 
     class _Pipeline:
         def __init__(self):
@@ -2703,6 +2822,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "judging",
             "moments",
         }
     )
@@ -2976,6 +3096,105 @@ def test_tag_lane_is_accepted(tmp_path, fake_provider):
     assert [r.status for r in results] == ["built"]
 
 
+@pytest.mark.parametrize("lane", sorted(run.LANE_STAGES))
+def test_every_registered_lane_is_accepted(tmp_path, fake_provider, lane):
+    """review/53 PR4 dry run: `enrich --lane judge` died with "unknown lane 'judge'" because
+    _build_impl kept its own allowlist beside LANE_STAGES (the `tag` bug above, again). Every lane
+    LANE_STAGES registers must pass validation; the allowlist is now LANE_STAGES itself."""
+    cities = _setup(tmp_path)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane=lane, dry_run=True)
+
+
+def test_judge_lane_uses_merged_scoped_push_without_full_reconcile(
+    tmp_path, fake_provider, monkeypatch
+):
+    """`judge.yml` runs unsharded, like `tag.yml`. Unscoped, it would push its whole stale snapshot
+    over concurrent lanes' records and run the full-run reconcile sweep; it owns only the
+    `judging` block, so it must take the foreign-block-preserving merged push."""
+    cities = _setup(tmp_path)
+    captured = {}
+
+    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, lane=None, **_k):
+        captured["lane"] = lane
+        captured["protected"] = set(protected_blocks)
+        return len(set(source_keys))
+
+    def _reconcile(*_a, full_run=True, **_k):
+        captured["full_run"] = full_run
+        return 0
+
+    def _push(*_a, only_prefixes=None, only_paths=None, **_k):
+        # Scoped runs still push their own append-only run_events by path; never the whole tree.
+        assert only_prefixes is not None or only_paths is not None, "whole-snapshot push_state"
+        return 0
+
+    monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "reconcile_state", _reconcile)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
+
+    assert captured["lane"] == "judge"
+    assert captured["protected"] and "judging" not in captured["protected"]
+    assert captured["full_run"] is False
+
+
+def test_judge_lanes_are_preflighted_and_a_closed_lane_starts_with_no_packets(
+    tmp_path, fake_provider, monkeypatch
+):
+    """2026-10-13: the Worker refused ingress (HTTP 500 on every enqueue) and the judge lane spent
+    about 50 minutes planning for nothing before the run went red. The judge lanes now join the
+    run-level preflight, and one reported closed starts the pass with no packets."""
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+        "judging:\n  enabled: true\n"
+    )
+    monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch.example.test")
+    asked = []
+
+    def fake_open(purpose, *, backend=None):
+        asked.append(purpose)
+        if purpose == "judge:anchor":
+            return False, {"open": False, "reasons": ["preflight_unavailable"]}
+        return True, {"open": True, "reasons": []}
+
+    monkeypatch.setattr("citypods.compute.llm.dispatch_v2_ingress_open", fake_open)
+    seen = {}
+
+    def _across(stage, _sources, ctx):
+        seen["caps"] = dict(ctx.judge_run_caps)
+        return StageStats(stage.name)
+
+    monkeypatch.setattr(run, "run_judge_across_sources", _across)
+    monkeypatch.setattr(run, "push_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(run, "push_records_merged", lambda *_a, **_k: 0)
+    monkeypatch.setattr(run, "reconcile_state", lambda *_a, **_k: 0)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
+
+    assert {"judge:anchor", "judge:sibling"} <= set(asked)
+    assert seen["caps"] == {"judge:anchor": 0}
+
+
+def test_other_lanes_do_not_preflight_the_judge_lanes(tmp_path, fake_provider, monkeypatch):
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+        "judging:\n  enabled: true\n"
+    )
+    monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch.example.test")
+    asked = []
+
+    def fake_open(purpose, *, backend=None):
+        asked.append(purpose)
+        return True, {"open": True, "reasons": []}
+
+    monkeypatch.setattr("citypods.compute.llm.dispatch_v2_ingress_open", fake_open)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="tag")
+    assert "judge:anchor" not in asked and "judge:sibling" not in asked
+
+
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------
 
 _NOW = datetime(2026, 6, 12, tzinfo=UTC)
@@ -3160,6 +3379,10 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     class _CountingStage:
         name = "tags"
 
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
+
         def __init__(self):
             self.processed = []
 
@@ -3237,6 +3460,10 @@ def test_tag_lane_candidate_window_with_caps_and_zero_caps(tmp_path, monkeypatch
 
     class _CountingStage:
         name = "tags"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
 
         def __init__(self):
             self.processed = []
@@ -3345,6 +3572,10 @@ def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
         def __init__(self, name):
             self.name = name
             self.processed = []
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
 
         def process(self, provider, city, episodes, ctx):
             self.processed.extend(episodes)
@@ -3719,6 +3950,11 @@ def test_tag_lane_pre_filter_keeps_episodes_with_pending_shadow_prelabels(tmp_pa
     def processed(**ctx_overrides):
         class _CountingStage:
             name = "tags"
+
+            def census(self, *_args):
+                """No LLM work in this queue-only test double."""
+                pass
+
             version = "1"
 
             def __init__(self):
@@ -3789,3 +4025,505 @@ def test_closed_llm_lanes_checks_only_enabled_lanes(monkeypatch):
     )
     assert closed == {"chapter-agenda"}
     assert asked == ["chapter-agenda", "chapter-locator"]
+
+
+def _publication_render_fixture(tmp_path):
+    from types import SimpleNamespace
+
+    from citypods.publication_selection import record_identity_fingerprint
+    from citypods.records import episode_to_record, save_records, source_key
+
+    city = _retention_city(max_episodes=1)
+    eps = [_ep("same", hosted="https://cdn.example/audio.m4a") for _ in range(2)]
+    for uid, ep in zip(("1" * 16, "2" * 16), eps, strict=True):
+        ep.uid = uid
+    records = {ep.uid: episode_to_record(ep) for ep in eps}
+    state_dir = tmp_path / "state"
+    save_records(state_dir, source_key(city), records)
+    ref = {
+        "url": "https://example.gov/evidence",
+        "retrieved_at": "2026-10-03T12:00:00Z",
+        "content_hash": "a" * 64,
+    }
+    city.extra["publication_selection"] = {
+        "version": 1,
+        "groups": [
+            {
+                "id": "same-recording",
+                "source_key": source_key(city),
+                "identity_kind": "same_provider_guid",
+                "identity_key": "same",
+                "members": [
+                    {
+                        "uid": uid,
+                        "provider_guid": "same",
+                        "record_fingerprint": record_identity_fingerprint(source_key(city), record),
+                    }
+                    for uid, record in records.items()
+                ],
+                "preferred_uid": "1" * 16,
+                "evidence_refs": [ref],
+                "approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/1997",
+                "exposure": {"status": "never-published", "artifacts": [], "rationale": "New feed"},
+                "search": True,
+                "date_resolution": None,
+            }
+        ],
+    }
+    pipeline = SimpleNamespace(
+        state_dir=state_dir,
+        render_from_records=lambda city: eps,
+        calendar_records=lambda city: [],
+        note=lambda city: None,
+    )
+    return city, pipeline
+
+
+def test_publication_render_preserves_raw_pages_records_and_sticky_uid(tmp_path):
+    from citypods.records import records_path, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    archive = records_path(pipeline.state_dir, source_key(city))
+    original_records = archive.read_bytes()
+    out = tmp_path / "docs"
+    cache = {}
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    assert result.episode_count == 1
+    rss = (out / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == 1
+    assert "1" * 16 in rss and "2" * 16 not in rss
+    for uid in ("1" * 16, "2" * 16):
+        assert (out / city.slug / uid / "index.html").exists()
+    assert archive.read_bytes() == original_records
+    cache[city.slug] = entry
+    second, _ = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert second.status == "skipped"
+
+
+@pytest.mark.parametrize("previous", [False, True])
+def test_publication_hold_preserves_prior_files_and_cache(tmp_path, previous):
+    city, pipeline = _publication_render_fixture(tmp_path)
+    out = tmp_path / "docs"
+    city_dir = out / city.slug
+    cache = {city.slug: {"content_hash": "old", "meeting_pages": {"old": "hash"}}}
+    if previous:
+        city_dir.mkdir(parents=True)
+        (city_dir / "audio_feed.xml").write_bytes(b"prior feed")
+        (city_dir / "index.html").write_bytes(b"prior index")
+        chapter = city_dir / "chapters" / ("2" * 16 + ".json")
+        chapter.parent.mkdir()
+        chapter.write_bytes(b"prior chapters")
+    before = {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    old_cache = json.loads(json.dumps(cache))
+    city.extra["publication_selection"]["groups"][0]["members"][0]["record_fingerprint"] = "0" * 64
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "held" and "fingerprint-changed" in result.detail
+    assert entry is None and cache == old_cache
+    assert result.has_audio is previous
+    assert before == {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    if not previous:
+        assert not city_dir.exists()
+
+
+def test_publication_note_projects_only_exact_uid_to_rss_and_raw_page(tmp_path):
+    from citypods.records import episode_to_record
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    note = "Consecutive CCPD Board and City Council proceedings; whole recording retained."
+    city.publication_notes = [
+        {
+            "uid": "1" * 16,
+            "provider_guid": "same",
+            "note": note,
+            "approval_ref": "https://example.gov/issues/2107",
+        }
+    ]
+    state_file = pipeline.state_dir / "sources" / run.source_key(city) / "episodes.json"
+    before_records = state_file.read_bytes()
+    output = tmp_path / "docs"
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {"defaults": {"meeting_pages": True}},
+        "original",
+        no_refresh=True,
+    )
+
+    assert result.status == "built"
+    rss = (output / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == 1
+    assert "Publication note:" in rss and note in rss
+    assert "Official description" not in rss
+    noted_page = (output / city.slug / ("1" * 16) / "index.html").read_text()
+    unnoted_page = (output / city.slug / ("2" * 16) / "index.html").read_text()
+    assert "Publication note:" in noted_page and note in noted_page
+    assert "Publication note:" not in unnoted_page
+    persisted = json.loads(state_file.read_text())["episodes"]
+    assert all("publication_note" not in record for record in persisted.values())
+    assert state_file.read_bytes() == before_records
+    restored = pipeline.render_from_records(city)
+    assert all("publication_note" not in episode_to_record(ep) for ep in restored)
+
+
+def test_publication_note_identity_mismatch_preserves_public_files_and_cache(tmp_path):
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.source["body_exact"] = ["A body this archive does not contain"]
+    city.publication_notes = [
+        {
+            "uid": "1" * 16,
+            "provider_guid": "unexpected-guid",
+            "note": "Approved note.",
+            "approval_ref": "https://example.gov/issues/2107",
+        }
+    ]
+    output = tmp_path / "docs"
+    city_dir = output / city.slug
+    city_dir.mkdir(parents=True)
+    (city_dir / "audio_feed.xml").write_text("previous feed")
+    (city_dir / "index.html").write_text("previous index")
+    cache = {city.slug: {"content_hash": "previous", "meeting_pages": {"kept": "hash"}}}
+    previous_cache = json.loads(json.dumps(cache))
+    previous_files = {path: path.read_bytes() for path in city_dir.rglob("*") if path.is_file()}
+
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+
+    assert result.status == "error" and "identity mismatch" in result.detail
+    assert entry is None and cache == previous_cache
+    current_files = {path: path.read_bytes() for path in city_dir.rglob("*") if path.is_file()}
+    assert previous_files == current_files
+
+
+@pytest.mark.parametrize("pair_count,expected_count", [(3, 3), (1, 5)])
+def test_publication_record_backed_six_row_projection(tmp_path, pair_count, expected_count):
+    import copy
+
+    from citypods.models import AgendaRecord
+    from citypods.publication_selection import record_identity_fingerprint
+    from citypods.records import episode_to_record, records_path, save_records, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.max_episodes = 10
+    episodes = []
+    for number in range(6):
+        guid = f"recording-{number // 2}" if number < pair_count * 2 else f"single-{number}"
+        episode = _ep(guid, hosted="https://cdn.example/audio.m4a")
+        episode.uid = f"{number + 1:016x}"
+        episodes.append(episode)
+    records = {ep.uid: episode_to_record(ep) for ep in episodes}
+    groups = []
+    template = city.extra["publication_selection"]["groups"][0]
+    for number in range(pair_count):
+        group = copy.deepcopy(template)
+        group["id"] = f"recording-{number}"
+        group["identity_key"] = f"recording-{number}"
+        pair = episodes[number * 2 : number * 2 + 2]
+        group["preferred_uid"] = pair[0].uid
+        group["members"] = [
+            {
+                "uid": ep.uid,
+                "provider_guid": ep.guid,
+                "record_fingerprint": record_identity_fingerprint(
+                    source_key(city), records[ep.uid]
+                ),
+            }
+            for ep in pair
+        ]
+        groups.append(group)
+    city.extra["publication_selection"]["groups"] = groups
+    save_records(pipeline.state_dir, source_key(city), records)
+    archive = records_path(pipeline.state_dir, source_key(city))
+    archive_before = archive.read_bytes()
+    pipeline.render_from_records = lambda city: episodes
+    calendar = AgendaRecord(
+        body="City Council",
+        title="Future no-video public meeting",
+        published=datetime(2026, 12, 1, tzinfo=UTC),
+        links={"agenda": "https://example.gov/future-agenda.pdf"},
+    )
+    pipeline.calendar_records = lambda city: [calendar]
+    output = tmp_path / "docs"
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    rss = (output / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == expected_count
+    assert "Future no-video public meeting" not in rss
+    assert (
+        "Future no-video public meeting"
+        in (output / city.slug / "archive" / "index.html").read_text()
+    )
+    for episode in episodes:
+        assert (output / city.slug / episode.uid / "index.html").is_file()
+    for group in groups:
+        assert group["preferred_uid"] in rss
+        assert group["members"][1]["uid"] not in rss
+    assert archive.read_bytes() == archive_before
+
+
+def test_publication_unavailable_preferred_never_promotes_alternate(tmp_path):
+    from citypods.availability import MISSING, MediaAvailability
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    episodes = pipeline.render_from_records(city)
+    preferred, alternate = episodes
+    preferred.media_availability = MediaAvailability(state=MISSING, reason="official unavailable")
+    preferred.hosted_audio_url = None
+    output = tmp_path / "docs"
+    city_dir = output / city.slug
+    city_dir.mkdir(parents=True)
+    (city_dir / "audio_feed.xml").write_text(
+        f"<rss><channel><item><guid>{alternate.uid}</guid></item></channel></rss>"
+    )
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    feed = output / city.slug / "audio_feed.xml"
+    rss = feed.read_text()
+    assert "<channel>" in rss
+    assert "<item>" not in rss
+    assert alternate.uid not in rss
+    for episode in episodes:
+        assert (output / city.slug / episode.uid / "index.html").is_file()
+
+
+def test_held_selection_preserves_alias_redirect_entries(tmp_path):
+    city = _retention_city(max_episodes=1)
+    city.aliases = ["former-slug"]
+    rows = [{"from": "/former-slug/", "to": "https://example.gov/old/"}]
+    (tmp_path / "redirects.json").write_text(json.dumps(rows))
+    alias = tmp_path / "former-slug"
+    alias.mkdir()
+    (alias / "index.html").write_bytes(b"prior alias")
+    run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
+    assert json.loads((tmp_path / "redirects.json").read_text()) == rows
+    assert (alias / "index.html").read_bytes() == b"prior alias"
+
+
+@pytest.mark.parametrize("payload", ["{broken", "{}", '[null, {}, {"from": null}, {"from": "x"}]'])
+def test_held_alias_redirects_ignore_malformed_cached_rows(tmp_path, payload):
+    city = _retention_city(max_episodes=1)
+    city.aliases = ["former-slug"]
+    (tmp_path / "redirects.json").write_text(payload)
+    run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
+    assert json.loads((tmp_path / "redirects.json").read_text()) == []
+
+
+def test_archive_only_cached_removal_reversal_preserves_raw_pages(tmp_path):
+    """Archive visibility rebuilds cached projections while direct archives remain intact."""
+    from citypods.publication_selection import load_selection_index
+    from citypods.records import records_path, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.extra.pop("publication_selection")
+    city.max_episodes = 10
+    episodes = pipeline.render_from_records(city)
+    linked = AgendaRecord(
+        body="Council",
+        published=episodes[0].published,
+        title="Hidden calendar recording",
+        video_guid="same",
+    )
+    independent = AgendaRecord(
+        body="Council", published=episodes[0].published, title="Independent official calendar"
+    )
+    pipeline.calendar_records = lambda city: [linked, independent]
+    state = records_path(pipeline.state_dir, source_key(city))
+    original = state.read_bytes()
+    out = tmp_path / "docs"
+    cache = {}
+
+    def render(index=None):
+        result, entry = run._process_city(
+            city,
+            "https://example.gov",
+            out,
+            cache,
+            0,
+            False,
+            pipeline,
+            {},
+            "original",
+            no_refresh=True,
+            selection_index=index,
+        )
+        cache[city.slug] = entry
+        return result
+
+    assert render().episode_count == 2
+    city.extra["archive_only"] = [
+        {
+            "uid": ep.uid,
+            "provider_guid": ep.guid,
+            "reason": "Human-approved archive retention",
+            "approval_ref": "https://example.gov/approval",
+        }
+        for ep in episodes
+    ]
+    # The declaration may live on another feed sharing this source.
+    import copy
+
+    declaring = copy.deepcopy(city)
+    declaring.slug = "another-feed"
+    declaration = city.extra.pop("archive_only")
+    declaring.extra["archive_only"] = declaration
+    index = load_selection_index([city, declaring])
+    assert render(index).episode_count == 0
+    rss = (out / city.slug / "audio_feed.xml").read_text()
+    assert "<item>" not in rss
+    browse = (out / city.slug / "archive" / "index.html").read_text()
+    assert "Hidden calendar recording" not in browse
+    assert "Independent official calendar" in browse
+    for ep in episodes:
+        assert (out / city.slug / ep.uid / "index.html").exists()
+    assert render(index).status == "skipped"
+    declaring.extra.pop("archive_only")
+    assert render(load_selection_index([city, declaring])).episode_count == 2
+    assert (out / city.slug / "audio_feed.xml").read_text().count("<item>") == 2
+    assert state.read_bytes() == original
+
+
+def test_archive_only_identity_conflict_is_a_city_error_without_writes(tmp_path):
+    """A bad identity preserves that city's output without raising into the render executor."""
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.extra.pop("publication_selection")
+    ep = pipeline.render_from_records(city)[0]
+    city.extra["archive_only"] = [
+        {"uid": ep.uid, "provider_guid": "wrong", "reason": "hold", "approval_ref": "approval"}
+    ]
+    out = tmp_path / "docs"
+    target = out / city.slug
+    target.mkdir(parents=True)
+    (target / "audio_feed.xml").write_text("previous output")
+    result, entry = run._process_city(
+        city, "https://example.gov", out, {}, 0, False, pipeline, {}, "original", no_refresh=True
+    )
+    assert result.status == "error"
+    assert "GUID mismatch" in result.detail
+    assert entry is None
+    assert (target / "audio_feed.xml").read_text() == "previous output"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_build_only_requires_shadow_lane_when_enabled(
+    tmp_path, fake_provider, monkeypatch, enabled
+):
+    from citypods.compute.llm_lanes import UnregisteredLaneError
+
+    cities = _setup(tmp_path)
+    with (tmp_path / "site_config.yml").open("a") as config:
+        config.write(f"tagging:\n  prelabeler:\n    shadow_enabled: {str(enabled).lower()}\n")
+    original_lane_for = run.lane_for
+    lookups = []
+
+    def without_shadow(purpose):
+        lookups.append(purpose)
+        if purpose == "topic-tags:prelabeler-shadow":
+            raise UnregisteredLaneError(purpose)
+        return original_lane_for(purpose)
+
+    monkeypatch.setattr(run, "lane_for", without_shadow)
+    if enabled:
+        with pytest.raises(UnregisteredLaneError, match="prelabeler-shadow"):
+            _build(tmp_path, cities)
+    else:
+        assert _build(tmp_path, cities)
+        assert "topic-tags:prelabeler-shadow" not in lookups
+
+
+def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout():
+    """2026-10-16: a catch-up pass spent a 76.5-minute window collecting 11,688 answers and stopped
+    planning before it submitted anything. The window follows the repo's rule that a lane's budget
+    equals its cron interval, with `budget_safety` reserving the tail."""
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parent.parent
+    defaults = yaml.safe_load((root / "config" / "site_config.yml").read_text())["defaults"]
+    workflow = yaml.safe_load((root / ".github" / "workflows" / "judge.yml").read_text())
+    cron = workflow[True]["schedule"][0]["cron"]
+    interval = 60 * int(re.search(r"\*/(\d+)", cron.split()[1]).group(1))
+    # The effective budget, as run.py reads it: the config value, else the code default.
+    window = defaults.get("judge_run_time_budget_minutes", run.JUDGE_RUN_TIME_BUDGET_MINUTES)
+    assert defaults["judge_run_time_budget_minutes"] == window  # and it is set explicitly
+    assert window == interval == run.JUDGE_RUN_TIME_BUDGET_MINUTES
+    # The window ends with time to spare for setup and the persistence tail before the next pass.
+    assert window * defaults["budget_safety"] <= interval - 15
+    # And the step's own timeout is still the backstop above it.
+    step = next(
+        s
+        for s in workflow["jobs"]["judge"]["steps"]
+        if s.get("name", "").startswith("Judge persisted")
+    )
+    assert step["timeout-minutes"] > window

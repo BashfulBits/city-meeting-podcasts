@@ -1,0 +1,362 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0c26ff076fc00645016aca5af0bb44819bb3748f4a3df2e16c",
+        "created": 1791646454,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 177,
+          "prompt_tokens": 2535,
+          "total_tokens": 2712,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2535,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 177,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2535,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness."
+      },
+      "duration_seconds": 16.017920167185366
+    },
+    {
+      "case_id": "denton-health-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0f7b7cc81a487ce2016aca5b3a520881939cd9076d0728b827",
+        "created": 1791646528,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign recording 122398 to denton-tx-health-building-standards-commission, not denton-tx-city-council; preserve official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda for recording 122398 explicitly states that the Health and Building Standards Commission convenes a regular meeting on June 3, 2021, at 3:00 p.m. This matches the recording and the existing commission feed's explicit inclusion of provider GUID 122398. Approved policy assigns ownership to the officially convened body, not the meeting room. The Council Work Session Room is only the venue and does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment despite unknown archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 194,
+          "prompt_tokens": 2534,
+          "total_tokens": 2728,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2534,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 194,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2534,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign recording 122398 to denton-tx-health-building-standards-commission, not denton-tx-city-council; preserve official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda for recording 122398 explicitly states that the Health and Building Standards Commission convenes a regular meeting on June 3, 2021, at 3:00 p.m. This matches the recording and the existing commission feed's explicit inclusion of provider GUID 122398. Approved policy assigns ownership to the officially convened body, not the meeting room. The Council Work Session Room is only the venue and does not establish City Council ownership. Recording-specific evidence is sufficient for this assignment despite unknown archive completeness."
+      },
+      "duration_seconds": 8.50950966682285
+    },
+    {
+      "case_id": "denton-library-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0ec82c82e891a48d016aca5b84a6808193a30d0e38691abb03",
+        "created": 1791646601,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-library-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to denton-tx-library-board without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies the convened body as the City of Denton Library Board and gives May 13, 2021 at 3:30 PM, matching the recording. Its references to the Library Advisory Board further establish the meeting's identity. Under the approved policy, the Council Work Session Room is a venue, not evidence of City Council ownership. The existing Library Board feed is therefore the supported owner. This conclusion is limited to this recording and does not establish archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 166,
+          "prompt_tokens": 2476,
+          "total_tokens": 2642,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2476,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 166,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2476,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to denton-tx-library-board without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The recording-specific official agenda identifies the convened body as the City of Denton Library Board and gives May 13, 2021 at 3:30 PM, matching the recording. Its references to the Library Advisory Board further establish the meeting's identity. Under the approved policy, the Council Work Session Room is a venue, not evidence of City Council ownership. The existing Library Board feed is therefore the supported owner. This conclusion is limited to this recording and does not establish archive completeness."
+      },
+      "duration_seconds": 8.635015750303864
+    },
+    {
+      "case_id": "denton-library-council",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0dbdf41fba5191ec016aca5bced0dc8195a9b251b74ac7fc52",
+        "created": 1791646675,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-library-council\",\"supported\":false,\"proposed_owner\":\"denton-tx-library-board\",\"proposed_action\":\"Assign recording 120859 to denton-tx-library-board, preserving official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 120859 identifies the convened body as the Library Board and describes the May 13, 2021 Library Advisory Board meeting at 3:30 PM, matching the recording. The approved policy assigns ownership by officially convened body, not meeting room. 'Council Work Session Room' is a venue, not evidence of City Council ownership. The existing denton-tx-library-board feed matches the identified body. Archive completeness is unknown but does not prevent this recording-specific assignment.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 172,
+          "prompt_tokens": 2480,
+          "total_tokens": 2652,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2480,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 172,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2480,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-library-council",
+        "supported": false,
+        "proposed_owner": "denton-tx-library-board",
+        "proposed_action": "Assign recording 120859 to denton-tx-library-board, preserving official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 120859 identifies the convened body as the Library Board and describes the May 13, 2021 Library Advisory Board meeting at 3:30 PM, matching the recording. The approved policy assigns ownership by officially convened body, not meeting room. 'Council Work Session Room' is a venue, not evidence of City Council ownership. The existing denton-tx-library-board feed matches the identified body. Archive completeness is unknown but does not prevent this recording-specific assignment."
+      },
+      "duration_seconds": 8.350632791873068
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:33:59.785679+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 14.636721500195563
+    },
+    {
+      "started_at": "2026-10-10T15:35:20.813490+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.309540084097534
+    },
+    {
+      "started_at": "2026-10-10T15:36:34.455806+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 7.365784917026758
+    },
+    {
+      "started_at": "2026-10-10T15:37:48.326132+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 6.919245457742363
+    }
+  ]
+}

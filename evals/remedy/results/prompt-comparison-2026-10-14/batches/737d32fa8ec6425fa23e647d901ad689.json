@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Bond Advisory Committee"
+      }
+    ],
+    "case_id": "recording-9bd6780e16f497eb919d9423",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-bond-committees"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "Official evidence identifies the convened body as the Bond Advisory Committee for Addison, TX. The retained agenda is titled 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' for January 8, 2026, and the provider page lists the same recording as 'Jan 08, 2026 Bond Advisory Committee.' The native chapters mirror that agenda. The existing feed 'addison-tx-bond-committees' explicitly covers verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee, so it is the appropriate existing feed. References to the Addison City Council concern a possible recommendation to that body, not its participation in a joint meeting; no other municipal body is proven as a participant."
+  },
+  "attempt_id": "cb49b68efdaf47feb78763e280e3564b",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-9bd6780e16f497eb919d9423",
+  "case_input_hash": "ad40f40f0a8d44f7d3d8337ccc185f4306718fff4f8b80d57f387152defefc05",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.290347209000174
+    }
+  ],
+  "end_to_end_seconds": 53.92432304199974,
+  "finished_at": "2026-10-14T16:21:06.619430+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T16:20:12.694789+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "bd36797b1ca2cf35e2ad43603f651fdd6683d7e056be6d857b812c1068e7db8f",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 384,
+    "cached_tokens": 384,
+    "completion_thinking_tokens": 992,
+    "completion_tokens": 1248,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 992,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 3080,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 3464,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 384,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 4712
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-9bd6780e16f497eb919d9423\",\"bodies\":[{\"name\":\"Bond Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"addison-tx-bond-committees\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"Official evidence identifies the convened body as the Bond Advisory Committee for Addison, TX. The retained agenda is titled 'REGULAR MEETING OF THE BOND ADVISORY COMMITTEE' for January 8, 2026, and the provider page lists the same recording as 'Jan 08, 2026 Bond Advisory Committee.' The native chapters mirror that agenda. The existing feed 'addison-tx-bond-committees' explicitly covers verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee, so it is the appropriate existing feed. References to the Addison City Council concern a possible recommendation to that body, not its participation in a joint meeting; no other municipal body is proven as a participant.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies this recording belongs to, from evidence. Need select feed slugs existing. Case: recording is Bond Advisory Committee meeting Jan 8 2026 Addison TX. Evidence agenda and player chapters. Need identify actual body/program separately from subscription grouping. Existing feeds include addison-tx-bond-committees: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" So body name: Bond Advisory Committee. Feed slug: addison-tx-bond-committees likely. Publication_action assign_existing. Need maybe joint meeting? The question says \"Name every proven participant in a joint meeting.\" Is there joint? Evidence mentions Addison City Council in item d \"making a recommendation to Addison City Council\" but not participant. Also Farmers Branch Chief thanked? Not participant. The meeting itself Bond Advisory Committee. No joint meeting proven. Need cite evidence for body name and assignment. Evidence_ref_ids: retained-agenda, provider-player, native-source-chapters. Bodies array with one IdentifiedBody name \"Bond Advisory Committee\" evidence refs. Feed slugs [\"addison-tx-bond-committees\"]. Evidence_ref_ids overall all. Missing evidence maybe none? Or if no proof of joint? We can say none? Schema missing_evidence array of strings. Should we include gap for any suspected participant? No suspected participants? The agenda says Committee Q&A, Chair, Deputy City Manager, etc. Participants proven? Wait prompt: \"Name every proven participant in a joint meeting.\" Not applicable. But maybe \"bodies\" should include only municipal bodies, not persons. So one body.\n\nNeed consider if \"Bond Advisory Committee\" is a body/program? Existing feed \"Addison: Bond Committees\" includes verified Addison bond-program committee meetings, including 2026 Police and Courts facility Bond Advisory Committee. The actual body is Bond Advisory Committee, subscription grouping is bond committees. The prompt says \"Identify the actual body/program separately from its subscription grouping.\" In JSON schema only bodies and feed_slugs. Body name should be actual body. Feed slug is subscription grouping. Good.\n\nNeed maybe include \"Addison City Council\" as body? The agenda item d says consider action on making recommendation to Addison City Council. That does not mean City Council convened. Policy identity use convened body, not topics. Not participant. No.\n\nNeed ensure evidence_ref_ids only supplied evidence IDs: retained-agenda, provider-player, native-source-chapters. Rationale under 2000 chars. Need no markdown.\n\nLet's construct JSON:\n\n{\n \"case_id\": \"recording-9bd6780e16f497eb919d9423\",\n \"bodies\": [\n   {\"name\": \"Bond Advisory Committee\", \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}\n ],\n \"feed_slugs\": [\"addison-tx-bond-committees\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\n \"missing_evidence\": [],\n \"rationale\": \"Official agenda and provider title/index identify the convened body as the Bond Advisory Committee for Addison, TX on Jan 8, 2026. The agenda is a regular meeting of the Bond Advisory Committee and the provider page lists the Jan 08, 2026 Bond Advisory Committee; chapters mirror that agenda. The existing feed addison-tx-bond-committees explicitly covers verified Addison bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee, so assign to that existing feed. References to the Addison City Council are only as the recipient of a possible recommendation, not as a joint convened participant; no other body is proven.\"\n}\n\nNeed maybe mention no joint meeting. Good.\n\nCheck schema: required includes bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. AdditionalProperties false at top. IdentifiedBody additionalProperties false. Good.\n\nNeed ensure maxLength rationale 2000. Fine.\n\nPotential issue: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" Is there any other feed? \"addison-tx-public-briefings\" maybe because educational briefing? No, it's a committee meeting. \"addison-tx-town-meetings\" maybe town halls, community meetings, open houses and historical citizen input. Not this. \"addison-tx-city-council\" no. \"addison-tx-bond-committees\" yes. Maybe \"families\": use configured bond/TIF/public-information family feeds for their proven bodies. So bond feed. Good.\n\nCould there be \"Addison: Bond Committees\" as subscription grouping and body actual \"Bond Advisory Committee\". Feed slug exactly \"addison-tx-bond-committees\". Good.\n\nNeed final only JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies this recording belongs to, from evidence. Need select feed slugs existing. Case: recording is Bond Advisory Committee meeting Jan 8 2026 Addison TX. Evidence agenda and player chapters. Need identify actual body/program separately from subscription grouping. Existing feeds include addison-tx-bond-committees: \"Verified Addison bond-program committee meetings, including the 2026 Police and Courts facility Bond Advisory Committee.\" So body name: Bond Advisory Committee. Feed slug: addison-tx-bond-committees likely. Publication_action assign_existing. Need maybe joint meeting? The question says \"Name every proven participant in a joint meeting.\" Is there joint? Evidence mentions Addison City Council in item d \"making a recommendation to Addison City Council\" but not participant. Also Farmers Branch Chief thanked? Not participant. The meeting itself Bond Advisory Committee. No joint meeting proven. Need cite evidence for body name and assignment. Evidence_ref_ids: retained-agenda, provider-player, native-source-chapters. Bodies array with one IdentifiedBody name \"Bond Advisory Committee\" evidence refs. Feed slugs [\"addison-tx-bond-committees\"]. Evidence_ref_ids overall all. Missing evidence maybe none? Or if no proof of joint? We can say none? Schema missing_evidence array of strings. Should we include gap for any suspected participant? No suspected participants? The agenda says Committee Q&A, Chair, Deputy City Manager, etc. Participants proven? Wait prompt: \"Name every proven participant in a joint meeting.\" Not applicable. But maybe \"bodies\" should include only municipal bodies, not persons. So one body.\n\nNeed consider if \"Bond Advisory Committee\" is a body/program? Existing feed \"Addison: Bond Committees\" includes verified Addison bond-program committee meetings, including 2026 Police and Courts facility Bond Advisory Committee. The actual body is Bond Advisory Committee, subscription grouping is bond committees. The prompt says \"Identify the actual body/program separately from its subscription grouping.\" In JSON schema only bodies and feed_slugs. Body name should be actual body. Feed slug is subscription grouping. Good.\n\nNeed maybe include \"Addison City Council\" as body? The agenda item d says consider action on making recommendation to Addison City Council. That does not mean City Council convened. Policy identity use convened body, not topics. Not participant. No.\n\nNeed ensure evidence_ref_ids only supplied evidence IDs: retained-agenda, provider-player, native-source-chapters. Rationale under 2000 chars. Need no markdown.\n\nLet's construct JSON:\n\n{\n \"case_id\": \"recording-9bd6780e16f497eb919d9423\",\n \"bodies\": [\n   {\"name\": \"Bond Advisory Committee\", \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}\n ],\n \"feed_slugs\": [\"addison-tx-bond-committees\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\n \"missing_evidence\": [],\n \"rationale\": \"Official agenda and provider title/index identify the convened body as the Bond Advisory Committee for Addison, TX on Jan 8, 2026. The agenda is a regular meeting of the Bond Advisory Committee and the provider page lists the Jan 08, 2026 Bond Advisory Committee; chapters mirror that agenda. The existing feed addison-tx-bond-committees explicitly covers verified Addison bond-program committee meetings including the 2026 Police and Courts facility Bond Advisory Committee, so assign to that existing feed. References to the Addison City Council are only as the recipient of a possible recommendation, not as a joint convened participant; no other body is proven.\"\n}\n\nNeed maybe mention no joint meeting. Good.\n\nCheck schema: required includes bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. AdditionalProperties false at top. IdentifiedBody additionalProperties false. Good.\n\nNeed ensure maxLength rationale 2000. Fine.\n\nPotential issue: \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" Is there any other feed? \"addison-tx-public-briefings\" maybe because educational briefing? No, it's a committee meeting. \"addison-tx-town-meetings\" maybe town halls, community meetings, open houses and historical citizen input. Not this. \"addison-tx-city-council\" no. \"addison-tx-bond-committees\" yes. Maybe \"families\": use configured bond/TIF/public-information family feeds for their proven bodies. So bond feed. Good.\n\nCould there be \"Addison: Bond Committees\" as subscription grouping and body actual \"Bond Advisory Committee\". Feed slug exactly \"addison-tx-bond-committees\". Good.\n\nNeed final only JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791994858,
+    "id": "2cdbfe1c62cc839c5136e4792bed3a34",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 384,
+      "cached_tokens": 384,
+      "completion_thinking_tokens": 992,
+      "completion_tokens": 1248,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 992,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 3080,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 3464,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 384,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 4712
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

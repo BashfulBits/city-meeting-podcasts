@@ -34,12 +34,12 @@ jobs:
       # distro package.
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - name: Install
         run: pip install -e ".[dev]" -c constraints/dev.txt
@@ -139,6 +139,8 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          BEATAPI_API_KEY: ${{ secrets.BEATAPI_API_KEY }}
+          BEATAPI_API_KEY_SECONDARY: ${{ secrets.BEATAPI_API_KEY_SECONDARY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -155,3 +157,23 @@ jobs:
         run: >-
           PYTHONPATH=. python scripts/check_endpoints.py --issues
           ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && '--all' || '' }}
+
+  artificial-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]" -c constraints/dev.txt
+      - name: Probe Artificial Analysis quality catalog
+        env:
+          ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
+        run: python -m pytest tests/live/test_artificial_analysis_contract.py -m live -v

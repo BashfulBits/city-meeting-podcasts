@@ -62,6 +62,9 @@ class LLMRequestPolicy:
     # dispatch has no equivalent persistent counter today and ignores these fields.
     backup_models: tuple[str, ...] = ()
     backup_after_attempts: int | None = None
+    # Optional Worker-side narrowing within allowed_models. Exact route IDs never add routes and
+    # remain a hard constraint even when backup_models become active.
+    allowed_route_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +157,7 @@ class QuotaPolicy:
     rpm: int | None = None
     rpd: int | None = None
     tpm: int | None = None
+    tpd: int | None = None
     concurrency: int | None = None
     reset_timezone: str = "UTC"
 
@@ -312,6 +316,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                     rpm=item.get("rpm"),
                     rpd=item.get("rpd"),
                     tpm=item.get("tpm"),
+                    tpd=item.get("tpd"),
                     concurrency=item.get("concurrency"),
                     reset_timezone=str(item.get("reset_timezone", "UTC")),
                 ),

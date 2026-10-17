@@ -18,6 +18,7 @@ from citypods.chapter_titles import (
     ensure_title_equivalence_contract,
     match_title_candidates,
     outline_adds_title_evidence,
+    record_llm_cache_telemetry,
     recover_agenda_item_extractor_response,
     validate_agenda_item_extractor_response,
     validate_title_equivalence_response,
@@ -495,3 +496,70 @@ def test_title_equivalence_rejects_invalid_judge_output(payload: dict, message: 
         validate_title_equivalence_response(
             json.dumps(payload), canonical_count=2, generated_count=1
         )
+
+
+def test_record_llm_cache_telemetry_hit():
+    events: list[str] = []
+    usage = {
+        "prompt_tokens": 1000,
+        "completion_tokens": 50,
+        "total_tokens": 1050,
+        "prompt_tokens_details": {
+            "cached_tokens": 800,
+            "cache_creation_tokens": 0,
+        },
+    }
+    record_llm_cache_telemetry(
+        "mistral/mistral-large-2512",
+        usage,
+        latency_ms=123.456,
+        log=events.append,
+    )
+    assert len(events) == 1
+    assert events[0].startswith("EVENT ")
+    payload = json.loads(events[0][len("EVENT ") :])
+    assert payload["event"] == "llm_cache"
+    assert payload["outcome"] == "hit"
+    assert payload["route"] == "mistral/mistral-large-2512"
+    assert payload["cache_hit_tokens"] == 800
+    assert payload["cache_creation_tokens"] == 0
+    assert payload["latency_ms"] == 123.46
+
+
+def test_record_llm_cache_telemetry_miss():
+    events: list[str] = []
+    usage = {
+        "prompt_tokens": 1000,
+        "completion_tokens": 50,
+        "total_tokens": 1050,
+        "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_creation_tokens": 900,
+        },
+    }
+    record_llm_cache_telemetry(
+        "deepseek/deepseek-v4-flash",
+        usage,
+        log=events.append,
+    )
+    assert len(events) == 1
+    payload = json.loads(events[0][len("EVENT ") :])
+    assert payload["event"] == "llm_cache"
+    assert payload["outcome"] == "miss"
+    assert payload["cache_hit_tokens"] == 0
+    assert payload["cache_creation_tokens"] == 900
+    assert "latency_ms" not in payload
+
+
+def test_record_llm_cache_telemetry_handles_none_or_malformed():
+    events: list[str] = []
+    record_llm_cache_telemetry(
+        "fallback-route",
+        None,
+        log=events.append,
+    )
+    assert len(events) == 1
+    payload = json.loads(events[0][len("EVENT ") :])
+    assert payload["outcome"] == "miss"
+    assert payload["cache_hit_tokens"] == 0
+    assert payload["cache_creation_tokens"] == 0

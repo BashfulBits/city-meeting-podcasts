@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+
+import pytest
 
 from citypods.models import City
 from citypods.site import render_city_request_page, render_index, render_search_page
@@ -64,8 +68,8 @@ def test_index_has_noscript_fallback_listing_all_feeds():
 
 def test_search_page_points_at_static_manifest_and_vendored_engine():
     html = render_search_page({"site_title": "T", "site_description": "D"}, "https://e.test")
-    assert "https://e.test/data/search/manifest.json" in html
-    assert "https://e.test/assets/minisearch-7.1.2.js" in html
+    assert 'const manifestUrl = "/data/search/manifest.json";' in html
+    assert 'src="/assets/minisearch-7.1.2.js"' in html
     assert "Search meetings" in html
     assert 'id="tag"' in html
     assert 'id="coverage"' in html
@@ -321,6 +325,26 @@ def test_meeting_page_renders_permalinks_chapters_and_transcript(sample_city):
     assert "starttime=120" in html
 
 
+def test_meeting_page_renders_escaped_publication_note_separately(sample_city):
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.site import render_meeting_page
+
+    ep = Episode(
+        guid="g",
+        uid="meeting-note",
+        title="Official title",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://media.example/x.mp4",
+        description="Official description.",
+        publication_note="Board & Council <proceedings>.",
+    )
+    html = render_meeting_page(sample_city, ep, "https://e.test")
+    assert "Board &amp; Council &lt;proceedings&gt;." in html
+    assert "Official description." in html
+
+
 def test_meeting_page_keeps_unavailable_recording_discoverable(sample_city):
     from datetime import UTC, datetime
 
@@ -369,3 +393,109 @@ def test_city_archive_lists_retained_unavailable_meetings(sample_city):
     html = render_city_archive_page(sample_city, "https://e.test", [ep])
     assert 'href="https://e.test/denton-tx/missing-1/"' in html
     assert "Confirmed Empty" in html
+
+
+def test_search_http_base_uses_same_origin_assets_and_preserves_subpath():
+    html = render_search_page({"site_title": "T"}, "http://e.test/project/")
+    assert 'const manifestUrl = "/project/data/search/manifest.json";' in html
+    assert 'src="/project/assets/minisearch-7.1.2.js"' in html
+    assert "fetch(searchAssetUrl(shard.shard_url))" in html
+
+
+def test_search_legacy_shard_url_upgrade_in_javascript():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node unavailable for JavaScript URL regression")
+    html = render_search_page({"site_title": "T"}, "http://e.test")
+    helper = html.split("function searchAssetUrl(value) {", 1)[1].split(
+        "async function loadShard", 1
+    )[0]
+    script = "function searchAssetUrl(value) {" + helper
+    script += """
+    const window = {location: new URL('https://e.test/search/')};
+    const secure = [searchAssetUrl('http://e.test/data/search/old.json'),
+      searchAssetUrl('http://other.test/data/search/other.json')];
+    window.location = new URL('http://localhost:8000/search/');
+    console.log(JSON.stringify([...secure,
+      searchAssetUrl('http://localhost:8000/data/search/dev.json')]));
+    """
+    result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout) == [
+        "https://e.test/data/search/old.json",
+        "http://other.test/data/search/other.json",
+        "http://localhost:8000/data/search/dev.json",
+    ]
+
+
+def test_resolve_base_url_enforces_https_for_production_custom_domain(monkeypatch):
+    from citypods.run import _resolve_base_url
+
+    site_config = {"custom_domain": "www.citymeetings.fyi"}
+
+    # Production custom domain passed explicitly over HTTP is upgraded to HTTPS
+    assert (
+        _resolve_base_url("http://www.citymeetings.fyi", site_config)
+        == "https://www.citymeetings.fyi"
+    )
+    assert (
+        _resolve_base_url("http://www.citymeetings.fyi/", site_config)
+        == "https://www.citymeetings.fyi/"
+    )
+
+    # Localhost and 127.0.0.1 development remain HTTP
+    assert _resolve_base_url("http://localhost:8000", site_config) == "http://localhost:8000"
+    assert (
+        _resolve_base_url("http://127.0.0.1:8000/subpath", site_config)
+        == "http://127.0.0.1:8000/subpath"
+    )
+
+    # PAGES_BASE_URL environment variable targeting production domain is upgraded to HTTPS
+    monkeypatch.setenv("PAGES_BASE_URL", "http://www.citymeetings.fyi/")
+    assert _resolve_base_url(None, site_config) == "https://www.citymeetings.fyi/"
+
+    # Without PAGES_BASE_URL or explicit base_url, defaults to custom_domain over HTTPS
+    monkeypatch.delenv("PAGES_BASE_URL", raising=False)
+    assert _resolve_base_url(None, site_config) == "https://www.citymeetings.fyi"
+
+    # Without custom_domain, defaults to http://localhost:8000
+    assert _resolve_base_url(None, {}) == "http://localhost:8000"
+
+
+def test_clean_feed_label_strips_selector_syntax_and_city_prefixes():
+    from citypods.site import _feed_label
+
+    city1 = City(
+        slug="denton-tx-civil-service",
+        provider="granicus",
+        source={"body": "Civil Service Commission on *"},
+        podcast_title="Denton: Civil Service Commission",
+        podcast_author="City of Denton, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city1) == "Civil Service Commission"
+
+    city2 = City(
+        slug="addison-tx-city-council",
+        provider="granicus",
+        source={},
+        podcast_title="Addison: City Council",
+        podcast_author="Town of Addison, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city2) == "City Council"
+
+    city3 = City(
+        slug="dallas-tx-tif",
+        provider="granicus",
+        source={"body": "TIF *"},
+        podcast_title="Dallas: TIF Meetings",
+        podcast_author="City of Dallas, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city3) == "TIF"

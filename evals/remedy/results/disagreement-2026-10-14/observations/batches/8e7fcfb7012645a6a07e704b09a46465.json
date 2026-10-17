@@ -1,0 +1,22 @@
+{
+  "attempt_id": "24062e9ec558474dbd2fe6a5d85ec6e9",
+  "binding": "dd78aa277b24cac3905ed9ca995dfe04815ea22949077467d30608eb2515b728",
+  "candidate": "jev",
+  "case_id": "recording-eef10050e298d3758921b67a",
+  "elapsed_seconds": 29.98029058300017,
+  "finished_at": "2026-10-14T23:46:39.276842+00:00",
+  "mode": "disagreement_adjudication",
+  "observed_at": "2026-10-14T23:46:09.296173+00:00",
+  "qualified": false,
+  "reason": "Connection was closed before we received a valid response from endpoint URL: \"https://s3.us-west-002.backblazeb2.com/city-meeting-podcasts-audio/payloads/334ade41-8c5a-495c-964e-ea475581e798/request.json\".",
+  "recipe_hash": "remedy-disagreement-64452f7f97f1085e2dc59f8fcf150e6ea7b9d45b2692814aa7bf4c994a506ef0",
+  "sizes": {
+    "questions": [
+      257,
+      220,
+      220
+    ],
+    "state": 16598
+  },
+  "status": "unknown_submission"
+}

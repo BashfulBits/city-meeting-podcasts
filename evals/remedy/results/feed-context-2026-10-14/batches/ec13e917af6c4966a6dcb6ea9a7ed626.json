@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "provider-player",
+          "dallas-streets-archive"
+        ],
+        "name": "2024 Bond Program Streets and Transportation Subcommittee (Dallas Office of Bond & Construction Management)"
+      }
+    ],
+    "case_id": "recording-0312d144c749c190446edfe0",
+    "evidence_ref_ids": [
+      "provider-player",
+      "dallas-streets-archive"
+    ],
+    "feed_slugs": [
+      "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+      "dallas-tx-bond-program-meetings",
+      "dallas-tx-transportation-and-infrastructure"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The provider player page titles recording 270975 '2024 Capital Bond Streets & Transportation Subcommittee Meeting' on August 22, 2023 (provider-player). The official City of Dallas Office of Bond & Construction Management page for the Streets and Transportation Subcommittee lists 'Tuesday, August 22, 2023 Streets and Transportation Meeting #6 Video', confirming the convening body as the 2024 Bond Program Streets and Transportation Subcommittee (dallas-streets-archive). The transcript confirms this is 'the Streets Committee' and explicitly distinguishes the separate Community Bond Task Force meeting occurring elsewhere ('THEY'RE MEETING IN THE COUNCIL CHAMBER... NO, THIS IS A BRIEFING ROOM'), so no joint participation by the Bond Task Force is proven and its feed is not assigned; staff from Public Works and Transportation are presenters, not conveners. Feed selection: the exact-body feed dallas-tx-2024-bond-streets-and-transportation-subcommittee applies; dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure each demonstrably subscribe to this same body's meetings per their supplied title examples (Aug 15 and Oct 27, 2023 Streets and Transportation Subcommittee meetings), so all three existing feeds are appropriate under the multiple-feed rule."
+  },
+  "attempt_id": "73a90cdca0a64c349339caac9cb45d59",
+  "attempt_in_round": 1,
+  "candidate": "kimi",
+  "capacity": {
+    "kind": "available",
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 0
+    },
+    "provider_in_flight": null,
+    "usage_visibility": "local_only"
+  },
+  "case_id": "recording-0312d144c749c190446edfe0",
+  "case_input_hash": "a49d60ce1e09d61acd22ff0265dc6013e98dd81892ea24eecfc0ad3c27d828c7",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": "review/51 temporary coordination bypass; maintainer chat2026-10-13",
+  "coordination_bypass": true,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 47.952131249941885
+    }
+  ],
+  "end_to_end_seconds": 48.90732445893809,
+  "finished_at": "2026-10-14T09:34:28.328231+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "675288951eb50ab812d87b5fb14c365bc5fcbb57ba80b9aa1d2f305adae909ea",
+  "mode": "feed_context/title_examples",
+  "observed_at": "2026-10-14T09:33:39.420467+00:00",
+  "output_token_cap": 16384,
+  "production_drained": false,
+  "prompt_hash": "b463df2aa5f4e4397279689c0a3a355fa12729908e307d7ac566c700e0df6dc9",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1484,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": null,
+      "reasoning_tokens": 1033,
+      "rejected_prediction_tokens": null
+    },
+    "prompt_tokens": 6517,
+    "prompt_tokens_details": {
+      "audio_tokens": null,
+      "cached_tokens": 0
+    },
+    "total_tokens": 8001
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-0312d144c749c190446edfe0\",\n  \"bodies\": [\n    {\n      \"name\": \"2024 Bond Program Streets and Transportation Subcommittee (Dallas Office of Bond & Construction Management)\",\n      \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\",\n    \"dallas-tx-bond-program-meetings\",\n    \"dallas-tx-transportation-and-infrastructure\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"provider-player\", \"dallas-streets-archive\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The provider player page titles recording 270975 '2024 Capital Bond Streets & Transportation Subcommittee Meeting' on August 22, 2023 (provider-player). The official City of Dallas Office of Bond & Construction Management page for the Streets and Transportation Subcommittee lists 'Tuesday, August 22, 2023 Streets and Transportation Meeting #6 Video', confirming the convening body as the 2024 Bond Program Streets and Transportation Subcommittee (dallas-streets-archive). The transcript confirms this is 'the Streets Committee' and explicitly distinguishes the separate Community Bond Task Force meeting occurring elsewhere ('THEY'RE MEETING IN THE COUNCIL CHAMBER... NO, THIS IS A BRIEFING ROOM'), so no joint participation by the Bond Task Force is proven and its feed is not assigned; staff from Public Works and Transportation are presenters, not conveners. Feed selection: the exact-body feed dallas-tx-2024-bond-streets-and-transportation-subcommittee applies; dallas-tx-bond-program-meetings and dallas-tx-transportation-and-infrastructure each demonstrably subscribe to this same body's meetings per their supplied title examples (Aug 15 and Oct 27, 2023 Streets and Transportation Subcommittee meetings), so all three existing feeds are appropriate under the multiple-feed rule.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze the evidence.\n\nThe recording is titled \"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023\" on the Dallas Swagit player. The official Dallas City Hall page for the Office of Bond & Construction Management's \"Streets and Transportation Subcommittee\" lists \"Tuesday, August 22, 2023 Streets and Transportation Meeting #6 Video\" \u2014 matching this recording. The transcript also mentions \"SO THIS IS THE STREETS COMMITTEE\" and discusses the 2024 Bond Program subcommittee work, budget allocations, and references a separate \"Bond Task Force\" meeting elsewhere \u2014 so this is not a joint meeting; the task force mention is just directions for a confused attendee.\n\nBodies: The convening body is the \"Streets and Transportation Subcommittee\" of the 2024 Bond Program / Community Bond Task Force, under the Office of Bond & Construction Management. Official name from the city page: \"Streets and Transportation Subcommittee\" (2024 Bond Program). The recording title says \"2024 Capital Bond Streets & Transportation Subcommittee.\"\n\nFeed slugs: existing feeds include \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\" (exact match, with title examples including Aug 15 and Oct 27 2023 meetings of same body). Also \"dallas-tx-bond-program-meetings\" has title examples that include this exact body's meetings (\"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 15, 2023\" and \"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\"), so the bond program family feed subscribes to these too. The policy says a recording may belong in multiple feeds; examples demonstrate subscription scope. So assign both \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\" and \"dallas-tx-bond-program-meetings\".\n\nWhat about \"dallas-tx-transportation-and-infrastructure\"? Its examples include \"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\" \u2014 which is one of this same body's meetings. Hmm, that suggests that feed also subscribes to this body's recordings. The example_interpretation says \"Titles grouped under a feed demonstrate its existing subscription scope, not additional joint conveners. A recording may belong in multiple feeds. Missing examples do not prove a feed is inappropriate.\"\n\nSo dallas-tx-transportation-and-infrastructure has a title example that is the same body (Streets and Transportation Subcommittee, Oct 27, 2023). That indicates this feed's subscription scope includes this body. Under the publication rules \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" Since an identical body's meeting appears in that feed's examples, the feed subscribes to this body \u2014 so including it is appropriate.\n\nHmm, but caution: is the \"Transportation and Infrastructure\" feed a city council committee feed (Transportation and Infrastructure Committee) that happened to include a bond subcommittee meeting? The example demonstrates scope: the feed already contains a 2024 Capital Bond Streets and Transportation Subcommittee meeting. Given \"A recording may belong in multiple feeds\" and the same body's recording is listed there, this recording (same body, Aug 22, 2023) would also fit that feed's subscription grouping.\n\nWait \u2014 but should I be careful? The existing_feed_title_examples for dallas-tx-transportation-and-infrastructure: [\"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\", \"Joint Meeting of Transportation and Economic Development Meeting \u2013 Feb 07, 2023\"]. Yes, the first is the same body. So this feed has proven subscription to this body's meetings. Including it seems correct under \"Select ALL appropriate existing feed slugs.\"\n\nSimilarly \"dallas-tx-bond-program-meetings\": examples include \"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 15, 2023\" and Oct 27. Same body. Include.\n\n\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\": exact body feed. Include.\n\nThe transcript mentions the \"Bond Task Force\" (Community Bond Task Force) meeting happening separately in the Council Chamber \u2014 that's a different meeting, not this one. No joint participation proven. So do not assign dallas-tx-2024-community-bond-task-force.\n\nPublication action: assign_existing.\n\nEvidence: provider-player (title, date, recording ID, transcript) and dallas-streets-archive (official City Hall page listing Aug 22, 2023 Streets and Transportation Meeting #6 under Office of Bond & Construction Management, Streets and Transportation Subcommittee).\n\nBodies: name \"2024 Bond Program Streets and Transportation Subcommittee\" with evidence refs both.\n\nMissing evidence: none. Rationale concise.\n\nCase_id echo: recording-0312d144c749c190446edfe0.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze the evidence.\n\nThe recording is titled \"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023\" on the Dallas Swagit player. The official Dallas City Hall page for the Office of Bond & Construction Management's \"Streets and Transportation Subcommittee\" lists \"Tuesday, August 22, 2023 Streets and Transportation Meeting #6 Video\" \u2014 matching this recording. The transcript also mentions \"SO THIS IS THE STREETS COMMITTEE\" and discusses the 2024 Bond Program subcommittee work, budget allocations, and references a separate \"Bond Task Force\" meeting elsewhere \u2014 so this is not a joint meeting; the task force mention is just directions for a confused attendee.\n\nBodies: The convening body is the \"Streets and Transportation Subcommittee\" of the 2024 Bond Program / Community Bond Task Force, under the Office of Bond & Construction Management. Official name from the city page: \"Streets and Transportation Subcommittee\" (2024 Bond Program). The recording title says \"2024 Capital Bond Streets & Transportation Subcommittee.\"\n\nFeed slugs: existing feeds include \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\" (exact match, with title examples including Aug 15 and Oct 27 2023 meetings of same body). Also \"dallas-tx-bond-program-meetings\" has title examples that include this exact body's meetings (\"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 15, 2023\" and \"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\"), so the bond program family feed subscribes to these too. The policy says a recording may belong in multiple feeds; examples demonstrate subscription scope. So assign both \"dallas-tx-2024-bond-streets-and-transportation-subcommittee\" and \"dallas-tx-bond-program-meetings\".\n\nWhat about \"dallas-tx-transportation-and-infrastructure\"? Its examples include \"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\" \u2014 which is one of this same body's meetings. Hmm, that suggests that feed also subscribes to this body's recordings. The example_interpretation says \"Titles grouped under a feed demonstrate its existing subscription scope, not additional joint conveners. A recording may belong in multiple feeds. Missing examples do not prove a feed is inappropriate.\"\n\nSo dallas-tx-transportation-and-infrastructure has a title example that is the same body (Streets and Transportation Subcommittee, Oct 27, 2023). That indicates this feed's subscription scope includes this body. Under the publication rules \"Select ALL appropriate existing feed slugs under the supplied publication rules.\" Since an identical body's meeting appears in that feed's examples, the feed subscribes to this body \u2014 so including it is appropriate.\n\nHmm, but caution: is the \"Transportation and Infrastructure\" feed a city council committee feed (Transportation and Infrastructure Committee) that happened to include a bond subcommittee meeting? The example demonstrates scope: the feed already contains a 2024 Capital Bond Streets and Transportation Subcommittee meeting. Given \"A recording may belong in multiple feeds\" and the same body's recording is listed there, this recording (same body, Aug 22, 2023) would also fit that feed's subscription grouping.\n\nWait \u2014 but should I be careful? The existing_feed_title_examples for dallas-tx-transportation-and-infrastructure: [\"2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023\", \"Joint Meeting of Transportation and Economic Development Meeting \u2013 Feb 07, 2023\"]. Yes, the first is the same body. So this feed has proven subscription to this body's meetings. Including it seems correct under \"Select ALL appropriate existing feed slugs.\"\n\nSimilarly \"dallas-tx-bond-program-meetings\": examples include \"2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 15, 2023\" and Oct 27. Same body. Include.\n\n\"dallas-tx-2024-bond-streets-and-transportation-subcommittee\": exact body feed. Include.\n\nThe transcript mentions the \"Bond Task Force\" (Community Bond Task Force) meeting happening separately in the Council Chamber \u2014 that's a different meeting, not this one. No joint participation proven. So do not assign dallas-tx-2024-community-bond-task-force.\n\nPublication action: assign_existing.\n\nEvidence: provider-player (title, date, recording ID, transcript) and dallas-streets-archive (official City Hall page listing Aug 22, 2023 Streets and Transportation Meeting #6 under Office of Bond & Construction Management, Streets and Transportation Subcommittee).\n\nBodies: name \"2024 Bond Program Streets and Transportation Subcommittee\" with evidence refs both.\n\nMissing evidence: none. Rationale concise.\n\nCase_id echo: recording-0312d144c749c190446edfe0.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791970420,
+    "id": "chatcmpl-359a62bf-9673-4d9f-899c-3537c341be6a",
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 1484,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1033,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens": 6517,
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      },
+      "total_tokens": 8001
+    }
+  },
+  "reasoning": "max",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "nvidia_kimi_k3_free",
+  "route_settings_hash": "3dde07a0aefd2441836af366c5fc70c6ee57d7560f54d3f542bdf3090baa9d99",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "moonshotai/kimi-k3",
+  "upstream_model_requested": "moonshotai/kimi-k3"
+}

@@ -31,12 +31,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
       - run: pip install -e ".[llm]" -c constraints/prod.txt
       - name: Run LLM rate probe
@@ -46,8 +46,9 @@ jobs:
           INPUT_PHASES: ${{ inputs.phases }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
+          BEATAPI_API_KEY: ${{ secrets.BEATAPI_API_KEY }}
+          BEATAPI_API_KEY_SECONDARY: ${{ secrets.BEATAPI_API_KEY_SECONDARY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -76,7 +77,7 @@ jobs:
           python -m citypods.llm_rate_probe $ARGS --out llm_route_characterization.json
       - name: Upload probe report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: llm-rate-probe-report
           path: llm_route_characterization.json

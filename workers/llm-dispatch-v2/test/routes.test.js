@@ -8,32 +8,14 @@ import {
   routesEligibleFor,
 } from "../src/routes.js";
 
-function eligibleMistralRoutes(inputTokens, outputTokens) {
-  return routesEligibleFor(
-    {
-      policy_json: JSON.stringify({
-        allowed_models: ["mistral/codestral-2508"],
-        allow_paid: false,
-      }),
-      input_token_estimate: inputTokens,
-      max_output_token_estimate: outputTokens,
-    },
-    DISPATCH_LIMITS,
-  ).filter((route) => route.provider === "mistral");
-}
-
-// Codestral is the one Mistral family this account's plan provisions (Medium/Large/Small were
-// removed 2026-09-24); its native routes span the primary and secondary accounts.
-test("all native Mistral Codestral routes admit a request within its input ceiling", () => {
-  const routes = eligibleMistralRoutes(120000, 8000);
-  assert.deepEqual(
-    routes.map((route) => route.route_id),
-    ["mistral_codestral_2508_primary", "mistral_codestral_2508_secondary"],
+// Native Mistral (Codestral-only, account-tier restricted and monthly metered) was removed from the
+// catalog on 2026-09-30. A `mistral/*` model name may still be served by another provider's route.
+test("no native Mistral provider, account or route remains in the catalog", () => {
+  assert.equal(DISPATCH_LIMITS.providers.mistral, undefined);
+  const native = (DISPATCH_LIMITS.routes || Object.values(DISPATCH_LIMITS.routes_by_id || {})).filter(
+    (route) => route.provider === "mistral",
   );
-});
-
-test("native Mistral Codestral routes reject input above their hard input ceiling", () => {
-  assert.deepEqual(eligibleMistralRoutes(249028, 1000), []);
+  assert.deepEqual(native, []);
 });
 
 test("paused rpd:0 routes are excluded before free/paid admission", () => {
@@ -74,6 +56,53 @@ test("paused rpd:0 routes are excluded before free/paid admission", () => {
     routesEligibleFor(paidJob, catalog).map((route) => route.route_id),
     ["paid-fallback"],
   );
+});
+
+test("allowed_route_ids narrows a multi-provider model pool to the pinned physical route", () => {
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["beatapi_deepseek_v4_1_flash_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(
+    routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
+    ["beatapi_deepseek_v4_1_flash_free"],
+  );
+});
+
+test("allowed_route_ids cannot widen a model pool or fall back when its pin is invalid", () => {
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["nvidia_kimi_k3_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(routesEligibleFor(job, DISPATCH_LIMITS), []);
+});
+
+test("an unavailable pinned route does not fall back to another route in its model pool", () => {
+  const catalog = structuredClone(DISPATCH_LIMITS);
+  catalog.routes_by_id.beatapi_deepseek_v4_1_flash_free.rpd = 0;
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4.1-flash"],
+      allowed_route_ids: ["beatapi_deepseek_v4_1_flash_free"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 100,
+    max_output_token_estimate: 100,
+  };
+
+  assert.deepEqual(routesEligibleFor(job, catalog), []);
 });
 
 // --- backupModelsActive / modelsForJob -------------------------------------------------------
@@ -183,7 +212,7 @@ test("modelForRouteId caches per dispatchLimits object identity, not globally", 
   assert.equal(modelForRouteId("route-1", catalogB), "model-b");
 });
 
-test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", () => {
+test("Gemma routes enforce hard_input_ceiling while reopened legs remain eligible", () => {
   const jobUnderCeiling = {
     policy_json: JSON.stringify({
       allowed_models: ["google/gemma-4-31b-it"],
@@ -195,13 +224,12 @@ test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", 
   const underIds = routesEligibleFor(jobUnderCeiling, DISPATCH_LIMITS).map((r) => r.route_id);
   assert.ok(underIds.includes("gemma_4_31b_primary"));
   assert.ok(underIds.includes("gemma_4_31b_secondary"));
-  // Paused 2026-09-23 (rpd: 0) so Nemotron keeps NVIDIA's shared concurrency and OpenRouter's
-  // 429-only free leg stops spending attempts.
-  assert.ok(!underIds.includes("nvidia_gemma_4_31b_it_free"));
-  assert.ok(!underIds.includes("openrouter_google_gemma_4_31b_it_free"));
+  // Maintainer reopened these legs at 20 RPD for ordinary dispatch and health monitoring.
+  assert.ok(underIds.includes("nvidia_gemma_4_31b_it_free"));
+  assert.ok(underIds.includes("openrouter_google_gemma_4_31b_it_free"));
 
-  // Above 10000 tokens (Google Gemma ceiling), the Google routes are disqualified; only the
-  // small SambaNova leg remains, which is why Gemma producers size jobs under the ceiling.
+  // The larger job exceeds the Google routes' conservative admission ceiling; the independent
+  // SambaNova and reopened legs remain eligible under their own unchanged token bounds.
   const jobOverCeiling = {
     policy_json: JSON.stringify({
       allowed_models: ["google/gemma-4-31b-it"],
@@ -213,7 +241,30 @@ test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", 
   const overIds = routesEligibleFor(jobOverCeiling, DISPATCH_LIMITS).map((r) => r.route_id);
   assert.ok(!overIds.includes("gemma_4_31b_primary"));
   assert.ok(!overIds.includes("gemma_4_31b_secondary"));
-  assert.deepEqual(overIds, ["sambanova_gemma_4_31b_it_primary"]);
+  assert.deepEqual(new Set(overIds), new Set([
+    "sambanova_gemma_4_31b_it_primary", "nvidia_gemma_4_31b_it_free",
+    "openrouter_google_gemma_4_31b_it_free",
+  ]));
+});
+
+test("the reopened Gemma legs keep their allowances and admit a small free-policy job", () => {
+  // OpenRouter's two legs stay at 20 RPD. NVIDIA's 31B leg was raised to 800 RPD on 2026-10-16
+  // and holds at most two of the provider's four shared slots (2026-10-17), so slow Gemma calls
+  // cannot starve Ultra.
+  const rpd = {
+    openrouter_google_gemma_4_31b_it_free: 20,
+    openrouter_google_gemma_4_26b_a4b_it_free: 20,
+    nvidia_gemma_4_31b_it_free: 800,
+  };
+  assert.equal(DISPATCH_LIMITS.routes_by_id.nvidia_gemma_4_31b_it_free.concurrency, 2);
+  assert.equal(DISPATCH_LIMITS.providers.nvidia.concurrency, 4);
+  for (const id of Object.keys(rpd)) {
+    assert.equal(DISPATCH_LIMITS.routes_by_id[id].rpd, rpd[id]);
+    const job = { policy_json: JSON.stringify({
+      allowed_models: [modelForRouteId(id, DISPATCH_LIMITS)], allow_paid: false,
+    }), input_token_estimate: 8000, max_output_token_estimate: 1000 };
+    assert.ok(routesEligibleFor(job, DISPATCH_LIMITS).some(route => route.route_id === id));
+  }
 });
 
 test("OrcaRouter free route is eligible for deepseek-v4-flash without paid permission", () => {
@@ -249,15 +300,28 @@ test("a route serving several pools reports its primary model, not the first poo
 });
 
 test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () => {
+  // Providers serving the same version share a pool (BeatAPI joined 2026-10-07); V4 Pro is
+  // BeatAPI's own pool, not the retired alias for NVIDIA's v4.1.
   const map = DISPATCH_LIMITS.model_routes_map;
-  assert.deepEqual(map["deepseek/deepseek-v4.1-flash"], ["nvidia_deepseek_v4_1_flash_free"]);
-  assert.deepEqual(map["deepseek/deepseek-v4-flash"], ["orcarouter_deepseek_v4_flash_free"]);
-  assert.equal(map["deepseek/deepseek-v4-pro"], undefined);
+  assert.deepEqual(map["deepseek/deepseek-v4.1-flash"], [
+    "nvidia_deepseek_v4_1_flash_free",
+    "beatapi_deepseek_v4_1_flash_free",
+    "beatapi_secondary_deepseek_v4_1_flash_free",
+  ]);
+  assert.deepEqual(map["deepseek/deepseek-v4-flash"], [
+    "orcarouter_deepseek_v4_flash_free",
+    "beatapi_deepseek_v4_flash_free",
+    "beatapi_secondary_deepseek_v4_flash_free",
+  ]);
+  assert.deepEqual(map["deepseek/deepseek-v4-pro"], [
+    "beatapi_deepseek_v4_pro_free",
+    "beatapi_secondary_deepseek_v4_pro_free",
+  ]);
   assert.equal(
     modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"
   );
-  // An exact-model contestant must never be answered by OrcaRouter's older v4-flash.
+  // An exact-model contestant must never be answered by the older v4-flash pool.
   const job = {
     policy_json: JSON.stringify({ allowed_models: ["deepseek/deepseek-v4.1-flash"] }),
     input_token_estimate: 1000,
@@ -265,7 +329,11 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   };
   assert.deepEqual(
     routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
-    ["nvidia_deepseek_v4_1_flash_free"]
+    [
+      "nvidia_deepseek_v4_1_flash_free",
+      "beatapi_deepseek_v4_1_flash_free",
+      "beatapi_secondary_deepseek_v4_1_flash_free",
+    ]
   );
 });
 
@@ -287,4 +355,64 @@ test("a pooled model repeated as a backup adds no duplicate routes once backups 
   const ids = (attempts) => routesEligibleFor(job(attempts), DISPATCH_LIMITS).map((r) => r.route_id);
   assert.deepEqual(ids(12), ids(0));
   assert.equal(new Set(ids(12)).size, ids(12).length);
+});
+
+function structuralFixture() {
+  const catalog = {
+    model_aliases: { alias: "primary" },
+    model_routes_map: { primary: ["p"], backup: ["b"] },
+    routes_by_id: {
+      p: { route_id: "p", free: true, input_context_limit: 1000, output_context_limit: 500 },
+      b: { route_id: "b", free: true, input_context_limit: 10000, output_context_limit: 500 },
+    },
+  };
+  const policy = {
+    allowed_models: ["alias"], backup_models: ["backup"], backup_after_attempts: 12,
+    allow_paid: false,
+  };
+  const job = {
+    policy_json: policy, attempts: 0, schema_retry_count: 0,
+    input_token_estimate: 1500, max_output_token_estimate: 100,
+  };
+  return { catalog, policy, job };
+}
+
+for (const cause of ["input", "combined", "output", "missing", "paid"]) {
+  test(`structurally unusable primary unlocks its declared backup: ${cause}`, () => {
+    const { catalog, policy, job } = structuralFixture();
+    if (cause === "combined") job.input_token_estimate = 950;
+    if (cause === "output") {
+      job.input_token_estimate = 100;
+      catalog.routes_by_id.p.output_context_limit = 50;
+    }
+    if (cause === "missing") delete catalog.model_routes_map.primary;
+    if (cause === "paid") {
+      job.input_token_estimate = 100;
+      catalog.routes_by_id.p.free = false;
+    }
+    assert.deepEqual(modelsForJob(job, policy, catalog), ["alias", "backup"]);
+    assert.deepEqual(routesEligibleFor(job, catalog).map(route => route.route_id), ["b"]);
+    assert.equal(job.attempts, 0);
+    assert.deepEqual(policy.allowed_models, ["alias"]);
+  });
+}
+
+test("structural backup activation retains paid permission and every primary alternative", () => {
+  const { catalog, policy, job } = structuralFixture();
+  catalog.routes_by_id.b.free = false;
+  assert.deepEqual(routesEligibleFor(job, catalog), []);
+  policy.allow_paid = true;
+  assert.deepEqual(routesEligibleFor(job, catalog).map(route => route.route_id), ["b"]);
+  catalog.model_routes_map.primary.push("alternate");
+  catalog.routes_by_id.alternate = { ...catalog.routes_by_id.b, route_id: "alternate", free: true };
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias"]);
+});
+
+test("paused or quota-exhausted primary never triggers structural backup activation", () => {
+  const { catalog, policy, job } = structuralFixture();
+  job.input_token_estimate = 100;
+  Object.assign(catalog.routes_by_id.p, { rpd: 0, tpm: 1, blocked_until: Date.now() + 100000 });
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias"]);
+  const pausedAdmission = { ...catalog, model_routes_map: { backup: ["b"] } };
+  assert.deepEqual(routesEligibleFor(job, pausedAdmission, catalog), []);
 });

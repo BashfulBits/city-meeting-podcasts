@@ -1,0 +1,152 @@
+{
+  "answer": {
+    "bodies": [],
+    "case_id": "recording-0f3acb8e63bc7affb3b03495",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "Recording-specific official evidence identifying the convening body or responsible program is missing.",
+      "The supplied player text does not establish whether this recording is a proceeding, promotional/orientation film, or another event subject to the publication rules."
+    ],
+    "publication_action": "unresolved",
+    "rationale": "The official player identifies the recording as \u201cCity Page Update City Page Update\u201d but supplies only player controls and generic document labels. It does not identify a convening institution or establish a program identity. The title alone does not prove ownership by Council or membership in the Public Info Meetings feed, nor does it establish an archive-only or excluded event. No body or feed assignment can therefore be proven from the supplied evidence."
+  },
+  "attempt_id": "10516507b33d4c07a09cf41d771ed6de",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-0f3acb8e63bc7affb3b03495",
+  "case_input_hash": "a6d2a30cc6e86ae69c16f7f0d2281449fc9d937528cd2b880f69d578448b8141",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 11.34679637500085
+    }
+  ],
+  "end_to_end_seconds": 51.378156124999805,
+  "finished_at": "2026-10-14T15:40:53.724985+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T15:40:02.346431+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "30df22198ecba71af51512080644ba6aa05fb755a456041a1747228d6f7b1dc3",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3523,
+        "output_tokens": 186
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 186,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3523,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3523,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3709,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-0f3acb8e63bc7affb3b03495\",\"bodies\":[],\"feed_slugs\":[],\"publication_action\":\"unresolved\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"Recording-specific official evidence identifying the convening body or responsible program is missing.\",\"The supplied player text does not establish whether this recording is a proceeding, promotional/orientation film, or another event subject to the publication rules.\"],\"rationale\":\"The official player identifies the recording as \u201cCity Page Update City Page Update\u201d but supplies only player controls and generic document labels. It does not identify a convening institution or establish a program identity. The title alone does not prove ownership by Council or membership in the Public Info Meetings feed, nor does it establish an archive-only or excluded event. No body or feed assignment can therefore be proven from the supplied evidence.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791992453,
+    "id": "resp_0ce8c4db85af7a47016acfa27bc9f08193adf74ebb9fa912d8",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3523,
+          "output_tokens": 186
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 186,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3523,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3523,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3709,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

@@ -5,6 +5,8 @@ source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Downtown Design and Review Board"
   body_any:
+    - "Downtown Design Review Board"
+    - "DDRB"
     - "Downtown Design Review Board Downtown Design Review Board"
     - "December Downtown Design Review Board December Downtown Design Review Board"
     - "November 9, DDRB Meeting November 9, DDRB Meeting"

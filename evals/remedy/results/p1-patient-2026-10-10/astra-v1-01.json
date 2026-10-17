@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "status": "failed",
+      "error_class": "BadRequestError",
+      "error": "litellm.BadRequestError: LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=beatapi/gpt-6-astra-free\n Pass model as E.g. For 'Huggingface' inference endpoints pass in `completion(model='huggingface/starcoder',..)` Learn more: https://docs.litellm.ai/docs/providers",
+      "duration_seconds": 1.2415396249853075
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:32:50.491970+00:00",
+      "model": "beatapi/gpt-6-astra-free",
+      "status": "failed",
+      "error_class": "BadRequestError",
+      "error": "litellm.BadRequestError: LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=beatapi/gpt-6-astra-free\n Pass model as E.g. For 'Huggingface' inference endpoints pass in `completion(model='huggingface/starcoder',..)` Learn more: https://docs.litellm.ai/docs/providers",
+      "duration_seconds": 0.01671041687950492
+    }
+  ]
+}

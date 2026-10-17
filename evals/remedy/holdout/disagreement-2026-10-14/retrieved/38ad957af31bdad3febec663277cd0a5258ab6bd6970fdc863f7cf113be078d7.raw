@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Dallas: 2017 Citizens Bond Task Force (Audio)</title>
+    <link>https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/</link>
+    <atom:link href="https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Dallas: 2017 Citizens Bond Task Force proceedings verified by official notices.</description>
+    <language>en-us</language>
+    <itunes:author>City of Dallas, TX</itunes:author>
+    <itunes:summary>Dallas: 2017 Citizens Bond Task Force proceedings verified by official notices.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Dallas, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/artwork.jpg</url>
+      <title>Dallas: 2017 Citizens Bond Task Force</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/</link>
+    </image>
+    <item>
+      <title>Citizens Bond Task Force: Town Hall Meeting – May 27, 2017</title>
+      <link>https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/5e9fdb6ff9e8ef68/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/202453/agenda">Agenda</a></li><li><a href="https://dallastx.new.swagit.com/videos/202453">Watch the video</a></li><li><a href="https://dallascityhall.com//government/Pages/Live.aspx">Official meetings page</a></li><li><a href="https://audio.citymeetings.fyi/documents/76869ed1994f/5e9fdb6ff9e8ef68/backup-9220bf2b5d643b5b">Agenda Backup Artifact</a></li><li><a href="https://audio.citymeetings.fyi/documents/76869ed1994f/5e9fdb6ff9e8ef68/agenda-2d163d06bbce8b50">Agenda Text Artifact</a></li></ul>]]></content:encoded>
+      <podcast:chapters url="https://www.citymeetings.fyi/dallas-tx-2017-citizens-bond-task-force/chapters/5e9fdb6ff9e8ef68.json" type="application/json+chapters"/>
+      <pubDate>Sat, 27 May 2017 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">5e9fdb6ff9e8ef68</guid>
+      <enclosure url="https://audio.citymeetings.fyi/swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>22033</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

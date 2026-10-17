@@ -62,16 +62,18 @@ class LaneConfig:
     max_dispatches_per_run: int
     reserved_write_units: int
     daily_write_units: int
+    telemetry_producer: str = ""
+    telemetry_unit: str = "episode"
+    telemetry_completion: str = "consumed"
+    telemetry_scope: str = "retained_catalog"
     # How ``models`` maps onto jobs, which decides what one job costs at ingress:
     #
     # ``pooled`` (default) -- one job carries the whole list as its ``allowed_models`` and the
     #   scheduler picks whichever route has capacity. Extra routes are pure throughput. This is
     #   the production lanes' shape (tags, moments, chapters).
-    # ``per_model`` -- the caller fans out one job per model, each pinned to a single route,
-    #   because the models are being *compared*, not pooled. This is the research lanes' shape
-    #   (tournament contestants, R5 benchmark taggers). Pooling them would let the scheduler
-    #   answer a "how does model X tag this?" job with model Y and silently invalidate the
-    #   comparison.
+    # ``per_model`` -- each job is pinned to one allowed model and indexes only that model. This
+    #   is used for model comparisons and for production policies that select one model per request
+    #   (for example, size-based routing). It must not be pooled.
     #
     # The distinction is not cosmetic: a pooled job writes one model-index row per allowed model
     # while a per-model job writes exactly one, so charging a four-model per_model lane as if each
@@ -90,11 +92,33 @@ class LaneConfig:
     # eligible immediately, since that failure mode is a model-output problem, not a capacity one.
     # Required (and only meaningful) together with backup_models.
     backup_after_attempts: int | None = None
+    # Whether the provider-catalog reconciler (review/48) may offer newly discovered models as
+    # backup_models candidates for this lane. Default on, so a new lane is eligible with no edit;
+    # set false for a lane whose model set must stay fixed. A ``per_model`` lane is never eligible
+    # (it cannot declare backup_models at all) -- see ``accepts_catalog_backups``.
+    catalog_backup_candidates: bool = True
+
+    @property
+    def accepts_catalog_backups(self) -> bool:
+        return self.catalog_backup_candidates and self.dispatch_shape == "pooled"
+
     # Per-model reasoning level for THIS lane's jobs (e.g. ``{"deepseek/deepseek-v4.1-flash":
     # "off"}``), applied at send time through the route's ``reasoning_controls``. A model without
     # an entry keeps its provider default, so a model can think in one job type and not another.
     # Stored as sorted pairs to keep the frozen config hashable; see ``reasoning_levels``.
     reasoning: tuple[tuple[str, str], ...] = ()
+    # Judge pools (review/53): models qualified to be substituted into ``models`` but never
+    # dispatched while they are only eligible. Not part of the ingress map, so a job naming one is
+    # rejected at ingress like any model outside the lane. A route league (review/49 P6) or a
+    # maintainer moves a model between the two lists by config PR.
+    eligible_models: tuple[str, ...] = ()
+    # Named slots, each a tuple of models (active or eligible), e.g. the sibling judge's slot A
+    # (Google) and slot B (non-Google). Stored as sorted pairs to keep the config hashable.
+    slots: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    @property
+    def slot_models(self) -> dict[str, tuple[str, ...]]:
+        return dict(self.slots)
 
     @property
     def reasoning_levels(self) -> dict[str, str]:
@@ -156,6 +180,12 @@ def _coerce_int(raw: Any, *, purpose: str, field: str) -> int:
     return raw
 
 
+def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
+    if not isinstance(raw, bool):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} must be true or false, got {raw!r}")
+    return raw
+
+
 REASONING_LEVELS = frozenset({"off", "low"})
 
 
@@ -179,6 +209,86 @@ def _parse_reasoning(raw: Any, purpose: str, lane_models: set[str]) -> tuple[tup
             )
         pairs.append((model, level))
     return tuple(sorted(pairs))
+
+
+def _parse_model_list(raw: Any, purpose: str, field: str) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} must be a list")
+    models: tuple[str, ...] = ()
+    for index, model in enumerate(raw):
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].{field}[{index}] must be a non-empty string, got {model!r}"
+            )
+        models += (model.strip(),)
+    if len(set(models)) != len(models):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} contains duplicates: {models}")
+    return models
+
+
+def _parse_slots(
+    raw: Any, purpose: str, models: tuple[str, ...], eligible: tuple[str, ...]
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Each active/eligible model sits in exactly one slot; each slot has an active model."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping) or not raw:
+        raise ValueError(f"llm_lanes[{purpose!r}].slots must be a non-empty mapping")
+    seen: dict[str, str] = {}
+    pairs: list[tuple[str, tuple[str, ...]]] = []
+    for name, raw_members in raw.items():
+        members = _parse_model_list(raw_members, purpose, f"slots.{name}")
+        if not members:
+            raise ValueError(f"llm_lanes[{purpose!r}].slots.{name} must list at least one model")
+        for model in members:
+            if model not in models and model not in eligible:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].slots.{name} names {model!r}, which is neither an "
+                    "active nor an eligible model of the lane"
+                )
+            if model in seen:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}]: {model!r} is in slots {seen[model]!r} and {name!r}"
+                )
+            seen[model] = str(name)
+        if not set(members) & set(models):
+            raise ValueError(f"llm_lanes[{purpose!r}].slots.{name} has no active model")
+        pairs.append((str(name), members))
+    missing = [model for model in (*models, *eligible) if model not in seen]
+    if missing:
+        raise ValueError(f"llm_lanes[{purpose!r}]: models without a slot: {missing}")
+    return tuple(sorted(pairs))
+
+
+def parse_families(raw: Any, lanes: Mapping[str, LaneConfig]) -> dict[str, str]:
+    """Validate ``llm_families`` (model -> family) against every lane model.
+
+    Judge independence (review/49 section 4c, review/53) is decided per entry by family, so a lane
+    model with no family would silently compare as independent of everything. Every active,
+    backup and eligible model of every lane must therefore have one.
+    """
+    if not isinstance(raw, Mapping) or not raw:
+        raise ValueError("site config must define a non-empty 'llm_families' mapping")
+    families: dict[str, str] = {}
+    for model, family in raw.items():
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError(f"llm_families has an invalid model key {model!r}")
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"llm_families[{model!r}] must be a non-empty family name")
+        families[model.strip()] = family.strip()
+    missing = sorted(
+        {
+            model
+            for lane in lanes.values()
+            for model in (*lane.models, *lane.backup_models, *lane.eligible_models)
+        }
+        - set(families)
+    )
+    if missing:
+        raise ValueError(f"llm_families has no family for lane model(s): {missing}")
+    return families
 
 
 def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
@@ -270,8 +380,9 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             # keep that retry budget without dedicating a weaker model as a fallback.
             if shape == "per_model":
                 raise ValueError(
-                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (a model comparison) "
-                    "and cannot also declare backup_models (a failure-based fallback)"
+                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (one pinned route "
+                    "per request) and cannot also declare backup_models (a failure-based "
+                    "fallback)"
                 )
             backup_after_attempts = _coerce_int(
                 backup_after_attempts, purpose=purpose, field="backup_after_attempts"
@@ -282,10 +393,47 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                     f"{backup_after_attempts}"
                 )
 
+        telemetry = entry.get("telemetry")
+        if not isinstance(telemetry, Mapping) or set(telemetry) != {
+            "producer",
+            "unit",
+            "completion",
+            "scope",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}] requires a telemetry contract")
+        producer = telemetry["producer"]
+        if not isinstance(producer, str) or not producer.strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.producer must be non-empty")
+        producer = producer.strip()
+        if not isinstance(telemetry["unit"], str) or not telemetry["unit"].strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.unit is invalid")
+        unit = telemetry["unit"].strip()
+        if not isinstance(telemetry["scope"], str) or telemetry["scope"] not in {
+            "retained_catalog",
+            "sample",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.scope is invalid")
+        if telemetry["completion"] != "consumed":
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.completion must be consumed")
+
+        eligible_models = _parse_model_list(
+            entry.get("eligible_models"), purpose, "eligible_models"
+        )
+        overlap = set(eligible_models) & {*models, *backup_models}
+        if overlap:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].eligible_models must not repeat active or backup models: "
+                f"{sorted(overlap)}"
+            )
+        slots = _parse_slots(entry.get("slots"), purpose, models, eligible_models)
         reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
             models=models,
+            telemetry_producer=producer,
+            telemetry_unit=unit,
+            telemetry_completion=telemetry["completion"],
+            telemetry_scope=telemetry["scope"],
             max_dispatches_per_run=_coerce_int(
                 entry.get("max_dispatches_per_run"),
                 purpose=purpose,
@@ -296,7 +444,14 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             dispatch_shape=shape,
             backup_models=backup_models,
             backup_after_attempts=backup_after_attempts,
+            catalog_backup_candidates=_coerce_bool(
+                entry.get("catalog_backup_candidates", True),
+                purpose=purpose,
+                field="catalog_backup_candidates",
+            ),
             reasoning=reasoning,
+            eligible_models=eligible_models,
+            slots=slots,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(
@@ -320,6 +475,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
 
 
 _CACHE: dict[str, dict[str, LaneConfig]] = {}
+_FAMILIES_CACHE: dict[str, dict[str, str]] = {}
 _CACHE_LOCK = threading.Lock()
 
 
@@ -391,10 +547,33 @@ def lane_for(purpose: str, *, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> La
         ) from None
 
 
+def load_families(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, str]:
+    """The validated ``llm_families`` map from ``path`` (model -> family).
+
+    Cached per resolved path like :func:`load_lanes`: the judge's dirtiness check asks for it once
+    per candidate episode, and re-parsing the 60 KB site config each time (pure-Python YAML) cost
+    about 12 minutes of every judge run before it did any work (25,283 episodes, 2026-10-17).
+    Callers get their own copy."""
+    key = str(Path(path))
+    with _CACHE_LOCK:
+        cached = _FAMILIES_CACHE.get(key)
+        if cached is not None:
+            return dict(cached)
+
+    import yaml
+
+    raw = yaml.safe_load(Path(key).read_text(encoding="utf-8")) or {}
+    families = parse_families(raw.get("llm_families"), load_lanes(path=key))
+    with _CACHE_LOCK:
+        _FAMILIES_CACHE[key] = families
+    return dict(families)
+
+
 def clear_cache() -> None:
     """Drop the parsed-config cache (tests that write temporary site configs)."""
     with _CACHE_LOCK:
         _CACHE.clear()
+        _FAMILIES_CACHE.clear()
 
 
 __all__ = [

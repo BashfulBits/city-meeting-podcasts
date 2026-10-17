@@ -1,0 +1,22 @@
+{
+  "uid": "bd172b762dd20b63",
+  "provider_guid": "203320",
+  "body": "Saturday Redistricting Commission",
+  "title": "Saturday Redistricting Commission \u2013 Jan 22, 2022",
+  "published": "2022-01-22T00:00:00+00:00",
+  "video_url": "https://dallastx.new.swagit.com/videos/203320/download",
+  "audio": {
+    "attempts": 0,
+    "bytes": 76318772,
+    "duration_served": 6180.59,
+    "encode_time": "2026-07-27T04:17:35.464982+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/76869ed1994f/bd172b762dd20b63-7cd53a44abef.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "7cd53a44abef",
+    "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/bd172b762dd20b63-7cd53a44abef.m4a",
+    "verification": null
+  }
+}

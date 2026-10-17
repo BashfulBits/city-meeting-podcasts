@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Fort Worth: State of the City (Audio)</title>
+    <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/</link>
+    <atom:link href="https://www.citymeetings.fyi/fort-worth-tx-state-of-city/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>State of the City addresses and speeches by municipal leadership.</description>
+    <language>en-us</language>
+    <itunes:author>City of Fort Worth, TX</itunes:author>
+    <itunes:summary>State of the City addresses and speeches by municipal leadership.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://www.citymeetings.fyi/fort-worth-tx-state-of-city/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Fort Worth, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/artwork.jpg</url>
+      <title>Fort Worth: State of the City</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/</link>
+    </image>
+    <item>
+      <title>State of City State of City</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/22ce2e992c4a3488/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&amp;clip_id=1874">Agenda</a></li><li><a href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&amp;clip_id=1874">Watch the video</a></li><li><a href="https://www.fortworthtexas.gov/departments/communications/fwtv">Official meetings page</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/22ce2e992c4a3488-asr-48f94fb2336f.vtt" type="text/vtt"/>
+      <pubDate>Thu, 13 Feb 2014 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">22ce2e992c4a3488</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/6540eef2dc2e/22ce2e992c4a3488-e3e8331edeef.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2774</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>State of City State of City</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/d09cf5a7f980c7c9/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&amp;clip_id=1874">Agenda</a></li><li><a href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&amp;clip_id=1874">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/d09cf5a7f980c7c9-asr-78ef37bd1755.vtt" type="text/vtt"/>
+      <pubDate>Thu, 13 Feb 2014 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">d09cf5a7f980c7c9</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/6540eef2dc2e/d09cf5a7f980c7c9-73610b801eac.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>2774</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>State of City State of City</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/169e853b5a45fcb3/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&amp;clip_id=1632">Agenda</a></li><li><a href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&amp;clip_id=1632">Watch the video</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/169e853b5a45fcb3-asr-1f46ee5614a5.vtt" type="text/vtt"/>
+      <pubDate>Tue, 05 Mar 2013 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">169e853b5a45fcb3</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/6540eef2dc2e/169e853b5a45fcb3-69bac295b839.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3531</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>State of City State of City</title>
+      <link>https://www.citymeetings.fyi/fort-worth-tx-state-of-city/c7b49281d72a00f6/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&amp;clip_id=1632">Agenda</a></li><li><a href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&amp;clip_id=1632">Watch the video</a></li><li><a href="https://www.fortworthtexas.gov/departments/communications/fwtv">Official meetings page</a></li></ul>]]></content:encoded>
+      <podcast:transcript url="https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/c7b49281d72a00f6-asr-7067d8f357d1.vtt" type="text/vtt"/>
+      <pubDate>Tue, 05 Mar 2013 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">c7b49281d72a00f6</guid>
+      <enclosure url="https://audio.citymeetings.fyi/granicus/6540eef2dc2e/c7b49281d72a00f6-1eac119a79fc.m4a" type="audio/mp4" length="0"/>
+      <itunes:duration>3531</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

@@ -11,6 +11,15 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
   body: Central City Local Government Corporation
+  body_any:
+    - "LDC, CCLGC, RILGC, FWHFC"
+  body_exact:
+    - AllianceAirport Authority, Inc., Central City Local Development Corporation, and Fort Worth
+      Local Development Corporation, and AllianceAirport Authority, Inc., Central City Local
+      Development Corporation, and Fort Worth Local Development Corporation, and
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 109 days ago; local government corporation meets infrequently"
 podcast_title: 'Fort Worth: Central City Local Government Corporation'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

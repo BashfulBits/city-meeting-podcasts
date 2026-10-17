@@ -1,6 +1,7 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-09-22 (Initiative 20 shipped in PRs #1617–#1622 — LLM
+**Status: LIVING · last updated 2026-10-15 (publication-selection machinery under review;
+Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
 `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
@@ -76,6 +77,207 @@ open issues) appears here, in a phase or the Deferred backlog (§6). `#NN` = rev
 GitHub development issues are cut just-in-time only for remaining Phase-H work. Auto-managed health
 signals and individual city requests may remain open as operational inputs; later-phase initiatives
 live here until their series becomes active.
+
+### Maintainer-directed feed taxonomy simplification (2026-10-02)
+
+Aggregate-only TIF subscriptions for Dallas and Fort Worth and the remedy guard shipped in
+PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
+[#1974](https://github.com/BashfulBits/city-meeting-podcasts/pull/1974).
+[Coverage and migration evidence](tif-coverage-2026-10.md) records their archive checks.
+The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
+are approved but residual policy application is still P0, not completed by merging that inventory.
+The 2026-10-06 current-selector replay linked all 680 inventory labels to cached UID-level selector
+results: 14 labels are fully matched, one is partial and 665 still have no selector match. Only 20
+of 2,028 cached UID/label associations link to the 169-case register. The detailed crosswalk and
+input hashes are recorded in [the refreshed replay](evidence/historical-selector-replay-2026-10-06.csv)
+and its manifest. Cached sources date to October 3; this is not live-source completeness or
+ownership proof. P0 remains open until each inventory row receives an evidence-backed disposition
+and required source refresh/deployment checks.
+
+After the frozen replay, read-only public checks verified the approved Archive-only projection for
+six exact Addison UID/GUID pairs in
+[`addison-archive-live-2026-10-06.json`](evidence/addison-archive-live-2026-10-06.json): all ten
+current Addison RSS feeds and both Town Meetings browse pages omit them; all six direct raw pages
+remain available. Citizen Advisory remains in the Town Meetings feed and browse pages. The two
+public search routes returned 404, so live search omission was not independently observed. These
+six publication-disposition cases are resolved without claiming their historical content or
+institution is identified; their individual missing-evidence notes remain. On 2026-10-07, the
+maintainer also accepted the single Citizen Advisory compilation in Public Input as its P0
+classification. Its exact historical program-to-recording link remains unknown, but is no longer a
+blocking classification question; the archive's 11-item count does not establish a missing part.
+The register now has 162 resolved and seven open cases. The 680-row P0 baseline remains open until the
+remaining source-binding evidence cases are resolved or otherwise dispositioned.
+
+Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
+subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
+Seasonal schedules and Council-only membership do not make a committee temporary. Addison CPC's
+[dedicated-feed contract](51-unexpected-body-remedy-flow.md#addison-cpc-dedicated-feed--l3-implementation-under-validation)
+shipped in PRs #2003/#2010; it supersedes Council placement, preserves source identities and records
+historical meeting/recording gaps in its dated evidence packet.
+
+The approved joint-meeting rule applies across all cities and future onboarding: publish the same
+recording in each officially proven participating body's feed, preserving stable identity. This
+requires genuine joint convening, not topic mentions, common membership or bundled separate meetings.
+
+Classification settlement hold (2026-10-04) was explicitly lifted by the maintainer at 19:50 UTC
+that day; it is not an active review restriction. See the
+[retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).
+Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
+The approved public-input/briefing and BZA presentation slice is L3 in
+[review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
+tracked by #2009 and implemented with validation passed; review disposition is in PR #2010.
+Citizen Advisory remains public input with stable identity. The maintainer accepted its P0
+classification on 2026-10-07; the exact historical program-to-recording link remains unknown in the
+evidence record, and no missing recording part is inferred. Unknown older recordings are not
+silently retired.
+
+
+### P0 historical coverage rules — deployed baseline (2026-10-07)
+
+After PR #2106, the maintainer approved one Public Info feed per city for briefings,
+information and public-input sessions; a separate Fort Worth Speaker’s Podium feed; a Dallas bond
+program feed; new named-body feeds at the five-distinct-UID cutoff (with the previously approved
+Denton Bond Oversight exception); and reusable additions to existing feeds. Ordinary cancellations
+and entries without usable recordings stay with the existing no-recording flow.
+
+The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
+listings**. After PR #2154, 518 patterns (1,667 listings) are assigned by local feed rules, one
+pattern/listing is archive-only, and 161 patterns (360 listings) are not to pursue. The corrected
+local replay of 26,555 cached source records reports 1,975 added policy placements across 1,952
+source/UID pairs, and 30 removed Fort Worth City Council placements for the “Minority Leaders and
+Citizens Council” civic series. Ten Dallas CBTF selections already appear in live Bond Program RSS.
+The maintainer directed that GUID 272574 remain only in Dallas Bond Program. The full 5,353-record
+Dallas replay found exactly one Public Info placement removed and no other Dallas feed changes. The
+catalog-wide added-placement count is 1,975, with 1,952 distinct source/UID pairs, 30 removed
+placements, and a net increase of 1,945 feed assignments. The unmatched count stays 411: 405
+intentionally not pursued and six approved Addison archive-only items. The six are absent from
+regular feeds and browse pages, and their individual archive pages remain available; only search
+visibility is unverified because the public search index is unavailable. The October 3 Dallas
+CBTF recording is verified in Bond Program only. The September 26 evidence case remains open until
+the routing correction deploys and live RSS confirms Bond Program presence and Public Info and
+Task Force absence. Public comment alone does not send a meeting to Public Info. The replay also
+adds Dallas Subdivision Review Committee recordings to City Planning Commission and Denton Capital
+Improvement Advisory Committee recordings to Planning and Zoning Commission. Full outputs are in
+the [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
+
+PR #2112 merged the historical rules and PR #2111 added the approved Fort Worth publication notes.
+Build and Deploy run #37643318454 passed rendering, feed validation, search processing and Pages
+deployment. All 72 expected feed URLs
+returned HTTP 200. Of the 1,965 proposed placements, 1,909 appear in public RSS. The remaining 56
+have public meeting pages but no hosted audio player, so they are not materialized podcast episodes
+and follow the normal no-audio path. This does not prove the city never had a source video.
+
+For Fort Worth clip 3814, both UIDs retain their source records, chapters and audio. All four
+Council/CCPD pages show the approved note, and the CCPD RSS contains both items. Council RSS holds
+its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 recordings. The two related cases were closed after the maintainer accepted the permanent pages plus expected
+RSS window behavior as sufficient P0 proof. The two #6334 assignments remain unchanged pending exact
+segment evidence.
+
+P0's historical baseline is verified complete on 2026-10-09; see the
+[final report](evidence/p0-completion-2026-10-09.md). All 680 title patterns have recorded outcomes.
+The refreshed 26,555-entry replay leaves 411 deliberately unassigned entries (405 not pursued,
+six archive-only). Public browser search and archive-only filtering are verified; all four Dallas
+#2171 recordings have identical UID/audio in all three approved feeds. Six evidence cases remain
+explicitly carried open under the approved exit rule, not waived. P1 tooling shipped in #1987;
+model admission and P2–P5 remain gated. Search-hosting cleanup is separately tracked in #2205.
+
+For Dallas GUID 273327, the maintainer directed Bond Program only. A live RSS check found its
+original UID/audio in Bond Program and absent from Public Info and the dedicated Task Force feed;
+that case is resolved. Removing `CBTF` from the Bond Program audit exclusion aligns the P0 replay
+with the existing `*CBTF*` selector, but is expected to change no published RSS. For GUID 272574,
+the maintainer superseded the dual-feed decision and directed Bond Program only. PR #2164 removed
+the Public Info assignment; the successful deployment after PR #2165 and live RSS checks confirm
+the original UID/enclosure in Bond Program and absent from Public Info. That case is resolved. The
+September 26 title remains out of Public Info; public comment alone does not qualify a meeting for
+that feed. See the [post-merge P0 check](evidence/p0-post-merge-check-2026-10-08.md).
+
+
+P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
+three verified Unified Development Code Advisory Committee recordings. Exact labels exclude the
+Open House; CPC duplicate identities shipped in #2003/#2010.
+
+P0's [Pflugerville BOA batch](pflugerville-boa-coverage-2026-10.md) shipped in PR #1993, adding
+the verified Board of Adjustment feed with ten retained recording identities, full source replay,
+and fifteen regression cases.
+
+P0's exact-label selector prerequisite separates bare committee names from distinct public-input
+formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
+The approved Fort Worth #3814 consecutive-proceedings note is L3 at
+[review/51](51-unexpected-body-remedy-flow.md#consecutive-fort-worth3814-publication-note--l3-2107),
+tracked by [#2107](https://github.com/BashfulBits/city-meeting-podcasts/issues/2107).
+
+P0's [Arlington batch](arlington-coverage-2026-10.md) shipped in commit 5ffabb6, covering
+the Housing Finance Corporation and Zoning Board of Adjustment with full provider/persisted replay
+and retained UID verification. Reviewed Foundation duplicate groups shipped in #2002.
+
+P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
+exact reviewed named bodies. Unknown identities remain held; this does not complete the historical
+inventory or implement P2's persistent ledger.
+
+[review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, records the P1–P5
+structure and phase contracts. **P1 harness: Shipped** (#1987); physical route and effort evidence
+is retained with the caveats below. P1 also has
+a completed three-model, three-prompt, 60-recording comparison and an eight-case disagreement
+diagnostic, preserved under `evals/remedy/results/`. On the original prompt, Sol + GLM Flash
+agreed correctly on 52/60 with zero shared wrong agreements; these reused cases are comparison
+evidence, not an independent benchmark of every physical provider identity. The maintainer
+selected a bounded Sol + GLM Flash initial consensus followed by one DeepSeek V4.1 Flash + JEV
+adjudication round, as specified in
+review/51. The maintainer subsequently accepted the gathered P1 evidence for proceeding with the
+P3 implementation. Observed GLM alias/serving-family and provider-default caveats remain recorded;
+the production route configuration is unchanged, and JEV production dispatch remains gated.
+The maintainer's feed-by-feed annotations for the eight diagnostic cases are stored separately from
+the frozen gold. Publication-selection inactive machinery is **Shipped** in
+[PR #1999](https://github.com/BashfulBits/city-meeting-podcasts/pull/1999)
+([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
+existing UID projection, pre-write holds and raw-page preservation. No city declarations are activated by that machinery PR. City activations and future-member admission stay L2
+until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
+#1986 historical activation is **Shipped** in [PR #2002](https://github.com/BashfulBits/city-meeting-podcasts/pull/2002);
+#1989 remains held for artifact comparison and #1991 has approved July 9 winner/exposure and L3 activation under validation. Shared approved templates and cross-city cases are specified for one resolver/replay path in
+onboarding and maintenance; verified identities and feedback remain city/source-scoped.
+P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped
+L3 contracts and issues are being prepared. The maintainer approved source-partitioned immutable
+feedback-event paths on 2026-10-04. P3 follows the consensus cascade now recorded in review/51,
+and the maintainer accepted the gathered P1 evaluation evidence as sufficient to proceed with P3
+implementation on 2026-10-14. This records an implementation-gate decision, not a runtime activation:
+production route configuration remains unchanged. P3's pure consensus decision engine and manual
+issue renderer are implemented in [PR #2444](https://github.com/BashfulBits/city-meeting-podcasts/pull/2444);
+manual issues use binary include/exclude choices per feed, with deferral only at the finding level
+through “hold for future evidence” and the existing P2 watch/blocked disposition.
+The local replay tool and daily Worker caller/append-only observation log shipped in
+[PR #2447](https://github.com/BashfulBits/city-meeting-podcasts/pull/2447), merged 2026-10-15.
+The daily caller remains report-artifact-only and closed by shadow mode or missing exact
+route/setting admissions. An admission may record `provider-default`, meaning no named reasoning
+override; its hash covers the compiled route parameters and does not claim internal provider effort.
+The maintainer accepted the existing `evals/remedy/` evidence for the P1
+evaluation criterion; a second broad comparison and review/49's weekly league are not P3
+prerequisites. PR #2449 merged on 2026-10-15, completing bounded GitHub proposal/issue publication
+and the P2 human-disposition command: proposal candidates are revalidated before a human-review PR;
+manual issues bind checked include/exclude choices to typed append-only P2 events. The evaluated
+Sol, GLM Flash, and DeepSeek parameters are provider-default reasoning, 900-second request timeout,
+950-second per-case deadline, and 16,384-token output cap; no temperature override was recorded.
+These are documented in review/51. The admission schema now supports provider-default and hashes
+the compiled route parameters. Exact serving identities and JEV's effective Worker parameters
+still need verification and admission before activation. The route-selection record in review/51
+also documents that the P3 chat caller currently uses an 8,192-token cap and a 720-second Worker
+response ceiling, versus the evaluated 16,384-token cap and 900-second provider timeout. Reconcile
+that profile and capture JEV Worker provenance before runtime admission. P3 implementation is
+complete; operational completion is the authorized admission/configuration plus a monitored
+end-to-end cycle. Production behavior stays fail-closed until then. P4–P5 stay
+predecessor-gated until their evidence and issues exist. The 27 seed
+cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
+partial historical coverage needs a documented exception; future cities default to separate TIF/PID
+aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
+it does not silently reorder the unrelated Phase-H queue or change production route/Worker limits.
+
+The maintainer selected a dedicated daily P3 Worker workflow on 2026-10-15 so the initial judge
+round, disagreement adjudication, and report can complete across two or three daily invocations.
+This does not change review/49's separate weekly judge-audit cadence. The caller resumes stable
+Worker recipe hashes from the existing deferred-request registry and stores completed model votes
+in the separate append-only P3 observation log; the P2 decision ledger remains for human
+dispositions and may reference the resulting report. Reuse review/49's JEV adapter and pin
+DeepSeek to `beatapi_deepseek_v4_1_flash_free`; JEV currently has only one catalog route. These are
+design decisions, not an activated schedule or route change.
 
 ### Active reliability follow-up: interactive remedy (#1231)
 
@@ -154,6 +356,18 @@ the text/timing provenance needed for the three-way quality review. After provid
 complete, a distinct `transcript-asr-comparison` queue produces full ASR only when normal ASR work
 is empty; it is H15 evidence and never replaces the served artifact by itself. See [review/12 §H15](12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
 
+**Chapter-locator quality/routing decision (2026-10-02; implementation in this PR).** The frozen
+manual-review-v2 matrix compares the baseline and transition-sweep prompts for five models across
+39 meetings, with validated responses or explicit too-large classifications recorded for all 390
+cells. Baseline is the production prompt. Route DeepSeek V4 Flash through 76,000 internal estimated
+input tokens and Kimi K3 above that; the accepted/rejected V4 Flash evidence brackets this
+conservative boundary. Set the locator lane's ingress budget to 800 logical jobs/day. GLM 5.3 Flash
+remains optional small-context capacity and DeepSeek V4.1 Flash optional large-context capacity;
+neither is wired until an operational capacity need is demonstrated. The evaluation README, frozen
+packet/goldens, raw answer key, scorer, and matched-cohort outputs are committed under
+`evals/chapter-locator/manual-review-v2/`. This production recipe change intentionally reprocesses
+existing generated locator artifacts gradually within the lane budget.
+
 ### Phase R — Research-Tool Surface (toward 1.0)
 
 | **Bounded audio integrity audits** | [GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024) (child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)) | L3 | **Implemented in the first 1.0 efficiency tranche.** Audio records now persist the verified immutable key/spec marker, invalidated by a key/spec mismatch or a storage-backend generation/epoch change. Matching trusted pointers bypass routine prefix LIST/HEAD/GET work; a small dirty set uses direct existence probes and larger batches retain one bounded source LIST fallback. `scripts/audit_audio_integrity.py` and `audio-integrity.yml` rotate through 32 stable UID partitions, sweeping every trusted pointer in the day's partition (concurrent HEAD checks, no per-run item cap, so the full catalog is swept monthly regardless of size) under a wall-clock budget that skips remaining sources rather than failing the run; it clears missing pointers and the Audio completion marker and lets ordinary Audio repair them without changing episode identity. Legacy/changed/repair pointers remain fail-closed. No audio pipeline-version bump or byte backfill is required. |
@@ -226,8 +440,10 @@ or backfill change.
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **Shipped** (#897, 2026-07-13) | [`review/13`](13-per-meeting-pages-and-search.md) Part A · playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata and canonical provenance with a clear no-recording notice · implementation `1790c9f` plus review fixes `20cc5ed` |
-| **Rate-limited LLM dispatch Worker** (new, Infra) | new | **Shipped** (#899, 2026-07-13; pacing hardening followed); **extended multi-provider** (review/41, 2026-08-06) · **ROADMAP R10** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker · Cloudflare edge pacing for tightly rate-limited providers; asynchronous enqueue/poll transport for R2's `JobHandle` path, R2 persistence, bounded queue pacing, and reconciliation-safe polling. [`review/41`](41-multi-provider-llm-dispatch.md) extends the single-Mistral Worker to Gemini/DeepSeek/OpenRouter with a per-route/per-account R2 ledger and multi-account key rotation; its 2026-08-13 ready-marker hardening makes the Free-plan cron selection O(1) in queue depth and supplies an offline migration for pre-index pending records. **Free-plan CPU/throughput work ([`review/43`](43-llm-dispatch-cpu-reduction-plan.md), PR #1219, 2026-08-14):** production `cpuTime` by deployed version drove P50 from `11` to `8` ms and proposes raising `BATCH_CONCURRENCY` to 2 (deployed configuration remains `1/1` until this merges) (measured `8.2`/`9.9`/`15.5` ms at N=1/2/3, and per *request* `8.2`/`4.95`/`5.2` — N=2 is the optimum on both axes; N=3 is superlinear from three resident canonical records). Cost is driven by **R2 operation count**, not bytes: the Worker's own JavaScript is ~`0.4` ms of the `8` ms. Landed: ETag-carrying lease and reservation release, cached ICU formatters, lazy marker-policy parsing, up-front rate commit at every batch size with the concurrency ceiling enforced in memory, one keyed R2 delete per batch, and in-place deferral of heads waiting on short route pacing (a blocked head cost 4 operations — more than a dispatch — and now costs none). **Open, quota-driven:** the Worker is the one component not following the [`COORDINATION_PREFIXES`](../citypods/storage/routing.py) rule — it keeps multi-megabyte prompts on R2, and Class A operations bill *per account*, so dispatch alone is **~43% of the shared 1M/month free tier** at today's throughput. Phasing in review/43: (1) fold `locks/cron.json` into the rate ledger as `state/dispatch_coordinator.json` (shipped in PR #1229; 5 operations → 4 on a dispatching tick, and 4 → 2 on an idle tick); (2) **split the canonical record — control state stays on R2 for the enqueue idempotency CAS, prompts/results/markers move to B2**, roughly doubling the R2-bounded ceiling from ~6,700 to ~11,100 jobs/day (26% of the tier at today's volume; 50,000/day needs the control record off R2, which is step 4, not this one); (3) batch enqueue/poll once throughput passes ~15,000 jobs/day, which addresses the separate 100k/day *Workers request* cap; (4) then choose Workers Paid (`$5`) or a Durable Object coordinator. Rejected with measurements: Queues on the Free plan (10k ops/day, only 16% above the cron ceiling) and Cloud Run for dispatch (bills I/O wait, which Workers do not). **L3 parallel successor (maintainer-directed, 2026-08-17; matured L2→L3 same day after a capacity reconciliation):** [`review/44`](44-bounded-bundled-llm-dispatch.md) specifies an opt-in DO/B2 cron-pull v2 deployment: each existing one-minute Worker tick atomically claims up to four jobs from one SQLite coordinator. It prefers `priority=0` jobs, then distinct routes, then larger conservative jobs, and returns route-local `wait_ms` plans across a 25-second dispatch window; same-route work is admitted only when normal and late timing remain safe. `completeBatch` settles actual attempt start/end time and usage; rare 429s are fenced with a retry-authorization RPC. It has B2-only payload/results, explicit Worker/DO/row-write caps split between ingestion and dispatch-lifecycle, bulk ingress/poll APIs, and a priority-ordered Phase 1–4 build sequence. **Capacity reconciliation (2026-08-17):** the design was prompted by ~126k dispatch-Worker invocations in one day, which turned out to be predominantly v1's un-batched per-job ingress path during an agenda/chapter backfill, not real LLM-call volume (~2,600 that day per AI Gateway); real aggregate free-route capacity (`config/provider_limits.yml`) sums to ~66,620/day, ~15x the ~5,000/day steady-state target, so a previously-drafted Cloudflare Queue push was re-evaluated and rejected again — the actual Free-tier bottleneck is Worker CPU-per-invocation and the shared DO SQLite row-write budget, not provider throughput, and Queues don't relieve either. Migration/coexistence uses a split-cap strategy (v1 and v2 route ledgers each halved against real provider limits while both are live, flipped to 1x once v1's backlog empties) rather than a bespoke pending-record migration tool. v1 remains production until v2's Phase 1 (ingest cutover) lands and Phase 2/3 (paced dispatch, coexistence exit) pass their parity and canary gates. **Phase 1 shipped** ([PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253), 2026-08-18): `workers/llm-dispatch-v2/` ingress Worker and SQLite-backed `LLMSchedulerDO` coordinator, `enqueue_batch`/`poll_batch` on `LiteLLMBackend`, and batch v2 polling in `llm_deferred_sweep.py` — the ingress Worker performs zero B2 I/O itself (client-side payload staging only), matching review/44's connection/subrequest-limit revision. `schema-retry`/`resolve-unknown-batch` land as inert/stub endpoints pending Phase 2's dispatch machinery. v2 stays dormant (no route currently selects `llm-dispatch-v2` as a transport) until Phase 2 wires paced dispatch; v1 remains the only production transport until then. **Production incident fix (2026-08-18):** wiring `LLM_DISPATCH_V2_URL`/`LLM_DISPATCH_V2_AUTH_TOKEN` into the six `queue_only` call-site workflows (the first incident report) did not by itself move traffic to v2 — `enqueue_batch`/`poll_batch`'s payload I/O routed through production's `RoutingStorage` (B2 primary + R2 coordination), whose coordination-prefix allow-list correctly excludes `payloads/`/`results/`, so every write hit the router's own non-`cas_capable` B2 guard and raised `NotImplementedError` before the batch ever reached the Worker — `citypods-llm-dispatch-v2`/its DO saw zero traffic while every call kept falling through to v1. Fixed in `_storage_client()` (reach past the router to its `.primary` B2 backend directly, matching this section's own original "write payload with `b2_from_env()`" design), with a regression test against the real `RoutingStorage`; see review/44's Phase 1 revision notes. **Three more hotfixes followed the same day before v2 carried a single real request** ([PR #1257](https://github.com/BashfulBits/city-meeting-podcasts/pull/1257) stale-v1-backlog reconcile storm + Workers Logs config; [PR #1258](https://github.com/BashfulBits/city-meeting-podcasts/pull/1258) `dispatch_v2_url` never wired into the tag/tournament backends; [PR #1259](https://github.com/BashfulBits/city-meeting-podcasts/pull/1259) `console.error`'s second argument silently dropped by Workers Logs; [PR #1260](https://github.com/BashfulBits/city-meeting-podcasts/pull/1260) **the actual root cause** — `LLMSchedulerDO` never extended `DurableObject`, so every RPC call failed from Phase 1's first deploy onward regardless of the other four fixes, invisible to this repo's own test suite because it calls the class directly rather than through the real binding). Full retrospective with guards for Phase 2–4 work: review/44's "Rollout incident retrospective (2026-08-18)". **Durable Objects rows-read overage (2026-08-27):** `LLMSchedulerDO` exhausted the Workers Free plan's 5M daily DO rows-read budget, failing every `jsrpc` call (cron dispatch, `enqueueBatch`, `pollBatch`) until the daily reset. Cause was structural, not load: `claimDispatchWindow` ran two `state`-filtered statements against `bundles` on every cron tick, `bundles` carried only its `bundle_id` primary key so both planned as full scans, and **nothing in the codebase ever deleted from `bundles`** — so cost was 2x the row count of `bundles` and grew with every bundle ever claimed (reads climbing steadily while writes stayed flat at ~21k is the signature). Instrumenting the real coordinator attributed **6,400 of a tick's 6,424 rows read (99.6%)** to those two statements at 3,200 accumulated bundles. Fixed with `bundles (state, created_at)` (**6,424 → 30 rows read**, same tick and table sizes), retention for the two never-deleted bookkeeping tables (`bundles`/`attempts`, default 7 days, bounded per-tick delete budget, a bundle removed only once terminal *and* past its lease so no late `completeBatch` can lose one), and wiring up `purgePendingBatch`/`confirmPurge` — which shipped in Phase 2 *with tests* but were called from nothing, so terminal `jobs` rows and their B2 objects were never released. That wiring needed a second index, `jobs (state, updated_at)`: the purge query's age filter against the existing `(state, priority, created_at)` index would have read every terminal row (**60,189 → 367** VDBE ops at 6,000 terminal jobs), reintroducing the same defect in `SEARCH`-shaped disguise. A **consumption ack** (`/v2/jobs:ack-batch`, called once per poll chunk after `write_deferred` succeeds) replaces the 38-day timer as the real retention trigger, collapsing it to ~1 hour. Standing guard: `test/rows-read.test.js` asserts two invariants over the whole RPC surface — no statement may scan a traffic-growable table, and rows read must not grow against 10x accumulated history — validated by mutation testing rather than assumed. Two plausible, code-derived hypotheses (candidate fan-out; join drive-table choice) were both measured false first, one of them after a committed-then-reverted rewrite; full account in review/44's "Durable Objects rows-read overage retrospective (2026-08-27)". **Rollout compatibility migrations retired (2026-08-28):** both the `job_models` backfill and legacy `retryable` recovery migrations from Phase 2's rollout completed in production (confirmed via a Data Studio query showing both `scheduler.*_complete` flags at `1`), so their code, config knobs, and per-tick state were removed from `coordinator.js`/`index.js`/`wrangler.jsonc`; the `scheduler` columns they wrote are left in place on already-migrated instances rather than dropped. See review/44's "Retired: the rollout compatibility migrations". **Call-site batching follow-up** ([PR #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262), 2026-08-18): none of Phase 1's `queue_only=True` call sites had ever actually accumulated more than one job per `enqueue_batch` call despite the protocol/DO/client all being batch-capable since Phase 1 — confirmed via production Worker logs showing every request byte-identical to a single-job submission. Fixed with a shared `dispatch_job_batch()` helper (`citypods/compute/llm.py`) and batched restructuring of `AgendaChapterCandidatesStage`/`ChapterBoundaryLocatorStage` (`citypods/stages.py`) and `citypods/tournament.py`'s judge-comparison phase; `citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`) remains unbatched — not because its structured-output validation is hard, but because it recursively splits one episode into a variable number of jobs internally and `TagsStage` runs episodes through a worker-thread pool with a live incremental per-run dispatch budget, neither of which the three sites above have to handle — and the transcribe/align call sites are also still unbatched; both deferred to review/44 Phase 4. **AI Gateway custom-provider routing (2026-08-29, [PR #1327](https://github.com/BashfulBits/city-meeting-podcasts/pull/1327)):** every NVIDIA and SambaNova route 404'd through the gateway with no failover — 404 is not in either Worker's `retryableStatus` set. Cause was Cloudflare-side and undocumented: for `custom-` providers AI Gateway does not join the registered Base URL as its docs describe (`{base_url}/{provider-path}`), but rewrites the Base URL's **last path segment to a hardcoded `v1`** before appending the caller path — established by registering a throwaway custom provider against an echo service (`/anything/prefix` → `/anything/v1`). Providers registered at their `api_base` must therefore repeat that path in `ai_gateway_chat_path`; `kilo` is registered as `…/api/gateway/v1` (a path it also serves); and `zai`/`opencode` route through a new **`workers/llm-provider-shim`**, since z.ai's `/api/paas/v4` is inexpressible under the rewrite (`v4` → `v1`, and no `v1` path serves its API). The shim keeps them inside AI Gateway's logging rather than bypassing it, and is hardened as a credential-forwarding proxy: allowlisted destinations, fail-closed secret, opaque rejections, and refused upstream redirects (Workers' `fetch` replays `Authorization` cross-origin). This also retired a misdiagnosis that had disabled both NVIDIA DeepSeek routes as NVIDIA-side entitlement gating; they were failing for the same path reason and are re-enabled. Because the behaviour is undocumented and unobservable offline, `tests/live/test_ai_gateway_contract.py` probes the real gateway weekly from `contracts.yml`, with a canary that fails if Cloudflare ever starts honouring the registered path.  **Lane registry + throughput reconciliation (2026-09-03):** three defects kept the producer lanes from filling quota. (1) `INGRESS_PURPOSE_RESERVATIONS` reserved capacity under keys no client sends (`topic-tags`, `moments`) against real purposes `topic-tags:tagger`/`:prelabeler`/`r6-moments`/`r6-judge`; because admission subtracts every *other* purpose's reservation from a job's usable headroom, those two unreachable keys withheld 10,000 of 30,000 daily ingress write units from every real lane while being unusable by the lanes they named, and four research purposes had no entry at all. Replaced by a canonical `llm_lanes` block in `config/site_config.yml` keyed by exact purpose, compiled to the Worker's `ingress_reservations.json` by `scripts/compile_llm_lanes.py` and drift-checked at deploy; an unregistered purpose is now rejected (`purpose_not_registered`) rather than absorbed, and a sub-purpose does not inherit its prefix's budget. (2) Model choice was split between config (`tagging`/`moments`) and Python constants (chapters, tournament, R5 benchmark); all now resolve from that one block, values unchanged so no recipe hash or artifact is affected, with the recipe-affecting strings pinned in `tests/test_llm_lanes.py`. (3) Throughput: the binding constraint is the shared 100,000/day DO row-write budget, not the 50-subrequest ceiling — `MAX_BUNDLE_JOBS` 4→8 would project 114% of it — so `MAX_BUNDLES_PER_UTC_DAY` goes 1,000→1,400 and `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 30,000→24,000 (ingress was admitting 12,000/day against a 4,000/day drain, growing backlog with write budget that could fund dispatch), lifting the dispatch ceiling 4,000→5,600 calls/day at 69% of the write ceiling. Completes Phase 4 call-site batching for `tournament.py`/`r5_benchmark.py` via a shared run-scoped `PerModelBatchingBackends`, removes the tournament's hard two-sample clamp (~32 jobs/day), makes a failed submission exit non-zero instead of 0, and gives the lane workflow steps a step-level timeout so a 180-minute overrun fails red instead of being cancelled grey with nothing persisted — which `tag.yml` hit on eight consecutive scheduled runs, 2026-08-26 to 09-02. See review/44 "Lane registry and throughput reconciliation (2026-09-03)". **Gemini free-tier hard input ceiling + a silently-deferred `/remedy` path (2026-09-04):** live-tested against the real Gemini API — `tpm` on the free tier is a hard per-request cap with no burst room above it (a single request over the usable window fails outright regardless of idle time), and the real usable ceiling can sit well below both `tpm` and the model's advertised context window (confirmed on an otherwise-idle model: ~125,000 actual vs. the `250000` both config and Google's own quota error report); NVIDIA's free tier, by contrast, accepted a real request ~3x its configured `tpm` outright, so this is provider-specific, not a blanket scheduler rule. `LLMRoute` gains an opt-in `hard_input_ceiling` (`citypods/compute/llm_policy.py`), set only on the 14 Gemini/Gemma routes (`config/provider_limits.yml`; conservative interim values pending per-model calibration), enforced in `select_route` and in the Cloudflare Worker's token-bucket pacing (`workers/llm-dispatch-v2/src/pacing.js`, previously assumed every route could burst 5 windows deep). `COUNCIL_MOMENT_MODELS`/the `chapter-locator` lane gain `deepseek/deepseek-v4-pro` + `moonshotai/kimi-k3` (free NVIDIA routes, no hard cap) as overflow. Separately, `citypods/audit_remedy.py`'s `/remedy`-comment classification had no `purpose` set, so a capacity miss silently persisted a deferred handle for the unrelated `llm-deferred-sweep` cron to retry hours later, disconnected from the original request — fixed with an explicit `purpose` + immediate `discard_deferred` on a capacity miss, plus a token-budget cap on its evidence bundle. Mistral's `mistral-large-2512` (`403` live) and NVIDIA's `nemotron-3-ultra-550b-a55b` route (`404` live) are both flagged, not fixed, here. See CHANGELOG's matching entry for full detail. **Initiative 20 — endpoint characterization & failure-class-aware backoff (review/45, 2026-09-08; Shipped in PRs #1617–#1622, 2026-09-09):** generalizes that one-off live Gemini test into a repeatable loop across all 69 routes. The Worker previously collapsed every provider 429 into one "we went too fast" response — a route penalty plus `MAX_429_RETRIES=1`, after which the job was **failed**, the only transient-looking status that destroys work (402/5xx/upstream-400 all requeue). Across a catalog that is mostly free tiers and free-router aggregators, a large share of 429s are the provider's own pool saturating, unrelated to our rate. Initiative 20 adds a nine-value failure taxonomy (`own_rpm`/`own_rpd`/`own_tpm`/`upstream_capacity`/`gateway_limit`/`payment_required`/`request_defect`/`server_error`/`unknown_429`) in a shared signature table duplicated across `workers/llm-dispatch-v2/src/classify.js` and `citypods/compute/llm_failure_class.py` with a drift-guard test; a live probe harness (`citypods/llm_rate_probe.py`, dry-run by default, capped, free-routes-only) that measures enforced RPM, burst capacity, real input ceilings, and actual recovery timing versus advertised `Retry-After`; per-class route penalties (a daily-quota 429 blocks to the provider's next zoned midnight instead of 60s; a token-quota 429 zeroes the token bucket; an `upstream_capacity` 429 takes a short escalating cooldown and accrues **no** `buffer_seconds` or `throttle_streak`); a terminal 429 that **requeues instead of failing**; direct-transport parity with 10-attempt sibling route capacity retry; and a bounded `(utc_day, route_id, failure_class)` counter exposed through the existing `/v2/stats`. Shipped in PRs #1617–#1622 per review/45 §20.11. **Throughput review (2026-09-23, [PR #1831](https://github.com/BashfulBits/city-meeting-podcasts/pull/1831)):** live `/v2/stats?detail=1`, AI Gateway logs, and 1,727 paired B2 payload/result samples showed ~1,000–2,000 calls/day against the ~5,600/day write-bounded ceiling, with Gemma, Flash Lite, and NVIDIA's Nemotron capacity idle. Causes and fixes: the admission-time call-duration allowance left 5s of each 25s window usable (window now 30s, allowance 2s — the window bounds call *starts* only); a never-decreasing `margin_tokens` reservation floor made every Gemma job reserve more than its route's TPM (replaced by a bounded window of recent input-token ratios and output sizes, plus settle-to-actual on success); a static chars/4 estimate compared against provider-unit ceilings (new per-route `input_token_ratio`, applied in `select_route` and the Worker); oversized queue-head jobs blocking a ceiling-bound model (bounded `MAX_CANDIDATE_LOOKAHEAD` read, calibrated per-job check); 404/410 failing jobs while the retired route kept full capacity (`route_unavailable` requeues and stands the route down); and NVIDIA's slow Gemma leg holding the shared concurrency Nemotron needs (paused). NVIDIA's retired DeepSeek models are replaced by `deepseek-v4.1-flash`, which serves three pools from one ledger via the new `also_serves` route field. **Pre-labeler sizing + shadow evaluator ([PR #1832](https://github.com/BashfulBits/city-meeting-podcasts/pull/1832)):** pre-labeler batches are sized to the highest-quota live Gemma route (≤8,333 raw tokens; scaled input + output budget within one minute of its TPM), the lane budget rises to 2,000 jobs/day, and a gemma-4-26b shadow evaluator (`topic-tags:prelabeler-shadow`, audit-only, no reservation) assesses the same subjects; human reviews are mirrored into its own calibration row through the tag's truth, and the weekly digest compares evaluators, so its precision is measured before it is ever considered as a 31b backup. The tags completion cache now treats owed evaluator work as dirty, which the backfill needed and which also unblocks production re-evaluation after a pre-labeler model/schema change. **Write budget re-derived (2026-09-23):** the account's Durable Object row-write budget, not provider capacity, is the binding limit. Measured billed rows (`workers/llm-dispatch-v2/bench/rows-written/`, `src/write_budget.js`) are ~45–60 per completed job, so the Worker now caps dispatch leases per day (`MAX_LEASES_PER_UTC_DAY`), ingress fell to 5,800 units/day, lanes were rescaled, and `validateConfig` refuses caps whose worst case exceeds 90,000 rows — ~1,300 LLM jobs/day end to end. The next lever is fewer billed rows per job (redundant job indexes, per-attempt bookkeeping) or Workers Paid. Still open and a maintainer decision: letting `chapter-agenda` spill onto Flash Lite (its model list is part of its recipe hash). **DO row-write reductions (2026-09-23):** the Free plan's 100,000 billed rows/day (every index entry and trigger write counts) capped throughput at ~1,300 jobs/day at a measured 44.3 billed rows per completed job (`bench/rows-written`, workerd). Tier 1 ([PR #1838](https://github.com/BashfulBits/city-meeting-podcasts/pull/1838), shipped) dropped three unused `jobs` indexes and the non-terminal `updated_at` bump (→ 30.3). Tier 2 ([PR #1840](https://github.com/BashfulBits/city-meeting-podcasts/pull/1840)) makes `job_models` a clustered `WITHOUT ROWID` table with a unique `(job_id, model)` index, drops `idx_attempts_created` (attempts pruned by rowid), samples calibration 1-in-4 once a 32-sample window is full, and folds same-row bookkeeping writes into single statements (→ 25.3). Tier 3 ([PR #1842](https://github.com/BashfulBits/city-meeting-podcasts/pull/1842), shipped) retires a completed job by consumption rather than age — the client deletes its B2 objects only after persisting the result, and `/v2/jobs:retire-batch` deletes the row only while it is still `completed` with the same `result_key` — and replaces the three queued-count triggers with explicit deltas plus an hourly exact recount (→ 21.3). Tier 4 ([PR #1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)) writes each route/provider pacing ledger once per claim and folds same-route successes into one settlement per `completeBatch` (non-success writes flush first, preserving per-job order), and makes `bundles` `WITHOUT ROWID` with a bundle deleted when its last job settles (→ ~20, more when a bundle puts several jobs on one route). Larger bundles (P2) were left unchanged: bundle size is bounded by the 50-subrequest ceiling it shares with cleanup, not by rows. The remaining options and their trade-offs are tracked in [#1844](https://github.com/BashfulBits/city-meeting-podcasts/issues/1844). |
+| **Rate-limited LLM dispatch Worker** (new, Infra) | new | **Shipped** (#899, 2026-07-13; pacing hardening followed); **extended multi-provider** (review/41, 2026-08-06) · **ROADMAP R10** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker · Cloudflare edge pacing for tightly rate-limited providers; asynchronous enqueue/poll transport for R2's `JobHandle` path, R2 persistence, bounded queue pacing, and reconciliation-safe polling. [`review/41`](41-multi-provider-llm-dispatch.md) extends the single-Mistral Worker to Gemini/DeepSeek/OpenRouter with a per-route/per-account R2 ledger and multi-account key rotation; its 2026-08-13 ready-marker hardening makes the Free-plan cron selection O(1) in queue depth and supplies an offline migration for pre-index pending records. **Free-plan CPU/throughput work ([`review/43`](43-llm-dispatch-cpu-reduction-plan.md), PR #1219, 2026-08-14):** production `cpuTime` by deployed version drove P50 from `11` to `8` ms and proposes raising `BATCH_CONCURRENCY` to 2 (deployed configuration remains `1/1` until this merges) (measured `8.2`/`9.9`/`15.5` ms at N=1/2/3, and per *request* `8.2`/`4.95`/`5.2` — N=2 is the optimum on both axes; N=3 is superlinear from three resident canonical records). Cost is driven by **R2 operation count**, not bytes: the Worker's own JavaScript is ~`0.4` ms of the `8` ms. Landed: ETag-carrying lease and reservation release, cached ICU formatters, lazy marker-policy parsing, up-front rate commit at every batch size with the concurrency ceiling enforced in memory, one keyed R2 delete per batch, and in-place deferral of heads waiting on short route pacing (a blocked head cost 4 operations — more than a dispatch — and now costs none). **Open, quota-driven:** the Worker is the one component not following the [`COORDINATION_PREFIXES`](../citypods/storage/routing.py) rule — it keeps multi-megabyte prompts on R2, and Class A operations bill *per account*, so dispatch alone is **~43% of the shared 1M/month free tier** at today's throughput. Phasing in review/43: (1) fold `locks/cron.json` into the rate ledger as `state/dispatch_coordinator.json` (shipped in PR #1229; 5 operations → 4 on a dispatching tick, and 4 → 2 on an idle tick); (2) **split the canonical record — control state stays on R2 for the enqueue idempotency CAS, prompts/results/markers move to B2**, roughly doubling the R2-bounded ceiling from ~6,700 to ~11,100 jobs/day (26% of the tier at today's volume; 50,000/day needs the control record off R2, which is step 4, not this one); (3) batch enqueue/poll once throughput passes ~15,000 jobs/day, which addresses the separate 100k/day *Workers request* cap; (4) then choose Workers Paid (`$5`) or a Durable Object coordinator. Rejected with measurements: Queues on the Free plan (10k ops/day, only 16% above the cron ceiling) and Cloud Run for dispatch (bills I/O wait, which Workers do not). **L3 parallel successor (maintainer-directed, 2026-08-17; matured L2→L3 same day after a capacity reconciliation):** [`review/44`](44-bounded-bundled-llm-dispatch.md) specifies an opt-in DO/B2 cron-pull v2 deployment: each existing one-minute Worker tick atomically claims up to four jobs from one SQLite coordinator. It prefers `priority=0` jobs, then distinct routes, then larger conservative jobs, and returns route-local `wait_ms` plans across a 25-second dispatch window; same-route work is admitted only when normal and late timing remain safe. `completeBatch` settles actual attempt start/end time and usage; rare 429s are fenced with a retry-authorization RPC. It has B2-only payload/results, explicit Worker/DO/row-write caps split between ingestion and dispatch-lifecycle, bulk ingress/poll APIs, and a priority-ordered Phase 1–4 build sequence. **Capacity reconciliation (2026-08-17):** the design was prompted by ~126k dispatch-Worker invocations in one day, which turned out to be predominantly v1's un-batched per-job ingress path during an agenda/chapter backfill, not real LLM-call volume (~2,600 that day per AI Gateway); real aggregate free-route capacity (`config/provider_limits.yml`) sums to ~66,620/day, ~15x the ~5,000/day steady-state target, so a previously-drafted Cloudflare Queue push was re-evaluated and rejected again — the actual Free-tier bottleneck is Worker CPU-per-invocation and the shared DO SQLite row-write budget, not provider throughput, and Queues don't relieve either. Migration/coexistence uses a split-cap strategy (v1 and v2 route ledgers each halved against real provider limits while both are live, flipped to 1x once v1's backlog empties) rather than a bespoke pending-record migration tool. v1 remains production until v2's Phase 1 (ingest cutover) lands and Phase 2/3 (paced dispatch, coexistence exit) pass their parity and canary gates. **Phase 1 shipped** ([PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253), 2026-08-18): `workers/llm-dispatch-v2/` ingress Worker and SQLite-backed `LLMSchedulerDO` coordinator, `enqueue_batch`/`poll_batch` on `LiteLLMBackend`, and batch v2 polling in `llm_deferred_sweep.py` — the ingress Worker performs zero B2 I/O itself (client-side payload staging only), matching review/44's connection/subrequest-limit revision. `schema-retry`/`resolve-unknown-batch` land as inert/stub endpoints pending Phase 2's dispatch machinery. v2 stays dormant (no route currently selects `llm-dispatch-v2` as a transport) until Phase 2 wires paced dispatch; v1 remains the only production transport until then. **Production incident fix (2026-08-18):** wiring `LLM_DISPATCH_V2_URL`/`LLM_DISPATCH_V2_AUTH_TOKEN` into the six `queue_only` call-site workflows (the first incident report) did not by itself move traffic to v2 — `enqueue_batch`/`poll_batch`'s payload I/O routed through production's `RoutingStorage` (B2 primary + R2 coordination), whose coordination-prefix allow-list correctly excludes `payloads/`/`results/`, so every write hit the router's own non-`cas_capable` B2 guard and raised `NotImplementedError` before the batch ever reached the Worker — `citypods-llm-dispatch-v2`/its DO saw zero traffic while every call kept falling through to v1. Fixed in `_storage_client()` (reach past the router to its `.primary` B2 backend directly, matching this section's own original "write payload with `b2_from_env()`" design), with a regression test against the real `RoutingStorage`; see review/44's Phase 1 revision notes. **Three more hotfixes followed the same day before v2 carried a single real request** ([PR #1257](https://github.com/BashfulBits/city-meeting-podcasts/pull/1257) stale-v1-backlog reconcile storm + Workers Logs config; [PR #1258](https://github.com/BashfulBits/city-meeting-podcasts/pull/1258) `dispatch_v2_url` never wired into the tag/tournament backends; [PR #1259](https://github.com/BashfulBits/city-meeting-podcasts/pull/1259) `console.error`'s second argument silently dropped by Workers Logs; [PR #1260](https://github.com/BashfulBits/city-meeting-podcasts/pull/1260) **the actual root cause** — `LLMSchedulerDO` never extended `DurableObject`, so every RPC call failed from Phase 1's first deploy onward regardless of the other four fixes, invisible to this repo's own test suite because it calls the class directly rather than through the real binding). Full retrospective with guards for Phase 2–4 work: review/44's "Rollout incident retrospective (2026-08-18)". **Durable Objects rows-read overage (2026-08-27):** `LLMSchedulerDO` exhausted the Workers Free plan's 5M daily DO rows-read budget, failing every `jsrpc` call (cron dispatch, `enqueueBatch`, `pollBatch`) until the daily reset. Cause was structural, not load: `claimDispatchWindow` ran two `state`-filtered statements against `bundles` on every cron tick, `bundles` carried only its `bundle_id` primary key so both planned as full scans, and **nothing in the codebase ever deleted from `bundles`** — so cost was 2x the row count of `bundles` and grew with every bundle ever claimed (reads climbing steadily while writes stayed flat at ~21k is the signature). Instrumenting the real coordinator attributed **6,400 of a tick's 6,424 rows read (99.6%)** to those two statements at 3,200 accumulated bundles. Fixed with `bundles (state, created_at)` (**6,424 → 30 rows read**, same tick and table sizes), retention for the two never-deleted bookkeeping tables (`bundles`/`attempts`, default 7 days, bounded per-tick delete budget, a bundle removed only once terminal *and* past its lease so no late `completeBatch` can lose one), and wiring up `purgePendingBatch`/`confirmPurge` — which shipped in Phase 2 *with tests* but were called from nothing, so terminal `jobs` rows and their B2 objects were never released. That wiring needed a second index, `jobs (state, updated_at)`: the purge query's age filter against the existing `(state, priority, created_at)` index would have read every terminal row (**60,189 → 367** VDBE ops at 6,000 terminal jobs), reintroducing the same defect in `SEARCH`-shaped disguise. A **consumption ack** (`/v2/jobs:ack-batch`, called once per poll chunk after `write_deferred` succeeds) replaces the 38-day timer as the real retention trigger, collapsing it to ~1 hour. Standing guard: `test/rows-read.test.js` asserts two invariants over the whole RPC surface — no statement may scan a traffic-growable table, and rows read must not grow against 10x accumulated history — validated by mutation testing rather than assumed. Two plausible, code-derived hypotheses (candidate fan-out; join drive-table choice) were both measured false first, one of them after a committed-then-reverted rewrite; full account in review/44's "Durable Objects rows-read overage retrospective (2026-08-27)". **Rollout compatibility migrations retired (2026-08-28):** both the `job_models` backfill and legacy `retryable` recovery migrations from Phase 2's rollout completed in production (confirmed via a Data Studio query showing both `scheduler.*_complete` flags at `1`), so their code, config knobs, and per-tick state were removed from `coordinator.js`/`index.js`/`wrangler.jsonc`; the `scheduler` columns they wrote are left in place on already-migrated instances rather than dropped. See review/44's "Retired: the rollout compatibility migrations". **Call-site batching follow-up** ([PR #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262), 2026-08-18): none of Phase 1's `queue_only=True` call sites had ever actually accumulated more than one job per `enqueue_batch` call despite the protocol/DO/client all being batch-capable since Phase 1 — confirmed via production Worker logs showing every request byte-identical to a single-job submission. Fixed with a shared `dispatch_job_batch()` helper (`citypods/compute/llm.py`) and batched restructuring of `AgendaChapterCandidatesStage`/`ChapterBoundaryLocatorStage` (`citypods/stages.py`) and `citypods/tournament.py`'s judge-comparison phase; `citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`) remains unbatched — not because its structured-output validation is hard, but because it recursively splits one episode into a variable number of jobs internally and `TagsStage` runs episodes through a worker-thread pool with a live incremental per-run dispatch budget, neither of which the three sites above have to handle — and the transcribe/align call sites are also still unbatched; both deferred to review/44 Phase 4. **AI Gateway custom-provider routing (2026-08-29, [PR #1327](https://github.com/BashfulBits/city-meeting-podcasts/pull/1327)):** every NVIDIA and SambaNova route 404'd through the gateway with no failover — 404 is not in either Worker's `retryableStatus` set. Cause was Cloudflare-side and undocumented: for `custom-` providers AI Gateway does not join the registered Base URL as its docs describe (`{base_url}/{provider-path}`), but rewrites the Base URL's **last path segment to a hardcoded `v1`** before appending the caller path — established by registering a throwaway custom provider against an echo service (`/anything/prefix` → `/anything/v1`). Providers registered at their `api_base` must therefore repeat that path in `ai_gateway_chat_path`; `kilo` is registered as `…/api/gateway/v1` (a path it also serves); and `zai`/`opencode` route through a new **`workers/llm-provider-shim`**, since z.ai's `/api/paas/v4` is inexpressible under the rewrite (`v4` → `v1`, and no `v1` path serves its API). The shim keeps them inside AI Gateway's logging rather than bypassing it, and is hardened as a credential-forwarding proxy: allowlisted destinations, fail-closed secret, opaque rejections, and refused upstream redirects (Workers' `fetch` replays `Authorization` cross-origin). This also retired a misdiagnosis that had disabled both NVIDIA DeepSeek routes as NVIDIA-side entitlement gating; they were failing for the same path reason and are re-enabled. Because the behaviour is undocumented and unobservable offline, `tests/live/test_ai_gateway_contract.py` probes the real gateway weekly from `contracts.yml`, with a canary that fails if Cloudflare ever starts honouring the registered path.  **Lane registry + throughput reconciliation (2026-09-03):** three defects kept the producer lanes from filling quota. (1) `INGRESS_PURPOSE_RESERVATIONS` reserved capacity under keys no client sends (`topic-tags`, `moments`) against real purposes `topic-tags:tagger`/`:prelabeler`/`r6-moments`/`r6-judge`; because admission subtracts every *other* purpose's reservation from a job's usable headroom, those two unreachable keys withheld 10,000 of 30,000 daily ingress write units from every real lane while being unusable by the lanes they named, and four research purposes had no entry at all. Replaced by a canonical `llm_lanes` block in `config/site_config.yml` keyed by exact purpose, compiled to the Worker's `ingress_reservations.json` by `scripts/compile_llm_lanes.py` and drift-checked at deploy; an unregistered purpose is now rejected (`purpose_not_registered`) rather than absorbed, and a sub-purpose does not inherit its prefix's budget. (2) Model choice was split between config (`tagging`/`moments`) and Python constants (chapters, tournament, R5 benchmark); all now resolve from that one block, values unchanged so no recipe hash or artifact is affected, with the recipe-affecting strings pinned in `tests/test_llm_lanes.py`. (3) Throughput: the binding constraint is the shared 100,000/day DO row-write budget, not the 50-subrequest ceiling — `MAX_BUNDLE_JOBS` 4→8 would project 114% of it — so `MAX_BUNDLES_PER_UTC_DAY` goes 1,000→1,400 and `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 30,000→24,000 (ingress was admitting 12,000/day against a 4,000/day drain, growing backlog with write budget that could fund dispatch), lifting the dispatch ceiling 4,000→5,600 calls/day at 69% of the write ceiling. Completes Phase 4 call-site batching for `tournament.py`/`r5_benchmark.py` via a shared run-scoped `PerModelBatchingBackends`, removes the tournament's hard two-sample clamp (~32 jobs/day), makes a failed submission exit non-zero instead of 0, and gives the lane workflow steps a step-level timeout so a 180-minute overrun fails red instead of being cancelled grey with nothing persisted — which `tag.yml` hit on eight consecutive scheduled runs, 2026-08-26 to 09-02. See review/44 "Lane registry and throughput reconciliation (2026-09-03)". **Gemini free-tier hard input ceiling + a silently-deferred `/remedy` path (2026-09-04):** live-tested against the real Gemini API — `tpm` on the free tier is a hard per-request cap with no burst room above it (a single request over the usable window fails outright regardless of idle time), and the real usable ceiling can sit well below both `tpm` and the model's advertised context window (confirmed on an otherwise-idle model: ~125,000 actual vs. the `250000` both config and Google's own quota error report); NVIDIA's free tier, by contrast, accepted a real request ~3x its configured `tpm` outright, so this is provider-specific, not a blanket scheduler rule. `LLMRoute` gains an opt-in `hard_input_ceiling` (`citypods/compute/llm_policy.py`), set only on the 14 Gemini/Gemma routes (`config/provider_limits.yml`; conservative interim values pending per-model calibration), enforced in `select_route` and in the Cloudflare Worker's token-bucket pacing (`workers/llm-dispatch-v2/src/pacing.js`, previously assumed every route could burst 5 windows deep). `COUNCIL_MOMENT_MODELS`/the `chapter-locator` lane gain `deepseek/deepseek-v4-pro` + `moonshotai/kimi-k3` (free NVIDIA routes, no hard cap) as overflow. Separately, `citypods/audit_remedy.py`'s `/remedy`-comment classification had no `purpose` set, so a capacity miss silently persisted a deferred handle for the unrelated `llm-deferred-sweep` cron to retry hours later, disconnected from the original request — fixed with an explicit `purpose` + immediate `discard_deferred` on a capacity miss, plus a token-budget cap on its evidence bundle. Mistral's `mistral-large-2512` (`403` live) and NVIDIA's `nemotron-3-ultra-550b-a55b` route (`404` live) are both flagged, not fixed, here. See CHANGELOG's matching entry for full detail. **Initiative 20 — endpoint characterization & failure-class-aware backoff (review/45, 2026-09-08; Shipped in PRs #1617–#1622, 2026-09-09):** generalizes that one-off live Gemini test into a repeatable loop across all 69 routes. The Worker previously collapsed every provider 429 into one "we went too fast" response — a route penalty plus `MAX_429_RETRIES=1`, after which the job was **failed**, the only transient-looking status that destroys work (402/5xx/upstream-400 all requeue). Across a catalog that is mostly free tiers and free-router aggregators, a large share of 429s are the provider's own pool saturating, unrelated to our rate. Initiative 20 adds a nine-value failure taxonomy (`own_rpm`/`own_rpd`/`own_tpm`/`upstream_capacity`/`gateway_limit`/`payment_required`/`request_defect`/`server_error`/`unknown_429`) in a shared signature table duplicated across `workers/llm-dispatch-v2/src/classify.js` and `citypods/compute/llm_failure_class.py` with a drift-guard test; a live probe harness (`citypods/llm_rate_probe.py`, dry-run by default, capped, free-routes-only) that measures enforced RPM, burst capacity, real input ceilings, and actual recovery timing versus advertised `Retry-After`; per-class route penalties (a daily-quota 429 blocks to the provider's next zoned midnight instead of 60s; a token-quota 429 zeroes the token bucket; an `upstream_capacity` 429 takes a short escalating cooldown and accrues **no** `buffer_seconds` or `throttle_streak`); a terminal 429 that **requeues instead of failing**; direct-transport parity with 10-attempt sibling route capacity retry; and a bounded `(utc_day, route_id, failure_class)` counter exposed through the existing `/v2/stats`. Shipped in PRs #1617–#1622 per review/45 §20.11. **Throughput review (2026-09-23, [PR #1831](https://github.com/BashfulBits/city-meeting-podcasts/pull/1831)):** live `/v2/stats?detail=1`, AI Gateway logs, and 1,727 paired B2 payload/result samples showed ~1,000–2,000 calls/day against the ~5,600/day write-bounded ceiling, with Gemma, Flash Lite, and NVIDIA's Nemotron capacity idle. Causes and fixes: the admission-time call-duration allowance left 5s of each 25s window usable (window now 30s, allowance 2s — the window bounds call *starts* only); a never-decreasing `margin_tokens` reservation floor made every Gemma job reserve more than its route's TPM (replaced by a bounded window of recent input-token ratios and output sizes, plus settle-to-actual on success); a static chars/4 estimate compared against provider-unit ceilings (new per-route `input_token_ratio`, applied in `select_route` and the Worker); oversized queue-head jobs blocking a ceiling-bound model (bounded `MAX_CANDIDATE_LOOKAHEAD` read, calibrated per-job check); 404/410 failing jobs while the retired route kept full capacity (`route_unavailable` requeues and stands the route down); and NVIDIA's slow Gemma leg holding the shared concurrency Nemotron needs (paused). NVIDIA's retired DeepSeek models are replaced by `deepseek-v4.1-flash`, which serves three pools from one ledger via the new `also_serves` route field. **Pre-labeler sizing + shadow evaluator ([PR #1832](https://github.com/BashfulBits/city-meeting-podcasts/pull/1832)):** pre-labeler batches are sized to the highest-quota live Gemma route (≤8,333 raw tokens; scaled input + output budget within one minute of its TPM), the lane budget rises to 2,000 jobs/day, and a gemma-4-26b shadow evaluator (`topic-tags:prelabeler-shadow`, audit-only, no reservation) assesses the same subjects; human reviews are mirrored into its own calibration row through the tag's truth, and the weekly digest compares evaluators, so its precision is measured before it is ever considered as a 31b backup. The tags completion cache now treats owed evaluator work as dirty, which the backfill needed and which also unblocks production re-evaluation after a pre-labeler model/schema change. **Write budget re-derived (2026-09-23):** the account's Durable Object row-write budget, not provider capacity, is the binding limit. Measured billed rows (`workers/llm-dispatch-v2/bench/rows-written/`, `src/write_budget.js`) are ~45–60 per completed job, so the Worker now caps dispatch leases per day (`MAX_LEASES_PER_UTC_DAY`), ingress fell to 5,800 units/day, lanes were rescaled, and `validateConfig` refuses caps whose worst case exceeds 90,000 rows — ~1,300 LLM jobs/day end to end. The next lever is fewer billed rows per job (redundant job indexes, per-attempt bookkeeping) or Workers Paid. Still open and a maintainer decision: letting `chapter-agenda` spill onto Flash Lite (its model list is part of its recipe hash). **DO row-write reductions (2026-09-23):** the Free plan's 100,000 billed rows/day (every index entry and trigger write counts) capped throughput at ~1,300 jobs/day at a measured 44.3 billed rows per completed job (`bench/rows-written`, workerd). Tier 1 ([PR #1838](https://github.com/BashfulBits/city-meeting-podcasts/pull/1838), shipped) dropped three unused `jobs` indexes and the non-terminal `updated_at` bump (→ 30.3). Tier 2 ([PR #1840](https://github.com/BashfulBits/city-meeting-podcasts/pull/1840)) makes `job_models` a clustered `WITHOUT ROWID` table with a unique `(job_id, model)` index, drops `idx_attempts_created` (attempts pruned by rowid), samples calibration 1-in-4 once a 32-sample window is full, and folds same-row bookkeeping writes into single statements (→ 25.3). Tier 3 ([PR #1842](https://github.com/BashfulBits/city-meeting-podcasts/pull/1842), shipped) retires a completed job by consumption rather than age — the client deletes its B2 objects only after persisting the result, and `/v2/jobs:retire-batch` deletes the row only while it is still `completed` with the same `result_key` — and replaces the three queued-count triggers with explicit deltas plus an hourly exact recount (→ 21.3). Tier 4 ([PR #1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)) writes each route/provider pacing ledger once per claim and folds same-route successes into one settlement per `completeBatch` (non-success writes flush first, preserving per-job order), and makes `bundles` `WITHOUT ROWID` with a bundle deleted when its last job settles (→ ~20, more when a bundle puts several jobs on one route). Larger bundles (P2) were left unchanged: bundle size is bounded by the 50-subrequest ceiling it shares with cleanup, not by rows. The remaining options and their trade-offs are tracked in [#1844](https://github.com/BashfulBits/city-meeting-podcasts/issues/1844). **Tier 5 (#1844, 2026-10-07), one measured PR per step, ledger in `bench/rows-written/README.md`:** (1) `job_models` drops its `(job_id, model)` index; jobs record their queue keys in `queue_models` and unindex by primary key (21.58 → 20.58 rows/job at one model, 27.18 → 24.18 at three); (2) an unchanged idle claim outcome is persisted every ten minutes instead of every tick (idle tick 2 → 0.2 rows, ~2,600 rows/day saved); (3) the executor stops calling `attemptStarted` before each provider call: the claim and granted 429 retries count attempts in rows they already write, and the executor fences on the claimed lease deadline (20.58 → 17.58 rows/job); (4) per-attempt `attempts` rows give way to per-day `attempt_usage` cells (one per lane and route per completion) and an `attempt_outcome` log line for failures (18.62 → 16.40 rows/job including retention); (5) the `bundles` table moves into the scheduler row and each transaction's scheduler changes ride on its accounting write (16.40 → 15.40). Net: 22.6 → 15.4 billed rows per first-try one-model job, ~4,000 → ~5,800 jobs/day at the 90k safe stop before retries. |
+| **Provider catalog reconciliation** | new | **Active L3: automatic new-route input discovery shipped (#2445); route-addition input-evidence projection remains open (#2271); evidence-gated removal activation is in progress (#2274).** | [`review/48`](48-provider-catalog-reconciliation.md) · Slice 1–4, new-route discovery/report/retry and its automatic weekly activation are shipped (#2169, #2182, #2189, #2191, #2193, #2201, #2275, #2281, #2445). Weekly input discovery requires a new free route, reachability, structured-output support and AA strictly above GPT-OSS-120B. Input evidence alone is required for route addition; output/combined probing is diagnostic. The addition PR must carry authenticated input evidence and distinguish provider claims from measured counts/estimates. Recovery evidence is accepted (#2220); the #2274 change will prepare reviewed removal PRs only after fresh catalog and exact-account confirmation, under the shared writer lock. The Groq configured-route pilot remains operational follow-up (#2221); recurring configured-route maintenance is Deferred to review/54 and #2264. No direct config merge or deployment.
 | **DO row-read budget guard** | new | **L3 — optimization ready; billing alarm awaits source** | [`review/47`](47-do-row-read-budget.md) |
+| **Judge-consensus admission (JEV anchor judge, route leagues, blind audit)** | new | **L3 by phase (P0 shipped; P1–P4 shipped, shadow running; P6 L2)** | [`review/49`](49-judge-consensus-admission.md) · replaces the human tag/moment review gates with multi-judge consensus, automatic route leagues and a capped ≤10-minute blind audit; capacity worked to 500 episodes/day under the 100k DO-row limit; [dated 800-meeting capacity evidence](evidence/2026-10-02-llm-800-meeting-capacity.md) with pinned locator accounting (not deployed). **P0 per-verb backlog trend: PR1 module implemented (GH#1968); PR2 workflow shipped in [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983) (GH#1969), live Actions acceptance passed: [`review/50`](50-p0-llm-verb-backlog-trend.md)**; **P1–P5 and P7 (JEV transport, shadow judging of tags and moments, adjudication, audit, calibration, graduation, R5/R6 retirement) are L3 in [`review/53`](53-judge-stack-tags-and-moments.md)**; P6 leagues stay L2 |
 | **Cross-provider agenda & history network** (was: Legistar calendar provider) | new | **L3 for Parts A/B/D; Part C design-complete (JSON API + two live portals verified 2026-07-12), awaiting a catalog city on OneMeeting** · **ROADMAP R11 — number out of table-position on purpose; sequenced third, right after R10** | [`review/15`](15-legistar-catalog-provider.md) · re-scoped from Granicus/Legistar-only into three goals (HTML/portal agenda URLs, PDF agenda URLs, extended meeting history). **Implementation decision (maintainer-confirmed 2026-07-13):** the Granicus adapter becomes archive-first (`ViewPublisher.php`, not capped RSS); a verified Legistar calendar is a composition/backfill source for missing video rows and durable agenda-only records, never a guessed replacement. Phase 1 is [PR #906](https://github.com/BashfulBits/city-meeting-podcasts/pull/906) for [#903](https://github.com/BashfulBits/city-meeting-podcasts/issues/903); Phase 2 [#904](https://github.com/BashfulBits/city-meeting-podcasts/issues/904) retains no-video rows in a separate append-only calendar catalog and renders them outside RSS; Phase 3 [#905](https://github.com/BashfulBits/city-meeting-podcasts/issues/905) gives Swagit first-party agenda/minutes parsing rather than a Granicus-archive substitution. Granicus directly markets three parallel agenda products (Legistar, OneMeeting, Agenda PE) any of which may apply to a Granicus- or Swagit-primary city, plus CivicClerk cross-referencing for CivicPlus cities. **Appendix P (added 2026-07-12, extended to exhaustive same day)** censuses the wider vendor landscape — IQM2/NovusAGENDA (Granicus sunset 2027-09-30: migration tripwires, not build targets), CivicEngage Agenda Center, Municode Meetings, BoardDocs, CivicWeb, eScribe, AgendaQuick (confirmed Swagit hook), SIRE, ClerkBase, BoardBook (TASB — most TX-relevant), Simbli, Catalis, Streamline, independent video hosts (Cablecast, TelVue, Viebit, BoxCast, Open.Media, Castus, PEG Central, IBM Video), a dedicated YouTube analysis (no separate government platform exists — ordinary government channels; Data-API metadata path recorded, media-download decision deliberately deferred), and the unstructured CMS-tier long tail — with URL patterns + verification status per platform. Feeds R3 |
 | **LLM backend** (new, Infra) | new | **Shipped** (#919, 2026-07-13) · **ROADMAP R2** | [`review/27`](27-llm-backend-and-provider-routing.md) · LiteLLM owns provider translation and response normalization; direct routes return `JobResult`, while rate-limited routes enqueue through R10 and return `JobHandle` for later reconciliation; Mistral dispatch integration, provider choice, budget-aware reconciliation, and the H13 `tag`/`summarize`/`soundbite-select` verbs are implemented; R5/R6 remain its first feature consumers. Deferred recovery now repairs the advisory index, consumes a bounded terminal feed, and provides explicit stuck chapter-agenda reconciliation that cancels only confirmed remote jobs while retaining in-flight or unsupported handles. |
 | **LLM quality tournament & champion routing** (new, Infra) | new | **Implemented locally: engine, rolling ticket, and merge-gated route proposal** · [PR #1186](https://github.com/BashfulBits/city-meeting-podcasts/pull/1186) | [`review/34`](34-llm-quality-tournament-champion-routing.md) · weekly per-verb pairwise tournament and a strict `>60%` challenger ticket. A trusted decision opens a scoped route-configuration PR; it never changes production directly or auto-merges. A merged retained-catalog choice starts resumable, recipe-driven bounded backfill without a pipeline-version bump. Complementary to review/35's per-candidate matrix. |
@@ -241,7 +457,7 @@ or backfill change.
 | **Front-end design cycle, accessibility, and funding link** | #55/#20/#54, #50, #16 | **L3** (2026-07-13) · **ROADMAP R8** | [`review/32`](32-frontend-design-accessibility-funding.md) · confirmed the bare `#N` references aren't real GitHub issue numbers (checked — they resolve to unrelated closed feed-health issues) before designing further. Part A specifies a design **process**, not a prescribed identity (corrected same day, see the doc's own header note): ground the direction in this project's own subject matter, draft 2–3 genuinely distinct options, check each against a real boilerplate-pattern checklist, mock up survivors against real content, let the maintainer choose before any template changes — real current-state gaps (the "accordion" is already an accessible native `<details>`/`<summary>`; audio/video labels are bare text suffixes; subscribe buttons have zero iconography) and hard constraints (Apple's official badge verbatim regardless of direction; icon-only controls never acceptable) are fixed regardless of which direction wins. Accessibility gaps found by reading the markup, not generic advice: no `aria-live` on three dynamic updates (search count, play state, copy-RSS feedback), no skip link — plus computed (not eyeballed) contrast ratios for the existing muted-text color in both themes, both passing AA. **Funding platform decided (same day):** split by audience across two surfaces — GitHub Discussions for dev/API support, Ko-fi + Discord (native first-party role-sync, unlike GitHub Sponsors which has no official Discord integration) for sponsors/community/feedback — pointed at from a new self-hosted `/support/` page rather than a third-party link-in-bio tool; `<podcast:funding>` defaults every city's feed to that page's URL via a new site-wide config default. GitHub→Discord activity updates are a native zero-code webhook; a scheduled roadmap-digest bot is flagged as a real future item, not designed here. **Part A also gains a Substack forward-look**: a future subdomain-hosted newsletter/digest layer (confirmed one-time $50 mapping fee) means whichever visual direction is chosen should stay reproducible within Substack's own customization surface |
 | Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 · **deprioritized below R6/R7 (diarization)/R8 (2026-07-12)** | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later. **Why lower priority:** the safety-critical part already shipped as H16 PR3 (withholding empty/broken media, redacted evidence, weekly digest); what's left here is an observability/trust *presentation* layer on data that's already being captured safely — valuable, but nothing user-facing breaks by deferring it |
 | Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 · **deprioritized below R6/R7 (diarization)/R8 (2026-07-12)** | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. **Why lower priority:** this is an evidence-gated watch item with no GitHub issue behind it — there's nothing to build until a `run_history.jsonl`/exit-143 telemetry check confirms the trigger has actually fired, which hasn't been done |
-| Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L3 | **Shipped** (2026-08-23) — **ROADMAP R9** · normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard enforcing 100% dependency coverage across Python and Worker runtimes; monthly immutable-URL/checksum FFmpeg build workflow (`.github/workflows/build-ffmpeg.yml`). |
+| Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L3 | **Shipped** (2026-08-23) — **ROADMAP R9** · normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard enforcing 100% dependency coverage across Python and Worker runtimes; monthly immutable-URL/checksum FFmpeg build workflow (`.github/workflows/build-ffmpeg.yml`). CI validator install hardening (2026-10-02): verified Renovate pin, reviewed hygiene updates, and npm failure diagnostics; see `review/22` §CI validator tooling. Python lanes + Renovate lock tracking (2026-10-12, PRs #2292–#2301): workflow Pythons read from `.python-version` / `.github/python/asr/.python-version` with the `python-compat.yml` lane gate; per-lane generated `constraints/*.in` so Renovate's pip-compile manager tracks each lock (LLM stack automerged at latest, GitHub+OSV security PRs in every lane, Python and full lock refresh behind Dashboard approval); see `review/22` §Python versions and lanes. |
 | **System architecture evolution & refactoring** (umbrella) | new | **L3 dev-ready per workstream** (detailed 2026-09-04; reconciled against `main` and extended with Initiative 20 on 2026-09-08) | [`review/45`](45-system-architecture-evolution-and-refactoring.md) · Architectural program of 20 initiatives plus state-store partitioning (§2) and v1 retirement (§3), each individually L3 dev-ready — exact file/function references, algorithms, schemas, and test names grounded in the current codebase, not a design-discovery placeholder. Not an adopted sprint schedule: §5 sets the dependency order, and a handful of destructive/irreversible steps (the state-generation pointer flip, deployed-Worker deletion and secret removal, the SSRF transport design) still require explicit maintainer sign-off before executing. Review/26 duration normalization and review/34 tournament work are explicitly superseding/owning designs that review/45 points at rather than restates. |
 
 > **Reprioritized 2026-07-12 (maintainer decision): records → managed SQL moves decisively out of Phase R
@@ -508,6 +724,20 @@ suffix; subscribe buttons have zero iconography at all), Apple's official "Liste
 badge policy (confirmed safe to use verbatim per its own published guidelines), the Overcast/Pocket
 Casts/Castro licensing gap (no independently-verified official asset, so those fall back to a neutral,
 non-trademarked glyph), and the icon-only-controls-never-acceptable accessibility constraint.
+
+**Feed-page history, pagination, and RSS cap (maintainer direction, 2026-10-07; add to Part A).**
+The desired podcast RSS cap is 300 episodes; website history should remain reachable beyond that
+window, with a clear note that podcast apps receive only the latest 300 RSS items. Whether to keep a
+fixed recent-list size or paginate through retained meetings is now an open design choice. The
+current site has a 500-item "Recent meetings" list and one unpaginated archive page listing retained
+episodes. Compare the user experience, page size/performance, implementation cost, and whether
+pagination belongs on the main feed page, the archive, or both. This is a project choice, not an Apple
+requirement: Apple's current
+[RSS requirements](https://podcasters.apple.com/support/823-podcast-requirements) do not specify a
+300-item maximum. The current `max_episodes` setting caps both RSS and the feed-page list, so the
+redesign must split those limits without reducing historical retention or search inputs. The live
+search index is currently unpublished; its restoration is a separate dependency, not something this
+cap change can claim to fix. Detailed options and acceptance checks are in [review/32](32-frontend-design-accessibility-funding.md#feed-page-history-pagination-and-rss-cap-maintainer-direction-2026-10-07).
 
 Accessibility (Part B, independent of Part A's process) gaps found by reading the
 markup, not generic checklist advice: no `aria-live` region on three dynamic updates (search-result
@@ -961,6 +1191,19 @@ same interface.
 
 ## §6. Deferred backlog (ongoing)
 
+**Provider limit revalidation and burst/refill characterization — L2, #2264.**
+[review/54](54-provider-limit-characterization.md) preserves the former review/48 expansion.
+Periodic cap/throughput verification, exact quota scopes, production daily/monthly evidence,
+provider-canonical re-check and dispatcher feedback/parity are future work. This must not block
+review/48 route additions/removals or its bounded discovery-time request-cap search.
+
+**Replace WhisperX alignment with the in-repo MMS_FA CTC aligner — low priority, #2318.**
+WhisperX 3.8.x pins `torch~=2.8.0`, which blocks the torch security fixes and ASR Python 3.14
+(accepted risk in [review/22](22-dependency-and-reproducibility-policy.md)). Moving known-text
+alignment (`asr.py`) onto `ctc_align.py`'s MMS_FA path would free the pin, but it is output-affecting
+and buys little today. Promote only if the review/22 re-review triggers fire and WhisperX hasn't moved.
+
+
 Items intentionally not in a near-term phase; revisit as scale or demand warrants. (Enumerated in §4
 "Deferred backlog".) Notable rationale: **directory index sharding (#42)** remains deferred because
 per-meeting pages make meetings independently crawlable; promote it only if `review/16`'s directory
@@ -1006,6 +1249,36 @@ Whenever this file, `VISION.md`, or `ROADMAP.md` changes, verify:
 - [ ] **Breakout freeze** — every shipped initiative's breakout is stamped "Implemented in PR #N".
 - [ ] **Cross-link integrity** — links across root docs ↔ this doc ↔ breakouts ↔ memory resolve.
 - [ ] **Bump** the `Status: LIVING · last updated` date.
+
+**2026-10-09 verification record — review/48 Slice 5:** the standing boxes above are reusable
+checks, not permanent assertions that every subsequent edit is verified. For this change, VISION's
+E/F/C directions and Deferred scope remain unchanged; ROADMAP, this catalog and review/48 agree on
+L3 design accepted in merged #2208, disabled quota admission shipped in #2214, final offline
+implementation prepared in #2218 under #2209, and separate live gates.
+No new initiative or runtime Shipped entry is introduced. Existing Slice 4 shipped status is backed
+by #2201, its CHANGELOG entry and ARCHITECTURE description; Slice 5 is not stamped implemented.
+Checked all 72 unique local Markdown link targets in VISION, ROADMAP, this index and review/48;
+none are missing. The status date is updated. This is a scoped change verification, not a new
+repository-wide completeness audit or permission to activate probes.
+
+**2026-10-15 verification record — P3 daily caller PR #2447:** VISION and the Phase-H roadmap
+ordering are unchanged. The P3 catalog narrative matches review/51: the Worker caller and separate
+observation log shipped in merged #2447, while GitHub publication and the P2 connection remained
+open at that point; exact route admissions and JEV dispatch qualification remained open. No Shipped
+status was claimed for the not-yet-merged items. The
+`changelog.d/p3-daily-worker.md` fragment describes the same scope, and ARCHITECTURE records the
+report-only artifact boundary. Checked 280 Markdown links in this document; all local targets
+resolve. This is a scoped status check, not approval to enable the daily workflow.
+
+**2026-10-15 verification record — P3 GitHub handoff PR #2449:** this entry supersedes the earlier
+#2447 record for current implementation status. PR #2447 is merged; #2449 merged at
+`34b285487d3b04c9863efbbbda020d101fe4e85f`, completing bounded proposal PRs, manual issues, and
+typed P2 feed dispositions through the existing issue reconciliation path. P3 implementation is
+shipped; production stays shadowed until exact route/parameter admissions pass and a monitored
+end-to-end cycle completes. The evaluated Sol, GLM Flash, and DeepSeek settings and remaining
+admission-contract mismatch are recorded in review/51. Changelog content is kept in fragments, with
+no direct CHANGELOG.md edit. PR #2449 validation included Ruff, formatting, targeted tests, and the
+full local suite. This scoped verification does not authorize activation.
 
 ---
 
@@ -1077,3 +1350,845 @@ Pointers, not copies — the source of truth for each:
 - **Security** — SSRF gate, ffmpeg whitelist, defusedxml, **untrusted LLM output**:
   [SECURITY.md](../SECURITY.md), [`review/04`](04-audit-bugs-security.md), `security.py`.
 - **Endpoint contracts / fixtures** — [`review/05`](05-endpoint-contract-tests.md), `contracts.yml`.
+
+### review/50 PR1 implementation clarification (GH#1968)
+
+The maintainer confirmed in chat on 2026-09-30 that the moments `llm-capacity` token must remain
+in the specified ownership table although it occurs in neither the committed fixture nor
+`citypods/stages.py`; it is retained for future use in the review/50 plan. The event shape and
+fixture counts match the specification (184 events: tag 24, chapter-agenda 44,
+chapter-locator 39, moments 77); every fixture token is classified. Reports use the golden
+table's displayed precision (mean and throughput one decimal; slope and drain two), with
+full precision retained during trend and constraint calculations.
+
+
+### review/50 PR2 live preflight (GH#1969, 2026-10-02)
+
+The workflow is prepared, but live acceptance is blocked by the specified restore path.
+The nine-secret read-only preflight selected 375 recent `state/run_events/` objects; none appear
+in the state manifest. `pull_state(..., only_paths=...)` honors that manifest and restores zero
+files, so the report has 375 skipped files and no events. A direct GET of the latest listed event
+succeeds. The proposed correction is confined to `ops/backlog_trend.py`: download the exact
+listed keys without the state snapshot manifest. The maintainer approved the work needed to validate the catalog backlog on 2026-10-02. The
+correction reads exact listed keys with bounded concurrency in the backlog reader and adds
+regression coverage; shared `statesync.py` remains outside scope. The repeated nine-secret live read passed with zero skipped files, no unknown tokens, and seven days of events for each of six verbs. Agenda backlog 727 matches Actions run 37083865479. First manual Actions acceptance remains pending workflow registration on main.
+
+
+### Maintainer-directed lifecycle adaptation (2026-10-03, PR #1983)
+
+The maintainer requested automatic discovery of new LLM verbs and tolerance of retired jobs.
+This supersedes P0's fixed six-verb scheduled consumer and fail-on-unclassified requirement.
+The read-only consumer discovers purposes from `llm_lanes` and additional LLM stage snapshots
+from recent run events. Existing shared-stage token ownership remains explicit; generic stage
+reasons are classified only by known semantics. Unknown tokens remain visible, do not fail the
+scheduled report, and suppress capacity recommendations for the affected row. Strict CLI mode
+remains available for diagnostics. Registry removals mark legacy rows retired; historical unknown
+stages are unregistered. Neither recommends capacity. Missing telemetry is shown as unmeasured
+(null backlog), never a measured zero. An empty event window is a successful unmeasured report;
+unreadable input files and storage access failures remain diagnostics/errors.
+
+Run events do not include per-purpose ownership. A new purpose sharing another verb's stage is
+automatically listed but cannot have its backlog attributed until its producer emits distinct
+telemetry. The reader does not guess from model names or aggregate stage counts. Producer telemetry
+changes remain a separate design task; no producer, Worker, schema, quota, or recipe changes here.
+
+
+### P0 backlog report accepted (2026-10-04)
+
+PR #1983 is merged; [first manual Actions acceptance](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37179726987) passed with zero skipped files,
+no unknown tokens and seven days for all six established verbs. review/50 is frozen with the
+implementation and acceptance evidence. Registry additions/retirements are automatic diagnostics;
+precise new shared-stage attribution still requires distinct producer telemetry. P1–P7 maturity
+and ordering are unchanged.
+
+
+### Purpose-bound telemetry follow-on (GH#2001, 2026-10-04)
+
+**Shipped / [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004):** the maintainer explicitly requested the shared producer/job
+layer follow-on to P0. [review/52](52-purpose-work-telemetry.md) owns the registration contract,
+eligibility census, shared work handles, aggregate run-event snapshots and automatic report migration.
+This extends frozen review/50's read-only scope without changing P1–P7 ordering or adopting review/49's
+incremental ledger. New purposes need their registration and producer eligibility semantics, while
+telemetry deduplication/submission accounting/report discovery are shared. Research units and partial
+coverage remain explicit; no quota, recipe, pipeline-version, Worker or artifact changes are included.
+
+
+Addison verified joint subscriptions (#2011, shipped in PR #2026): GUID295839 and310072
+join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council canonical search
+ownership, recording UIDs and audio are preserved. The full replay adds exactly three P&Z and two
+CPAC memberships, with no removals or other feed changes. Other historical assignments remain
+active evidence tasks.
+
+
+Historical unresolved sweep: **L3**, maintainer-approved typed read-only contract in review/51,
+tracked by #2013. Separate from gated P2a model policies and notification automation.
+
+
+Offline unresolved-recording sweep (#2013) is prepared, unmerged. The committed case register
+keeps known historical and false-inclusion cases visible; the CLI reads every cached source
+once and reports unmatched raw recordings, assignment changes and missing registered records.
+Feed assignments mean selector eligibility under the supplied config snapshot, not verified live
+RSS exposure. Sources absent from local cache remain outside this snapshot. No legacy remedy
+dispatch or scheduled notification is enabled; P2a model-policy schemas remain independently gated.
+
+
+Maintainer lifted the review hold2026-10-04: code PRs receive spaced CodeRabbit reviews,
+documentation-only PRs skip new requests. This paragraph records historical review policy; it is
+not a hold. Follow-on L3 slices in review/51 remain individually scoped, and human merges only.
+
+
+Council ownership correction (#2015) shipped in PR #2019:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony, preserving
+all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search attribution is
+corrected where Council previously matched incorrectly. No audio invalidation, pipeline changes
+or backfill.
+
+
+Bond family correction (#2016) shipped in PR #2020: four verified committee recordings gain
+Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
+are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
+Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
+
+
+TIRZ ownership correction (#2017) shipped in PR #2021: official dated board agenda moves only
+GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search attribution
+changes accordingly; original raw record, UID and hosted audio remain. After the Council narrowing,
+500 original Council selections remain. No audio invalidation or backfill.
+
+### Dispatch write-accounting correction (2026-10-04)
+
+A live DO log showed `rows_written_today` falling from 4,620 to 4,590 when the constructor
+ran again. The former in-memory tally waited for a later claim/enqueue flush; repeated
+hibernations discarded it. Cloudflare measured 65,457 writes from 00:00–17:00 UTC, while the
+scheduler reported approximately 4,600. The 05:00–17:00 dashboard window measured 48,945
+writes, consistent with the API; this was a time-window difference, not conflicting billing.
+
+The corrective [PR #2008](https://github.com/BashfulBits/city-meeting-podcasts/pull/2008)
+persists accounting atomically with each writing transaction, includes its
+own row, restores memory on rollback, and provides an authenticated same-day monotone floor
+repair with an observation cutoff and audit reason. The real-runtime benchmark verifies
+recreation and measures 21.58 billed rows per completed first-try job at four jobs per bundle.
+Projection constants include the added writes (8 per bundle, 28 per lease, 5 per cleanup job);
+configured quotas and safe stops remain unchanged. No artifact backfill or pipeline version
+change is required. Historical lost counts require an explicit platform-derived estimate;
+a sparse live-tail sample is insufficient to recover all daily events.
+
+**Maintainer-authorized live repair (2026-10-04, PR #2008 remains open):** deployed commit
+`98b60591` as Worker version `eb7bd989-b393-418e-9cbc-df563ab0d112`. A five-minute,
+automatically expiring global pause held new claims during deployment and repair; it was
+explicitly resumed immediately afterward. Cloudflare's account aggregate for the only live
+DO, from 00:00–17:30 UTC, measured **66,861 billed rows**. The operator raised the floor to
+**67,861** (measured total plus an explicit **1,000-row reporting-gap reserve**); the repair's
+own two writes produced 67,863, and resume's two writes produced **67,865**. The prior live
+counter was 4,681. Both admission gates remained open at the unchanged 90,000-row safe stop.
+This is a conservative repaired estimate, not a claim that sparse logs recover every event.
+
+
+### Addison implementation and remaining gates (2026-10-04)
+
+Public Input/BZA display (#2010), verified joint subscriptions (#2012), read-only unresolved
+sweep (#2014), Council exact ownership (#2019), Bond family (#2020), and TIRZ ownership (#2021)
+are **Shipped** through human merge commits. Build & Deploy succeeded on main `1a90c62e`.
+Their bounded contracts in review/51 are frozen; remaining historical cases remain active.
+
+CodeRabbit reviewed #2010 before its prose corrections. #2012/#2014/#2019/#2020/#2021 were
+human-merged before their queued substantive reviews; skipped bot checks are not reviews.
+This review gap remains explicit, rather than being represented as completed bot coverage.
+Joint participant discovery in website search/browse is tracked by #2018 for the R8 redesign,
+with canonical page ownership separate from proven participating-body membership.
+The 2016 joint subscription, historical excerpts/media, missing official meeting recordings,
+PID winner approval, and P2a proof/binding schemas retain their specific evidence/approval gates.
+
+
+Archive-only visibility: **L3**, maintainer approved all six Addison dispositions and the exact
+serialized implementation contract in review/51. Retention and direct archive access remain separate from public discovery.
+
+
+Archive-only #2023 is prepared in a separate code PR: six exact Addison dispositions filter
+public discovery across the shared source while direct raw archives/audio remain. Source-scoped
+policy hashes rebuild feed/search/browse projections on changes and reversal. Read-only deployed
+RSS verification closed 56 assignment cases; eight historical cases remain visible. Human merge
+and current-head CodeRabbit/CI validation remain required; no audio backfill or stage bump.
+
+
+September2016 Council/P&Z joint correction: L3 bounded review/51 contract; restore only the
+missing Council subscription, retain P&Z and stable recording identity, use existing canonical
+Council page choice with participant discovery deferred to #2018. Human merge/deployment gated.
+
+
+September 2016 joint correction (#2025) shipped in PR #2026: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds exactly
+one Council membership (500 to 501), with no other feed changes. Existing canonical page attribution
+is Council; participant discovery remains the #2018 redesign follow-up. Its deployment case is
+resolved; #2026 merged before substantive review, an explicit review gap.
+
+Arlington Community and Neighborhood Development ownership: L3 bounded review/51 contract.
+Four official standalone committee recordings move out of Council into a dedicated exact-label
+feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
+
+
+Arlington CND #2038 shipped in PR #2040: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Five deployed ownership cases were later verified in PR #2059;
+the All Meetings historical RSS truncation is not a completeness claim.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `355bad56` Build & Deploy run
+37480863678 succeeded. CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining
+actionable issues; #2026 was merged before its substantive review slot, an explicit review gap.
+No stage/audio invalidation or backfill. Both joint feeds carry the same original UID/audio; its case
+is resolved.
+
+The deployment report verifies all six approved Addison Archive-only UID/GUID pairs absent from all
+ten current Addison RSS feeds and both Town Meetings browse pages, with all six direct raw pages
+returning 200. Citizen Advisory UID`63b22f80ce9500ff` remains in the Town Meetings RSS and browse
+pages; the maintainer accepted this Public Input classification for P0 on 2026-10-07. Its exact
+program-to-recording link remains unknown, and the archive listing count is not evidence of a
+missing part. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
+was not independently observed. The six publication dispositions are resolved, while their
+historical content/institution uncertainties remain recorded. The Citizen Advisory classification
+case is also closed by the maintainer's 2026-10-07 decision; the historical binding uncertainty
+remains documented. The register now has 160 resolved and nine open cases; see
+[the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
+
+Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
+2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
+
+Dallas Redistricting Council leakage: L3 bounded review/51 contract, official dated Commission
+agenda verifies one wrong Council override; preserve existing Commission subscription/UID/audio.
+
+
+Dallas Commission correction #2034 prepared: remove only GUID203320 Council inclusion;
+retain dedicated Commission feed and original UID/audio. Human merge/deployment verification gated.
+
+Denton Health & Building Standards: L3 bounded review/51 contract for four exact verified
+commission records, dedicated feed and Council correction; preserve Council/Library joint.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library Board: L3 bounded review/51 contract for two standalone transfers and one
+Council/Library joint membership addition, preserving the Council subscription.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ board ownership: L3 review/51 exact-eight-record contract, separate Zone1/Zone2
+feeds, Council departures with original UID/audio retained.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+Denton Special Citizens Bond Advisory Committee bounded ownership is L3 in review/51
+(#2051): exact June 6, 2019 GUID/body only; preserve identity and all other feeds. Deployment
+verification remains a separate gate; no standing or dissolution inference is authorized.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+Denton bounded ownership corrections are Shipped in #2043/#2044 (Health Commission),
+#2046/#2047 (Library), #2049/#2050 (TIRZ boards) and #2052/#2053 (2019 Bond committee).
+Review/51 contracts are frozen/stamped. Deployment verification and the explicitly recorded
+Health/TIRZ/Bond review gaps remain audit obligations; this is not full catalog completion.
+
+Arlington Environmental Task Force exact six-record correction is L3 in review/51 (#2055).
+Preserve All Meetings and raw identity; no standing-status or dissolution claim. Deployment
+proof remains separate from the complete-source selector replay.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+### Dispatch quota-schema incident correction (2026-10-05; shipped in PR #2057)
+
+Maintainer-authorized fix for PR #2028's missing startup-readiness entries: quota definitions now
+supply readiness, additive migration, and mutation preflight from the same four-column list.
+Otherwise-current objects add only missing columns, verify before RPC activation, and do no schema
+or data writes on later startups. A zero-row mutation preflight prevents stale quota schemas from
+repeating expired-lease/job/index writes before failure; the instance blocks RPCs until recreation.
+Partial migrations resume at missing columns; transient preflight read errors remain retryable.
+No throughput/quota changes, model/recipe change, pipeline-version bump, or artifact backfill.
+
+Rollout evidence: code `5b3b9f6` deployed through the existing Worker workflow as version
+`266f6645-51c9-41f8-85f3-c7c4e4f4cee9`; detailed stats now succeed. Maintainer-reported 90,000
+account rows supplied a conservative same-day floor (31,780 -> 90,002 including repair writes),
+not an exact billing reconstruction. Live migration added five writes, reaching 90,007; ingress
+and claims remain closed until UTC reset. All 374 Worker tests passed locally and in deployment;
+all 4,925 Python offline tests were verified (the isolated-import test required a separate editable
+installation because the primary checkout was unreadable). Real workerd guards and accounting,
+compiled-config checks, packaging, Ruff/formatting, and PR CodeQL passed. CodeRabbit automatic
+review was disabled; skipped review is not substantive review coverage.
+
+Arlington exact ETF correction Shipped in #2058; review/51 bounded contract frozen/stamped.
+Six deployed ownership checks remain pending. The aborted pre-merge review request is an
+explicit coverage gap, not substantive review completion.
+
+Dallas exact November2023 CBTF ownership correction is L3 in review/51, issue #2062.
+One verified recording only; broader CBTF/subcommittee census remains evidence work.
+
+Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
+4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.
+
+Dallas #2065 four additional verified CBTF recordings are L3 in review/51. Exact inclusion
+only; remaining task-force/subcommittee/town-hall proof remains active.
+
+Dallas #2065 four-record coverage prepared: full5,353 replay changes only CBTF1→5;
+4,933 offline pass14 deselected, wholeRuff463/format pass. CI/review/deployment pending.
+
+### Ownership selector rule audit — L2, October 5 follow-up
+
+Maintainer requests reusable institution rules instead of repeated per-record inclusions where
+labels reliably distinguish bodies. Start with Dallas standing Economic Development versus
+its separately convened 2024 bond subcommittee; use existing complete-label selectors and
+full-source positive/negative replay. Preserve genuine joints and ambiguous-record proof gates.
+The bounded design is in review/51, “Dallas reusable Economic Development ownership rules”.
+Existing prepared PR #2066 remains unchanged in production config/tests; this audit is follow-up.
+
+Dallas reusable Economic Development ownership rules are now **L3**, issue #2068, with the
+11 standing aliases, separate stable bond label, named tests and full-source replay in review/51.
+Status: Prepared; deployment proof remains required for case closure.
+
+Dallas reusable Streets bond ownership rules: **L3**, issue #2081. Complete standing aliases,
+four stable bond labels, preserved GUID exceptions, eleven original fixtures and full-source
+positive/negative replay are specified in review/51. Recording/deployment proof gates remain.
+
+Dallas2017 bond proceeding ownership: **L3**, issue #2083. Exact provider agenda hashes bind
+one formal taskforce meeting and two public town halls despite their shared misleading label.
+Separate exact subscriptions and unchanged original records/audio per review/51; deployment pending.
+
+Separate bounded static search job: **Shipped** in #2087, #2084, maintainer-approved20minute ceiling and
+same-run snapshot/staged publication contract in review/51. No public schema or record writes.
+
+Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
+bounded contract frozen and substantive review gap recorded in review/51.
+
+Dallas #2092 additional three CBTF proceedings: **Shipped** in #2093; verified archive/source
+bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
+Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
+
+Dallas #2094 dedicated bond Critical Facilities institution: **Shipped** in #2095. Exact full
+label, independent institution plus dated archive/source chapter proof; all prior holders
+preserved. Missing August15 minutes documented; deployed verification gates closure.
+
+Dallas #2094 shipped: exact Critical Facilities feed; case open until deployment proof.
+
+Dallas reusable Streets #2081: **Shipped** in #2082; exact2017 #2083: **Shipped** in #2085.
+Review/51 bounded contracts frozen; substantive review gaps recorded. Deployment closures pending.
+
+Dallas bond Flood institution: **Shipped** in #2091, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Original UID/audio verified in live Flood RSS on 2026-10-06.
+
+#2087 checkpoint extension shipped: working shards/cache resume across
+runs, while deferrals overlay only last-complete search output on freshly rendered pages.
+Cross-run completion/deferral/resumption and malformed-checkpoint tests cover the review finding.
+Human merged at 10:04:48 UTC; checkpoint fix lacks substantive review of its new code.
+Review gap retained; live search and archive visibility verification remain outstanding.
+
+Dallas May25 CBTF exact retained binding #2097: **L3, implementation prepared**, review/51; only GUID233037.
+
+### #2098 Fort Worth Gas Drilling Task Force participant — L3
+
+Two exact official opening slates bind125/127 to Council/Task Force joint proceedings.
+Implement the dedicated participant subscription under the bounded contract in
+[review/51](51-unexpected-body-remedy-flow.md#fort-worth-gas-drilling-task-force-joint-participant--l3-2098).
+Preserve both UIDs/audio/Council eligibility; keep cases open until deployment.6334 remains
+a source-version discrepancy, not an approved split or winner.
+
+## Deployed ownership checkpoint — 2026-10-06
+
+Implemented in PR #2099 through #2096 and PR #2100. These bounded contracts are
+frozen; #2100 merged before substantive review. Seven deployed RSS/audio checks
+close only their assignment cases. See [deployment proof](deployed-ownership-proof-2026-10-06.md).
+
+### P0 Dallas Streets dual-feed correction — L3 (#2170)
+
+Restore four explicitly approved historical recordings to Transportation and Infrastructure
+while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
+Independent agenda/source questions stay open; verify deployment after human merge.
+
+### P0 search completion — historical investigation (2026-10-08)
+
+Confirmed within-source progress loss can prevent a bounded search build from ever finishing.
+The investigation led to the per-record checkpoint fix in #2174; keep20minute ceiling. See review/51 and its dated search investigation evidence.
+The four-record Dallas Streets correction #2171 is Shipped; live deployment verification remains
+pending and its independent evidence cases stay open.
+
+### Search per-record resume — Shipped (#2174, issue #2173)
+
+Implemented in #2174; preserve20minute budget and four-hour cadence. Production verification
+is pending behind the existing deployment queue.
+
+Search budget extension: **L3**, maintainer-approved 120-minute work window and 150-minute
+search job timeout, retaining four-hour cadence. Progress is emitted in logs and summary.
+Bounded contract: review/51, Search two-hour budget and progress visibility (2026-10-08).
+
+### Search completed-source record reuse — L3 (2026-10-08)
+
+Approved follow-on: retain private per-meeting search documents after source completion so
+changed sources rebuild only changed meetings. Contract: review/51, Retain meeting documents
+after search source completion. Budgets, cadence and complete-index publication remain unchanged.
+
+### Search HTTPS browser asset loading — L3 (2026-10-09)
+
+Published search currently fails in HTTPS browsers because asset requests use HTTP. Correct
+search-page asset URLs and support existing same-host HTTP shard URLs without rebuilding the
+index. Bounded implementation contract: review/51, Search browser mixed-content correction.
+
+### review/51 P2a policy foundation — Shipped, PR #2213 (2026-10-09)
+
+The maintainer approved the typed official-evidence packet and exact city/source template binding.
+Implement only the policy parser, immutable indexes, deterministic owner lookup and existing guard
+integration specified in review/51. No feed activation, ledger, evidence-v2, model admission or
+production publication changes. P2b/P2c and P3–P5 remain gated.
+
+P2a implementation prepared: strict policy/proof validation and shared source-local resolver;
+production template list remains empty. Persistent excluded/watch dispositions, P2b/P2c and
+model admission remain separate gated work.
+
+P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
+
+P2a merged in [#2213](https://github.com/BashfulBits/city-meeting-podcasts/pull/2213); no templates
+activated. The final minor parser fix has an explicitly recorded fresh-review gap. P2b complete
+coverage report is approved L3, report-only; the maintainer approved its schema and staged
+activation in chat on 2026-10-09.
+
+P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
+
+P2b issue #2216 is **Shipped in PR #2215**, as an opt-in complete body-coverage report. Retained and current
+source observations are replayed without editing assignments; configured matches and policy
+proof remain separate. No daily-alert activation or persistent disposition ledger is included.
+
+P2b code #2217 merged through parent #2215 to main at 01:10:34 UTC on 2026-10-10.
+The final disclosure fix review gap is recorded in review/51. Daily alerts, persistent
+dispositions and feed assignments remain unchanged. All six carried historical cases now have
+approved terminal dispositions; the register is 169 resolved, zero open.
+
+### review/51 P2c1 decision memory — Shipped (#2231)
+
+P2a/P2b and historical closeout are shipped. Next proposed slice is a strict immutable decision
+event and pure causal fold, specified in review/51. Explicit assigned/excluded/watch/not-pursued/
+rejected dispositions stay separate from workflow state. No storage writes, alert suppression,
+model calls or feed changes. Implemented in #2231; exact schema and unchanged-watch semantics
+are approved. Follow with source-event persistence and report-only audit integration as separate slices.
+
+
+### review/51 P2c2a decision event persistence — Shipped (#2237)
+
+Source-local memory validation shipped in #2231. Next proposed contract in review/51 adds
+immutable B2 event append under the existing remedy lease and strict source-scoped reconstruction.
+No storage adapter/routing changes, coordinator, workflow activation or scan suppression. The
+maintainer approved the exact append/strict-load interface in chat on 2026-10-09. Implementation
+is prepared under #2236; later trusted entrypoints and audit integration preserve pending-watch
+grouping and quiet unchanged scans.
+
+
+P2c2a merged at 2026-10-10T04:23:55Z. Final CI passed; substantive CodeRabbit coverage was absent
+before human merge and is explicitly recorded in review/51. No production caller is enabled.
+
+P2c2b trusted decision actions and retry recovery shipped in
+[PR #2244](https://github.com/BashfulBits/city-meeting-podcasts/pull/2244); P2c3a
+remembered-decision comparison shipped in
+[PR #2245](https://github.com/BashfulBits/city-meeting-podcasts/pull/2245).
+They provide callable validation/recovery and a local report CLI. Scheduled callers, automatic
+coverage projection, recurring alerts, and publication coordination remain gated; these are the
+remaining P2 integrations before P3's decision ledger is connected to the production workflow.
+
+P1 completion prerequisite (2026-10-10): maintainer approved scoped existing-route reasoning
+capability metadata and local credential-wrapper evaluation. Exact prerequisite contract is in
+review/51; holdout truth and final production admissions remain evidence-gated. Complete P1
+before the authorized P2 production connection. No new evaluation workflow is required.
+
+### review/51 P1 capability prerequisite — Shipped (#2248)
+
+Merged 2026-10-10 at 855cc593. Native Gemini high-thinking capability metadata, compiler
+high/max support and the independently approved Denton holdout are shipped. Production
+admissions remain empty; P1 live model qualification is still pending. Both CLI and GitHub
+reviews completed; valid documentation findings were fixed and all final-head CI passed.
+Primary and secondary candidate routes each have a 20-request daily cap; local evaluations
+use shared quota accounting and bounded batches.
+
+P1 evaluation continuation #2251 — L3 approved: local immutable per-job checkpoints, explicit
+resume and physical-route daily-cap preflight, with evaluation-only timeout controls. Exact
+file/function/test contract is in review/51. No production activation.
+
+### review/51 independent reviewer capability — L3 (#2253)
+
+Approved 2026-10-10: evaluate existing free NVIDIA Kimi K3 at documented maximum reasoning,
+with shared quota accounting and frozen results. Bounded file/test plan in review/51; no
+production route selection, quota or admission change.
+
+P1 comparison diagnostics: approved bounded Gemini/DeepSeek diagnosis, GLM baseline and
+durable evaluation artifacts; see review/51. Production activation remains unchanged.
+
+Review/51 P1 patient comparison follow-up (2026-10-10): maintainer approved
+full NVIDIA GLM 5.3 and free BeatAPI Astra/Sol/DeepSeek V4.1 Flash quality and
+latency baselines, plus temporary Gemini primary/secondary pauses and a scheduled
+quality recheck. L3 and scope are in review/51; evaluation-only scaffolding/results
+live in evals/remedy/results/p1-patient-2026-10-10/. No admission or production
+route activation follows from default-reasoning comparison results.
+
+PR #2256 merged 2026-10-12 with the approved GLM/DeepSeek comparison diagnostics and retained
+results. The separately approved 60-recording backlog challenge is frozen under
+`evals/remedy/holdout/backlog-varied-2026-10-11/approved-v2/`. Its first candidate-specific
+pilot batches score Flash-Lite 5/6, Kimi K3 7/8, full NVIDIA GLM 5.3 8/8 and OrcaRouter GLM 5.3
+Flash 8/8 on supported-claim checks. The same Dallas multi-feed membership was missed by Flash-Lite
+and Kimi. All eight GLM Flash responses remain held because the response model name differs from
+the requested catalog ID; see #2257. This regression challenge has no blind-owner truth and yields
+zero admission-eligible cases. Further balanced pilots and the approved full comparison remain
+pending shared provider capacity; production admissions remain empty.
+
+<!-- review/48 activation checkpoint -->
+Input calibration canary #2221 has a concrete proposed one-route, one-week plan in
+[review/48](48-provider-catalog-reconciliation.md#proposed-input-canary-activation-contract--2221-2026-10-10).
+The maintainer approved six weekly input calls on one verified Groq route; output and broader
+rotation remain gated on separately reviewed evidence.
+
+Review/48 manual calibration trigger: L3 approved contract under #2221 for selectable approved routes/
+dimensions and separately bounded manual allowance; exact numerical and session/schema contract approved 2026-10-10.
+See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger-contract--2221-follow-up-2026-10-10-l3).
+
+Manual-trigger implementation is prepared under #2221 following the approved L3 contract;
+explicit manual execution, input evidence acceptance, output authority and broader rotation remain gated.
+The 2026-10-11 provider-neutral probe-search update separates rate-limit recovery from input,
+output and combined-context boundaries. Adapters with typed evidence can wait/downshift or refine
+their own comparable bracket; unknown provider errors do not become numeric bounds. Groq is the
+first typed TPM adapter. The reducer cannot change configured TPM or Worker authority; the contract
+is recorded in review/48 §8.12.
+The focused Groq manual probe follow-up keeps scheduled/manual authority separate: manual input may
+reach 16,384, scheduled input remains 8,192 and ordinary jobs remain at 7,125. The 2026-10-11
+manual attempt allowed up to six calls but stopped after one 10,467-token input reservation. It
+returned no parsed provider counts or completion reason, so it supplies no size evidence. A
+manual-only sanitized error-body diagnostics follow-up precedes a repeat at the same target. The
+manual artifact may include up to 4 KiB of HTTP error response text after redacting the active
+credential and generated probe prompt; scheduled artifacts remain body-free. This does not widen
+route/dimension authority or enable runtime updates.
+Since 2026-10-17 the dispatch Worker also *learns* each route's accepted and refused input sizes
+from production traffic ([review/55](55-adaptive-input-token-admission.md)); any probe-based
+maintenance designed under #2264 should treat those learned values as the primary evidence.
+
+The former automatic runtime request-ceiling design is now Deferred under
+[review/54](54-provider-limit-characterization.md) and [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
+Its historical L3 designation no longer authorizes implementation or activation; fresh design
+and prioritization are required. Discovery-time request-cap search remains in review/48 §8.13.
+
+### Review/48 scope correction and new-route cap discovery — L3 (2026-10-11)
+
+Implementation tracking: [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
+
+The maintainer retains route discovery/addition/removal and bounded new-route input/output/total
+request-size search in review/48. Seek verified admitted/refused brackets at strict 0.5% width;
+stuck sessions checkpoint partial evidence and a maintainer `test again` resumes on a later day
+using authenticated compatible history. No configured new-route RPD is required; provider quotas
+and finite execution escape bounds still apply. Existing runtime adaptations remain intact.
+For the reviewed route addition, authenticated input admissions map to `hard_input_ceiling`; the
+operational context window covers the provider claim or measured input plus actual generated output,
+with the original claim/source retained for review. Two compatible admissions from distinct
+successful runs are required before `/apply` offers that cap. Implementation is tracked by #2271.
+Explicit quota-pool/schema enforcement needs a separate bounded design; periodic empirical
+quota/cap revalidation, overflow/refill and broader pacing redesign are Deferred under
+[review/54](54-provider-limit-characterization.md), tracked by #2264. Previous review/48 §8.12 L3
+automatic runtime ceiling direction is superseded by this scope decision.
+
+Review/48 §8.13 specifies the offline discovery/report/retry contract: 64 submissions, 20 minutes
+and finite token reservations per candidate; separate authenticated 90-day histories and next-day
+`/apply` retry receipts. The first live activation is restricted to one exact free candidate in a
+manual run; the provider-wide v2 pause is required. The maintainer accepted unknown/shared quota
+scope for this bounded first canary because the candidate is not yet dispatchable by this repo.
+One-candidate activation shipped in [#2281](https://github.com/BashfulBits/city-meeting-podcasts/pull/2281).
+A high-first search follow-up starts new input searches at 500,000, halves typed refusals down to
+a 2,000-token floor, grows successful probes toward the 1,000,000-token input ceiling, and uses
+midpoint refinement once it has both admitted and refused bounds. Its bounded allowance is
+8,388,608 input tokens per candidate and 16,777,216 per maintenance run. Pure input probes now
+request up to 16,384 output tokens (64 times the earlier 256-token cap) so reasoning-heavy replies
+can complete the fixture; typed output-cap refusals reduce that counterpart and use a new control
+identity. Aggregate output budgets remain unchanged, so an interrupted search preserves its bracket
+for authenticated `test again`.
+The first selected candidate, OpenRouter `nvidia/nemotron-3.5-lightning:free`, returned
+HTTP 200 for all four JSON methods but did not produce verified fixture JSON, so request-size
+discovery did not run. Expanded diagnostics shipped in [#2284](https://github.com/BashfulBits/city-meeting-podcasts/pull/2284).
+The NVIDIA follow-up exposed runner-specific Unicode line splitting: discovery now frames SSE
+as bytes before UTF-8 decoding, with real-Requests regression coverage and bounded byte/framing
+diagnostics for the next canary (review/48, runner decoding correction, 2026-10-12).
+Run 38293878784 verified all four NVIDIA methods and confirmed the decoder diagnosis. NVIDIA
+new-route input/output discovery now reuses shared chat usage and exact size-refusal parsing;
+combined-count semantics and undocumented providers remain deferred (review/48 parser follow-up).
+Run 38296813993 verified 750,001 input tokens. Its follow-up preserves provider-count correction
+at the input ceiling, recognizes the captured exact refusal wording in the shared parser, and
+uses output control v2 with an explicit long sequence; existing budgets and combined-axis gates hold.
+Run 38301430270 verified 24,576 output tokens but input retrieval failed at accepted API sizes.
+The maintainer approved measuring new-route API input admission from consistent provider usage
+and reporting sentinel accuracy separately. Manual all/input/output selection gives output its
+own bounded session; configured-route calibration and recurring-discovery gates are unchanged.
+Approved output early-stop follow-up (2026-10-13): route-scoped minimum generation for the
+verified NVIDIA-hosted Lightning deployment, separate probe control identities and explicit
+stopping diagnostics; actual output counts, verified fixture text and budgets stay binding.
+Approved streaming follow-up (2026-10-13): incremental discovery-only SSE with 64-MiB stream /
+4-MiB assembled bounds, final usage and existing cancellation/pause budgets, initially scoped to
+the verified hosted Lightning route. This advances onboarding caps, not recurring maintenance.
+The later [workflow run 38249673545](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38249673545)
+verified `json_schema_relaxed`; other methods hit the bounded event-data limit. Its six size probes
+had no usable completion counts or finish reasons, so it established no request-cap bracket. This
+high-first search follow-up was intended to make the next authorized run explore useful input sizes;
+at that point, broad scheduled discovery remained gated on review of successful first-route evidence.
+The maintainer superseded that activation gate on 2026-10-14; see the current decision below. Combined-cap
+configuration remains gated on its separate schema design.
+
+After [workflow run 38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+hit five 120-second response deadlines at the next larger input size, the maintainer approved a
+600-second hard deadline for new-route discovery calls. Timeouts remain inconclusive, and the
+existing 20-minute candidate session can stop the five-call escape sequence early while retaining
+partial evidence. Configured-route calibration keeps its separate 120-second deadline; details are
+recorded in review/48 §8.13.1.
+
+The offline foundation shipped in [PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273)
+and report/retry/workflow integration shipped in [PR #2275](https://github.com/BashfulBits/city-meeting-podcasts/pull/2275).
+New reachable candidates receive bounded size discovery, the issue reports source claims and
+measured brackets, and an authorized `/apply` can queue an authenticated next-day retry without
+provider calls. Before a new provider's free route is added, §8.13 requires this suite's evidence to
+inform the proposed route values; unresolved axes need sourced maintainer input or `test again`.
+Pure adapter tests cover supported axes; unsupported refusal/combined semantics remain explicit.
+The 2026-10-14 decision below supersedes the earlier manual-only activation state for qualifying
+input discovery. A single successful authenticated discovery run supplies cap evidence; the new
+route is not re-probed weekly. Implementation of the reviewed route-value projection is tracked in
+[#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
+
+### Explicit quota pools and request-cap configuration — L1 (2026-10-11)
+
+Separate bounded design from review/48 maintenance and deferred empirical characterization.
+Represent model-specific and shared account/project/provider quota pools explicitly; routes may
+reference all applicable pools. Support RPM, TPM, RPD, TPD and tokens per billing month, with exact
+count/reset semantics and unknown versus absent provenance. Configure route input/output/combined
+request caps separately. Audit current routes' sources/scopes with maintainer confirmation where
+unknown, preserve existing values and runtime adaptation during migration, and make v2/Python
+enforce the same canonical configuration. No empirical refill redesign or production tuning is
+a prerequisite. Mature file/schema/compiler/migration/parity contracts to L3 before implementation.
+
+### Review/51 P1 backfill recovery (#2409) — L3
+
+Maintainer approved evaluator-only bounded retries, quota-reset resumption, route cooldowns and
+original provider-error visibility on 2026-10-12. Exact implementation and test scope is in
+[review/51](51-unexpected-body-remedy-flow.md#p1-backfill-recovery--l3-approved-2026-10-12-2409).
+Preserve existing results, shared quota accounting, production headroom and all model settings.
+Implement as a dependent PR on #2277; human merge and later operational handoff are separate.
+Implementation prepared in [#2410](https://github.com/BashfulBits/city-meeting-podcasts/pull/2410).
+The parent changelog conflict is resolved; both entries use current main's fragment convention.
+
+
+Review/48 output-discovery diagnostic follow-up: a direct 55,296-token probe ended its HTTP
+stream at 250.581 seconds without complete SSE terminal evidence. Retain bounded terminal
+state in the existing failed preview to distinguish missing DONE, finish, usage and a partial
+frame; no algorithm, timeout, production admission or maintenance-scope change. The verified
+NVIDIA-hosted Lightning output lower bound is 36,864, with no refused upper bound.
+
+Review/48 cancellation-safe discovery diagnostics are maintainer-approved: preserve bounded,
+payload-free streamed child progress at the unchanged hard deadline. The repeated 55,296-token
+probe timed out locally and establishes no upper bound. Search budgets/admission and Deferred
+maintenance scope remain unchanged.
+
+Review/48 approved L3 output-search refinement: one fresh lower check plus re-test of any
+genuine refused upper, replacing two identical output baselines. Recent time failures guide
+smaller retry targets without becoming cap evidence; insufficient remaining session time stops
+before admission. Input/combined contracts and all budgets stay unchanged. See review/48.
+
+Review/48 output diagnostic evidence: cancellation-safe progress showed ongoing streamed
+response processing near the 600-second stop. A separately approved 1,200-second direct
+diagnostic at the same 55,296 size then received a hosted-route SSE `Internal server error`
+at 600.298 seconds. This is not a size refusal; retain the verified 36,864 lower bound and
+unknown upper bound. No production timeout or search-policy change; see review/48's record.
+
+A subsequently approved direct 46,080-output-token probe completed in 530.423 seconds with
+provider usage, length finish and fixture verification. Review/48's verified hosted-route output
+lower bound is now 46,080; numerical upper bound and 0.5% convergence remain unknown.
+
+Efficient review/48 output search shipped in #2424. Its bounded direct local verification used
+one 46,080 baseline and admitted 50,688 next, then deferred a third call before admission due
+to insufficient session time. The local verified lower bound is 50,688; the numerical upper
+remains unknown. These local diagnostics are not authenticated GitHub-history authority or
+production limit changes; the separate GitHub canary remains.
+
+Review/48 maintainer-approved timing extension: one-hour candidate discovery sessions, at most
+two hours of discovery work per run, and three-hour enclosing manual-discovery workflow timeout.
+Ordinary reconciliation remains two hours. Per-call 600 seconds and all numeric quota/token/call
+ceilings remain unchanged; checkpoint elapsed time still binds. See review/48.
+
+Review/48 discovery per-call deadline now aligns with v2's 720-second default; manual
+`discovery_axis=all` covers input/output and both combined searches within existing budgets.
+Operational timeouts remain separate from verified numerical size refusals.
+
+Discovery pause failures retain allowlisted control operation, HTTP status or transport class
+and chained exception class in the existing stop reason, excluding URLs and response bodies.
+This approved diagnostic change uses discovery.py and its tests only; no control retry or
+provider call is added. The approved combined-axis contract below resolves the earlier
+consumption-versus-reservation question and requires filled-output generation proof.
+
+NVIDIA new-route discovery enables both combined-token request mixes using provider input
+plus requested output, filled-output proof and explicit summed-context refusals. Clipped/early
+output remains diagnostic; no automatic runtime cap changes. See review/48 approved contract.
+
+Approved discovery recovery fixes preserve compatible provider-count calibration across resumed
+searches, recognize exact token refusals with harmless request-shortening advice, and keep both
+ends of redacted errors within the same preview ceiling. Pause-control POST transport failures
+get at most one immediate retry; provider submissions/admission/reservations and HTTP failures
+do not retry. File plan extends existing discovery/rules/probe/pause client and corresponding
+tests. A second control failure still stops safely; no cap/Worker schema/production config change.
+
+New-route discovery uses a shared chat response interpreter before optional provider extensions,
+without requiring route-specific parser registration. All four axes are attempted; actual counts,
+consistent usage arithmetic and explicit summed refusals remain proof requirements. Unknown API
+formats stay inconclusive. Transport/auth formatting and minimum-output/streaming capabilities
+stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 fencing. Existing
+reconcile/rules modules and discovery tests implement this approved generalization; no runtime
+config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
+currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+### Review/51 P1 six-model completion — L3
+
+Maintainer discontinued Gemini 3.7/3.8 evaluation on 2026-10-13 because daily quotas are too low.
+Keep historical observations; complete only the other six models (678 questions), with existing
+attempt limits and production headroom. Contract: review/51, P1 six-model completion.
+
+The maintainer subsequently authorized five immediate additional retries on each of the
+five remaining GLM/Sol pairs (25 attempts total). The one-off manifest/pair-bound allowance
+supersedes the daily evaluator cap only for those pairs and does not refill at midnight.
+Contract: review/51, P1 immediate five-pair retry allowance. Production quotas remain intact.
+
+### Review/51 full body-selection comparison — L3
+
+Maintainer approved the corrected 60-recording ownership prompt for six models on2026-10-13,
+with three retry rounds. Use the L3 body-selection contract in review/51, reuse official
+evidence and approved dispositions, and keep gold/proposals out of model input. No production
+activation;360 first answers, bounded retries, shared quota accounting and retained history.
+
+
+Review/51 evaluation call priority — L3 approved2026-10-13: reserve two of three
+contested call slots for the older comparison until it finishes, borrowing unused slots
+while it waits on provider cooldown/capacity. Persist allocation across resumes and
+retain all approved retry/deadline limits; see the scoped contract in review/51.
+
+
+Review/51 Groq evaluation expansion — L3 approved2026-10-13: add GPT-OSS120B high
+and Qwen3.8-27B high to the frozen60-recording independent body-selection comparison,
+480 total answers. Preserve the older run's priority and existing deadlines/limits;
+local capability overrides and daily-token headroom only, no production activation.
+
+
+Review/51 patient evaluation timeout extension — L3 approved2026-10-13: raise only
+the existing600-second patient evaluation requests to900 seconds,950-second case
+deadlines and covering provider leases/horizon guards in both active experiments.
+Preserve original run deadlines, inputs, answers, quotas and retry allowances.
+Resume between provider calls from tested code; see review/51's timeout extension.
+
+
+Review/51 temporary coordination bypass — L3 approved2026-10-13: allow the existing
+bounded evaluations to use local CAS accounting while the Worker capacity/pause service
+is unavailable. Retain retry caps, original horizons and one shared call lock. Qwen
+remains held without verified token capacity. Explicit default-off evaluation flag only;
+production usage visibility is unavailable and must be disclosed. See review/51.
+
+
+Review/51 Qwen bypass hold removal — L3 approved2026-10-13: remove the explicit
+Qwen outage hold from the active comparison. Apply the same local token cap/reserve
+and request controls as GPT-OSS, with production Worker usage unknown during bypass.
+Preserve original retries/horizon; no manual unblock at the next capacity window.
+
+
+Review/51 Groq provider-authoritative stop — L3 approved2026-10-13: the maintainer
+directed continued Qwen/GPT-OSS evaluation until each route's first new provider429,
+then a durable evaluation pause. Bypass only their local daily-token gates; retain
+all other controls, original call caps/horizon and immutable actual usage. No
+production changes. Contract and scope: review/51.
+
+
+Review/51 feed-context diagnostic — L3 approved2026-10-14: separate14-call comparison
+of explicit membership policy vs existing-feed title examples for one Dallas Bond
+Streets recording; no production changes or rearming original Groq pauses. Retain
+and repeat the seven-model common-question/21-pair audit after final results.
+
+
+Review/51 prompt optimization — L3 approved2026-10-14: three general prompts,60
+recordings, Sol/GLM Flash/DeepSeek V4.1 Flash (540jobs); three pairs per prompt.
+Separate shared wrong agreements, extra/missing feeds and disagreements. Durable
+workspace and remote checkpoints; no activation or old-controller restarts.
+
+A further approved review/48 direct output session revalidated 50,688 and verified 52,992,
+then deferred another call before admission. The local lower bound is now 52,992; upper bound
+and true-cap convergence remain unknown. No production changes or authenticated workflow
+history claims; see review/48's execution record.
+
+The subsequent bounded local output session verified 54,144 after one 52,992 revalidation,
+then deferred further admission. This is the current local lower bound; numerical upper and
+true-cap convergence remain unknown. No production publication or GitHub-history authority.
+
+
+Local one-hour output search after #2426 verified 54,720 completion tokens, then preserved
+two streaming deadline failures as inconclusive. Four calls completed within the session;
+`output_time_limited_lower_bound` leaves the numerical upper unknown. See review/48 evidence.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
+
+
+Review/48 discovery convergence correction (2026-10-14, implementation in progress):
+the maintainer approved measuring generated-token capacity independently of prescribed output
+text. Shared chat interpretation retains consistent provider usage and length termination, with
+full requested-output completion still required for combined reservation proof. Approximate
+size refusals guide search but never supply exact upper bounds; clipping, daily exhaustion and
+finite per-axis time escapes remain explicit partial results. Local configured-route diagnostics
+exercise the same engine without adding recurring configured-route maintenance. See review/48's
+local convergence contract and evidence; broader characterization stays Deferred under #2264.
+
+
+Review/48 seeded-discovery follow-up (2026-10-14, implementation in progress): authenticated
+Liquid canary passed all axes with lower bounds, but NVIDIA GPT-OSS-20B exposed negative-budget
+errors and natural output stopping, reproduced locally. The maintainer authorized shared
+smaller-input/output recovery and exact-match LiteLLM published input/output starting hints,
+reported separately with package version. No hint, early stop or computed negative budget
+establishes a numerical refused bound. Scope and acceptance are recorded in review/48.
+
+
+Review/48 generation-fixture floor correction (2026-10-14, implementation in progress): the
+post-#2437 NVIDIA workflow found input/output/input-heavy combined lower bounds but exposed
+an output-heavy 79-token prompt reservation. The maintainer approved preserving the existing
+generation-prompt floor, padding edge-case coverage and broader bounded local provider checks.
+This changes probe construction/recovery only; no production job margin or route cap changes.
+See review/48's reproduction, file plan and acceptance contract.
+
+Review/48 combined proof clarification (maintainer approved 2026-10-14): length replies with
+at least the requested output prove the requested combined reservation; actual usage remains
+separate, and clipped/naturally stopped replies do not establish that proof.
+
+Review/48 varied-output follow-up (2026-10-14, implementation in progress): local shared-fixture
+comparison reached 4,096 generated tokens on NVIDIA using varied numbered rows. Fence changed
+output and combined history, preserve input-only evidence, and retain negative-budget errors as
+non-numerical guidance. No production caps, timeout changes or maintenance promotion; review/48
+owns the file plan, acceptance and diagnostic evidence.
+
+Review/48 input-first refinement — L3 approved 2026-10-14: prioritize the input boundary, retain
+actual passing counts separately from calibrated estimated rejected sizes, and replace normal
+output/combined maximum searches with bounded supporting examples. Local NVIDIA plus a second
+provider validation precedes push. Full optional selected-axis searches and runtime caps remain
+unchanged; see review/48's updated contract.
+
+Review/48 automatic new-route input discovery — implementation in progress (2026-10-14): the
+maintainer approved running the input search automatically during the weekly full reconciliation
+when a newly found free route passes reachability and structured-output checks and its AA score is
+strictly above GPT-OSS-120B. Missing/equal/lower scores defer discovery. Existing exact-identity
+history prevents automatic duplicate spending; another attempt remains maintainer-reviewed.
+Provider-neutral parsing, v2 pause, provider quotas, and no automatic YAML writes remain binding.
+Capacity is three new-route sessions per weekly run, each capped at 96 calls, 16,777,216 input and
+1,572,864 output tokens, and 90 minutes; shared caps are 288 calls, 50,331,648 input and 4,718,592
+output tokens, with a five-hour weekly Action limit. Configured-route scans are a separate pending
+request and are not included. See review/48's activation amendment.

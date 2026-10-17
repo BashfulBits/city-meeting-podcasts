@@ -12,15 +12,1413 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+<!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
+     changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
+     upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **A route whose provider keeps saying its pool is full now backs off to one call a day.** After
+  an `upstream_capacity` failure the route's cooldown doubles from 60 s up to 24 hours (it was
+  15 s up to 5 minutes, about 288 probes a day). On 2026-10-17 the OpenRouter free Gemma routes
+  returned 116 such failures and no successes. The first success resets the ladder; gateway limits
+  and unusable replies keep the 5 minute ceiling (`UPSTREAM_CAPACITY_SATURATED_*` in
+  `config/dispatch_tuning.yml`).
+
+- **NVIDIA Nemotron 3.5 Super VL routes and Nemotron 3 aliases.** Configured direct NVIDIA and
+  OpenRouter routes for `nvidia/nemotron-3.5-super-vl-120b-a12b` and
+  `openrouter/nvidia/nemotron-3.5-super-vl:free`, pooling under the canonical 3.5 Super key with
+  inherited limits. Aliased legacy Nemotron 3 Super selectors to the 3.5 pool, upgraded the
+  `judge:sibling` lane slot to 3.5 Super VL, and updated the AI Gateway probe route.
+
+- **Gemma 4 26B is removed from the judge sibling lane.** On 2026-10-17 fewer than 40% of its
+  AI Studio judge replies were usable: it falls into a repetition loop on mixed-kind packets and
+  runs to the 32,768-token limit (a direct replay reproduced it in 2 of 2 replies, and a capped
+  4,096-token reply still failed to parse), holding a key slot up to 12 minutes. It stays eligible
+  (not dispatched) and the Google slot is Gemma 4 31B alone. Packets already queued for 26B
+  still run.
+
+- **More concurrent bundles and a second NVIDIA slot for Gemma.** `MAX_ACTIVE_BUNDLES` goes from
+  3 to 5 (the `active_bundle_limit` claim counter rose from 8 to 42 in four hours while slow NVIDIA
+  and overflow calls held every slot), NVIDIA's provider concurrency from 3 to 4, and the NVIDIA
+  Gemma 4 31B route from 1 to 2, which leaves two shared slots for Ultra, V4.1 and overflow. Three
+  overlapping NVIDIA calls all returned 200 in a 2026-10-17 test; a fourth was not testable.
+
+- **Input-ratio estimator pooled across routes, with a longer window and no prior floor.**
+  Observations are pooled per (tokenizer family, prompt family) so every route serving a model
+  shares one ring of 128 samples, not 32 per route. Percentiles are used from 64 samples; from 16
+  to 63 they are blended with the route prior, and from 64 the prior is a seed, not a floor
+  (reservation = max(p95 x headroom, p99); admission p75; packing p95). Output reserve gets the
+  same treatment. Review/55 piece 1.
+
+- **Admission and packing use different percentiles.** The size gates (configured ceiling, learned
+  bounds, Gemini minute quota, structural check) now use an admission ratio, p75 x 1.05 and no
+  longer floored by the route prior; reservation and TPM accounting keep the conservative ratio.
+  `GET /v2/calibration?model=` publishes the largest packet the smallest route of a model will
+  admit (p95 packing ratio) and the judge sizes sibling packets to it. Review/55 piece 2.
+
+- **Routes learn their real input limits from traffic.** Each route now keeps the largest input
+  it accepted (from `usage.prompt_tokens`) and the smallest it refused for size, in provider
+  tokens, expiring after 7 days. Admission skips a route for jobs at or above its refusal point
+  (the drain pass re-tests it) and no longer lets a conservative configured ceiling reject a
+  size the route has already served. Both show in `/v2/stats?routes=1`. Review/55 piece 3.
+
+- **Size rejections overflow per job, not per route.** A provider "input too long" answer (or one
+  request larger than the whole minute quota) now records the rejecting route on the job
+  (`size_excluded_routes`) and requeues it onto a sibling route of the same model without spending
+  the 5xx retry or standing the route down for other jobs. If every route rejects it, it fails
+  with `input_too_large` for the producer to re-pack. Review/55 piece 4.
+
+- **Judge no longer spends its first 12 minutes re-parsing the site config.** The dirtiness check
+  asked `load_families()` for the family map once per candidate episode and each call re-parsed
+  the 60 KB site config (25,283 episodes, about 0.06 s each locally, ten-plus minutes on the
+  runner) before any judging began. It is now cached per path like `load_lanes()`.
+
+- **Judge reads pending-packet records in parallel, with a bounded wait.** Collecting about 2,800
+  pending records one at a time took 14 minutes on a healthy store (0.3 s each) and stalled for
+  hours when runner reads to storage hung (2026-10-17). Records are now fetched by 8 workers within
+  a 10-minute budget (unread ones stay pending for a later pass), each read gets a 30 s deadline so
+  a stalled connection fails fast instead of waiting out 60 s socket timeouts and retries, and the
+  pass logs progress and failed or timed-out reads.
+
+- **Judge waits out a storage blip.** After three unreadable pending-packet records in a row, the
+  judge pass now probes the same record every 30 seconds (at most 300 seconds per pass) instead of
+  skipping every remaining record. Run 38984100770 lost a whole pass of collection (2,449 of
+  2,452 markers skipped, 27 judgments) to a blip of about five minutes. If storage is still down
+  after the budget, the rest keep their markers and the pass goes on.
+
+- **Judge survives a storage read outage.** A `StorageReadUnavailable` while reading a pending
+  packet's record no longer aborts the judge lane (run 38971148564 failed 29 minutes in this way,
+  before it could plan or submit). The marker stays, the packet counts as outstanding, and a later
+  pass collects it; after three unreadable records in one pass the rest are not tried.
+
+- **Judge sibling Gemma capacity.** Gemma sibling packets shrink from 10,000 to 8,500 estimated
+  tokens so the Worker's reservation (ratio 1.4 plus forecast output) fits AI Studio's 14,400-token
+  minute budget; 10,000 never fit and stranded about 2,600 queued packets on idle keys. New
+  subjects now go to the less-loaded of Gemma 31B and 26B (packets waiting, route capacity from the
+  Worker's cheap `?routes=1`) and keep the judge that answered them. The sibling outstanding-packet
+  limit now applies per judge model, so one model's backlog no longer blocks the others. NVIDIA's
+  Gemma 31B route moves
+  from 20 to 800 requests a day, held to one of its three shared concurrency slots.
+
+- **Chapter locator overflow.** Packets above 76,000 estimated tokens now list DeepSeek V4.1 Flash
+  first with Kimi K3 as its companion, so the Worker routes around Kimi's retired NVIDIA route
+  (end of life 2026-10-15) instead of stalling large packets. Large requests cost five ingress
+  units (daily budget 7,200); small packets are unchanged.
+
+- **Second BeatAPI account.** Add `BEATAPI_API_KEY_SECONDARY` as the `beatapi_secondary`
+  provider with the five chat routes at the primary's limits (1 call/min, single-flight, no
+  top-up), doubling the BeatAPI free-chat capacity that the DeepSeek V4/V4.1/V4 Pro and GPT-6
+  pools share. JEV stays on the primary account, which chat load no longer competes with.
+  Requires the Worker secret.
+
+- **Chapter locator capacity.** Raise the per-run dispatch cap from 67 to 134 and the daily
+  ingress budget to 1,600 jobs, and reserve 20,000 output tokens per packet (was 16,384) so long
+  chapter lists fit.
+
+- **The judge lane's wall-clock window is its cron interval (120 minutes), not 90.** On
+  2026-10-16 a catch-up pass spent its whole 76.5-minute window collecting 11,688 answers and
+  stopped planning before it submitted anything. The window is now 120 minutes x 0.85 = 102,
+  leaving about 18 minutes of the two-hour cadence for setup and the persistence tail. The
+  run-history record used a 240-minute fallback for this lane; both now read the same value.
+
+- **Judge packets are sized as the Worker measures them, and the judge stops outrunning the queue.**
+  JEV packets were sized by each item's text, so about 45 of 110 anchor packets a run exceeded the
+  route's input ceiling once the serialized request was counted, were failed by the Worker and
+  returned to the planner (the 43 to 52 `LLMBackendError` and about 1,500 re-planned items a run).
+  Packets are now sized from the serialized questions and the Worker's learned input ratio. A pass
+  also submits only into the room under `judging.max_outstanding_packets` (anchor 240, sibling 480),
+  so its share of the Worker queue (8,485 jobs on 2026-10-15) cannot keep growing. The judge lanes
+  join the ingress preflight, so a Worker that is down or refusing ingress costs no planning pass.
+  Records the first PR4 acceptance pass in review/53.
+
+- **The detailed stats snapshot is metered, and route capacity has a cheap view.** On 2026-10-13 a
+  review/51 evaluation polling `/v2/stats?detail=1` before every request (about 80,000 rows read
+  a call, 4.65 million in three hours) exhausted the Durable Object's 5,000,000 daily row-read
+  allowance, so the dispatch Worker refused every call, including the judge lane's enqueue, until
+  the 00:00 UTC reset. `/v2/stats?routes=1` now returns the route inventory at a cost that does not
+  grow with retained jobs, the evaluation uses it, and `detail=1` serves a cached copy for 5 minutes
+  and computes at most 24 fresh snapshots a UTC day (then the last copy, or HTTP 429).
+
+- **CivicPlus protocol-relative embed and HLS resolution.** Support protocol-relative URLs (`//...`)
+  and normalize insecure or schemeless embed and stream URLs to HTTPS in `CivicPlusProvider`,
+  resolving media extraction failures across CivicPlus cities (fixes #2296).
+
+- **Document P3 route admission evidence.** Record the four selected physical routes, evaluated
+  chat settings, identity and serving-family holds, and the gap between evaluation budgets and the
+  current Worker caller. Runtime remains shadowed pending verified Worker evidence and admission.
+
+- **Provider-default remedy reasoning.** Remedy admissions can now explicitly record
+  `provider-default` reasoning, meaning the request omits a reasoning override and hashes only
+  the route's compiled request parameters. This supports the evaluated P3 configuration without
+  guessing a named provider effort; runtime routing remains shadowed until the exact routes are
+  admitted.
+
+- **P3 evaluated model parameters.** Record the settings used for Sol, GLM Flash, and DeepSeek:
+  provider-default reasoning, a 900-second request timeout, a 950-second case deadline, a
+  16,384-token output cap, and no temperature override. The admission schema needs to represent
+  the evaluated default, and JEV needs equivalent Worker parameter provenance. P3 stays shadowed
+  until exact route admission and a monitored end-to-end cycle complete; production settings remain
+  unchanged.
+
+- **Provider catalog commands: scheduled rate/removal jobs no longer reject their own trigger.**
+  The `workflow_run` gate compared `workflow_run.name` to the workflow name, but scheduled
+  reconciliation runs carry their `run-name` (e.g. `... (daily-due-only)`), so the first scheduled
+  run failed with no explanation. The gate now matches the reconcile workflow file path, and the
+  automatic jobs print the result comment before exiting non-zero.
+
+- **P3 GitHub handoff.** Publish validated consensus proposals as human-review PRs and other
+  findings as reconciled issues with per-feed include/exclude choices and a finding-level evidence
+  hold. The existing issue-comment permission and P2 ledger plumbing record typed feed choices via
+  `/body-disposition`. Exact route admission and reasoning gates remain required; the shadow
+  configuration publishes nothing. Human review and merge remain required for feed changes.
+
+- **P3 publication boundary.** Record the maintainer's P1 evidence acceptance and remove redundant
+  evaluation and review/49 league gates from P3. Recompute consensus from admitted route-bound
+  votes, rebind candidates to exact source evidence, and rerun the existing feed mutation
+  validator. The daily workflow now publishes bounded proposal PRs and P2 human-disposition issues;
+  production configuration remains shadowed pending exact route admission and monitored operation.
+
+- **P3 daily Worker caller (in progress).** Adds stable-hash reconciliation for the Sol/GLM Flash
+  initial pair and one DeepSeek/JEV adjudication round, with route-pinned queue-only requests and
+  a separate append-only observation log. A daily GitHub Actions workflow emits report artifacts.
+  Shadow mode and missing route/effort admissions keep it closed; proposal/issue publication and
+  the P2 human-disposition connection remain unfinished. No production calls or feed changes were
+  made by this implementation.
+
+- **P3 report-only replay.** Added a strict local replay tool for recorded unexpected-body votes.
+  It emits a new decision report and fails closed with the repository's empty route admissions;
+  it makes no model calls or GitHub, storage, feed, or production-routing changes. P3 dispatch
+  integration remains gated separately.
+- **P3 dispatch cadence.** Recorded the maintainer's decision for a dedicated daily Worker caller,
+  a shared adjudicator interface with the existing JEV wire adapter, and a physical BeatAPI route
+  constraint for DeepSeek. The scheduled caller remains gated on durable P2 state and admission.
+- **Worker route pinning.** Queue-only dispatch can now narrow a logical model pool to explicit
+  physical route IDs. Pins cannot widen the model policy, and unavailable pinned routes do not
+  fall back to another provider.
+- **P3 observation storage.** Completed model responses now have a strict append-only record
+  separate from P2 human dispositions. It binds the Worker recipe, request/evidence/config/policy
+  hashes, route/model provenance, response and collection time; writes use the remedy lease and
+  verify read-back. Pending jobs remain in the existing deferred-request registry. The daily P3
+  caller and schedule are still pending.
+
+- **Review/48 evidence-gated route removals.** After a successful weekly full catalog run, the
+  managed writer rechecks exact provider/account retirement evidence and prepares a review PR for
+  safe removals. It does not merge or deploy route configuration.
+
+Connect authenticated new-route input-discovery evidence to reviewed route additions. `/apply`
+proposes the largest provider-counted admitted input as `hard_input_ceiling` and raises the
+operational `input_context_limit` to cover the published claim or the admitted input plus actual
+generated output, while preserving the original claim and source in YAML comments and the PR.
+Missing output-context claims defer for maintainer input; estimated refusals never become caps.
+One successful authenticated discovery run can support the reviewed cap offer; new-route onboarding
+does not require a second weekly probe.
+
+- **P3 consensus decision engine.** Adds an offline engine for the approved Sol/GLM Flash
+  initial score and single DeepSeek/JEV adjudication. It binds votes to evidence and policy
+  hashes, fails closed when routes are not admitted, and renders per-feed manual-disposition
+  checkboxes. It does not enable production routing, call providers, create GitHub issues or
+  PRs, mutate feeds, or change stored meeting records.
+
+- **Review/48 automatic input discovery.** The weekly catalog workflow now searches input capacity
+  for newly found free routes after reachability and structured-output checks, when their AA score
+  is strictly above GPT-OSS-120B. Provider parsing, v2 pause and finite quotas remain required;
+  measured values are reported but never written to config. Each of up to three route sessions has
+  a 96-call, 90-minute bound; routes deferred by the run limit are rechecked in later weeks. The
+  weekly workflow has a five-hour ceiling.
+
+- **Record unexpected-body consensus policy.** Document the maintainer-selected Sol + GLM Flash
+  initial score and one DeepSeek V4.1 Flash + JEV adjudication round, with deterministic validation,
+  explicit manual-disposition issues, and human review for every resulting pull request. Preserve
+  the prompt-comparison and disagreement-diagnostic scripts, observations, reports, and separate
+  maintainer feed labels under `evals/remedy/`. This records policy and evaluation evidence only;
+  production routing and feed behavior are unchanged.
+
+- **Input-first route discovery.** Normal discovery prioritizes input refinement and uses bounded
+  output/combined examples rather than treating early output stopping as a maximum. Reports
+  separate confirmed provider counts from estimated rejected sizes and recheck old input-size
+  hints. Estimates do not create numerical refused caps or update production configuration.
+
+- **Discovery output elicitation.** Use varied numbered rows instead of repeated identical lines
+  to reduce voluntary early stops. Fence previous output/combined fixture history while retaining
+  input history and budget charges. Capacity proof still uses valid provider counts and a length
+  finish; prompt conformity is irrelevant. Negative-budget errors remain smaller-input guidance,
+  never numerical refused caps. No production caps or configured-job behavior change.
+
+- **Discovery generation-prompt floor.** Output and combined recovery preserve enough charged
+  input for the probe prompt when shrinking output. Small reservations safely omit optional
+  padding that cannot fit, and fixed-input refusals stop at the floor. Access errors defer
+  without repeated probes. Typed free-tier prompt-size errors guide smaller input without
+  inventing a numerical cap. No production caps or runtime-job margins change.
+  Combined probes accept length replies generating at least the requested output, preserving
+  actual counts separately without inferring a maximum from overfilled responses.
+
+- **Discovery starting hints and recovery.** New-route size searches use exact provider-qualified
+  LiteLLM input/output metadata as starting hints after provider API claims, reporting the package
+  version and missing matches separately from measured bounds. Computed negative output budgets
+  guide smaller input; natural output stops get bounded smaller-output retries. Only fresh valid
+  capacity evidence establishes a lower bound, and neither case invents a refused upper.
+
+- **Discovery token-capacity proof and convergence.** Output discovery uses consistent provider
+  completion counts and a length finish independently of prescribed text. Combined proof still
+  requires the full requested output. Approximate size errors guide smaller requests without
+  fabricating upper bounds; clipping is rechecked and remains a lower bound. Daily/monthly
+  exhaustion defers, selected axes share session time, and the five-no-response escape spans axes.
+  No production limits or configured-route calibration policies change.
+
+- **Discovery selection evidence.** Retain terminal skip reasons for explicit manual candidates,
+  including absent or unverified-free routes, without bypassing eligibility or making size calls.
+- **Reachability diagnostics.** Log request phase, received status and bounded transport-cause
+  classes for failed new-route canaries without exposing exception text or credentials.
+
+- Give the older unexpected-body evaluation two of three contested call slots until it
+  finishes, borrowing unused slots during cooldowns and retaining retry/deadline limits.
+  Persist allocation across resumes and expose scheduling reasons in evaluation status.
+
+- Add an explicit default-off coordination bypass for the existing review/51 evaluations
+  during the Worker database-read outage. Preserve local quota accounting, original
+  deadlines, retry limits and one shared call lock; hold Qwen without verified capacity.
+  Retain the loss of production-usage visibility in immutable attempt provenance.
+
+- Retain a reproducible seven-model pair-agreement audit and a separate fourteen-call
+  feed-context diagnostic comparing explicit membership policy with retrieved existing
+  meeting titles. Preserve frozen evidence/gold, original study pauses, exact routes and
+  shared call accounting. No production settings, feed rules, records or audio changes.
+
+- Add evaluation-only GPT-OSS 120B high and Qwen 3.8 27B high to the same frozen
+  60-recording body-selection comparison. Preserve existing answers, retry limits,
+  original deadline and older-run priority; retain daily-token production headroom.
+
+- Add an explicitly approved, evaluation-only Groq mode that continues GPT-OSS and Qwen
+  without local daily-token gates until each route's first new provider HTTP429 or completion.
+  Saved pauses survive restarts; request/minute limits, retry bounds and actual result usage
+  remain. Production routes, quotas, records and audio are unchanged.
+
+- Give patient models900 seconds per request in both local review/51 evaluations,
+  with950-second case deadlines and covering pause leases. Retain Flash-Lite limits,
+  original run horizons, retry allowances, all saved observations and production settings.
+
+- Add a durable general-prompt comparison for Sol, GLM Flash and DeepSeek V4.1 Flash
+  over the frozen sixty-recording set, with bounded retries and remote observation
+  checkpoints. Report shared wrong agreements, extra/missing feeds and disagreements
+  separately. Production models, quotas, feeds, records and audio are unchanged.
+
+- Remove the maintainer-released Qwen outage hold from the active review/51 evaluation.
+  Apply the same local token checks as GPT-OSS, preserve retries and the original horizon,
+  and clear only the obsolete hold wait on resume. Production limits remain unchanged.
+
+- Add the approved answer-free 60-recording body-selection comparison across six models.
+  Frozen official evidence, masked identifiers and multi-feed answers replace suggested
+  assignments. Separate feed-choice, publication-policy and insufficient-proof metrics.
+  Bounded three-round retries, immutable intents/results, shared evaluator locking and
+  existing quota/headroom controls preserve production settings and prior evaluation history.
+
+- The approved varied P1 comparison now includes six models (678 questions). Gemini 3.7/3.8
+  calls are discontinued because of low daily quotas; their observations and Astra history
+  remain immutable. The controller and scorer exclude these models. Existing daily attempt
+  caps, production headroom, timeouts and production route settings remain unchanged.
+- Evaluation scoring retains hashed provenance for results outside the executing checkout.
+- A separately approved one-off allowance permits five immediate additional attempts on
+  exactly two full GLM and three Sol questions, capped at 25 total. Immutable manifest/pair
+  binding and restart hash checks prevent broader retry expansion or refill after reset.
+
+- **General new-route discovery.** Interpret shared chat usage and explicit size errors before
+  optional provider extensions; attempt all axes without route-specific parser registration.
+  Unknown response formats remain inconclusive and histories use a new parser identity.
+
+- **Combined request discovery.** Test NVIDIA input-heavy and output-heavy context reservations
+  using generated-output fixtures, exact summed refusals and explicit clipping diagnostics.
+  Timeouts, early stopping and clipping alone do not establish a numerical upper cap.
+
+- **Discovery deadline.** Align new-route discovery calls with the v2 Worker’s 720-second default
+  deadline, retaining the one-hour session and token/call budgets. Clarify the manual all-axis
+  input/output/combined search option; timeout failures remain inconclusive for model size caps.
+
+- **Discovery recovery.** Preserve resumed token calibration, handle additional exact refusal
+  advice and retain bounded error tails. Retry transient pause-control transport failure once
+  without retrying provider submissions or quota admissions.
+
+- **Discovery pause diagnostics.** Retain bounded control-operation and failure-category details
+  when pause renewal stops a request-cap search, without response text or credentials.
+
+- **Normalize category headings in changelog compilation.** Fragment files containing
+  standard Keep a Changelog subheadings (`### Added`, `### Fixed`, etc.) are now accepted
+  and automatically normalized into list items under `## Unreleased`.
+
+- **Allow longer bounded new-route discovery.** Candidate searches can run for one hour,
+  retaining original checkpoint elapsed time. Manually enabled discovery gets a three-hour
+  workflow wrapper for evidence and cleanup; ordinary reconciliation keeps two hours. Per-call
+  600-second deadlines and all call/token/retry ceilings remain unchanged.
+
+- **Make resumed output discovery progress on slow routes.** Recheck an admitted lower once
+  and re-test a genuine refused upper instead of duplicating the lower baseline. Recent time
+  failures guide smaller retry sizes without becoming token-limit evidence. A timing estimate
+  defers probes that cannot fit the remaining session. Existing budgets, input/combined rules,
+  dispatch and production limits remain unchanged.
+
+- **Preserve discovery diagnostics on hard cancellation.** Streamed discovery transports report
+  throttled, payload-free progress to the local parent. Timeout results retain the last request
+  phase, structural stream state and bounded counters; progress never supplies capacity proof
+  or extends deadlines. Configured-job paths, provider requests and budgets remain unchanged.
+
+- **Explain incomplete discovery output streams.** Failed streamed output probes retain a
+  bounded structural preview identifying HTTP EOF, DONE, finish/usage presence and pending
+  frame size. Provider error explanations take priority. Generated/reasoning text and successful
+  output remain excluded; incomplete streams never establish token limits. Budgets, timeouts
+  and production dispatch are unchanged.
+
+- **Bounded streaming for new-route output discovery.** The verified NVIDIA-hosted Lightning
+  route requests streamed final usage so longer generations can send data before completion.
+  Incremental parsing caps stream data at 64 MiB and assembled responses at 4 MiB, requires
+  complete terminal evidence, and reports bounded stream metrics. Other models/hosts, configured
+  calibration, production dispatch and token/time budgets remain unchanged. Partial and error
+  streams never establish size refusals; verified output retains no response preview.
+  Provider stream errors retain bounded/redacted error previews and distinct failure reasons;
+  long discovery failures remain journalable without changing configured-context timing bounds.
+
+- **Review/51 P1 comparison evidence.** Retain the approved varied 60-recording challenge and
+  candidate-specific pilot reports under `evals/remedy/`. The first pilot batches expose one
+  repeated Dallas multi-feed miss and an unresolved GLM Flash response-name hold. These are
+  regression results only: no blind-owner admission truth, feed changes or model activation.
+
+- **Recover stalled P1 evaluation backfill (#2409).** Evaluation-only scheduling retries failed
+  questions independently, waits for actual quota resets, and applies bounded route cooldowns.
+  Saved diagnostics preserve original provider errors. Persistent controller status and attempt
+  intents prevent duplicate successes and blind retries after interrupted calls. Gemini keys
+  share one model score; Astra remains retained outside the 904-answer comparison.
+  No production routes, quotas, timeouts, feeds or pipeline versions change.
+
+- **Route-scoped output discovery controls.** Add a documented minimum-generation capability for
+  the verified NVIDIA-hosted Nemotron Lightning deployment, keeping other models/hosts and
+  production dispatch unchanged. Discovery requests record and enforce comparable control
+  identities, keep the charged output cap, and still require actual counts and length-terminated
+  verified repeated-line output. Natural early stops get explicit diagnostics and redacted
+  beginning/ending previews within the existing bound. Old output fixtures remain diagnostic
+  history only.
+
+- **New-route probes separate API capacity from retrieval quality.** Successful ordinary chat
+  completions with positive, consistent provider-reported input/output/total usage can establish
+  admitted input sizes even when sentinel retrieval fails. Sentinel accuracy remains separately
+  visible in artifacts and issues; malformed usage, refusals and errors do not establish capacity.
+  Manual discovery adds an all/input/output selector so output can resume in its own bounded
+  session. Existing histories remain readable, and configured-route calibration, production
+  dispatch, budgets, provider pauses and activation gates are unchanged.
+
+- **Changelog fragments and automated compiler workflow.** PRs now add isolated fragment
+  files in `changelog.d/<slug>.md` instead of editing `CHANGELOG.md` directly, eliminating
+  merge and rebase conflicts on GitHub when multiple PRs land in sequence. A GitHub Action
+  compiles fragments into `CHANGELOG.md` under `## Unreleased` and removes them upon merge
+  to `main`.
+
+     
+- **New-route size searches retain token calibration at the hard ceiling.** The input planner
+  now preserves its provider-count mapping at the 1,000,000-token target instead of forcing a
+  1,000,000-token local reservation, which overshot NVIDIA's actual count by about 29%. The shared
+  parser accepts the recorded exact "messages resulted in" token-size refusal, including its
+  narrow message-only envelope. Discovery output probes request an explicit long numeric sequence
+  under the unchanged output cap; output control v2 excludes old-prompt boundary history. Existing
+  input evidence stays compatible, and configured-route calibration/production dispatch are unchanged.
+
+- **H15 eval builds provider-align sections like production, and skips ineligible samples.** The
+  weekly ASR Quality Eval had produced no results since the WhisperX swap (2026-08-13): runs hung
+  until the job timeout (shown as "cancelled"), then failed with `alignment section is too long`.
+  For VTT/SRT the eval joined cue text and dropped every timestamp, so the whole transcript became
+  one section. It now keeps per-cue windows (remapped to the served timeline) as the production
+  provider-align path does. A candidate with no usable time markers is reported as skipped
+  (production marks it align-ineligible and re-transcribes) instead of failing the run, and the
+  sampler leaves out episodes production already marked ineligible. Audio downloads get a 15-minute
+  wall-clock deadline, and the evaluate step a 100-minute timeout so a stall reports as a failure.
+  
+- **torch 2.8 advisories recorded as accepted risk (#2318).** WhisperX pins `torch~=2.8.0`, so
+  Renovate's torch security PR (#2298) can't resolve. review/22 records why the advisories don't
+  reach our code paths and when to revisit (re-review by 2027-01-12); replacing WhisperX alignment
+  with the MMS_FA aligner is parked in the review/11 §6 deferred backlog.
+  
+- **Shared request-cap discovery parsing now includes NVIDIA chat endpoints.** New-route input
+  and output searches reuse the strict chat usage parser, including NVIDIA's documented completion
+  reasoning counts. Exact chat/vLLM input-size refusals and typed output-field upper bounds can
+  establish refused sizes; quota errors, character estimates, lower-bound counts and conflicting
+  numbers remain inconclusive. Groq/OpenRouter discovery parser versions advance for the shared
+  refusal contract. Combined-token semantics remain deferred. No configured-route calibration,
+  provider quota, production route, request-budget or automatic publishing settings change.
+
+- **Provider discovery frames SSE bytes before decoding UTF-8.** Structured canaries no longer
+  let Requests' inferred response charset and Unicode line splitting split a valid JSON event
+  inside reasoning text. Diagnostics record library/runtime versions, whether the failed event
+  had its blank-line terminator, legacy Unicode splitting hazards, and a bounded, secret-redacted
+  base64 byte excerpt for malformed JSON or invalid UTF-8. Request budgets and deadlines are unchanged.
+
+- **Provider discovery malformed-SSE diagnostics.** Structured canaries now record response
+  content type and encoding, SSE data-line counts, a bounded escaped preview around the parser
+  failure, and JSON parser location. They also report whether a diagnostic UTF-8 re-decode would
+  parse the event, without changing the existing parser verdict. Full bodies and credentials remain
+  excluded.
+
+- **Renovate can install Python for pip-compile again.** #2301 set Renovate's pip-compile
+  `constraints.python` to a bare `3.12` so its requires_python filter would work. The same value
+  picks the Python the hosted app installs, and a bare `3.12` names a build that doesn't exist, so
+  every lock update since failed (`install-tool python 3.12`, then `spawn pip-compile ENOENT`).
+  #2298/#2299 ended up as empty commits. It is now a full patch version (`3.12.15`), which both uses
+  accept; Renovate keeps the patch current (automerged), and `python_lanes.py` checks its
+  `major.minor` against the ASR version file.
+
+- **Renovate's pyproject.toml exclusion survives GitHub security alerts.** The file-level
+  `enabled: false` rule from the previous fix did not hold for GitHub-advisory PRs: Renovate appends
+  its alert rules after ours with `force`, which re-enabled the pep621/poetry deps, so #2298/#2299
+  kept raising `pyproject.toml` floors. The pep621 and poetry managers are now disabled outright,
+  so `pyproject.toml` is never extracted; the generated `constraints/*.in` remain the only path.
+
+- **Renovate leaves pyproject.toml to the lane inputs.** The first hosted run after per-lane
+  locks showed the pep621 and poetry managers also reading `pyproject.toml` and raising its floors
+  on security fixes (`torch>=2.0` -> `>=2.13.0`), which would leave `constraints/*.in` stale and
+  fail every such PR. Renovate now ignores `pyproject.toml` (the `.in` files carry it). The
+  pip-tools and Python constraints moved into a pip-compile-only rule, because as globals they
+  reached the npm deps (an "invalid constraint" warning). Python is now given as a bare `3.12`,
+  the only form Renovate's requires_python filter matches. `python_lanes.py` checks that pin
+  against the ASR version file.
+
+- **Renovate tracks every Python lock, one lane at a time.** Each `constraints/<lane>.txt` now
+  compiles from a generated `constraints/<lane>.in` (`scripts/lane_inputs.py`, from
+  `pyproject.toml`), because Renovate's pip-compile manager reads current versions from only the
+  first lock that shares a source file, which was `asr.txt`, so litellm never got a PR. Renovate
+  now manages the four locks: the LLM stack (litellm, instructor, pydantic, openai, tiktoken) is
+  lock-bumped as soon as a release is 3 days old and automerged on green CI; releases whose
+  `requires_python` excludes the lock's Python are skipped; security fixes (GitHub and OSV
+  advisories) open at once; and Python bumps and the monthly full lock refresh wait for
+  Dependency Dashboard approval.
+
+- **Review/48 new-route discovery timeout.** Increase the hard deadline for an individual
+  new-route size-discovery call from 120 to 600 seconds so slow large-input requests can return
+  provider-counted usage or a typed size refusal. Timeouts remain inconclusive. The 20-minute
+  session and other request, response and provider-pause bounds remain in force; incomplete
+  no-response retries are preserved as uncertain evidence. Configured-route calibration remains
+  at 120 seconds.
+
+- **Python versions live in two files, with a compatibility gate.** Every workflow's
+  `actions/setup-python` now reads `.python-version` (3.14) or, for the ASR stack,
+  `.github/python/asr/.python-version` (3.12) instead of 65 literals. `scripts/python_lanes.py` maps
+  each version file to the constraints its jobs install and fails on literal pins, on `asr.txt`
+  installed off the ASR Python, and on Modal/Beam/audio-runner/lock-compile Pythons that disagree
+  with the ASR file. `python-compat.yml` dry-run installs every lane on its own interpreter, wheels
+  only, so a Python or dependency bump that cannot install fails on the PR.
+
+- **Review/48 size probes reserve room for reasoning.** With no compatible history, output probes
+  now start at 16,384 tokens, and combined probes at 18,432 total tokens (2,048 input plus 16,384
+  output). Input probes retain their 16,384-token output counterpart. This lets reasoning models
+  complete output and combined verification instead of repeatedly ending at a 256-token ceiling.
+  Typed counterpart refusals still reduce that fixed size and create a separate control history;
+  aggregate output budgets are unchanged.
+
+- **Constraint headers Renovate can parse.** `scripts/compile_constraints.sh` now pins
+  `pip-tools==7.6.2` (was 7.4.1). Older pip-tools under click 8.3+ wrote bogus options
+  (`--cert=None`, `--no-index`, `--pip-args=None`, ...) into each `constraints/*.txt` header, and
+  Renovate's pip-compile manager rejects unknown header options, so the locks could not be tracked.
+  The recompile changes only the four header lines; every pinned version is unchanged.
+
+- **Review/48 structured SSE framing.** Structured-output checks now parse complete server-sent events
+  and join repeated `data:` fields according to the SSE format before decoding JSON. The existing
+  128 KiB cumulative event-data bound accommodates complete reasoning-heavy responses while keeping
+  streamed evidence bounded; multiline gateway responses no longer appear malformed because one
+  event spans several data fields.
+
+- **Review/48 high-first request-size search.** New input searches begin at 500,000 tokens, halve
+  after a typed size refusal down to a 2,000-token floor, then grow by 50% to the 1,000,000-token
+  hard ceiling. Once both admitted and refused bounds exist, the planner bisects them to the existing
+  0.5% goal. The per-candidate input allowance is 8,388,608 tokens and the maintenance-run cap is
+  16,777,216; a ceiling pass remains a lower bound. Output authority is unchanged.
+
+- **Review/48 first live new-route discovery gate (#2223).** A maintainer can manually select one
+  exact new `provider/model` candidate for bounded request-cap discovery after free eligibility and
+  reachability checks. The workflow requires the existing v2 provider-wide pause; authenticated
+  `/apply` retries remain supported. Broad weekly discovery stays disabled pending review of the
+  first route's evidence. Unknown quota scope remains labeled unknown; the bounded canary makes no
+  quota inference or automatic configuration change.
+
+- **Review/48 structured-probe diagnostics.** New-route JSON-mode checks retain bounded HTTP error
+  and failed-completion previews, provider request IDs, stream and content sizes, usage counts,
+  finish reasons, and diagnostic codes. Discovery attempts also report response-shape states and
+  preserve valid provider-reported token counts when malformed content prevents admission. Failed
+  attempts include a 128-character escaped provider error or model-text excerpt when available,
+  after prompt and credential redaction. Probe requests go directly from GitHub Actions to provider
+  APIs, so they are not expected in Cloudflare AI Gateway logs. Successful model text and complete
+  response bodies are not retained.
+
+- **Route-removal confirmation.** Before a retirement proposal, the workflow now makes a second
+  independent request to the exact route/account after the initial definitive retired/not-served
+  signal. Only a repeated verdict qualifies; a reachable, rate-limited, timed-out or ambiguous
+  confirmation defers that route. The proposal records the confirming account, HTTP result and UTC
+  timestamp. Removal publication remains behind its separate recovery-canary activation gate.
+
+- **Single-model output-limit retry ceiling (review/49 dispatch requirement 1).** A Worker job
+  pinned to one model with no backups (every `per_model` judge lane) now gets one retry, set by
+  `MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES`, when its reply stops at the output limit. It previously
+  drew on the 8-retry upstream budget, and the same cut-off recurred on the same model. The job then
+  fails to its producer, which re-plans it. Jobs that can move to another model keep the upstream
+  budget.
+
+- **New-route discovery foundation.** Adds an offline-tested input/output/combined-cap planner
+  with strict 0.5% admitted/refused brackets, actual-count mapping, finite escape budgets, charged
+  checkpoints and authenticated partial-run evidence. A separate typed discovery transport
+  preserves existing Worker context admission. Provider callbacks fail closed on unsupported
+  refusal/combined semantics. Shipped in #2273 without workflow integration, live probes or runtime
+  limit changes.
+
+- **New-route discovery reporting and retry integration (review/48 §8.13).** Connects bounded
+  input/output/combined searches to newly reachable candidates, reports API claims and empirical
+  brackets in the rolling issue, and lets an authorized `/apply` queue an authenticated next-day
+  retry that resumes compatible evidence. The retry command makes no provider call. If one size
+  probe gets no usable transport response, it can make up to five total same-size sends, each with
+  a fresh charged attempt. Five unanswered sends report uncertainty without claiming a cap; reports
+  include per-attempt diagnostics when multiple sends were needed. Workflow activation remains
+  disabled pending #2223; configured-route recurring maintenance and automatic cap publication
+  remain out of scope.
+
+- **Fix Groq TPM rejection parsing.** The typed parser now accepts the provider's explanatory
+  comma after the requested-token count while still rejecting malformed grouped numbers. A
+  regression fixture matches the full live response shape.
+
+- **Provider catalog scope clarification.** New-route discovery retains an admitted/refused
+  input/output/combined request-cap search with strict 0.5% refinement and resumable maintainer
+  `test again` decisions. Periodic quota/burst/refill characterization and automatic runtime
+  ceiling publication are Deferred under review/54; existing dispatch adaptations remain intact.
+  The new discovery contract is L2, not yet integrated into the live workflow.
+
+- **Provider context canary diagnostics.** Context evidence now records a bounded reason code,
+  HTTP/provider error classes, admission/request/first-byte timing, response media type and byte
+  count, pause/drain state, and parsed Groq request/token-rate/Retry-After headers. Scheduled runs
+  remain body-free; manual artifacts retain a sanitized HTTP error-body excerpt capped at 4 KiB,
+  with the active credential and generated prompt redacted. Successful bodies, prompts, completions,
+  credentials and arbitrary headers remain excluded. Unknown results still cannot change context
+  bounds or dispatch behavior.
+
+- **Context probes use a provider-neutral bidirectional search.** Typed size rejections downshift
+  before a passing sample and then refine against provider-counted success; typed rate rejections
+  remain separate and honor the matching quota reset. Manual untyped 429s get one same-size retry
+  after cooldown; a repeat defers without creating a size bound. Groq is the first adapter with a
+  numeric TPM rejection parser. Unknown provider errors remain inconclusive, and probes cannot
+  change configured TPM or Worker authority.
+
+- **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
+  routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
+  charges across reruns and outages; provider quota and existing activation remain binding.
+  Failed manual runs retain diagnostic artifacts and preserve the original error if cleanup
+  also fails. Manual evidence cannot enter scheduled cap-offer history. No automatic cap changes or backfill.
+
+- **Prepared manual Groq input stretch.** A separate server-owned manual ceiling of
+  16,384 provider input tokens enables bounded probes above the current 6,986-token success.
+  Scheduled probes remain capped at 8,192 and ordinary jobs at 7,125. The PR does not dispatch
+  provider calls or deploy the Worker.
+  
+- **Fix: recovery test injection stays synchronous (#2258 follow-up).** The isolated harness
+  computes its catalog digest before installing its fault wrapper, preventing other requests
+  from encountering that wrapper across an async yield. Production coordinator behavior and
+  recorded sequential recovery evidence are unchanged; no backfill.
+
+- **Prepared reviewed input calibration pilot (#2221).** Enables one verified free Groq route
+  through normal scheduled deployment, with at most six weekly input calls, 8,192 input and
+  256 output tokens per call. Output and broader rotation remain disabled pending separate
+  evidence review. Existing quota/pause admission applies; no cap changes or backfill.
+
+- **Verified isolated rescue recovery (#2220).** The unchanged production coordinator repaired
+  legacy indexes, rolled back an injected mutation failure and resumed across a real Cloudflare
+  instance reset with retry counters preserved. Temporary resources were deleted. Combined with
+  ordinary-run audit evidence, this records the approved recovery acceptance; removal activation
+  remains separately reviewed. No production behavior change or backfill.
+
+- **Prepared independent remedy reviewer candidate (#2253).** The existing free NVIDIA Kimi K3
+  route exposes explicit maximum-reasoning controls for evaluation. Production defaults, routing,
+  quotas and admissions are unchanged; qualification remains evidence-gated. No backfill.
+
+- **Prepared resumable local remedy evaluations (#2251).** Publishes immutable per-job
+  checkpoints, explicitly resumes completed observations, and preflights physical-route daily
+  capacity with retry headroom. Local timeout controls preserve existing defaults; production
+  limits, admissions, feeds, records and audio are unchanged. No backfill.
+
+- **Prepared review/51 P1 capability prerequisite (#2247).** Allows explicit high/max compiler
+  levels and Gemini 3.7/3.8 high-effort controls without changing default requests or route choices.
+  Adds ten grounded, maintainer-reviewed Denton holdout cases. No model is admitted; local live
+  evaluation uses the existing `citypods-spike` quota ledger. Native Gemini thinking controls
+  replace the rejected OpenAI-only field; model qualification remains pending. No catalog/audio
+  backfill.
+  
+- **Fix: judge planning is bounded by the run caps (review/53 PR4 dry run).** A pass planned
+  every candidate episode, reading each transcript, before submitting anything; on the cold
+  backlog the dry run overran the lane window. Planning now stops (recent first) once the run
+  caps' worth of items is planned (packets left times the fullest packet) or the stop signal
+  fires; episodes it did not reach stay dirty and are never counted complete. A dry run now spends
+  the run caps like a real pass. A moment meeting too large for one judge packet is split by
+  candidate (both `choose` items together) instead of skipped: the dry run skipped 481 such units,
+  every meeting over 7 candidates for the Gemma sibling and over 19 for JEV. The judge lane now
+  runs one pass across every source (newest dirty episodes anywhere first) instead of one per
+  source, which let the alphabetically first sources spend the whole run's caps.
+
+- **Prepared remembered-decision report (review/51 P2c3a).** Adds an explicit local comparison
+  mode for saved histories and reviewed case projections. Unchanged watch cases recommend quiet;
+  newly related recordings stay pending in the same case. Material proof changes, missing evidence,
+  conflicting history and changed config remain visible. Local report publication is atomic,
+  preserving the prior complete report if replacement fails. No scheduled alerts or feeds change.
+  
+- **State restore path confinement and scoped tombstone hardening (#1972).** Hardens
+  `citypods.statesync` to strictly confine state file downloads, replacements, and tombstone
+  deletions within `state_dir`. Validates that all remote and local manifest object keys and
+  tombstones are normalized, non-escaping relative paths with approved JSON/JSONL suffixes,
+  rejecting invalid manifests during sync. Enforces resolved filesystem containment and blocks
+  symlink traversal so existing symlinks cannot be used to escape or modify files outside
+  `state_dir`. Restricts tombstones during scoped restores (`only_paths` / `only_prefixes`) to
+  exact requested scopes, and introduces an `apply_tombstones: bool = True` parameter to support
+  clean download-only contracts for read-only reporting consumers.
+
+- **LLM dispatch: quarantine routes on authentication and credential failures (#2027).** Classifies
+  HTTP 401 Unauthorized, HTTP 403 Forbidden, and invalid API token bodies as `route_unavailable`
+  with account scope in `workers/llm-dispatch-v2`. Rather than falsely blaming queued jobs as
+  request defects and permanently failing them, the coordinator refunds reserved capacity, requeues
+  the jobs under the upstream capacity retry budget, and stands down all sibling routes sharing
+  the provider and account for six hours so healthy providers drain the queue while the credential
+  is investigated.
+
+- **Prepared trusted decision actions (review/51 P2c2b).** Validates the dedicated approval
+  command against trusted author/permission snapshots, fresh evidence and current history.
+  Interrupted delivery retries reuse the stored event; conflicting commands/history fail closed.
+  No production runner, workflow activation, feed changes or alert suppression.
+
+
+- **Fix: `enrich --lane judge` rejected as an unknown lane (review/53 PR4 dry run).** `build()`
+  kept a hand-written lane allowlist beside `LANE_STAGES` and missed `judge` (the same bug `tag`
+  once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
+  takes the foreign-block-preserving merged push and skips the full-run reconcile, and gets the
+  mid-run checkpoint push like `tag`.
+  A transcript whose read exhausts the storage retries now skips that episode for the pass
+  (counted as `texts_unavailable`, kept incomplete) instead of aborting the lane.
+
+- **Judge stack shadow on (review/53 PR4).** `judging.enabled: true`: the two-hourly judge lane
+  now judges tag and moment candidates with JEV and one independent sibling and records judgments
+  only (no display, admission or publication change). Reserves 920 ingress units for
+  `judge:anchor` and 2,400 for `judge:sibling` (total 16,506 of 25,600); the adjudicator's
+  reservation follows with PR5.
+
+- **Search index HTTPS enforcement, origin-relative shards, and client pacing (#2205).**
+  Enforces HTTPS for the production custom domain `www.citymeetings.fyi` while preserving
+  HTTP for local development. Emits origin-relative shard URLs (`/data/search/{city}.json`)
+  in `manifest.json` and decouples search checkpoint hashes from hosting scheme and hostname,
+  allowing full checkpoint reuse across base URL protocol transitions without re-extracting
+  sidecars. Sanitizes feed and committee labels in search dropdowns and records by stripping
+  selector wildcard syntax (`*`, `on *`) and city name prefixes. Paces client-side search shard
+  downloads to 4 concurrent workers, debounces result rendering with `requestAnimationFrame`,
+  and dynamically scopes the body filter dropdown to bodies present in the selected city.
+
+- **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
+  reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
+  for writes; existing events and uploaded content are verified. Corrupt history fails closed,
+  identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
+  workflow activation, scan suppression, feed/audio change or historical decision import.
+
+- **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
+  canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
+  configuration errors and unblocking the Dependency Dashboard.
+
+- **Agenda PDF character map and corrupted glyph recovery (#2061).** Adds structural detection
+  for corrupted PDF native text extractions caused by missing or damaged ToUnicode font encodings
+  (e.g. literal glyph-name sequences like `/i255`, repeated replacement characters `\ufffd`/`ÿ`,
+  and low alpha-word ratios). Corrupted native extractions are flagged suspicious, bypass
+  false-positive short notice acceptance, trigger OCR fallback, and reject with durable diagnostic
+  `corrupted-native-text` if OCR is unavailable. Strips stray bullet glyphs (such as corrupted `Å`
+  prefixes) from candidate titles while preserving genuine Unicode names. Pipeline version
+  remains stable (`AGENDA_TEXT_QUALITY_VERSION = "3"`).
+
+- **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
+  `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
+  per-entry family independence, JEV systemone and sibling chat backends with one
+  `judge-answers-v1` contract, deterministic packing, an append-only judgment ledger in a new
+  `judging` record block owned only by the `judge` lane, with pending recipe pointers so packets
+  span a source's episodes, a runner with T2 escalation and a 5%
+  all-tier sample, and a report), `JudgeStage` in a new `judge` lane, and
+  `.github/workflows/judge.yml` (every two hours, with a submit-nothing dry run). JEV jobs carry
+  `inputs.systemone` through the Python dispatch path. The capacity calculator gains
+  `--judging`. Nothing runs until `judging.enabled` (PR4); shadow mode changes no display,
+  admission or publication field.
+
+- **Decision memory foundation (review/51 P2c1, #2231).** Adds strict immutable, source-local
+  decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
+  parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
+  recording references. No storage writes, scan suppression, model admission, feed changes or
+  artifact invalidation; unchanged-watch suppression is reserved for later audit integration.
+
+- **Judge stack configuration (review/53 PR2).** Adds JEV as a dispatch route
+  (`beatapi_jev_1_13_free`, `api_shape: systemone`, `/systemone` under `custom-beatapi`, 58,000-token
+  ceiling) and makes the five BeatAPI chat routes yield to it. Registers lanes `judge:anchor`,
+  `judge:sibling` (Gemma slot, Nemotron 3 Super slot with Qwen3.8 eligible but not dispatched) and
+  `judge:adjudicator` (GLM 5.3 Flash, DeepSeek V4.1 Flash), all `per_model`, with daily caps for
+  800 meetings a day and zero reservation until judging is enabled (PR4). New `llm_families` map
+  (every lane model must have a family), `judging` switches (disabled), lane `eligible_models` and
+  `slots`. Chat-only tooling (catalog health canary, context scan, rate probe, live gateway probe)
+  now skips non-chat routes so it never sends JEV a chat completion.
+
+- **Coverage verification counting correction.** Post-merge retained replay uses actual CLI
+  defaults: 28,594 placements and 1,189 unassigned entries, rather than the old helper’s
+  29,384 / 411. Global bid/purchasing exclusions were missing from that helper. No production
+  rules, records, identity, stage version or backfill changed.
+
+- **Historical evidence closeout.** All six carried Fort Worth/Dallas cases have explicit
+  maintainer-approved limited-evidence dispositions. Raw records, audio and feed assignments
+  are unchanged; missing independent proof remains documented and new evidence can reopen them.
+
+- **Batch feed lifecycle dispositions for 50 inactive and historical feeds.** Marks 33 concluded
+  temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
+  standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
+  review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
+
+- **Complete source body-coverage report (#2216; PR #2215).** Opt-in audit JSON includes retained
+  recordings and current observations, exact source-local identities, selector matches, policy
+  proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,
+  timeline/audio diagnostics and GitHub reconciliation. Existing alerts and feeds are unchanged;
+  persistent reviewed dispositions and activation follow separately. No stage versions changed.
+
+- **Provider catalog Slice 5 adaptive context calibration (#2209; PR #2218).** Adds offline-tested
+  provider-count search, bounded weekly orchestration, authenticated 90-day histories and exact
+  reviewed `/apply` input/output cap choices. Groq input and OpenRouter input/output chat parsers
+  opt in; every configured free route has support or an explicit unsupported case. Native Gemini
+  and BeatAPI JEV counts cannot become chat capacity proof. Prompt correction uses actual counts;
+  refinement is exactly 0.5% or 128 tokens, with no added blanket cap margin. A cancellable
+  subprocess bounds one admitted call to 120 seconds/four MiB without retries. Failed or ambiguous
+  attempts retain quota charges, and ordinary reconciliation allowances still bound experiments.
+  Experiment ceilings cannot lower existing larger caps. Cap publishing reauthenticates fresh-main
+  evidence, requires explicit choices and preserves unrelated YAML and production guards.
+  Server route activation remains empty and output disabled; no live probes, production config
+  changes, deployment, pipeline-version bump or completed-artifact backfill. Input/output canaries,
+  recurring activation and removal recovery acceptance remain separate gates.
+
+- **LLM dispatch: `systemone` API shape, `request_path` and `yields_to` (review/53 PR1).** Routes
+  may declare `api_shape: systemone` (BeatAPI's JEV judge endpoint) with a per-route
+  `request_path`; a new `api_shapes.js` builds requests and checks replies per shape, and the chat
+  shape is the existing code unchanged. JEV's oversize `503 processing_failed` (at least 85% of the
+  route ceiling) now fails the job instead of retrying it. `yields_to` lets a route step aside while
+  a named route has queued work, without ever failing the held job as unroutable. Non-chat routes
+  are Worker-only in the Python catalog. No route uses these yet; PR2 adds the JEV route.
+
+- **Provider catalog Slice 5 quota-admission prerequisite (#2209; PR #2214).** The existing authenticated
+  reservation API supports bounded weekly context sessions and single-use token/request admission;
+  opt-in pause status exposes advisory allowance and verified quota scope. Admission atomically
+  charges route and weekly ledgers before permission, denies replay and leaves ambiguous attempts
+  charged across outages/recreation. Clustered weekly storage bounds reads and cleanup, with
+  optional row-budget fencing and an increasing run-id watermark. Typed Python methods reject
+  malformed permissions and never retry. The route allowlist is empty and output is disabled;
+  adaptive calibration, live canaries and recurring activation follow separately. Ordinary
+  request-only reservations and measured-cap policy retain their behavior. No production config,
+  pipeline-version bump or completed-artifact backfill.
+
+- **Keep paused-route sizing coverage independent of production config.** The prelabeler regression
+  uses explicit paused/live fixtures after Gemma's approved reopening, and verifies both rejection
+  of a paused route and no sizing route when every leg is paused. Runtime policy is unchanged.
+
+- **Reopen three Gemma routes at 20 RPD (maintainer decision, 2026-10-09).** OpenRouter's free
+  Gemma 4 31B and 26B routes and NVIDIA's Gemma 4 31B route resume ordinary dispatch eligibility
+  for limited health observation and eventual context calibration. The earlier 429 and shared
+  concurrency concerns remain monitoring targets; recovery is not yet proven. The existing
+  scarce-quota health cadence and quota guards apply. No lane, token-bound or concurrency change,
+  live probes, manual deployment, pipeline-version bump or completed-artifact backfill.
+
+- **Provider catalog Slice 4: bounded rate maintenance (#2200; PR #2201).** Authenticated successful
+  scheduled artifacts retain scoped positive evidence for 90 days, with six independent runs
+  per metric. Only attempted scopes affect consecutive-run evidence; unrelated and manual scans
+  preserve pending offers. Daily early checks use bounded current-day counter reads through
+  `/v2/stats?rate_failures=1`, with no job scans or storage writes. Opposite-direction proposals
+  wait while either is open; retained merged bot branches do not block later maintenance. Proven tightening prepares a reviewed PR; increases require an exact `/apply`
+  selection. Unknown scope, missing artifacts and account mismatches defer. Existing numeric
+  rate scalars are the only editable fields; greater-than-50% tightening is flagged. Optional
+  sampling shares the three-request/900-second allowance with existing verification and preserves
+  pause, quota reservation and final cooldown. Today's UTC failure bucket can schedule one early
+  observation per route/day. No context, concurrency, paid policy, lane, pipeline-version or
+  completed-artifact changes; removal activation still requires its recovery canary.
+
+- **Recovery-canary telemetry prerequisite (#2198).** Existing Worker stats expose committed
+  catalog-rescue progress from the scheduler row; opt-in Python telemetry correlates persisted
+  structural audits and submission decisions using recipe fingerprints. Audits report preserved
+  retry/schema state without prompts, model output or payload keys. Existing telemetry artifacts
+  carry evidence through normal runs; missing observations cannot authorize removal activation.
+  No additional queue scans, storage writes, admission changes, pipeline bump or artifact backfill.
+
+- **Provider catalog apply rebuilds use current lane settings (#2196; PR #2197).** Additions/paid preparation
+  parses its freshly read site-config snapshot rather than the process-level lane cache, so a
+  changed-main retry honors the current free-primary pool and backup opt-out. Existing permission,
+  evidence, quota and managed-publication gates are unchanged. No pipeline bump or artifact backfill.
+
+- **Provider catalog Slice 3b: dormant removals and lane repair (#2192; PR #2193).** Fresh complete-catalog
+  absence and exact unchanged-route retirement proof must agree across serving accounts. Preserve
+  surviving pools; promote only existing free, unpaused backups, and hold back removals without a
+  safe replacement. Narrow YAML edits clean dependent backup thresholds and reasoning fields while
+  preserving unrelated settings/comments. Managed removal proposals rebuild from main and flag
+  primary changes. Live preparation/publication remain disabled pending recovery-canary acceptance
+  and a separate reviewed activation change. No queued-job policy rewrite, pipeline bump or
+  completed-artifact invalidation.
+
+- **Provider catalog Slice 3a structural rescue (#2190; PR #2191).**
+  Dispatch failed-job poll/feed responses carry nullable structural reason/catalog fields;
+  legacy failures remain generic. Python preserves recognized metadata, and deferred terminal
+  cleanup fences the responding handle against the snapshot's backend/ref and current stored
+  record. Bounded queued-job rescue unlocks declared backups when primaries cannot structurally
+  run; temporary pauses/quotas do not trigger failure. Structural recovery audits before deleting
+  a matching handle, preserves retry/schema-correction counts and gates repeat submissions on a
+  new fitting route generation. Prelabeler work rebatches retained subjects against current bounds;
+  even a singleton must fit the combined reservation before dispatch. Batch preparation reuses
+  recovery context/marker reads; immutable catalog digests are cached before serialization.
+  Rescue reuses the existing queue index and persists bounded progress atomically, including
+  across quota outages and DO recreation. Coordinated client/Worker activation remains a gate;
+  removal automation stays gated on deployment and recovery canary.
+  No pipeline version bump or successful-artifact invalidation.
+
+- **Provider catalog Slice 2b: explicit keep-paid PR preparation (#2187; PR #2189).** `/apply` rechecks
+  selected physical routes under existing pauses/quotas and requires unchanged route evidence plus
+  fresh `not_entitled` proof. Narrow edits set `free: false` and acknowledge the exact upstream;
+  guards preserve free primary pools across a batch and defer acknowledgements that would hide
+  another free account route. Paid selections survive outages until fulfilled on main; fulfilled
+  choices are no-ops. Removal remains gated on deployed rescue, and legacy shadow promotion is
+  superseded by review/53 graduation (maintainer decision 2026-10-08). No live calls, runtime config
+  edits, deployment, pipeline bumps or stored-artifact invalidation in this implementation PR.
+
+- **Provider catalog Slice 2b preparation: disabled shadow lane can be retired (#2187).**
+  Builds resolve the prelabeler shadow lane and its dispatch cap only when shadow execution is
+  enabled; disabled shadow work is excluded from ingress preflight. Removing that lane after
+  promotion no longer breaks builds. An enabled missing lane still fails loudly. Paid decisions
+  and shadow promotion remain pending implementation; no lane/config changes, live calls,
+  pipeline version bumps or stored-artifact invalidation occur in this preparation.
+
+- **Provider catalog Slice 2a: authorized additions/ignore PR preparation (#2179).** `/apply` reads
+  current rolling issue selections, rechecks selected candidates under provider pauses and budgets,
+  and prepares one managed PR with narrow YAML edits, both compilers and in-job contract tests.
+  V3 issue state binds catalog/route evidence to logical identity and lanes; legacy proofs remain
+  advisory. Missing identity, compiler-required context bounds, stale proofs or quota defer only
+  the affected addition. Paid/shadow choices remain gated for Slice 2b. Shared account capacity is
+  not copied into independent route limits; paused BeatAPI routes and backup tiers are preserved.
+  No route changes in this PR, live probes, pipeline/recipe version bumps or artifact backfill.
+
+- **review/53: judge stack build spec for tags and moments.** One development-ready PR series
+  (review/49 P1 to P5 and P7): a `systemone` Worker transport for JEV, `yields_to` for BeatAPI chat
+  routes, judge lanes (anchor, sibling, adjudicator) reserved for 800 meetings a day, shadow judging
+  of both tags and moments, adjudication with a calibration sample and quote check, the weekly blind
+  audit, a calibration report, per-task graduation PRs, and retirement of the R5 pre-labeler,
+  packet, benchmark and tournament flows and the R6 judge, human calibration and review workflow,
+  and league-governed lane repair extending review/48 §8.6 (bench promotion with invariants and a
+  trial period instead of first-backup promotion). It also aligns the series with review/48 Slice 3a:
+  yield and backup terms stay out of the structural fit, judge lanes declare no backups, judge
+  packets recover by rebatching, and retirements cancel queued work before removing routes.
+  review/49 records the approved judge and adjudicator split. Design only.
+
+- **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
+  reviewed conservative output caps and sequences calibration after bounded rate maintenance.
+  Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
+  boundary revalidation, with trusted bounded history and explicit config review. Slice 5 remains
+  L2 pending exact budgets and implementation contracts. Design only: no live probes, runtime caps,
+  deployments, pipeline versions or stored artifacts change.
+
+- **Allow static search indexing 120 minutes per run**, with a 150-minute search job timeout.
+  Preserve record checkpoints and the four-hour cadence; expose completion/deferred progress
+  in Actions logs as well as the job summary. No audio or stored-artifact invalidation.
+
+- **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
+  `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
+  now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the
+  five chat routes are unpaused (still `tier: backup`). Verified live: `/models` and a chat
+  completion return 200 through the slug. BeatAPI joins the weekly live gateway contract probe and
+  the recorded custom-provider registrations.
+
+- **BeatAPI chat routes paused (`rpd: 0`).** The Worker reaches providers through Cloudflare AI
+  Gateway, and `beatapi` had no registered gateway provider: every BeatAPI call returned
+  `400 Invalid provider` (gateway code 2008), which the Worker classifies `request_defect`, failing
+  the job. Live status showed one used and one in-flight request when found. The routes stay in
+  their pools, paused, until a `custom-beatapi` gateway provider is registered and wired.
+
+- **Provider catalog remaining-slice contract proposal (review/48 §8).** Records the maintainer’s
+  additions-first sequence, initial additions/ignore command scope and automatic proven tightening
+  PRs with material-change flags. Proposes evidence/identity and config-write contracts, bounded
+  structural job recovery, removal gates and scoped limit histories, including BeatAPI’s shared
+  JEV window. Corrects #2169 verification to shipped; remaining slices await contract acceptance
+  and implementation issues. Design only; no route, deployment, recipe or artifact changes.
+
+- **LLM dispatch: backup-tier routes; BeatAPI chat legs demoted to backup.** A route may declare
+  `tier: backup` in `config/provider_limits.yml` (validated at compile, carried into the Worker
+  catalog). The Worker ranks backup routes after every primary route in a job's pool, after the
+  existing free-before-paid term and ahead of capacity, so an idle backup no longer outranks a
+  partly used primary. The five BeatAPI free chat routes are backups: they stay in the unified
+  DeepSeek and GPT pools as spill capacity without taking work while OrcaRouter or NVIDIA can.
+  Their output limit is unchanged, because tag and moments jobs reserve 12-16k output tokens and
+  a lower limit would remove the routes from those lanes. Yield-to-JEV ships with the JEV route
+  (review/49 P1).
+
+- **review/49: judge and adjudicator routes (section 4c).** With the locator verdict in, JEV stays
+  the anchor; Gemma 4 31B/26B is the bulk sibling judge, with Nemotron 3 Super or Qwen3.8 for
+  Gemini-produced entries; GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA) are the adjudicators.
+  Independence is chosen per entry against its producer and sibling judge, so it covers moments and
+  future verbs. Qualification uses the section 4 probes and audit agreement plus a deterministic
+  quote check, not a separate benchmark. BeatAPI chat routes become backups: a route backup tier,
+  yield-to-JEV at claim time, and a short output cap. Design only.
+
+- **Provider catalog verifies structured-output support (review/48 R10).** Availability pings no
+  longer qualify a candidate alone: four schema-bound checks validate completed visible JSON,
+  record method/latency evidence, and show the preferred method on the rolling issue. A configured
+  method returning empty/invalid JSON is reported with its lane's remaining pooled routes.   BeatAPI
+  (#2167) regression coverage includes reasoning-only responses, 65-second spacing across   probes
+  and before dispatch resumes, JEV exclusion and DeepSeek pool fallback. Each route-method   request
+  is charged separately; scarce routes defer when quota is unavailable or exhausted. Evidence
+  reporting uses   the same planner. Deferred method checks retain prior evidence, merging partial
+  results instead   of discarding unchecked methods and their latency. Existing candidate proofs
+  without method evidence are rechecked. No production   route, recipe, pipeline version or episode
+  artifact changes; no episode catalog backfill.
+
+- **Bounded search resumes within a source (#2173).** Private working checkpoints retain
+  converted records with policy/input hashes; new or changed records do not discard unrelated
+  progress. Deferred summaries identify source/record progress and distinguish no public index
+  from a retained complete index. Public search remains atomically published. The 20-minute
+  budget and four-hour deployment schedule remain unchanged. No stage-version bump, audio
+  invalidation or catalog backfill; old complete search caches remain reusable.
+
+- **Restore four approved Dallas bond Streets recordings to Transportation and Infrastructure**
+  while retaining their dedicated bond feed (#2170). Raw records, UIDs and audio are unchanged;
+  no stage invalidation or backfill. Independent official-evidence cases remain open.
+
+- **BeatAPI registered: free chat models routed, JEV catalogued (#1967).** `config/provider_limits.yml`
+  gains a `beatapi` provider (`BEATAPI_API_KEY`) and five free chat routes (`deepseek-v4-flash-0731`,
+  `deepseek-v4.1-flash`, `deepseek-v4-pro`, `gpt-6-astra`, `gpt-6.1-sol`). The DeepSeek routes pool
+  into the existing logical models (`deepseek/deepseek-v4-flash` with OrcaRouter,
+  `deepseek/deepseek-v4.1-flash` with NVIDIA); V4 Pro is a new pool. All free BeatAPI traffic,
+  including `jev-1.13-free`, shares one account-wide limit of 1 successful request a minute
+  (measured live in both directions), configured at the provider. A catalog plugin treats the
+  `-free` suffix as free evidence and keeps JEV (a `/v1/systemone` task plugin) out of the chat
+  candidates; the key is passed to the reconcile and rate-probe workflows. JEV's own route stays
+  with the review/49 P1 breakout. Chat context limits are unmeasured placeholders pending
+  `llm-rate-probe.yml` phase 2.
+
+- **Triaged the five unexpected-feed rows.** Arlington’s verified Council recording gets an exact
+  source-ID addition; Dallas’s South Dallas/Fair Park special-called title gets a reusable board
+  rule. Addison’s school dedication and Fort Worth’s unreadable provider label get no meeting-feed
+  rule. Denton’s standing Animal Shelter Advisory Committee has three recorded entries in the
+  cached catalog but no configured feed; keep them out of feeds for this P0 pass and revisit if
+  more recordings enter the catalog. `review/51` records four proposed unmatched-item outcomes for
+  later maintainer review. Original source records and media are retained.
+
+- **LLM dispatch: bundles and claim bookkeeping ride on one scheduler write (#1844).** The
+  `bundles` table is gone. The few active bundles live in `scheduler.active_bundles_json`, and every
+  scheduler change in a transaction (the claim outcome and counters, bundles, a completion's requeue
+  counter) is written by its one accounting UPDATE. Per bundle this removes the insert and its index
+  entry, the separate claim-outcome row and the delete. Expired bundles leave the map when the
+  next claim reaps their leases, so `BUNDLE_RETENTION_DAYS` and `MAX_BUNDLE_PRUNE_PER_TICK` are
+  retired. Measured: 16.40 → 15.40 billed rows per one-model job (20.07 → 19.27 at three models);
+  idle tick 0.2 → 0.1 rows; `ROWS_PER_BUNDLE` 8 → 4 and `ROWS_PER_LEASE_WORST` 21 → 20. Across
+  this series a first-try job fell from 22.6 to 15.4 billed rows including retention.
+
+- **LLM dispatch: per-day attempt usage instead of a row per attempt (#1844 P4, part 2).** The
+  coordinator no longer journals each provider attempt in `attempts` (two billed rows at
+  completion, one more when retention deleted it). Each `completeBatch` folds its calls into one
+  `attempt_usage` row per UTC day, lane and route, which `usage_today` reads. Counts are exact, and
+  percentiles are exact over each cell's first 2,000 calls of the day. A non-success attempt is
+  logged as an `attempt_outcome` Workers Logs event instead. `resolve-unknown-batch` now reports
+  every id `not_found` (no job ever enters `unknown_attempt`). The old table is dropped at
+  migration, which bills no rows. Measured: 18.62 → 16.40 billed rows per one-model job including
+  retention (22.22 → 20.07 at three models); `ROWS_PER_LEASE_WORST` 23 → 21.
+
+- **LLM dispatch: no Durable Object call before each provider call (#1844 P4, part 1).** The
+  executor no longer calls `attemptStarted`, which inserted a `started` attempt row and bumped
+  `jobs.attempts` before every provider call (four billed rows with accounting). The claim counts
+  the attempt in the UPDATE that already leases the job, a granted 429 retry counts its own, and
+  completion gives the count back for a result that never reached a provider. The executor fences
+  each call locally on the lease deadline the claim returns; the dispatch window, response
+  ceiling and lease duration already guarantee it. Measured: 20.58 → 17.58 billed rows per
+  one-model job (24.18 → 21.18 at three models); `ROWS_PER_LEASE_WORST` 28 → 23. Attempts that
+  received a 429 and were retried in the same lease no longer leave an outcome-less attempt row;
+  the 429 is still counted in `route_failures`. `attemptStarted` stays as a write-free check for
+  an executor mid-bundle during the deploy.
+
+- **LLM dispatch: idle cron ticks stop rewriting an unchanged claim outcome (#1844 P5).** An empty
+  claim with the same reason as the stored last outcome is persisted at most every ten minutes.
+  Skipped ticks are counted in memory, folded into the next write, and included by `/v2/stats`.
+  An idle queue costs about 290 billed rows a day instead of 2,880. A claimed tick, a reaped
+  lease or a changed reason is still written at once. `claim.last_*` in the persisted row can lag
+  by up to ten minutes while idle; a hibernation loses only the skipped ticks' diagnostic counts.
+
+- **LLM dispatch: one billed row per model index instead of two (#1844).** `job_models` drops its
+  unique `(job_id, model)` index. A queued job records its index keys in `jobs.queue_models`, and
+  every unindex is a primary-key delete. Measured with `bench/rows-written`, a first-try job falls
+  from 21.58 to 20.58 billed rows with one model and from 27.18 to 24.18 with three. The bench
+  now also runs multi-model lifecycles and the deferred retention prune. Production keeps the
+  old index until no pre-change job is queued; the hourly recount then drops it. Until then each
+  model-index insert still writes that index's entry, so enqueue reserves 2 rows per ingress unit,
+  falling to 1.25 (`ROWS_PER_INGRESS_WRITE_UNIT`) once the index is gone.
+
+- **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
+  archive installation now have separate step timeouts, so a stalled package mirror or a slow
+  trickle during download fails visibly instead of leaving PR checks running indefinitely. The
+  FFmpeg version, checksum, and production audio behavior are unchanged.
+
+- **Fort Worth #3814 consecutive-proceedings note deployed and verified.** The exact UID/GUID-bound
+  annotation appears on both Council and CCPD pages, and CCPD RSS contains both whole-recording
+  UIDs/audio. Council RSS omits these 2020 items because its current 500-item window starts in
+  December 2020; the permanent Council pages remain available. The maintainer accepted this as the
+  expected RSS/archive behavior and the two P0 publication checks are closed. No source or audio
+  changed.
+
+- **P0 historical feed rules and Dallas CBTF follow-up.** The baseline rules merged in PR #2112 and
+  passed deployment run #37643318454. The updated worksheet covers 680 title patterns: 518 patterns (1,667 source/UID listings) are
+  assigned to feeds, one is archive-only, and 161 are not pursued. The current local replay has
+  1,975 added placements across 1,952 source/UID pairs, 30 removed wrong Fort Worth Council
+  placements, and 411 source/UID entries without a feed (405 not pursued and six archive-only). PR
+  #2154 removes the contradictory CBTF exclusion from Dallas Bond Program policy. The maintainer later
+  directed GUID 272574 to Bond Program only; this correction removes its exact Public Info entry.
+  October 3 is verified Bond-only. September 26 stays open until the corrected output is deployed and
+  checked.
+  The P0 report records the replay and remaining checks. This does not mark P0 complete.
+
+- **Dallas bond Town Hall routing decision updated.** PR #2116 briefly added the September 26,
+  2023 recording to Public Info as well as Bond Program. The maintainer later directed Bond Program
+  only; a follow-up removes that exact Public Info entry. The original UID/audio stays unchanged.
+  Live RSS verification of the final routing remains required before closing its evidence case.
+
+- **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
+  October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
+  5ffabb6), Pflugerville BOA (PR #1993), and Dallas/Fort Worth TIF aggregates (PR #1973). Updated
+  review documents (, ,
+  , ,
+  ) and  roadmap to record active production
+  feeds and passing regression test suites.
+
+- **Prepared #2097 Dallas May25 CBTF subscription.** Exact GUID admission preserves original
+  UID/audio. Two Streets cases close after original chapter and deployed RSS proof reconciliation.
+
+- **Prepared #2098 Fort Worth Gas Drilling Task Force participant.** Exact official opening
+  slates establish125/127 as Council/Task Force joint workshops. Both original UIDs/audio and
+  Council eligibility remain; two full aliases admit recurrence. Deployment closure pending.
+
+- **Prepared #2094 Dallas bond Critical Facilities feed.** Exact institution label retains
+  original UID/audio and automatically admits future matching GUIDs; prior feeds unchanged.
+  Deployment evidence remains required before case closure.
+
+- **Guard dispatch quota schema upgrades before job writes (PR #2057).** Detect all four quota columns added
+  by PR #2028, add only missing columns on otherwise-current objects, and verify readiness before
+  serving RPCs. Current-schema startups remain write-free. Mutation preflight prepares a zero-row
+  quota query before lease reaping or queue writes; an incomplete schema blocks repeated RPCs until
+  recreation, while transient read errors can retry. Partial upgrades retain completed columns.
+  No quota or recipe changes, pipeline-version bump, artifact invalidation, or catalog backfill.
+  Live rollout deployed code `5b3b9f6` as Worker version
+  `266f6645-51c9-41f8-85f3-c7c4e4f4cee9`. Detailed stats now succeed. A conservative same-day
+  reconciliation based on the maintainer-reported 90,000-row account warning raised the local
+  counter from 31,780 to 90,002; the four-column migration added five writes (90,007 total).
+  Admission is closed until UTC reset. This floor is not an exact billing reconstruction.
+
+
+- Correct eight Denton TIRZ board subscriptions from Council into separate Zone1/Zone2 feeds,
+  preserving UID/audio/raw records. No stage invalidation or backfill.
+
+- Correct two standalone Denton Library subscriptions and add Library to its verified Council
+  joint, preserving UID/audio/raw records. No stage invalidation or backfill.
+
+- Separate four verified Denton Health & Building Standards Commission recordings from Council;
+  retain original UID/audio/raw records. No stage invalidation or automatic backfill.
+
+- Give four verified Arlington Community and Neighborhood Development committee recordings
+  their own exact-label feed; remove Council leakage and preserve All Meetings, UID/audio and
+  archives. No stage invalidation or audio backfill.
+
+- Correct dispatch quota accounting: reserve and settle Qwen 3.8's 200k daily token allowance;
+  classify OrcaRouter prompt-cap errors by metadata, reroute rejected jobs and retain a learned
+  size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
+  schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
+  version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
+- Remove the verified January 22, 2022 Dallas Redistricting Commission recording from Council;
+  retain its dedicated Commission feed, UID/audio and archives. No stage invalidation or backfill.
+
+- Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
+  feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
+
+- Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
+  Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
+  becomes Council. No record changes, stage invalidation or audio backfill.
+
+- Prepare source-scoped Archive-only visibility (#2023) for six approved Addison historical
+  recordings. Remove public feed/search/browse discovery while preserving raw records, direct
+  meeting pages, stable UIDs and audio. Policy changes rebuild only derived render/search outputs;
+  no audio/stage invalidation or backfill. Verify and close 56 deployed assignment corrections;
+  eight historical evidence/visibility cases remain tracked.
+
+- **Addison body-policy stack merged (#2010, #2012, #2014, #2019–#2021).** Ship Public Input,
+  Briefings and BZA/Appeals presentation, proven joint subscriptions, exact Council ownership,
+  Bond/TIF feeds and the read-only historical unresolved sweep. Preserve raw records, UIDs,
+  audio and source namespaces. No stage-version bump, artifact invalidation or forced backfill.
+  Remaining historical proof cases stay visible; search/browse redesign follows in #2018.
+
+- Prepare an offline unresolved-recording sweep (#2013): inspect all cached raw recordings,
+  preserve known historical/false-inclusion obligations in a durable case register, report
+  changed assignments and missing registered records. No network, legacy remedy dispatch,
+  canonical state writes, audio invalidation or backfill. Notifications remain a separate gate.
+
+- Prepare Addison's approved Public Input migration (#2009): preserve the Town Meetings URL
+  and historical Citizen Advisory UID/audio, move the verified homelessness seminar to Public
+  Briefings, and remove five explicit ceremony/event inclusions while preserving raw records.
+  Display the formally combined board as Zoning Adjustment & Appeals without changing its URL.
+  Older ambiguous recordings remain actively tracked. No audio/stage invalidation or backfill.
+
+- **Prepare a dedicated Addison Community Partnership Committee feed.** Five recordings publish from six retained observations,
+  using the approved July 9 UID while preserving the July 10 record and all old pages. Exact identity
+  guards preserve the committee identity for future classification. Render/search caches rebuild for the configured proof;
+  audio keys and stage versions remain unchanged, with no forced backfill.
+
+- **Durable Object write accounting survives hibernation (PR #2008).** Persist billed row counts in the
+  same synchronous transaction as each mutation, including the accounting row; roll back both
+  on failure. Read-only calls and replays remain write-free. Add a bounded authenticated,
+  monotone current-day repair endpoint with audit logs. Increase projection constants for the
+  measured accounting overhead, including legacy idle-tick seeding; remove a redundant
+  braked-claim accounting write. Quotas and safe stops stay unchanged. Correct the workerd
+  benchmark and cover recreation, rollback, midnight, and operator repair. Existing undercounts
+  need an explicit platform-derived repair; future days start cleanly. No pipeline-version bump,
+  artifact invalidation, schema migration, model/recipe change, or catalog backfill.
+  Maintainer-authorized live repair raised October 4's estimate from 4,681 to 67,865:
+  66,861 platform rows through 17:30 UTC, a 1,000-row gap reserve, and four repair/resume rows.
+
+- **GitHub Actions major updates (PR #1497).** Refresh full-SHA action pins across current
+  workflows, preserve retired LLM workflows and the dispatch-tuning drift gate, and cover
+  workflows added since the original Renovate branch. Validate upstream action inputs and
+  hosted-runner compatibility. Add credential-free Worker packaging smoke checks and verify
+  nonpublishing audio-image build/load plus runtime checks. No Python/Worker dependency, image,
+  model, pipeline-version or
+  artifact changes; stored artifacts stay valid and no backfill is triggered.
+
+- **Purpose-bound LLM telemetry (GH#2001, PR #2004, review/52; merged 2026-10-04).** Require producer, accounting unit,
+  completion and coverage contracts in every LLM lane registration. Shared work handles count
+  eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
+  validated producer consumption separately from backend responses or cached reuse. Production
+  stages and research traversals emit aggregate purpose snapshots through existing append-only run
+  events. Reports automatically discover new/retired purposes, retain legacy events, and require
+  complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
+  Blocked research pairs retain both order-swapped assessment identities when retried.
+  Cached tag census initializes taxonomy/evaluation inputs before classifying retained work;
+  malformed shard scopes and episodes without identities are skipped safely.
+  No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
+  remain valid and no backfill is triggered. Telemetry begins with new runs.
+
+- Prepare Foundation's approved existing-UID publication selection: three historical recordings
+  appear once in dedicated/combined public views, with raw records and pages retained. Correct
+  retirement inferred from old clips using current official board activity. Configured proof changes
+  rebuild render/search outputs only; no audio/stage version bump or artifact backfill.
+
+- Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
+  existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
+  Valid selections also rewrite an empty audio channel when the preferred record is unavailable,
+  removing stale alternate RSS items without promoting another UID.
+  No city groups are activated. Configured selection enters render/search cache fingerprints;
+  unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
+
+- **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
+  Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
+  storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
+  report unknown tokens without failing the schedule; preserve reports after report-step failures.
+  No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. PR #1983 merged and its first manual
+  Actions acceptance passed on 2026-10-04 (run 37179726987, zero skipped files/unknown tokens). Discover registry purposes and LLM
+  stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
+  recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
+  are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
+
+- Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
+  on deferred inference paths; immediate evaluation routing remains supported.
+
+- Move the 800-meeting LLM capacity analysis into dated supporting evidence under
+  `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
+  Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
+
+- Capacity calculator review fixes: use committed Worker row-budget defaults and the same
+  idle-cron/operational allowances in both current and proposed scenarios. The current stress
+  projection now includes the previously omitted 1,000 operational rows (513,160 total/day).
+  Show per-episode lifecycle rows and reproduction commands alongside packed consensus totals.
+
+- Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
+  changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
+  budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.
+  Fresh locator recipes consume producer slots even when an older pending recipe has completed.
+  Evaluation cohort preparation now follows the active checkout, and duplicate-start retries
+  recognize the typed validation error.
+
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
 ### Changed
 
-- `/v2/stats` exposes purpose-level ingress usage and the latest 24 hourly queue/throughput
-  snapshots. Purpose usage reads the small `(utc_day, purpose)` primary-key ledger; hourly points
-  live in the scheduler singleton and are written only by hourly maintenance. Completion, failure,
-  and retry totals are maintained in existing scheduler writes, without scanning job history.
+- **Pflugerville Board of Adjustment coverage.** Adds a named-body feed with exact reviewed
+  ownership and fifteen traceable regression cases. Full current/persisted replay selects ten
+  independently identified historical recordings while preserving their UIDs and source namespace.
+  Identity coverage is separate from media availability: older unavailable provider links remain
+  documented, with no media recovery promise or archived-record deletion. No pipeline bump,
+  artifact invalidation or forced backfill. Evidence: `review/pflugerville-boa-coverage-2026-10.md`.
+
+- **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
+  direct physical-route allowlists, validated effort controls and synchronous result provenance.
+  Production remedy models and Worker routes are unchanged; shadow config admits no models.
+  Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
+  preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
+  Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
+  have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
+  provider failures retain the exception class without potentially sensitive exception text.
+  Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
+  interleave configurations under one total logical-case cap; timeouts hold their configuration.
+  Evaluation cases permit two client provider invocations across all retries, with SDK retries
+  disabled and attempt counts reported separately. Production retry defaults remain unchanged.
+  AA effort checks reject partial words and explicitly non-reasoning variants.
+  Git and frozen-version metadata are collected before live attempts.
+  Publication selection is specified at L2; the duplicate-identity feeds remain held.
+  Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
+  maintenance resolver; local identities stay scoped and runtime template activation is still gated.
+  No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
+
+- **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
+  Committee subscription using exact reviewed labels, covering three official committee recordings
+  without selecting its Open House. All provider/stored observations replayed and the three stored
+  UIDs preserved. CPC duplicate identities and public-input migration remain separate holds.
+  No source, record, author, UID algorithm or audio change; no pipeline bump, invalidation or forced
+  backfill. Evidence: `review/addison-udc-coverage-2026-10.md`.
+
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Search accepts individual
+  exact selectors and refreshes cached destinations when an exact rule changes; unconfigured
+  views retain their previous cache hashes. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
+- **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
+  of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
+  replay selects one retained recording per feed and preserves its UID. Existing source URL,
+  author, records and audio keys remain unchanged; normal publication requires no forced backfill
+  or artifact invalidation. Foundation duplicate UID aliases and the unidentified Empty clip remain
+  held, as documented in `review/arlington-coverage-2026-10.md`.
+
+- **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
+  redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
+  Unverified identities defer; district/program feed recreation and wrong-owner assignments are
+  blocked locally. Exact reviewed owners override another policy's ambiguous holding clues; joint
+  exact owners remain required. Known topic-bearing TIF labels need reviewed identity rather than marker inference.
+  The remedy recipe changes to `direct-v6-approved-family-policy`; remedy bypasses result caches,
+  so there is no stored-artifact invalidation, audio change or forced historical backfill.
+
+- **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
+  packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets
+  to Kimi K3. GLM 5.3 Flash and DeepSeek V4.1 Flash are documented optional capacity and are not
+  wired into the lane. The locator ingress budget is 800 jobs/day. Schema corrections now require
+  answer JSON in assistant content; exact duplicate-start validation gets one persisted, focused
+  locator repair, with no invented timestamp offsets. Bumping the locator prompt/routing recipe
+  invalidates old generated locator outputs for gradual reprocessing; provider chapters and audio
+  bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
+  labels, and matched-cohort results are in `evals/chapter-locator/`.
+
+- **LLM capacity accounting corrected.** Lane ceilings now size an explicit 800-eligible-meeting
+  planning scenario: two tagger batches, three production and shadow prelabel batches, and five
+  quotes evaluated by three judges per meeting. Judges are correctly charged as pinned jobs;
+  the shared R6 producer cap includes extraction and panel fan-out. A reproducible offline
+  calculator and capacity analysis separate demand from the unchanged 4,000-job shared cap,
+  25,600 enqueue units, full lifecycle DO rows and provider quotas. The full scenario needs
+  20,800 jobs before retries and exceeds Workers Free and the forty-call Gemini judge pool;
+  these ceilings do not promise 800 completed meetings/day. No model/prompt recipes, platform
+  billing tier, route pauses or stored-artifact invalidation changed.
+
+- **Locator CI reuse fixtures.** Current artifacts now include the routing policy version in
+  tests, with coverage for both production models and stale or missing routing metadata. The
+  subprocess kill/restart test uses the production spawn path instead of forking from a thread.
+  No production behavior or stored-artifact invalidation changed.
+
+- **Unexpected-body remedy specification (review/51).** Approved phase contracts make P1
+  evaluation/physical-route admission development-ready; P2–P5 are predecessor-gated. Narrow
+  alias-type qualification replaces the statistical gate; incomplete archives require reviewed
+  coverage exceptions, and city TIF aggregates are the future-city default. Remedy/onboarding
+  stay outside route leagues. Complete-archive city onboarding,
+  traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
+  decisions are specified before implementation. Routine review targets 5–8 small PRs weekly
+  and about twelve active directional issues. No model admission or auto-merge is enabled.
+
+- **Dallas and Fort Worth TIF aggregates (proposed).** Nine district feeds migrate through
+  aliases to one TIF subscription per city; boundary selectors cover historical variants without
+  matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
+  Broader eligibility may schedule historical work under existing budgets; no forced backfill.
+
+- **CI Renovate validator pinned to 44.125.1.** The unversioned npm install began resolving
+  Renovate 44.132.1, whose `@yarnpkg/core@4.9.2` dependency publishes an npm-incompatible Yarn
+  `patch:` URL. The verified pin restores configuration validation on Node 24; Renovate tracks
+  reviewed hygiene upgrades, and failed installs print npm debug logs from a dedicated cache.
+  Dependency guards remain enabled. No pipeline version changes or stored-artifact invalidation.
+
+- **Per-verb LLM backlog trends (GH#1968, review/50 PR1).**
+  `python -m citypods.ops.backlog_trend` reads scoped `run_events` locally or restores selected
+  recent event keys from storage. Six verbs report working backlog, daily trend, throughput,
+  drain time, cause classes and capacity/ingress recommendations in JSON and Markdown.
+  Upstream blocks, policy holds and errors are reported separately; unknown reasons remain
+  visible and can fail the report with `--fail-on-unclassified`. Interrupted runs are ignored.
+  A growing historical trend with zero latest backlog retains its trend classification but
+  emits no action, so cleared unreliable verbs cannot crash recommendation calculations.
+  Optional `llm_backlog` settings control the window and thresholds. This is a read-only
+  consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
+  The scheduled workflow remains review/50 PR2 (GH#1969).
+- Migrated provider-catalog quality scoring to Artificial Analysis's supported Free V2 language
+  models endpoint ahead of the November 4, 2026 legacy retirement. Fetches all pages, matches
+  creator names from the new schema, and leaves all candidates unscored if any page fails.
+  Existing API keys and issue attribution remain in use; no Pro subscription is needed. An
+  independent weekly endpoint-contract job now checks the live quality catalog and both reference
+  models, failing visibly on missing credentials or an unusable response.
+
+- **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
+  judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),
+  dated `results/`, and one script with `freeze`, `run` and `report`. Four experiments: `bundling` (evidence in each
+  question versus in the shared state), `question-types` (validate, grade and choose on real pull quotes, JEV and
+  Qwen), `context-ladder` (matched span, window, whole chapter on real rule-matched tag candidates with planted
+  wrong-tag controls, including the projected backfill cost of each tier) and `adjudicator`. The harness enforces
+  the limits found while building it: JEV's 64k total and 32k state-plus-largest-question ceilings, its
+  one-call-a-minute pacing, never retrying the misleading `503 processing_failed` near a ceiling, Groq Qwen's
+  6k input and 1,000-output-tokens-a-minute limits, whitespace-stripped keys, and inconclusive runs above 10%
+  unanswered. `tests/test_eval_judge.py` covers it with no network.
+
+- **The v2 Worker's numeric tunables moved out of Cloudflare variables, and native Mistral was
+  removed.** The 36 non-secret tunables (window sizes, retry budgets, retention, daily caps, the ingress
+  budget) now live in `config/dispatch_tuning.yml`, compiled to `workers/llm-dispatch-v2/src/dispatch_tuning.json`
+  by `scripts/compile_dispatch_tuning.py` (drift-checked in `llm-dispatch-v2-worker-deploy.yml`) and applied
+  by `src/tuning.js` at the `fetch`/`scheduled` entry points and in the Durable Object constructor. A
+  Cloudflare variable or secret of the same name still overrides a compiled value, so an incident override
+  is unchanged. The Worker's only declared variable is now `AI_GATEWAY_ID`; the dead
+  `UNKNOWN_ATTEMPT_POLICY` and the empty `AI_GATEWAY_BASE_URL` were dropped, taking the deployed Worker
+  from 39 variables to 1 (Workers Free caps variables plus secrets at 64). `scripts/compile_llm_lanes.py`
+  now reads the ingress budget from the tuning YAML. The native Mistral provider and its two Codestral
+  routes (account-tier restricted, monthly metered, used by no lane) were removed from
+  `config/provider_limits.yml` and the compiled catalogs, and the `MISTRAL_*` secrets were dropped from the
+  workflows that passed them. The `mistral/codestral-latest` route served by Airforce is unchanged.
+  Deploy removes the old dashboard variables automatically; the Mistral, `DISPATCH_AUTH_TOKEN` and other
+  orphan Worker *secrets* must be deleted by hand (`wrangler secret delete`). See review/49.
+
+- **The v2 Durable Object skips startup schema writes once its schema is current**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). A read-only catalog check now verifies the
+  required tables, compatibility columns, one-time model migration, clustered tables, and active
+  indexes/triggers before running initialization. A current DO avoids replaying startup DDL and
+  data migration work on cold starts; incomplete schemas still take the existing initializer,
+  which now logs the failing initialization phase.
+- **The v2 row-write brake reserves account and in-flight drain headroom**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `workers/llm-dispatch-v2/src/write_budget.js`,
+  `citypods/compute/llm.py`). Production logs show Cloudflare's free-tier row-limit exception
+  during Durable Object initialization, preventing all RPC methods for about 70 minutes before
+  service recovered. Enqueue still reserves billed-row headroom per job and supersede inside each
+  transaction. The coordinator now preserves 10,000 account rows and dynamically reserves
+  worst-case completion/retry rows for active leases and the next bundle before admitting another
+  claim. Out-of-band route probes stop writing their optional reservation ledger at the same safe
+  stop. Per-RPC Worker logs report row-write deltas and the running counter for attribution. A
+  rate-limited `do_row_budget_stop` event identifies which soft gate deferred work and reports
+  tracked headroom plus the claim projection. A configured status preflight error closes only that
+  producer lane; builds and completed-result
+  reconciliation continue. The weekly tournament and manual R5 benchmark preflight their
+  registered lanes. No pipeline recipe or stored artifact changes.
+
+- **The v2 Worker self-heals its own `__unroutable__` jobs instead of leaving them stuck forever**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). Like a job
+  pinned to a retired model (see the reconciler entry below), a job too large for every route
+  configured for its model, even at the catalog's loose static ratio, is indexed under the
+  `__unroutable__` sentinel at enqueue time and never revisited — not a key in `model_routes_map`,
+  so the claim loop's per-model scan never reads it, however long it waits (found live: 60 such
+  jobs alongside the retired-model ones during the 2026-09-25/26 stall).
+  - `_reconcileUnroutableJobs` now re-checks a small bounded batch of these every claim tick
+    against the *current* catalog, reusing the exact same check enqueue used. One that now fits (a
+    route was added or widened since enqueue) is reindexed under its real model and dispatches
+    normally; one that still doesn't is failed, so it stops holding the sweep's row budget, and
+    recorded per candidate route as `job_unroutable` for the budget monitor.
+  - `MAX_UNROUTABLE_RECONCILE_PER_TICK` (default 20) bounds the per-tick cost; 0 pauses it.
 
 - **The stuck-job reconciler can classify every lane, not just chapter-agenda/prelabeler**
   (`scripts/reconcile_stuck_chapter_agenda.py`, `.github/workflows/reconcile-stuck-chapter-agenda.yml`).
@@ -312,6 +1710,24 @@ Phase R (Research-Tool Surface)._
   Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
   daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
 
+- **Weekly provider-catalog reconciliation (observe and propose)** (`citypods/provider_catalog/`,
+  `scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`,
+  `config/provider_catalog_decisions.yml`, review/48 Slice 1). Lists every provider's catalog
+  (paginated), health-checks one live route per configured upstream model, and canaries up to three
+  free-marked candidates per provider, each provider inside a drained v2 dispatch pause; scarce
+  daily-quota routes are checked every four weeks, only with quota left, and charged to the Worker's
+  ledger. Each provider is a plugin whose response signals are pinned against responses recorded
+  under the pause on 2026-09-24. Findings go to one rolling issue: proven candidates with Artificial
+  Analysis scores (informational; the GPT-OSS-120B / Nemotron-3 Super floor is a flag) and
+  lane-backup checkboxes from the lane registry, unacknowledged anomalies on configured routes, and
+  collapsed observations; it closes when nothing is actionable and reopens when something is. Lanes
+  gain an optional `catalog_backup_candidates: false` opt-out. It changes no config and needs only
+  `issues: write`. Every weekly run also reports a discovery self-check (`--backtest`): replaying the
+  candidate gates against the configured routes re-finds 34/39 (the misses are three retired models
+  and z.ai's free models, which its catalog omits). #1841's Gemini rate-probe header change is reverted (the OpenAI-compatible
+  endpoint rejects `x-goog-api-key` and accepts Bearer). No pipeline version, recipe, or
+  stored-artifact change.
+
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
   `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just
@@ -493,6 +1909,12 @@ Phase R (Research-Tool Surface)._
   per-provider and per-route limits, recipe schema, and backfill behavior are unchanged.
 
 ### Fixed
+
+- **Unexpected-body TIF policy enforcement (proposed).** Remedy prompts receive each source
+  aggregate policy, and local validation blocks district recreation and wrong feed ownership.
+  Unmarked district-name clues require manual identity confirmation. The remedy recipe changes
+  to `direct-v5-aggregate-policy`; remedy already bypasses result caches, so no stored catalog
+  artifacts are invalidated and no audio/enrichment backfill is triggered.
 
 - **Direct LiteLLM calls now have a bounded 720 s default timeout** (`citypods/compute/llm.py`,
   `tests/test_compute_llm.py`, `LLM_SETUP.md`). `LLMBackendConfig.timeout_seconds` (30 s,
@@ -739,6 +2161,11 @@ Phase R (Research-Tool Surface)._
   closed in the pacing primitive as well.
 
 ### Added
+
+- **Historical feed coverage assessment (2026-10-02).** A source/label inventory and seven
+  separately reviewable policy directions cover the residual #1747 backlog after the proposed
+  TIF migration. Recommendations await category approval; no residual feed or exclusion changes
+  have been applied.
 
 - **Per-workflow LLM submission throughput telemetry** (`citypods/compute/llm_submission_telemetry.py`,
   `scripts/llm_submission_telemetry.py`, and the LLM producer workflows). Each run now records
@@ -6907,3 +8334,177 @@ Phase R (Research-Tool Surface)._
 - **OpenCode model routing is corrected.** OpenCode's free DeepSeek aliases now send
   `deepseek-v4-flash-free`. The proposed LongCat route was removed because the official API
   requires authentication/billing and OpenCode Zen does not advertise a free LongCat model.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+
+
+Council ownership correction (#2015) prepared/unmerged:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony,
+preserving all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search
+attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
+until its separate #2017 correction. Registered cases remain open until human merge/deployment.
+No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
+
+
+Bond family correction (#2016) prepared/unmerged: four verified committee recordings gain
+Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
+are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
+Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
+Cases remain open for human merge and deployed projection verification.
+
+
+TIRZ ownership correction (#2017) prepared/unmerged: official dated board agenda moves only
+GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search
+attribution changes accordingly; original raw record, UID and hosted audio remain. After the
+Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
+The case remains open pending human merge and deployed subscription verification.
+
+### Prepared workflow pin corrections (#2036)
+
+- Preserve the ASR Python 3.12 constraints target while updating pinned build Actions.
+- Synchronize the exact Wrangler 4.147.0 packaging assertion and deployment Action test.
+- No pipeline version, stored artifact, runtime source, or production ceiling changes.
+
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+- Prepared Denton Special Citizens Bond Advisory Committee feed for exact GUID 28865,
+  removing its Council override while preserving raw UID/audio. No invalidation or backfill.
+
+- Shipped exact Denton ownership corrections in #2043–#2053: four Health Commission,
+  two standalone Library, eight TIRZ board and one 2019 Bond committee recordings leave
+  Council for dedicated feeds; the proven Council/Library joint gains Library while retaining
+  Council. Raw UID/audio/source identities are preserved. No invalidation or backfill.
+
+- Prepared exact six-record Arlington Environmental Task Force feed, removing Council
+  leakage and preserving All Meetings, UID/audio. No invalidation or backfill.
+
+- Shipped exact six-record Arlington ETF ownership correction in #2058. Original raw UID/audio
+  and All Meetings preserved; no invalidation/backfill. Deployment verification pending.
+
+Dallas exact November2023 Community Bond Task Force recording280220 leaves Council for its own feed. Original UID/audio/raw records preserved; no stage invalidation or backfill.
+
+Four additional verified Dallas CBTF recordings gain their own feed coverage through exact GUID inclusions. Both August15 original source UIDs remain; no duplicate winner, audio change, stage invalidation or backfill.
+
+- Dallas Economic Development ownership: replace the standing broad substring with 11
+  complete institutional aliases, preserving genuine joints and existing exceptions; add a
+  complete-label 2024 bond subcommittee subscription. Recurrences need no GUID pin. Preserve
+  raw UIDs/audio/source records; no stage invalidation or backfill.
+
+- Prepared #2081: separate Dallas 2024 bond Streets and Transportation with reusable complete
+  institution labels, preserving standing aliases/joints and four existing GUID exceptions.
+  Raw recordings/UIDs/audio stay unchanged; no stage invalidation or backfill. Cases stay open
+  pending independent recording evidence and deployed ownership verification.
+
+- Prepared #2083: exact official agenda bindings distinguish one2017Dallas bond taskforce
+  meeting from two identically labeled public town halls; original UID/audio/raw title retained.
+  No stage invalidation or backfill; case closure requires deployment verification.
+
+- Prepared #2084: separate render/search/deploy jobs with same-run record/artifact handoff,
+  read-only sidecar indexing and staged complete publication. Deferred/error search retains
+  prior complete site; no provider refresh, record writes, schema change or stage backfill.
+  Existing20minute indexing and60minute job ceilings preserved.
+
+- Shipped #2081 in PR #2082: reusable Dallas Streets bond subcommittee ownership, preserving
+  standing aliases and joint feeds. Five recordings verified deployed; six exact bindings remain open.
+- Shipped #2083 in PR #2085: exact 2017 bond task-force and public town-hall subscriptions.
+  All three original recording UIDs/audio verified deployed; closure evidence is in PR #2090.
+
+
+- Shipped #2086 in PR #2088: EMSISD joint participant subscription. Live participant RSS and
+  retained Council page verified original UID/audio; no backfill or stage invalidation.
+
+- Prepared #2092: three verified Dallas CBTF recordings gain own subscription coverage,
+  using two exact GUID pins and one reusable complete chairs-meeting alias. Preserve original
+  UID/audio/raw records; no stage invalidation or backfill. Deployment proof gates closure.
+
+- Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
+  its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
+  Case remains open pending deployment verification.
+
+### Prepared workflow tooling correction (#2041)
+
+- Synchronize the exact Wrangler 4.147.0 smoke assertion with the selected tooling pin.
+- Record the Node 24 CI-validated Renovate 44.139.0 validator pin.
+- No runtime source, Python target, pipeline version, or stored artifact changes.
+- Prepared #2087 review fix: persist working search progress separately from last-complete
+  publication across Actions runs. Deferred builds retain the latest complete index while keeping
+  fresh non-search pages. No deadline increase, storage writes, stage bump or catalog backfill.
+
+### Merged backlog corrections — 2026-10-06
+
+- #2091, #2093 and #2095 shipped Flood, three CBTF additions and Critical Facilities feeds.
+  Original UID/audio/raw records remain intact; no stage invalidation or backfill.
+- #2087 shipped separate bounded search and cross-run working/complete checkpoints.
+  The material checkpoint fix merged before substantive new-code review; this gap is recorded.
+- Live Flood RSS contains UID8280ec97799c999e with the exact retained hosted audio URL.
+  CBTF additions and Critical feed remain pending deployment verification.
+
+- Verified seven Dallas/Fort Worth deployed ownership assignments with unchanged audio;
+  recorded the #2100 substantive-review gap and retained unresolved search obligations.
+
+### Search completed-source record reuse (2026-10-08)
+
+- Retain private per-meeting documents after source completion and whole-source cache hits.
+  Changed sources reuse unchanged meetings instead of rereading every hosted sidecar.
+  Existing caches remain compatible; completed sources without record entries rebuild once.
+  Public search schema, audio/stage versions, schedule and two-hour budget are unchanged.
+
+### Search HTTPS asset loading (2026-10-09)
+
+- Search loads its manifest and vendored engine from the page origin, preserving base paths.
+  Existing same-host HTTP shard URLs are upgraded on HTTPS pages, avoiding mixed-content
+  blocking without rebuilding the index. Search schema, cache, budgets and audio are unchanged.
+
+### P0 historical baseline verified complete (2026-10-09)
+
+- Final frozen-source replay accounts for all 680 title patterns and 26,555 saved entries.
+  Verified public browser search, six archive-only exclusions with retained direct pages, and
+  four Dallas recordings in all approved feeds with unchanged audio URLs. Six exact-recording
+  evidence questions remain explicitly open under the approved exit rule; no runtime changes.
+
+### Review/51 P2a policy foundation (prepared 2026-10-09)
+
+- Adds strict reviewed policy declarations, immutable template indexes and typed official proof
+  packets with explicit city/source binding. Shared ownership lookup preserves exact joint
+  subscriptions and existing conservative TIF guards. Legacy declarations remain unversioned.
+- The shared remedy config defaults to an empty template list; no feeds/templates activate and
+  no records, sources, UIDs, audio, stage versions or feed/cache hashes change. Instantiation
+  performs no model/network/evaluation IO. Replay qualification and feedback persistence follow
+  in separately scoped slices; synthetic transfer fixtures do not establish model admission.
+
+P2a preview correction: dependency-free declaration validation remains in citypods/config.py;
+strict template/evidence models reuse it from citypods/remedy_policy.py. Base render installations
+do not require the optional Pydantic evaluation dependency. A subprocess regression blocks
+Pydantic imports while loading every production feed. No dependency or workflow changes.
+
+P2a review hardening: supplied source recording inclusions use the existing shared parser,
+including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
+remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
+legacy configuration behavior are unchanged; no feed or source-record changes.
+
+Review/51 P2a shipped in PR #2213 (2026-10-09), including lightweight-render compatibility
+and validated hand-built recording inclusions. Final head passed all CI; no templates activated.
+
+### Review/51 comparison evidence (2026-10-10)
+
+Retain model configurations, original results, scored comparisons and bounded provider
+diagnostics under evals/remedy/results/p1-comparison-2026-10-10/. No production model
+activation, quota, feed, audio, storage-routing or pipeline-version changes.

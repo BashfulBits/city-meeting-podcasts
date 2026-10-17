@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "City of Arlington Environmental Task Force"
+      }
+    ],
+    "case_id": "recording-5098d2f4fff48e6317e3d221",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "arlington-tx-environmental-task-force"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda identifies the Environmental Task Force as the convening body for June 9, 2020, with call to order, new business and adjournment. The provider player independently labels the recording Environmental Task Force Meeting. Assign it to the configured Environmental Task Force feed. The agenda's reference to Council Environmental Task Force does not establish a separate City Council meeting or joint participation. The All Meetings feed is described as covering City Council and Planning & Zoning meetings, not this task force."
+  },
+  "attempt_id": "891708d990a24701b8f451f6ed184f00",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-5098d2f4fff48e6317e3d221",
+  "case_input_hash": "1bfc4d86aac86774a4ea19cc7316852a60121414552aa83ab85d069462ec12f3",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 4.760274708001816
+    }
+  ],
+  "end_to_end_seconds": 43.11930483299511,
+  "finished_at": "2026-10-14T22:16:09.766677+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T22:15:26.647144+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "301a4fd61601765747ae28053893ec56734638dcad847654213020c1230c7ac3",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 2123,
+        "output_tokens": 200
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 200,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 2123,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 2123,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 2323,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-5098d2f4fff48e6317e3d221\",\"bodies\":[{\"name\":\"City of Arlington Environmental Task Force\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"arlington-tx-environmental-task-force\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The recording-specific official agenda identifies the Environmental Task Force as the convening body for June 9, 2020, with call to order, new business and adjournment. The provider player independently labels the recording Environmental Task Force Meeting. Assign it to the configured Environmental Task Force feed. The agenda's reference to Council Environmental Task Force does not establish a separate City Council meeting or joint participation. The All Meetings feed is described as covering City Council and Planning & Zoning meetings, not this task force.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792016169,
+    "id": "resp_0bcc38e505a39ffa016acfff257158819aa96a296ba65e4802",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 2123,
+          "output_tokens": 200
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 200,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 2123,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 2123,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 2323,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

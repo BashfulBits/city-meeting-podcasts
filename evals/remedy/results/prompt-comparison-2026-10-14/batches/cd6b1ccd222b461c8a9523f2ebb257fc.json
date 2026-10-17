@@ -1,0 +1,143 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-ace5ee7ad06c0c01647b6539",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda identifies the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board as the body that will convene in a Special Called Meeting, with its own agenda, chair/members, and TIF20 items. The provider player title and native chapters match the same meeting. The existing feed denton-tx-tirz-1-board is the configured TIF family feed for this proven TIRZ No. 1 body, so assign_existing. No separate joint convening body is proven; the listed chair and members are participants in this same board, not another institution."
+  },
+  "attempt_id": "58a90239efd44e269f5a99bc9869b196",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-ace5ee7ad06c0c01647b6539",
+  "case_input_hash": "7e6d35f46ecbc62d4f0ecea67c84f7eb395bd66ce23a706496de4249cada4603",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.524342459000763
+    }
+  ],
+  "end_to_end_seconds": 46.891540124999665,
+  "finished_at": "2026-10-14T15:14:52.876746+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T15:14:05.984926+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "d4f7431bb1308fd6d598f7479967311cf5a94fb0abfbe2e6bb38c8189867ba56",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 1016,
+    "completion_tokens": 1256,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 1016,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 4205,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 4845,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 6101
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-ace5ee7ad06c0c01647b6539\",\"bodies\":[{\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"denton-tx-tirz-1-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda identifies the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board as the body that will convene in a Special Called Meeting, with its own agenda, chair/members, and TIF20 items. The provider player title and native chapters match the same meeting. The existing feed denton-tx-tirz-1-board is the configured TIF family feed for this proven TIRZ No. 1 body, so assign_existing. No separate joint convening body is proven; the listed chair and members are participants in this same board, not another institution.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine body/feed. We have case. Evidence agenda says Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of City of Denton convenes special called meeting. Feed exists \"denton-tx-tirz-1-board\" title Denton: TIRZ No. 1 Board description Meetings of Denton TIRZ No. 1 Board. Policy families: Use configured bond/TIF/public-information family feeds for their proven bodies. So assign existing feed denton-tx-tirz-1-board. Body name likely \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need echo case_id. Evidence refs for body: retained-agenda, provider-player, native-source-chapters? Need cite supplied evidence IDs. Body name from agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" and also \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" in title. Existing feed \"Denton: TIRZ No. 1 Board\" corresponds TIF/TIRZ No. 1. Need maybe include only one body. Is there any joint meeting? Agenda note lists Chair and members participating, but they are members of same board, not separate bodies. No joint. Need feed_slugs all appropriate existing feed slugs. Only denton-tx-tirz-1-board. Publication_action assign_existing. Evidence_ref_ids overall maybe all three. Missing_evidence empty? We have enough. Rationale concise. Need ensure no invented feed. JSON schema fields. Bodies array with name and evidence_ref_ids. Could name exactly \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" with evidence IDs retained-agenda, provider-player. Maybe include native-source-chapters too? The body name appears in retained agenda and provider-player. Native chapters doesn't include body name but items. For body assignment, cite retained-agenda. Overall evidence_ref_ids can include all three. Feed slug evidence: retained-agenda identifies TIF No.1, existing feed description matches TIRZ No.1. Need maybe mention \"TIRZ\" acronym equivalent to Tax Increment Reinvestment Zone. Policy families says use configured TIF feeds for proven bodies. So rationale.\n\nCheck if \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" vs \"Reinvestment\". The official agenda text says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Title says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Which is body? The convening institution is the board. Could include full formal name. Max 300. Maybe \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (Denton TIRZ No. 1 Board)\"? But schema name. Better \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Evidence refs retained-agenda, provider-player. The provider player title says Zone No.1 Board, but formal agenda says Reinvestment. Use formal. Feed slug denton-tx-tirz-1-board. No other bodies.\n\nNeed output JSON object only. Ensure all required fields: case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Additional properties false. Bodies items only name/evidence_ref_ids. Evidence IDs strings. Publication_action enum. We can set missing_evidence [].\n\nNeed rationale max 2000. Include evidence-to-feed connection. Don't mention hidden analysis. We can say \"The retained agenda identifies the Downtown Denton TIF Reinvestment Zone No. 1 Board as the body that will convene in special called meeting, with its own agenda and chair/members; player and chapters match same meeting. The existing feed 'denton-tx-tirz-1-board' is the configured TIF family feed for this proven TIRZ No. 1 body, so assign_existing. No separate joint body is proven; listed individuals are members of this board, not another convening institution.\"\n\nNeed perhaps \"publication_action\": \"assign_existing\". Evidence_ref_ids: [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies: [{\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}]. Maybe body evidence also native-source-chapters? Native source chapters include agenda items, not body name, but confirms same meeting. Could include all three. The body name proof from retained-agenda and provider-player. Use two. Overall evidence refs all three.\n\nNeed no markdown. Final JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine body/feed. We have case. Evidence agenda says Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of City of Denton convenes special called meeting. Feed exists \"denton-tx-tirz-1-board\" title Denton: TIRZ No. 1 Board description Meetings of Denton TIRZ No. 1 Board. Policy families: Use configured bond/TIF/public-information family feeds for their proven bodies. So assign existing feed denton-tx-tirz-1-board. Body name likely \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Need echo case_id. Evidence refs for body: retained-agenda, provider-player, native-source-chapters? Need cite supplied evidence IDs. Body name from agenda: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" and also \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" in title. Existing feed \"Denton: TIRZ No. 1 Board\" corresponds TIF/TIRZ No. 1. Need maybe include only one body. Is there any joint meeting? Agenda note lists Chair and members participating, but they are members of same board, not separate bodies. No joint. Need feed_slugs all appropriate existing feed slugs. Only denton-tx-tirz-1-board. Publication_action assign_existing. Evidence_ref_ids overall maybe all three. Missing_evidence empty? We have enough. Rationale concise. Need ensure no invented feed. JSON schema fields. Bodies array with name and evidence_ref_ids. Could name exactly \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" with evidence IDs retained-agenda, provider-player. Maybe include native-source-chapters too? The body name appears in retained agenda and provider-player. Native chapters doesn't include body name but items. For body assignment, cite retained-agenda. Overall evidence_ref_ids can include all three. Feed slug evidence: retained-agenda identifies TIF No.1, existing feed description matches TIRZ No.1. Need maybe mention \"TIRZ\" acronym equivalent to Tax Increment Reinvestment Zone. Policy families says use configured TIF feeds for proven bodies. So rationale.\n\nCheck if \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" vs \"Reinvestment\". The official agenda text says \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Title says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Which is body? The convening institution is the board. Could include full formal name. Max 300. Maybe \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board (Denton TIRZ No. 1 Board)\"? But schema name. Better \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\". Evidence refs retained-agenda, provider-player. The provider player title says Zone No.1 Board, but formal agenda says Reinvestment. Use formal. Feed slug denton-tx-tirz-1-board. No other bodies.\n\nNeed output JSON object only. Ensure all required fields: case_id, bodies, feed_slugs, publication_action, evidence_ref_ids, missing_evidence, rationale. Additional properties false. Bodies items only name/evidence_ref_ids. Evidence IDs strings. Publication_action enum. We can set missing_evidence [].\n\nNeed rationale max 2000. Include evidence-to-feed connection. Don't mention hidden analysis. We can say \"The retained agenda identifies the Downtown Denton TIF Reinvestment Zone No. 1 Board as the body that will convene in special called meeting, with its own agenda and chair/members; player and chapters match same meeting. The existing feed 'denton-tx-tirz-1-board' is the configured TIF family feed for this proven TIRZ No. 1 body, so assign_existing. No separate joint body is proven; listed individuals are members of this board, not another convening institution.\"\n\nNeed perhaps \"publication_action\": \"assign_existing\". Evidence_ref_ids: [\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]. Bodies: [{\"name\":\"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}]. Maybe body evidence also native-source-chapters? Native source chapters include agenda items, not body name, but confirms same meeting. Could include all three. The body name proof from retained-agenda and provider-player. Use two. Overall evidence refs all three.\n\nNeed no markdown. Final JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791990884,
+    "id": "0408d553324061ea79a7207eaa56e4b1",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 1016,
+      "completion_tokens": 1256,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 1016,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 4205,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 4845,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 6101
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

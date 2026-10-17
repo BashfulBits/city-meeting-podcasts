@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "dataset": "dataset-v3",
+  "purpose": "DeepSeek V4.1 Flash raw-stream diagnostic with one schema repair",
+  "split": "development",
+  "packet_group": "first-common-core-packet",
+  "packet_builder_estimate_chars_div_4": 1370,
+  "provider_labels_in_requests": false,
+  "test_split_scored": false,
+  "route": "deepseek/deepseek-v4.1-flash",
+  "route_id": "nvidia_deepseek_v4_1_flash_free",
+  "route_transport": "Cloudflare AI Gateway to NVIDIA; direct streamed HTTP, no SDK retries",
+  "pause": {
+    "provider": "nvidia",
+    "drained": true,
+    "in_flight_at_start_first_attempt": 3,
+    "drain_seconds_before_first_attempt": 321.9,
+    "in_flight_at_start_repair_attempt": 0,
+    "resumed_after_run": true
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "kind": "initial",
+      "http_status": 200,
+      "nvcf_status": "fulfilled",
+      "request_to_headers_seconds": 179.496,
+      "request_to_finish_seconds": 852.996,
+      "response_bytes": 543233,
+      "visible_content_bytes": 621,
+      "completion_tokens": 7392,
+      "reasoning_tokens": 7219,
+      "schema_valid": false,
+      "schema_error": "Used item_index; omitted agenda_item_index, confidence, and rationale.",
+      "scoring": "not_scored_invalid_schema",
+      "request_sha256": "890988af5c5a2bbeec668466ebbbb27de0bbea3b0812c925b7eabd8243e151ac"
+    },
+    {
+      "attempt": 2,
+      "kind": "schema-repair",
+      "http_status": 200,
+      "nvcf_status": "fulfilled",
+      "request_to_headers_seconds": 298.449,
+      "request_to_finish_seconds": 932.449,
+      "response_bytes": 688002,
+      "visible_content_bytes": 1950,
+      "completion_tokens": 9556,
+      "reasoning_tokens": 9080,
+      "schema_valid": true,
+      "anchor_count": 7,
+      "provider_start_hits": 3,
+      "provider_start_denominator": 3,
+      "crosswalk_candidate_hits": 3,
+      "crosswalk_candidate_denominator": 3,
+      "scoring_note": "One short development packet only; not an aggregate quality estimate.",
+      "request_sha256": "7c1f8ec282341be26c6880b8c41592125ad6bce048f4405b6a158774c498e03e"
+    }
+  ],
+  "private_raw_artifacts": {
+    "attempt_1": "/private/tmp/chapter-locator-telemetry/nvidia-v41-debug-20260926/",
+    "attempt_2": "/private/tmp/chapter-locator-telemetry/nvidia-v41-debug-20260926-attempt2/",
+    "contains": "request.json, response.body (full raw SSE), events.jsonl, metadata.json, summary.json, latency-breakdown.json"
+  },
+  "recommendation": "Do not admit as a production locator route: both calls took 14-15.5 minutes, used 7.2k-9.1k reasoning tokens, and the initial answer required a costly schema repair."
+}

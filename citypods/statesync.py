@@ -25,9 +25,10 @@ import hashlib
 import json
 import tempfile
 import threading
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from posixpath import normpath
 
 STATE_PREFIX = "state"
@@ -105,6 +106,54 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_safe_rel_state_path(rel: str) -> bool:
+    """Establish syntactic safety and containment for relative state keys.
+
+    Rejects non-string types, leading slashes or Windows drives, traversal components
+    ('.' or '..'), unapproved suffixes, and reserved system journal names.
+    """
+    if not isinstance(rel, str) or not rel:
+        return False
+    if rel.startswith(("/", "\\")):
+        return False
+    if rel != normpath(rel):
+        return False
+    if rel in {".", ".."} or rel.startswith("../"):
+        return False
+    candidate = PurePosixPath(rel)
+    if candidate.is_absolute():
+        return False
+    if any(part in {".", ".."} for part in candidate.parts):
+        return False
+    if candidate.suffix not in _SUFFIXES:
+        return False
+    if rel in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}:
+        return False
+    return True
+
+
+def _safe_state_destination(state_dir: Path, rel: str) -> Path | None:
+    """Resolve and verify that relative state path ``rel`` is safely confined within ``state_dir``.
+
+    Protects against absolute path overrides, traversal escapes, and symlink hijacking
+    targeting external files or directories outside ``state_dir``. Returns the verified
+    ``Path`` object within ``state_dir``, or ``None`` if containment is violated.
+    """
+    if not _is_safe_rel_state_path(rel):
+        return None
+    state_root = Path(state_dir).resolve()
+    # Join parts explicitly from PurePosixPath to prevent truediv root overrides
+    dest = state_root.joinpath(*PurePosixPath(rel).parts)
+    try:
+        resolved = dest.resolve()
+        # Ensure the destination resolves inside state_root and is not an existing symlink
+        if dest.is_symlink() or not resolved.is_relative_to(state_root):
+            return None
+    except (OSError, ValueError):
+        return None
+    return dest
+
+
 def _manifest_path(state_dir: Path) -> Path:
     return Path(state_dir) / MANIFEST_REL_PATH
 
@@ -172,6 +221,38 @@ def mark_state_deleted(state_dir: Path, *paths: str | Path) -> None:
         path.write_text(json.dumps(sorted(tombstones), indent=2) + "\n")
 
 
+def clear_state_dirty(state_dir: Path, *paths: str | Path) -> None:
+    """Remove exact state paths from the dirty journal after verified persistence."""
+    state_dir = Path(state_dir)
+    with _JOURNAL_LOCK:
+        journal = state_dir / DIRTY_JOURNAL_NAME
+        if not journal.exists():
+            return
+        dirty = _read_journal(journal, state_dir, label="dirty")
+        for raw in paths:
+            dirty.discard(_journal_rel_path(state_dir, raw, label="dirty"))
+        if dirty:
+            journal.write_text(json.dumps(sorted(dirty), indent=2) + "\n")
+        else:
+            journal.unlink(missing_ok=True)
+
+
+GLOBAL_CONTROL_PREFIXES: tuple[str, ...] = (
+    "run_summary.json",
+    "run_events/",
+    "source_refresh.json",
+    "asr_runtime_log.json",
+    "transcript_quality_log.json",
+    "transcript_quality_calibration_trend.json",
+    "transcript_quality_rollups.json",
+)
+
+
+def shard_pull_prefixes(owned_sources: Iterable[str]) -> list[str]:
+    """Prefix list for shard-scoped sparse state fetching (Review/45 Initiative 1)."""
+    return [f"sources/{k}/" for k in sorted(owned_sources)] + list(GLOBAL_CONTROL_PREFIXES)
+
+
 def _validate_manifest(manifest: object) -> dict | None:
     if (
         not isinstance(manifest, dict)
@@ -180,6 +261,8 @@ def _validate_manifest(manifest: object) -> dict | None:
         or not isinstance(manifest.get("objects"), dict)
         or not isinstance(manifest.get("tombstones", []), list)
         or not all(isinstance(value, dict) for value in manifest["objects"].values())
+        or not all(_is_safe_rel_state_path(rel) for rel in manifest["objects"])
+        or not all(_is_safe_rel_state_path(rel) for rel in manifest.get("tombstones", []))
     ):
         return None
     return manifest
@@ -285,19 +368,36 @@ def _full_state_keys(storage):
         key
         for key, _ in storage.list_objects(f"{STATE_PREFIX}/")
         if (rel := key[len(STATE_PREFIX) + 1 :])
-        and rel not in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}
-        and Path(rel).suffix in _SUFFIXES
+        and _is_safe_rel_state_path(rel)
         and not _is_cas_managed(storage, key)
     ]
 
 
-def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
+def pull_state(
+    storage,
+    state_dir: Path,
+    *,
+    only_paths=None,
+    only_prefixes=None,
+    apply_tombstones: bool = True,
+    log=None,
+) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
     Returns the number of files restored. No-op for backends without sync support.
 
     ``only_paths`` (optional): when given, restrict the pull to the listed relative paths (e.g.
-    ``["llm_evaluation.json"]``). Useful for commands that only need one file and do not want to
-    pay the cost of downloading the full snapshot.
+    ``["llm_evaluation.json"]``). Must be valid relative paths confined to ``state_dir``.
+
+    ``only_prefixes`` (optional): when given, restrict the pull to relative paths starting with
+    any of the listed prefixes (e.g. ``["sources/denton-tx/"]``). Mutually exclusive with
+    ``only_paths``.
+
+    ``apply_tombstones`` (default True): whether to delete local files matching remote tombstones.
+    When False, provides a download-only restore contract for reporting/read-only consumers.
+
+    All restored objects and tombstones are strictly confined to ``state_dir``. Any malicious,
+    absolute, escaping ('..'), or symlinked paths targeting files outside ``state_dir`` are
+    safely rejected before filesystem operations.
 
     A single key that keeps failing with a transient storage read error (timeout, dropped
     connection, transient S3 response, or known botocore parser failure — see
@@ -311,9 +411,26 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
         return 0
     from citypods.storage.s3 import is_transient_storage_error
 
+    if only_prefixes is not None and only_paths is not None:
+        raise ValueError("only_prefixes and only_paths are mutually exclusive")
+    prefixes = tuple(only_prefixes) if only_prefixes is not None else None
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
-    requested_paths = frozenset(only_paths) if only_paths is not None else None
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if only_paths is not None:
+        exact_paths = set()
+        for raw_path in only_paths:
+            path_obj = Path(raw_path)
+            if path_obj.is_absolute():
+                raise ValueError(f"only_paths entry must be relative: {raw_path!r}")
+            rel_norm = normpath(path_obj.as_posix())
+            if rel_norm in {".", ".."} or rel_norm.startswith("../"):
+                raise ValueError(f"only_paths entry is not a valid relative file: {raw_path!r}")
+            exact_paths.add(rel_norm)
+        requested_paths = frozenset(exact_paths)
+    else:
+        requested_paths = None
+
     manifest = _load_manifest(storage, state_dir, log=emit)
     if manifest is not None:
         objects = manifest["objects"]
@@ -321,37 +438,52 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
         keys = [f"{STATE_PREFIX}/{rel}" for rel in objects if rel not in tombstones]
         # A valid manifest is authoritative for remote state. Do not remove local files here:
         # unpushed local writes may be present after an interrupted run. Tombstones are applied
-        # only to files that are not locally dirty.
-        try:
-            dirty = set(json.loads((state_dir / DIRTY_JOURNAL_NAME).read_text()))
-        except (OSError, ValueError, TypeError):
-            dirty = set()
-        for rel in tombstones - dirty:
-            (state_dir / rel).unlink(missing_ok=True)
+        # only to files that are not locally dirty, and respect requested scope.
+        if apply_tombstones:
+            try:
+                dirty = set(json.loads((state_dir / DIRTY_JOURNAL_NAME).read_text()))
+            except (OSError, ValueError, TypeError):
+                dirty = set()
+            for rel in tombstones - dirty:
+                if prefixes is not None and not rel.startswith(prefixes):
+                    continue
+                if requested_paths is not None and rel not in requested_paths:
+                    continue
+                dest = _safe_state_destination(state_dir, rel)
+                if dest is None:
+                    emit(f"state: WARNING skipping unconfined tombstone {rel}")
+                    continue
+                dest.unlink(missing_ok=True)
     elif requested_paths is not None:
-        # A scoped consumer already knows its exact keys.  Do not list the whole snapshot merely
+        # A scoped consumer already knows its exact keys. Do not list the whole snapshot merely
         # because an older deployment has not published a manifest yet: that fallback can contain
         # thousands of unrelated objects and defeats the purpose of the narrow restore.
         keys = [f"{STATE_PREFIX}/{rel}" for rel in requested_paths]
+    elif prefixes is not None:
+        keys = [
+            k
+            for k in _full_state_keys(storage)
+            if (k[len(STATE_PREFIX) + 1 :]).startswith(prefixes)
+        ]
     else:
         keys = _full_state_keys(storage)
 
-    # When only specific files are requested, filter the key list before checking freshness or
-    # spawning the thread pool — we don't need to download or even stat any other files.
+    # When only specific files or prefixes are requested, filter the key list before checking
+    # freshness or spawning the thread pool — we don't need to download or stat other files.
     if requested_paths is not None:
         wanted = {f"{STATE_PREFIX}/{rel}" for rel in requested_paths}
         keys = [k for k in keys if k in wanted]
+    elif prefixes is not None:
+        keys = [k for k in keys if (k[len(STATE_PREFIX) + 1 :]).startswith(prefixes)]
 
     # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object
-    # GETs out
-    # across a bounded pool: the listing is cheap and sequential, the downloads are the expensive,
-    # parallelizable part. Filtering here keeps the pool doing only real work.
+    # GETs out across a bounded pool. Filtering here keeps the pool doing only real work.
     if manifest is not None:
 
         def _needs_restore(rel: str) -> bool:
             entry = manifest["objects"].get(rel, {})
-            local = state_dir / rel
-            if not local.is_file():
+            local = _safe_state_destination(state_dir, rel)
+            if local is None or not local.is_file():
                 return True
             size = entry.get("size")
             if isinstance(size, int) and local.stat().st_size != size:
@@ -366,8 +498,12 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
 
     def _restore_one(key: str) -> bool:
         rel = key[len(STATE_PREFIX) + 1 :]
+        dest = _safe_state_destination(state_dir, rel)
+        if dest is None:
+            emit(f"state: WARNING skipping unconfined key {key}")
+            return False
         try:
-            return bool(storage.get_file(key, state_dir / rel))
+            return bool(storage.get_file(key, dest))
         except Exception as exc:
             if not is_transient_storage_error(exc):
                 raise
@@ -780,19 +916,64 @@ def push_records_merged(
                     f"expected={added} actual={actual} match={actual == added} "
                     f"readback_is_none={readback is None}"
                 )
+        # Review/45 Initiative 4: Update local manifest and clear dirty journal entry strictly
+        # AFTER successful upload, so transient failures remain dirty for retry.
+        try:
+            _record_path = records_path(state_dir, sk)
+            rel = f"sources/{sk}/episodes.json"
+            if _record_path.is_file():
+                _manifest_entry = _manifest_object(rel, _record_path)
+                with _JOURNAL_LOCK:
+                    _cur_manifest = _read_local_manifest(state_dir)
+                    _cur_manifest.setdefault("objects", {})[rel] = _manifest_entry
+                    _write_local_manifest(state_dir, _cur_manifest)
+            clear_state_dirty(state_dir, rel)
+        except Exception:
+            pass
         return 1
 
-    # Each source has a distinct local file and remote object. Parallelizing them preserves the
-    # foreign-block merge for every source while eliminating the long serial B2 tail from a tag
-    # checkpoint that touches dozens of sources.
+    # Review/45 Initiative 4: Select dirty source record files before any remote read.
+    # Unchanged sources skip remote GET, merge, and PUT entirely.
     source_keys = sorted(set(source_keys))
     if not source_keys:
         return 0
-    workers = min(_STATE_SYNC_MAX_WORKERS, len(source_keys))
+
+    journal_path = state_dir / DIRTY_JOURNAL_NAME
+    dirty_journal = None
+    if journal_path.exists():
+        try:
+            dirty_journal = _read_journal(journal_path, state_dir, label="dirty")
+        except (OSError, ValueError, TypeError):
+            dirty_journal = None
+
+    local_manifest = _read_local_manifest(state_dir)
+    manifest_objects = local_manifest.get("objects", {})
+
+    def _is_dirty(sk: str) -> bool:
+        rel = f"sources/{sk}/episodes.json"
+        rec_file = records_path(state_dir, sk)
+        if not rec_file.is_file():
+            return False
+        if dirty_journal is not None and rel in dirty_journal:
+            return True
+        if local_manifest and manifest_objects:
+            entry = manifest_objects.get(rel)
+            if entry is None:
+                return True
+            return _digest(rec_file) != str(entry.get("digest", ""))
+        if dirty_journal is not None:
+            return False
+        return True
+
+    dirty_source_keys = [sk for sk in source_keys if _is_dirty(sk)]
+    if not dirty_source_keys:
+        return 0
+
+    workers = min(_STATE_SYNC_MAX_WORKERS, len(dirty_source_keys))
     if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            return sum(pool.map(_push_one, source_keys))
-    return _push_one(source_keys[0])
+            return sum(pool.map(_push_one, dirty_source_keys))
+    return _push_one(dirty_source_keys[0])
 
 
 def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=None) -> int:

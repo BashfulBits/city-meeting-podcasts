@@ -1,0 +1,358 @@
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-VXSPBP4RRH"></script>
+
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-VXSPBP4RRH', { 'request_origin':'external' });
+</script>
+   
+   <style>
+	body{ 
+	   margin-top: .5in; 
+	   margin-bottom: .5in; 
+	   margin-right: .5in ; 
+	   margin-left: .5in;
+	   text-align: justify;
+                   font-family: Arial;
+                   font-size: 12.5;                      
+	   }
+	
+	table{
+	   text-align: justify;
+	   border-spacing: 5px;
+	   padding: 0;
+	   }
+
+	td{
+	   text-align: justify;
+	   vertical-align:top;
+	   } 
+                  .numberspace
+                   {
+                  width: 35px; 
+                   }
+
+     	</style>
+   
+   <title>BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL</title>
+<div align = "center">
+<img src = "http://webcontent.granicusops.com/content/fortworthgov/header.jpg" width = "120px" height = "60px">
+</div>
+<br/>
+<div style="text-align:center; font-size:18;"><strong>BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL <br/>FOR THE MEETING AT 
+
+       04:00
+   A.M.
+
+ MONDAY, APRIL 25, 2016<br/> 
+    Hollenstein Career Tech Center
+        </strong></div><hr>
+
+
+<style>blockquote { margin-left: 15px; margin-right: 0px; margin-top: 0px; margin-bottom: 0px; }@media print { a { color: black; } }</style>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>I.</strong>
+                 </td>
+	 <td>
+                      <strong>OPEN SESSION - CALL TO ORDER</strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>A.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293630" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293630" onclick="">CALL TO ORDER - Presenter: Board President Dick Elkins</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>B.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293631" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293631" onclick="">WELCOME FROM BOARD PRESIDENT - Presenter: Board President Dick Elkins</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>C.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293632" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293632" onclick="">WELCOME FROM MAYOR - Presenter: Mayor Betsy Price</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>D.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293633" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293633" onclick="">OPENING CEREMONY - HOLLENSTEIN CAREER AND TECHNOLOGY CENTER - Presenter: Director of Career &amp; Technology Dana Eldredge</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>II.</strong>
+                 </td>
+	 <td>
+                      <strong>COMMUNICATIONS</strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>A.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293635" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293635" onclick="">SPECIAL RECOGNITIONS</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>III.</strong>
+                 </td>
+	 <td>
+                      <strong>REPORTS OF THE SUPERINTENDENT</strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>A.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293637" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293637" onclick="">INTRODUCTIONS, WELCOME, AND OVERVIEW - Presenters: Board President Dick Elkins; Mayor Betsy Price; Superintendent Jim Chadwell</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>B.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293638" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293638" onclick="">EMS ISD DEMOGRAPHIC REPORT&nbsp; - Presenter: Chief Operations Officer Clete Welch</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293775"  name="document293775" class="Document Document2" onclick="">EMS Demographic Report</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>C.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293639" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293639" onclick="">HCTC VIDEO AND PRESENTATION</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>D.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293640" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293640" onclick="">EMS ISD ECONOMIC DEVELOPMENT INITIATIVE</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293777"  name="document293777" class="Document Document2" onclick="">Economic Development Initiative Report</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>E.</strong>
+                 </td>
+	 <td>
+                       <strong>STATE OF THE DISTRICT</strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <table style = "margin-left: 45px">
+       <tbody>
+            <tr>
+	<td class = "numberspace">
+                     1.
+                 </td>
+	 <td>
+                       <a name="agenda293642" class="Agenda Agenda2" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293642" onclick="">Educational Services</a>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"><blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote><blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293786"  name="document293786" class="Document Document3" onclick="">State of the District - Education</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table style = "margin-left: 45px">
+       <tbody>
+            <tr>
+	<td class = "numberspace">
+                     2.
+                 </td>
+	 <td>
+                       <a name="agenda293645" class="Agenda Agenda2" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293645" onclick="">Operations</a>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"><blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293782"  name="document293782" class="Document Document4" onclick="">State of the District - Operations</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote><blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293784"  name="document293784" class="Document Document4" onclick="">State of the District - Operations Infrastructure</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote></blockquote>   <table style = "margin-left: 45px">
+       <tbody>
+            <tr>
+	<td class = "numberspace">
+                     3.
+                 </td>
+	 <td>
+                       <a name="agenda293648" class="Agenda Agenda2" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293648" onclick="">Finance</a>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"><blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <div><a href="https://fortworthgov.granicus.com/MetaViewer.php?view_id=9&clip_id=2491&meta_id=293780"  name="document293780" class="Document Document4" onclick="">State of the District - Finance</a></div>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote></blockquote></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>F.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293650" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293650" onclick="">REPORT ON CAREER AND TECHNOLOGY INITIATIVES</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>IV.</strong>
+                 </td>
+	 <td>
+                      <strong><a name="agenda293651" class="Agenda Agenda0" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293651" onclick="">REPORTS OF THE CITY OF FORT WORTH</a></strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>A.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293652" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293652" onclick="">MAYOR&rsquo;S REPORT ON EDUCATION - Presenter: Mayor Betsy Price</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table style = "margin-left: 25px">
+       <tbody>
+            <tr>
+	<td width = "50px">
+                                          <strong>B.</strong>
+                 </td>
+	 <td>
+                       <strong><a name="agenda293653" class="Agenda Agenda1" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293653" onclick="">City of Fort Worth Master Thoroughfare Plan - Presenter: Katherine Beck</a></strong>	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>V.</strong>
+                 </td>
+	 <td>
+                      <strong><a name="agenda293654" class="Agenda Agenda0" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293654" onclick="">BOARD PRESIDENT&rsquo;S ANNOUNCEMENTS - Presenter: Board President Dick Elkins</a></strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>VI.</strong>
+                 </td>
+	 <td>
+                      <strong><a name="agenda293655" class="Agenda Agenda0" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293655" onclick="">MAYOR&rsquo;S ANNOUNCEMENTS - Presenter: Mayor Betsy Price</a></strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>   <table>
+       <tbody>
+            <tr>
+	<td width = "50px">
+                     <strong>VII.</strong>
+                 </td>
+	 <td>
+                      <strong><a name="agenda293656" class="Agenda Agenda0" href="https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491&meta_id=293656" onclick="">ADJOURNMENT</a></strong>
+	                        </td>
+              </tr>
+        </tbody>
+    </table><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+

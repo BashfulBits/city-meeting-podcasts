@@ -1,0 +1,160 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-ace5ee7ad06c0c01647b6539",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda explicitly states that the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board will convene a Special Called Meeting on October 21, 2020 at 9:00 a.m. The provider player identifies recording 87440 as that meeting and lists matching agenda items. This proven body belongs in the configured TIRZ No. 1 Board feed, denton-tx-tirz-1-board, under the numbered-board identity and TIF family publication rules. No additional convening body is identified."
+  },
+  "attempt_id": "07cb633927504c30a03cf1eaa0e4d16b",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-ace5ee7ad06c0c01647b6539",
+  "case_input_hash": "7e6d35f46ecbc62d4f0ecea67c84f7eb395bd66ce23a706496de4249cada4603",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 9.283070167000915
+    }
+  ],
+  "end_to_end_seconds": 48.797093417000724,
+  "finished_at": "2026-10-14T15:18:51.346791+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T15:18:02.549376+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5569d5d3b957c4477beb9a65be9f9f02356cebc94fdc0946263aeb95bd216137",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 4546,
+        "output_tokens": 260
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 260,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 4546,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 4546,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4806,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-ace5ee7ad06c0c01647b6539\",\n  \"bodies\": [\n    {\n      \"name\": \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ]\n    }\n  ],\n  \"feed_slugs\": [\n    \"denton-tx-tirz-1-board\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda explicitly states that the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board will convene a Special Called Meeting on October 21, 2020 at 9:00 a.m. The provider player identifies recording 87440 as that meeting and lists matching agenda items. This proven body belongs in the configured TIRZ No. 1 Board feed, denton-tx-tirz-1-board, under the numbered-board identity and TIF family publication rules. No additional convening body is identified.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791991130,
+    "id": "resp_02802303da172158016acf9d52d63881938db421f4e33b1a3a",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 4546,
+          "output_tokens": 260
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 260,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 4546,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 4546,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4806,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

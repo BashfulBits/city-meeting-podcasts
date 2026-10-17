@@ -1,0 +1,182 @@
+
+           
+   <style>
+	body{ 
+	   margin-top: .5in; 
+	   margin-bottom: .5in; 
+	   margin-right: .5in ; 
+	   margin-left: .5in;
+	   text-align: justify;
+	   }
+	
+	table{
+	   text-align: justify;
+	   border-spacing: 5px;
+	   padding: 0;
+	   }
+
+	td{
+	   text-align: justify;
+	   vertical-align:top;
+	   } 
+                  .numberspace
+                  {width: 30px}
+     	</style>
+   
+<div align = "center">
+AGENDA<br/>CITY OF DENTON CITY COUNCIL<br/>March 3, 2014
+</div>
+<br/><br/>
+After determining that a quorum is present, the City Council of the City of Denton, Texas will convene in a Joint Meeting with the Library Board on Monday, March 3, 2014 at 12:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be considered:
+<br/><br/>
+
+<style>blockquote { margin-left: 40px; margin-right: 0px; margin-top: 0px; margin-bottom: 0px; }@media print { a { color: black; } }</style>
+<table>
+<tr>
+<td><img src = "http://webcontent.granicusops.com/content/keene/images/docicon2.jpg"></td>
+<td><a href="http://denton-tx.granicus.com/MetaViewer.php?view_id=&clip_id=934&meta_id=68400"  name="document68400" class="Document Document" onclick="">Click here for Agenda Backup</a></td>
+</tr>
+</table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">1.</td>
+	<td><a name="agenda68379" class="Agenda Agenda0" href="javascript:void(0);" onclick="top.SetPlayerPosition(':168',null); return false;">Call to order; announce quorum, introductions.</a>
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">2.</td>
+	<td><a name="agenda68380" class="Agenda Agenda0" href="javascript:void(0);" onclick="top.SetPlayerPosition(':282',null); return false;">Receive a report, hold a discussion and give staff direction regarding the Denton Public Library Annual Report and Strategic Plan.</a>
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">3.</td>
+	<td>Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the City Council or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting&nbsp; AND&nbsp; under Section 551.0415 of the Texas Open Meetings Act, provide reports about items of community interest regarding which no action will be taken, to include: expressions of thanks, congratulations, or condolence; information regarding holiday schedules; an honorary or salutary recognition of a public official, public employee, or other citizen; a reminder about an upcoming event organized or sponsored by the governing body; information regarding a social, ceremonial, or community event organized or sponsored by an entity other than the governing body that was attended or is scheduled to be attended by a member of the governing body or an official or employee of the municipality; or an announcement involving an imminent threat to the public health and safety of people in the municipality that has arisen after the posting of the agenda.
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+   Following the completion of the Joint Meeting, the City Council will convene in a Closed Meeting to consider specific items when these items are listed below under the Closed Meeting section of this agenda.&nbsp; The City Council reserves the right to adjourn into a Closed Meeting on any item on its Open Meeting agenda consistent with Chapter 551 of the Texas Government Code, as amended, or as otherwise allowed by law.
+   <br/><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">1.</td>
+	<td><a name="agenda68395" class="Agenda Agenda0" href="javascript:void(0);" onclick="top.SetPlayerPosition(':4069',null); return false;">Closed Meeting:</a>
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">A.</td>
+	<td>Consultation with Attorneys - Under Texas Government Code Section 551.071.
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;">
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">1.</td>
+	<td>Consult with and provide direction to City&rsquo;s attorneys regarding legal issues and strategies associated with Gas Well Ordinance regulation of gas well drilling and production within the City Limits and the extraterritorial jurisdiction, including Constitutional limitations, statutory limitations upon municipal regulatory authority, statutory preemption and/or impacts of federal and state law and regulations, standstill agreements or other cessation regulations and take any appropriate action regarding the above in the meeting of today&rsquo;s date as it concerns municipal regulatory authority or matters relating to enforcement of the ordinance.
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote></blockquote>
+   Following the completion of the Closed Meeting, the City Council will convene in Open Session to consider the following item:
+   <br/><br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+   <table>
+        <tbody>
+            <tr>
+                                <td class = "numberspace">1.</td>
+	<td>Consider adoption of an ordinance of the City of Denton, Texas amending Ordinance Nos. 2013-330 and 2014-040 to extend a &quot;Standstill Agreement&quot; between the City of Denton, Texas and Eagleridge Operating, LLC until midnight on May 6, 2014 with regard to certain disputes and issues over gas drilling in the City to allow the parties an opportunity to engage in global settlement negotiations as it concerns unresolved issues between them; and providing for an effective date.
+	</td>
+            </tr>
+       </tbody>
+ </table>
+<br/>
+
+<blockquote dir="ltr" style="MARGIN-RIGHT=0px;"></blockquote>
+<br/><br/>
+<div align = "center">
+C&nbsp;E&nbsp;R&nbsp;T&nbsp;I&nbsp;F&nbsp;I&nbsp;C&nbsp;A&nbsp;T&nbsp;E
+</div>
+<br/>
+I certify that the above notice of meeting was posted on the bulletin board at the City Hall of the City of Denton, Texas, on the ________day of ___________________, 2014 at ________o'clock (a.m.) (p.m.)
+<br/><br/>
+<div align = "right">
+<table>
+<tr><td style = "text-align:left">______________________________<br/>CITY SECRETARY</td>
+</tr>
+</table>
+</div>
+<br/>
+NOTE:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;THE CITY OF DENTON COUNCIL WORK SESSION ROOM IS ACCESSIBLE IN ACCORDANCE WITH THE AMERICANS WITH DISABILITIES ACT.  THE CITY WILL PROVIDE SIGN LANGUAGE INTERPRETERS FOR THE HEARING IMPAIRED IF REQUESTED AT LEAST 48 HOURS IN ADVANCE OF THE SCHEDULED MEETING.  PLEASE CALL THE CITY SECRETARY'S OFFICE AT 349-8309 OR USE TELECOMMUNICATIONS DEVICES FOR THE DEAF (TDD) BY CALLING 1-800-RELAY-TX SO THAT A SIGN LANGUAGE INTERPRETER CAN BE SCHEDULED THROUGH THE CITY SECRETARY'S OFFICE.
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setCustomVar', 1, 'request_origin', 'external', 3]);
+_gaq.push(['_setAccount', 'UA-1279298-6']);
+_gaq.push(['_setDomainName', '.granicus.com']);
+_gaq.push(['_trackPageview']);
+_gaq.push(['b._setAccount', 'UA-1279298-30']);
+_gaq.push(['b._setCustomVar', 1, 'request_origin', 'external', 3]);
+_gaq.push(['b._setDomainName', '.granicus.com']);
+_gaq.push(['b._trackPageview']);
+
+(function () {
+var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>

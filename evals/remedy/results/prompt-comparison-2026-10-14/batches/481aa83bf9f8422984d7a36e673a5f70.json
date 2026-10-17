@@ -1,0 +1,170 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Board of Trustees of Eagle Mountain-Saginaw ISD"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Fort Worth City Council"
+      }
+    ],
+    "case_id": "recording-1fd48da636e2445a9d8ecebb",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "fort-worth-tx-emsisd-board-joint-meetings",
+      "fort-worth-tx-city-council",
+      "fort-worth-tx"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda and recording player explicitly name both the Eagle Mountain-Saginaw ISD Board of Trustees and the Fort Worth City Council as the meeting bodies. The agenda documents a convened meeting with call to order, district and city reports, separate board president and mayor announcements, and adjournment; the recording chapters corroborate that structure. Assign the whole joint recording to the configured EMSISD Board joint-meetings feed and the Council feeds, including the general Fort Worth feed whose description covers City Council recordings. The joint-meetings feed is a subscription grouping, not a separate convening institution. The opening ceremony and embedded presentation/video do not turn this full joint meeting into an excluded ceremony or an archive-only film."
+  },
+  "attempt_id": "b4d44872a5b240ea94600cbf9756081c",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-1fd48da636e2445a9d8ecebb",
+  "case_input_hash": "62ec933d9ce1d86fee5d6b0d041703729552c26033c6bb5060d9a625a9670dda",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 15.814365915999588
+    }
+  ],
+  "end_to_end_seconds": 26.626906250000502,
+  "finished_at": "2026-10-14T13:21:14.418504+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T13:20:47.791380+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "f9ee07d1208e4eca0beb3bfe20f9657917d61d26cd2af99dfd5049313cfa1201",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 5368,
+        "output_tokens": 360
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 360,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 5368,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 5368,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 5728,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-1fd48da636e2445a9d8ecebb\",\"bodies\":[{\"name\":\"Board of Trustees of Eagle Mountain-Saginaw ISD\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]},{\"name\":\"Fort Worth City Council\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[\"fort-worth-tx-emsisd-board-joint-meetings\",\"fort-worth-tx-city-council\",\"fort-worth-tx\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The official agenda and recording player explicitly name both the Eagle Mountain-Saginaw ISD Board of Trustees and the Fort Worth City Council as the meeting bodies. The agenda documents a convened meeting with call to order, district and city reports, separate board president and mayor announcements, and adjournment; the recording chapters corroborate that structure. Assign the whole joint recording to the configured EMSISD Board joint-meetings feed and the Council feeds, including the general Fort Worth feed whose description covers City Council recordings. The joint-meetings feed is a subscription grouping, not a separate convening institution. The opening ceremony and embedded presentation/video do not turn this full joint meeting into an excluded ceremony or an archive-only film.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791984073,
+    "id": "resp_043a8205f94bca65016acf81bb345c81a1a7bdd695b4b7c36e",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 5368,
+          "output_tokens": 360
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 360,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 5368,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 5368,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 5728,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

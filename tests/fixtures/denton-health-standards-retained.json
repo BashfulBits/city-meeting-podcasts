@@ -1,0 +1,90 @@
+[
+  {
+    "uid": "280db52d91547dd6",
+    "provider_guid": "122398",
+    "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+    "title": "Health & Building Standards Commission on 2021-06-03 3:00 PM \u2013 Jun 03, 2021",
+    "published": "2021-06-03T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/122398/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 7502138,
+      "duration_served": 607.319,
+      "encode_time": "2026-06-19T05:13:25.205693+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/280db52d91547dd6-11174e3f8f49.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "11174e3f8f49",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/280db52d91547dd6-11174e3f8f49.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "7abd583b2ed8189a",
+    "provider_guid": "119886",
+    "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM",
+    "title": "Health & Building Standards Commission on 2021-04-22 3:00 PM \u2013 Apr 22, 2021",
+    "published": "2021-04-22T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/119886/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 28632465,
+      "duration_served": 2305.419,
+      "encode_time": "2026-07-12T06:50:27.808430+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/7abd583b2ed8189a-c760fcff8133.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "c760fcff8133",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/7abd583b2ed8189a-c760fcff8133.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "d419e8107262d0d0",
+    "provider_guid": "120506",
+    "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM",
+    "title": "Health & Building Standards Commission on 2021-05-06 3:00 PM \u2013 May 06, 2021",
+    "published": "2021-05-06T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/120506/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 35116009,
+      "duration_served": 2828.645,
+      "encode_time": "2026-07-12T06:50:09.097281+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/d419e8107262d0d0-f68204d763e1.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "f68204d763e1",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/d419e8107262d0d0-f68204d763e1.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "e7c1990b7a8e539e",
+    "provider_guid": "120835",
+    "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM",
+    "title": "Health & Building Standards Commission on 2021-05-13 12:00 PM \u2013 May 13, 2021",
+    "published": "2021-05-13T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/120835/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 33846924,
+      "duration_served": 2732.222,
+      "encode_time": "2026-07-12T06:49:48.309980+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/e7c1990b7a8e539e-e2a2da60a988.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "e2a2da60a988",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/e7c1990b7a8e539e-e2a2da60a988.m4a",
+      "verification": null
+    }
+  }
+]

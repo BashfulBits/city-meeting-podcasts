@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Library Board"
+      }
+    ],
+    "case_id": "recording-02b681ca6a58bfb1b3195afd",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-library-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda and provider player identify the Library Board of the City of Denton, Texas as convening a regular meeting on May 13, 2021. References to the City Council, Friends of the Denton Public Libraries, Emily Fowler Library Foundation, and Denton Public Library are agenda topics or referenced entities, not additional convening bodies. The existing feed 'Denton: Library Board' is described as meetings of the Denton Library Board, so this recording assigns to that existing feed. No joint meeting participant is proven beyond the Library Board."
+  },
+  "attempt_id": "e68e0a5fb0a24a3e8b1e4aa3887fd4d3",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-02b681ca6a58bfb1b3195afd",
+  "case_input_hash": "3b975375e44a86a5acb4cabb4894600d6f200ac93d9b29a3187fd81703828265",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 7.3765998750022845
+    }
+  ],
+  "end_to_end_seconds": 53.44176604099994,
+  "finished_at": "2026-10-14T16:27:05.590269+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T16:26:12.148178+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "62804c1e59cc1602eae8e8a063e2e66b01165aa2db78b19eb37b4ef422155174",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 737,
+    "completion_tokens": 952,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 737,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 4493,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 5133,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 6085
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-02b681ca6a58bfb1b3195afd\",\"bodies\":[{\"name\":\"Library Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-library-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider player identify the Library Board of the City of Denton, Texas as convening a regular meeting on May 13, 2021. References to the City Council, Friends of the Denton Public Libraries, Emily Fowler Library Foundation, and Denton Public Library are agenda topics or referenced entities, not additional convening bodies. The existing feed 'Denton: Library Board' is described as meetings of the Denton Library Board, so this recording assigns to that existing feed. No joint meeting participant is proven beyond the Library Board.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need identify body/feed. Case: Denton Library Board meeting May 13 2021. Evidence retained agenda: \"Library Board City of Denton Meeting Agenda... After determining quorum, Library Board of City of Denton, Texas will convene in Regular Meeting...\" Provider-player same. Existing feed has denton-tx-library-board \"Meetings of the Denton Library Board.\" So body name \"Library Board\" or \"Denton Library Board\"? Schema bodies IdentifiedBody name. Need include every proven participant in joint meeting. Here no joint meeting. Only Library Board. Need feed_slugs [\"denton-tx-library-board\"]. publication_action assign_existing. Evidence_ref_ids likely all? Need cite supplied evidence IDs for body names and assignments. Could include retained-agenda, provider-player, native-source-chapters. case_id echo. missing_evidence maybe [].\n\nNeed ensure no other body? The agenda mentions City Council in recommendations, Friends of Denton Public Libraries, Emily Fowler Library Foundation, Denton Public Library. These are not convening bodies. The body is Library Board. It might also be called Library Advisory Board in registration guidelines. Official title \"Library Board\" / \"Library Advisory Board\"? Evidence says \"Library Board\" and \"Library Advisory Board\" in public comment guidelines. Existing feed \"Denton: Library Board\". Need name maybe \"Library Board\" as in body_label and feed. Could mention \"Denton Library Board\" maybe. Schema body name only. We can set \"Library Board\" or \"Denton Library Board\". Evidence from title. Existing feed title \"Denton: Library Board\". The body_label is \"Library Board on 2021-05-13 3:30 PM\". Official title: \"Library Board\". But feed slug is denton-tx-library-board. Body name perhaps \"Library Board\" or \"Denton Library Board\". Since city Denton. I'll use \"Library Board\" with evidence refs. Maybe \"Library Board (Denton, TX)\"? Need concise.\n\nNeed include evidence_ref_ids top-level all? Probably evidence IDs used. Could include all three. missing_evidence [] because sufficient. rationale max 2000, concise.\n\nNeed ensure JSON matches schema exactly: additionalProperties false at root. Properties: case_id, bodies array of IdentifiedBody, feed_slugs array strings, publication_action enum, evidence_ref_ids array strings, missing_evidence array strings, rationale string. Need no extra fields. Bodies each object name, evidence_ref_ids.\n\nLet's craft. Use publication_action \"assign_existing\". Feed slug \"denton-tx-library-board\". Rationale: Official agenda and player identify \"Library Board of the City of Denton, Texas\" convening regular meeting on May 13 2021. Mentions of City Council/Friends/Foundation are referenced parties/topics, not conveners. Existing feed description \"Meetings of the Denton Library Board\" matches. No joint meeting proven, so only one body. Evidence refs retained-agenda, provider-player, native-source-chapters.\n\nShould we include evidence_ref_ids top-level all? Yes. bodies evidence_ref_ids maybe all relevant. missing_evidence: [] or maybe [\"No recording-specific evidence of any joint participant besides Library Board; other named entities are referenced not convening.\"] But missing_evidence is list strings. If no missing, empty. The instruction says return every proven assignment even if evidence insufficient for another suspected participant, explaining gap. No suspected participant. Could include missing_evidence empty. Maybe to satisfy no gap? Fine.\n\nNeed output only JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need identify body/feed. Case: Denton Library Board meeting May 13 2021. Evidence retained agenda: \"Library Board City of Denton Meeting Agenda... After determining quorum, Library Board of City of Denton, Texas will convene in Regular Meeting...\" Provider-player same. Existing feed has denton-tx-library-board \"Meetings of the Denton Library Board.\" So body name \"Library Board\" or \"Denton Library Board\"? Schema bodies IdentifiedBody name. Need include every proven participant in joint meeting. Here no joint meeting. Only Library Board. Need feed_slugs [\"denton-tx-library-board\"]. publication_action assign_existing. Evidence_ref_ids likely all? Need cite supplied evidence IDs for body names and assignments. Could include retained-agenda, provider-player, native-source-chapters. case_id echo. missing_evidence maybe [].\n\nNeed ensure no other body? The agenda mentions City Council in recommendations, Friends of Denton Public Libraries, Emily Fowler Library Foundation, Denton Public Library. These are not convening bodies. The body is Library Board. It might also be called Library Advisory Board in registration guidelines. Official title \"Library Board\" / \"Library Advisory Board\"? Evidence says \"Library Board\" and \"Library Advisory Board\" in public comment guidelines. Existing feed \"Denton: Library Board\". Need name maybe \"Library Board\" as in body_label and feed. Could mention \"Denton Library Board\" maybe. Schema body name only. We can set \"Library Board\" or \"Denton Library Board\". Evidence from title. Existing feed title \"Denton: Library Board\". The body_label is \"Library Board on 2021-05-13 3:30 PM\". Official title: \"Library Board\". But feed slug is denton-tx-library-board. Body name perhaps \"Library Board\" or \"Denton Library Board\". Since city Denton. I'll use \"Library Board\" with evidence refs. Maybe \"Library Board (Denton, TX)\"? Need concise.\n\nNeed include evidence_ref_ids top-level all? Probably evidence IDs used. Could include all three. missing_evidence [] because sufficient. rationale max 2000, concise.\n\nNeed ensure JSON matches schema exactly: additionalProperties false at root. Properties: case_id, bodies array of IdentifiedBody, feed_slugs array strings, publication_action enum, evidence_ref_ids array strings, missing_evidence array strings, rationale string. Need no extra fields. Bodies each object name, evidence_ref_ids.\n\nLet's craft. Use publication_action \"assign_existing\". Feed slug \"denton-tx-library-board\". Rationale: Official agenda and player identify \"Library Board of the City of Denton, Texas\" convening regular meeting on May 13 2021. Mentions of City Council/Friends/Foundation are referenced parties/topics, not conveners. Existing feed description \"Meetings of the Denton Library Board\" matches. No joint meeting proven, so only one body. Evidence refs retained-agenda, provider-player, native-source-chapters.\n\nShould we include evidence_ref_ids top-level all? Yes. bodies evidence_ref_ids maybe all relevant. missing_evidence: [] or maybe [\"No recording-specific evidence of any joint participant besides Library Board; other named entities are referenced not convening.\"] But missing_evidence is list strings. If no missing, empty. The instruction says return every proven assignment even if evidence insufficient for another suspected participant, explaining gap. No suspected participant. Could include missing_evidence empty. Maybe to satisfy no gap? Fine.\n\nNeed output only JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791995219,
+    "id": "d73ab57f13d979dbbee4e61e9a3cf693",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 737,
+      "completion_tokens": 952,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 737,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 4493,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 5133,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 6085
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

@@ -1,0 +1,138 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Addison Planning and Zoning Commission (Work Session)"
+      }
+    ],
+    "case_id": "recording-0111ad7ae5dc7438295e49d4",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-planning-and-zoning-commission"
+    ],
+    "missing_evidence": [
+      "No evidence in the agenda, transcript, or chapters shows any other convened body (e.g., UDC Advisory Committee or City Council) jointly participating; the UDC project and Sam's Club study appear only as agenda/transcript topics, and no roster or joint-notice evidence links another body to this recording."
+    ],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda is headed 'PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, February 15, 2022' (retained-agenda), and the provider player/chapters for recording 154641 confirm the same P&Z Commission work session convened by the Town of Addison (provider-player, native-source-chapters). The convened body is therefore the Addison Planning and Zoning Commission, matching the existing feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison); a work session is a meeting of that body, so assign_existing applies. Venue (Addison TreeHouse), topics (UDC project, Sam's Club study, plat/rezoning cases), and staff participation (Ken Schmidt, Director of Development Services) do not establish membership in any other feed, and no joint-participation evidence supports adding other bodies."
+  },
+  "attempt_id": "b78bf74c295b4b8398d915fdf7adc6aa",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-0111ad7ae5dc7438295e49d4",
+  "case_input_hash": "e22b26b687fcd392f7af769bf030888624edc371302abfaad19d5c71d182ed68",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 10.858753124999566
+    }
+  ],
+  "end_to_end_seconds": 12.01298320800015,
+  "finished_at": "2026-10-14T13:47:41.216452+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T13:47:29.203363+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "8c094a98520f29da9d55fbd29ce3e9cad3631b84dd85bcbb54da839fc9fd80ab",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 958,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 549,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3734,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 4692
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\",\n        \"native-source-chapters\"\n      ],\n      \"name\": \"Addison Planning and Zoning Commission (Work Session)\"\n    }\n  ],\n  \"case_id\": \"recording-0111ad7ae5dc7438295e49d4\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-planning-and-zoning-commission\"\n  ],\n  \"missing_evidence\": [\n    \"No evidence in the agenda, transcript, or chapters shows any other convened body (e.g., UDC Advisory Committee or City Council) jointly participating; the UDC project and Sam's Club study appear only as agenda/transcript topics, and no roster or joint-notice evidence links another body to this recording.\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained agenda is headed 'PLANNING AND ZONING COMMISSION WORK SESSION, Tuesday, February 15, 2022' (retained-agenda), and the provider player/chapters for recording 154641 confirm the same P&Z Commission work session convened by the Town of Addison (provider-player, native-source-chapters). The convened body is therefore the Addison Planning and Zoning Commission, matching the existing feed 'addison-tx-planning-and-zoning-commission' (Planning and Zoning Commission meetings for Addison); a work session is a meeting of that body, so assign_existing applies. Venue (Addison TreeHouse), topics (UDC project, Sam's Club study, plat/rezoning cases), and staff participation (Ken Schmidt, Director of Development Services) do not establish membership in any other feed, and no joint-participation evidence supports adding other bodies.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The task: identify which municipal body/bodies the recording belongs to. The evidence:\n\n- retained-agenda: \"PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, FEBRUARY 15, 2022, ADDISON TREEHOUSE...\" posted by Irma G. Parker, City Secretary. So the convened body is the Addison Planning and Zoning Commission (work session).\n- provider-player: Swagit video, title \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\", transcript confirms Ken Schmidt, Director of Development Services for the Town of Addison, P&Z Commission work session.\n- native-source-chapters: chapters matching the agenda.\n\nExisting feed: \"addison-tx-planning-and-zoning-commission\" - \"Planning and Zoning Commission meetings for Addison.\" A work session is a meeting of the P&Z Commission, so it belongs in that feed.\n\nAny joint meeting? No other body proven. The transcript mentions discussion of Unified Development Code project and Sam's Club study, but those are topics, not convened bodies. The UDC Advisory Committee feed exists but there's no evidence that the UDC Advisory Committee convened or participated in this meeting. So only the P&Z Commission.\n\nPublication action: assign_existing, feed slug addison-tx-planning-and-zoning-commission.\n\nBodies: name \"Addison Planning and Zoning Commission\" with evidence refs retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none needed really. Could note no evidence of UDC Advisory Committee participation. But missing_evidence is for genuine gaps. Since action is assign_existing, no gaps. Maybe include a note that topic mentions of UDC project don't prove committee participation\u2014but that's rationale, not missing evidence. I could include an empty missing_evidence array or note that if one suspected the UDC Advisory Committee, no evidence of its participation exists. The instructions: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" The gap explanation could go in missing_evidence. I'll add a missing_evidence item noting no evidence links the UDC Advisory Committee or Bond committees to this recording; topic references only.\n\nHmm, missing_evidence is \"genuine missing evidence\". If a suspected participant (UDC Advisory Committee) is not proven, the gap is: no agenda/roster evidence shows UDC Advisory Committee members convening jointly. I'll include that as a missing evidence note.\n\nAlso no evidence for Town Council involvement even though City Council action items are mentioned \u2014 that's just agenda content. Not a joint meeting.\n\nRationale: concise, cite evidence IDs.\n\nOutput JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "The task: identify which municipal body/bodies the recording belongs to. The evidence:\n\n- retained-agenda: \"PLANNING AND ZONING COMMISSION WORK SESSION, TUESDAY, FEBRUARY 15, 2022, ADDISON TREEHOUSE...\" posted by Irma G. Parker, City Secretary. So the convened body is the Addison Planning and Zoning Commission (work session).\n- provider-player: Swagit video, title \"Feb 15, 2022 Planning & Zoning Commission Work Session - Addison, TX\", transcript confirms Ken Schmidt, Director of Development Services for the Town of Addison, P&Z Commission work session.\n- native-source-chapters: chapters matching the agenda.\n\nExisting feed: \"addison-tx-planning-and-zoning-commission\" - \"Planning and Zoning Commission meetings for Addison.\" A work session is a meeting of the P&Z Commission, so it belongs in that feed.\n\nAny joint meeting? No other body proven. The transcript mentions discussion of Unified Development Code project and Sam's Club study, but those are topics, not convened bodies. The UDC Advisory Committee feed exists but there's no evidence that the UDC Advisory Committee convened or participated in this meeting. So only the P&Z Commission.\n\nPublication action: assign_existing, feed slug addison-tx-planning-and-zoning-commission.\n\nBodies: name \"Addison Planning and Zoning Commission\" with evidence refs retained-agenda, provider-player, native-source-chapters.\n\nMissing evidence: none needed really. Could note no evidence of UDC Advisory Committee participation. But missing_evidence is for genuine gaps. Since action is assign_existing, no gaps. Maybe include a note that topic mentions of UDC project don't prove committee participation\u2014but that's rationale, not missing evidence. I could include an empty missing_evidence array or note that if one suspected the UDC Advisory Committee, no evidence of its participation exists. The instructions: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" The gap explanation could go in missing_evidence. I'll add a missing_evidence item noting no evidence links the UDC Advisory Committee or Bond committees to this recording; topic references only.\n\nHmm, missing_evidence is \"genuine missing evidence\". If a suspected participant (UDC Advisory Committee) is not proven, the gap is: no agenda/roster evidence shows UDC Advisory Committee members convening jointly. I'll include that as a missing evidence note.\n\nAlso no evidence for Town Council involvement even though City Council action items are mentioned \u2014 that's just agenda content. Not a joint meeting.\n\nRationale: concise, cite evidence IDs.\n\nOutput JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985595,
+    "id": "fddea5870f211390b457e02a6874120c",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 958,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 549,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3734,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 4692
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

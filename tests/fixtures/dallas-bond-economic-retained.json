@@ -1,0 +1,214 @@
+{
+  "agenda_backup": null,
+  "agenda_text": null,
+  "audio": {
+    "attempts": 0,
+    "bytes": 84069528,
+    "duration_served": 6846.42,
+    "encode_time": "2026-07-27T20:18:22.938569+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "37656a4c3d8e",
+    "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a",
+    "verification": null
+  },
+  "body": "2024 Bond Task Force Economic Development",
+  "chapter_tags": [
+    {
+      "chapter_id": "ch-65df3591ffa8",
+      "tags": []
+    }
+  ],
+  "chapters": [
+    {
+      "end": 6846,
+      "start": 783,
+      "title": "2024 Bond Task Force Economic Development on August 15, 2023."
+    }
+  ],
+  "chapters_basis": "source:s0",
+  "duration": null,
+  "generated_agenda_candidates": {
+    "locator_status": "not_applicable",
+    "provider_chapter_count": 1,
+    "reason": "provider_chapters",
+    "status": "not_applicable"
+  },
+  "generated_chapters": null,
+  "generated_chapters_spec_hash": "",
+  "integrity": null,
+  "links": {
+    "canonical_video": "https://dallastx.new.swagit.com/videos/269610"
+  },
+  "llm_tag_candidates": null,
+  "media_availability": {
+    "detector_version": "1",
+    "evidence_ref": null,
+    "last_check": "2026-07-27T20:18:22.932926+00:00",
+    "operator_override": null,
+    "operator_reason": "",
+    "partial_confirmations": 0,
+    "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+    "reason": "playable audio",
+    "recovered_at": null,
+    "silent_confirmations": 0,
+    "source_fingerprint": "5d83a37f4be70815",
+    "state": "available"
+  },
+  "media_kind": "hls",
+  "minutes_roster": null,
+  "minutes_text": null,
+  "minutes_votes": null,
+  "moments": null,
+  "provider_guid": "269610",
+  "provider_transcript": null,
+  "published": "2023-08-15T00:00:00+00:00",
+  "served_duration_seconds": 6846.42,
+  "source_chapters": [
+    {
+      "end": 6846,
+      "start": 783,
+      "title": "2024 Bond Task Force Economic Development on August 15, 2023."
+    }
+  ],
+  "source_duration_seconds": null,
+  "sources": [
+    {
+      "backup_key": null,
+      "duration": 6846.42,
+      "duration_basis": "decoded",
+      "id": "s0",
+      "media_kind": "hls",
+      "provider": "swagit",
+      "ref": "https://dallastx.new.swagit.com/videos/269610/download",
+      "watch_url": "https://dallastx.new.swagit.com/videos/269610"
+    }
+  ],
+  "speakers": null,
+  "stage_completion": {
+    "agenda_text": {
+      "input_fingerprint": "f150381c95b8981af8ff0972b6cf91c02ebf9056f8f6ac0246e23ae80595ebc5",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "audio": {
+      "completed_at": "2026-07-27T20:22:55.561698+00:00",
+      "input_fingerprint": "b5784527494a27dd98275180f93d2e40297c8bec5f5914e976e54aca837699d8",
+      "output": "swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a",
+      "state": "complete",
+      "version": "1"
+    },
+    "chapter_agenda": {
+      "completed_at": "2026-09-02T19:17:20.239072+00:00",
+      "input_fingerprint": "4b16b9af2605df2bcd30fa66795c12e5aff091855d174d27a299986e186e2fa5",
+      "output": "not_applicable",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapter_locator": {
+      "completed_at": "2026-09-02T19:42:42.982002+00:00",
+      "input_fingerprint": "ec2b24823a6f1d5e1792dd940e02f17abde7eabd386823cede045cbfc7908f60",
+      "output": "",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapters": {
+      "completed_at": "2026-07-27T20:16:51.640291+00:00",
+      "input_fingerprint": "a3494ccb969324ae0801588f45c95ed3a559b9656be636e1f2655b266af0cf58",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "links": {
+      "input_fingerprint": "31e6cddfe4ac133fb16a95d209c4d3950024269ca6ca901a3cf7b4d616ff85ba",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "minutes_text": {
+      "input_fingerprint": "dcc26c5ec1b9ff3e5aca3eca21c0a6796fada39bf05a37cc1efa57c451698fab",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-admission": {
+      "completed_at": "2026-10-04T00:58:15.226664+00:00",
+      "input_fingerprint": "2b26f128d8dff57a2c7f75f36370d702501f92eda1bb2df81b5bda4f95d7b38d",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-judge": {
+      "completed_at": "2026-10-04T00:58:15.226573+00:00",
+      "input_fingerprint": "b64af982b6c7bcd72f50c7026e188214f99a296610a7d63a179dd91b03c14636",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moments": {
+      "completed_at": "2026-09-25T05:43:10.052100+00:00",
+      "input_fingerprint": "a13bab34a423231f9f80c0ad3cc6e954585bf87aa1fc4183f1ecfa900343cc47",
+      "output": [],
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "remap": {
+      "completed_at": "2026-08-10T21:40:37.972809+00:00",
+      "input_fingerprint": "4f75a8edc95af7da3e555438f9759cb9cd4a19b3c269b4da8d856cfe6526abb7",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "tags": {
+      "input_fingerprint": "ea641e4e197f9cd662ba899937d72b75b44772c79ae2d1ab5493a1d96529be15",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "timeline": {
+      "completed_at": "2026-07-27T20:18:22.938317+00:00",
+      "input_fingerprint": "10fdea350610f80c411e43eed66330c5ab758d46c0a3fccf6fa6c67b3aed5f44",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "video-clips": {
+      "completed_at": "2026-08-23T20:09:40.646442+00:00",
+      "input_fingerprint": "e87e3485a39ef6490f99cb8ac818ab1c12493987589ac71c7092be4d54b8d62d",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    }
+  },
+  "summary": "",
+  "tags": null,
+  "tags_input_fingerprint": "d5589aebbfa94f4e",
+  "tags_llm_call_attempts": null,
+  "tags_llm_recipe_hash": null,
+  "tags_spec_hash": "b1a7b609e54cf21f",
+  "timeline": {
+    "basis": "served",
+    "segments": [
+      {
+        "asset_id": null,
+        "asset_version": null,
+        "insert": null,
+        "kind": "source",
+        "served_end": 6846.42,
+        "served_start": 0.0,
+        "source_end": 6846.42,
+        "source_id": "s0",
+        "source_start": 0.0
+      }
+    ],
+    "version": "silence:3+swagit-concat:1"
+  },
+  "title": "2024 Bond Task Force Economic Development \u2013 Aug 15, 2023",
+  "transcript": null,
+  "uid": "8969ad6d91ed23d2",
+  "video_url": "https://dallastx.new.swagit.com/videos/269610/download"
+}

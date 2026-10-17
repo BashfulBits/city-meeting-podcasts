@@ -56,6 +56,8 @@ class RouteLedger:
     cost_day_key: str = ""
     requests_minute: int = 0
     requests_minute_key: str = ""
+    tokens_day: float = 0
+    tokens_day_updated_at: str = ""
     requests_day: int = 0
     requests_day_key: str = ""
     tokens_minute: int = 0
@@ -143,11 +145,20 @@ class LLMBudget:
             led.requests_minute = 0
             led.tokens_minute = 0
             led.requests_minute_key = mk
-        if route.quota.rpd is not None:
+        if route.quota.rpd is not None or route.quota.tpd is not None:
             dk = daily_reset_key(now, route.quota.reset_timezone)
             if led.requests_day_key != dk:
                 led.requests_day = 0
                 led.requests_day_key = dk
+        if route.quota.tpd is not None:
+            updated_at = (
+                datetime.fromisoformat(led.tokens_day_updated_at)
+                if led.tokens_day_updated_at
+                else now.astimezone(UTC)
+            )
+            elapsed = max(0, (now.astimezone(UTC) - updated_at).total_seconds())
+            led.tokens_day = max(0, led.tokens_day - elapsed * route.quota.tpd / 86400)
+            led.tokens_day_updated_at = now.astimezone(UTC).isoformat()
         if route.quota.tpm is not None and led.tokens_available_at:
             if datetime.fromisoformat(led.tokens_available_at) <= now.astimezone(UTC):
                 # An oversized request's token debt has drained. Start a fresh burst budget.
@@ -189,6 +200,8 @@ class LLMBudget:
             led.cost_used = max(0.0, led.cost_used - reservation.cost)
         if reservation.cost_day_key and led.cost_day_key == reservation.cost_day_key:
             led.cost_day_used = max(0.0, led.cost_day_used - reservation.cost)
+        if led.tokens_day_updated_at:
+            led.tokens_day = max(0, led.tokens_day - reservation.tokens)
         if led.requests_minute_key == reservation.minute_key:
             led.requests_minute = max(0, led.requests_minute - reservation.requests)
             led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
@@ -296,6 +309,7 @@ class LLMBudget:
                 )
             )
             and (quota.rpd is None or led.requests_day + requests <= quota.rpd)
+            and (quota.tpd is None or led.tokens_day + tokens <= quota.tpd)
             and (
                 quota.tpm is None
                 or not led.tokens_available_at
@@ -356,6 +370,8 @@ class LLMBudget:
         request_schedule_before = led.requests_available_at
         led.requests_minute += requests
         led.tokens_minute += tokens
+        if route.quota.tpd is not None:
+            led.tokens_day += tokens
         if route.quota.rpd is not None:
             led.requests_day += requests
         reserved_at = now.astimezone(UTC)
@@ -442,6 +458,8 @@ class LLMBudget:
             )
         if actual_tokens is not None and led.requests_minute_key == reservation.minute_key:
             led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
+        if actual_tokens is not None and route.quota.tpd is not None:
+            led.tokens_day = max(0, led.tokens_day + actual_tokens - reservation.tokens)
         if (
             actual_requests is not None
             and reservation.day_key
@@ -544,6 +562,8 @@ class LLMBudget:
                     "cost_day_key": ledger.cost_day_key,
                     "requests_minute": ledger.requests_minute,
                     "requests_minute_key": ledger.requests_minute_key,
+                    "tokens_day": ledger.tokens_day,
+                    "tokens_day_updated_at": ledger.tokens_day_updated_at,
                     "requests_day": ledger.requests_day,
                     "requests_day_key": ledger.requests_day_key,
                     "tokens_minute": ledger.tokens_minute,
@@ -649,6 +669,8 @@ class LLMBudget:
                 cost_day_key=str(raw.get("cost_day_key") or ""),
                 requests_minute=int(raw.get("requests_minute", 0)),
                 requests_minute_key=str(raw.get("requests_minute_key") or ""),
+                tokens_day=float(raw.get("tokens_day", 0)),
+                tokens_day_updated_at=str(raw.get("tokens_day_updated_at") or ""),
                 requests_day=int(raw.get("requests_day", 0)),
                 requests_day_key=str(raw.get("requests_day_key") or ""),
                 tokens_minute=int(raw.get("tokens_minute", 0)),

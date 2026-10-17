@@ -3,15 +3,19 @@ city: dallas-tx
 provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
-  body: "City Planning Commission"
+  body: City Planning Commission
   body_includes:
-    - provider_guid: "304888"
-      body: "City Plan Commission Forward Dallas Public Comment"
-    - provider_guid: "304871"
-      body: "City Plan Commission Forward Dallas Public Comment"
-    - provider_guid: "304872"
-      body: "City Plan Commission Forward Dallas Public Comment"
-podcast_title: "Dallas: City Planning Commission"
-podcast_author: "City of Dallas, TX"
-podcast_email: ""
-podcast_description: "City Planning Commission meetings for Dallas."
+    - provider_guid: '304888'
+      body: City Plan Commission Forward Dallas Public Comment
+    - provider_guid: '304871'
+      body: City Plan Commission Forward Dallas Public Comment
+    - provider_guid: '304872'
+      body: City Plan Commission Forward Dallas Public Comment
+  body_any:
+    - CPC Bus Tour
+    # The Subdivision Review Committee is appointed by and reports to the CPC.
+    - Subdivision Review Committee
+podcast_title: 'Dallas: City Planning Commission'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: City Planning Commission meetings for Dallas.

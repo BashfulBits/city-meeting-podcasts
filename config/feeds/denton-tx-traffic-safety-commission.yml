@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Traffic Safety Commission on *"
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 2000 days ago; standing commission inactive in provider feed"
 podcast_title: 'Denton: Traffic Safety Commission'
 podcast_author: City of Denton, TX
 podcast_email: ''

@@ -1,0 +1,94 @@
+{
+  "method": "direct provider requests with v2 provider/model routes paused and drained; each request reserved against its route; synthetic chars/4 sizes and provider-reported prompt tokens are separate units",
+  "probe_date": "2026-09-26",
+  "quality_attempts": [
+    {
+      "attempted_packets": 1,
+      "completed_outputs": 0,
+      "completion_invocations": 1,
+      "elapsed_seconds": 1103.76,
+      "http_error": "502 Bad Gateway",
+      "model": "DeepSeek V4.1 Flash",
+      "packet_group": "common-core-6",
+      "route": "deepseek/deepseek-v4.1-flash",
+      "route_reservations": 1,
+      "run_stopped_during": "OpenAI SDK retry backoff",
+      "v2_pause_resumed": true
+    }
+  ],
+  "results": [
+    {
+      "dispatch_hard_input_ceiling": 218875,
+      "estimated_dispatch_ceiling_chars_div_4": 101802,
+      "failure": "Google input TPM 250000/min, not a context-window rejection",
+      "first_rejection_synthetic_chars_div_4": 366031,
+      "input_token_ratio": 2.15,
+      "largest_successful_synthetic_chars_div_4": 244354,
+      "model": "Gemini 3.5 Flash Lite",
+      "provider_prompt_tokens": 217202,
+      "route": "gemini/gemini-3.5-flash-lite"
+    },
+    {
+      "failure": "provider free-tier prompt-size cap",
+      "first_rejection_synthetic_chars_div_4": 109253,
+      "largest_successful_synthetic_chars_div_4": 106328,
+      "model": "DeepSeek V4 Flash",
+      "provider_prompt_tokens": 94594,
+      "route": "deepseek/deepseek-v4-flash"
+    },
+    {
+      "failure": "provider free-tier prompt-size cap",
+      "first_rejection_synthetic_chars_div_4": 109253,
+      "largest_successful_synthetic_chars_div_4": 106328,
+      "model": "GLM 5.3 Flash",
+      "provider_prompt_tokens": 94523,
+      "route": "zai/glm-5.3-flash"
+    },
+    {
+      "dispatch_hard_input_ceiling": 249027,
+      "failure": null,
+      "first_rejection_synthetic_chars_div_4": null,
+      "largest_successful_synthetic_chars_div_4": 261123,
+      "model": "Nemotron 3 Super 120B A12B",
+      "provider_prompt_tokens": 232117,
+      "route": "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "dispatch_hard_input_ceiling": 249027,
+      "failure": null,
+      "first_rejection_synthetic_chars_div_4": null,
+      "largest_successful_synthetic_chars_div_4": 261123,
+      "model": "Step 3.7 Flash",
+      "provider_prompt_tokens": 232113,
+      "route": "kilo/stepfun/step-3.7-flash:free"
+    },
+    {
+      "dispatch_hard_input_ceiling": 234437,
+      "failure": null,
+      "first_rejection_synthetic_chars_div_4": null,
+      "largest_successful_synthetic_chars_div_4": 747074,
+      "model": "Kimi K3",
+      "observed_latency_seconds_large_packet": 590,
+      "provider_prompt_tokens": 664147,
+      "route": "moonshotai/kimi-k3"
+    },
+    {
+      "dispatch_hard_input_ceiling": null,
+      "failure": "server errors above the successful size; ceiling inconclusive",
+      "first_rejection_synthetic_chars_div_4": 656375,
+      "largest_successful_synthetic_chars_div_4": 562750,
+      "model": "DeepSeek V4.1 Flash",
+      "provider_prompt_tokens": 500251,
+      "route": "deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "failure": "Google input TPM, not a context-window rejection",
+      "first_rejection_synthetic_chars_div_4": 187750,
+      "largest_successful_synthetic_chars_div_4": 125500,
+      "model": "Gemini 3.7 Flash",
+      "provider_prompt_tokens": 111552,
+      "route": "gemini/gemini-3.7-flash"
+    }
+  ],
+  "schema_version": 1
+}

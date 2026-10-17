@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 
+import pytest
+
 from citypods.models import Episode
 from citypods.tags import (
     TAG_LLM_SCHEMA_VERSION,
@@ -1447,14 +1449,22 @@ def test_prelabeler_batches_use_the_learned_ratio(monkeypatch):
         assert estimate_tokens(job.inputs["messages"]) <= limits.max_raw_input_tokens
 
 
-def test_prelabeler_sizing_ignores_paused_routes():
+@pytest.mark.parametrize("has_live_route", [True, False])
+def test_prelabeler_sizing_ignores_paused_routes(monkeypatch, has_live_route):
+    from dataclasses import replace
+
     from citypods.compute.llm_policy import ROUTE_CANDIDATES
     from citypods.tags import prelabeler_sizing_route
 
-    route = prelabeler_sizing_route("google/gemma-4-31b-it")
-    paused = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.quota.rpd == 0}
-    assert "nvidia_gemma_4_31b_it_free" in paused
-    assert route.route_id not in paused
+    model = "google/gemma-4-31b-it"
+    prototype = ROUTE_CANDIDATES[model][0]
+    paused = replace(prototype, route_id="z-paused", quota=replace(prototype.quota, rpd=0))
+    # Unknown daily quota and zero compare equally in the ranking. Without the pause filter,
+    # the lexically larger paused ID would win, making this test detect the missing filter.
+    live = replace(prototype, route_id="a-live", quota=replace(prototype.quota, rpd=None))
+    routes = (paused, live) if has_live_route else (paused,)
+    monkeypatch.setitem(ROUTE_CANDIDATES, model, routes)
+    assert prelabeler_sizing_route(model) is (live if has_live_route else None)
 
 
 def test_prelabeler_batches_split_to_fit_the_sizing_route(monkeypatch):
@@ -1528,3 +1538,124 @@ def test_prelabeler_batch_limits_reject_a_route_with_no_input_budget():
     )
     with pytest.raises(ValueError, match="no input budget"):
         prelabeler_batch_limits(starved)
+
+
+def test_rebatching_with_current_output_limits_retains_every_subject(monkeypatch):
+    import json
+    from dataclasses import replace
+
+    from citypods.compute.base import JobHandle
+    from citypods.compute.llm_policy import ROUTES
+    from citypods.tags import (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD,
+        PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+        llm_prelabel_candidates,
+    )
+
+    model = "google/gemma-4-31b-it"
+    route = replace(
+        ROUTES[model],
+        input_context_limit=16384,
+        hard_input_ceiling=None,
+        output_context_limit=PRELABELER_OUTPUT_TOKEN_OVERHEAD
+        + 2 * PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+    )
+    monkeypatch.setattr("citypods.tags.prelabeler_sizing_route", lambda *args, **kwargs: route)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"s-{i}",
+            "id": "housing",
+            "scope": "episode",
+            "evidence": [{"where": "agenda", "quote": "housing"}],
+        }
+        for i in range(13)
+    ]
+    jobs = []
+
+    class Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    _, pending, reason = llm_prelabel_candidates(
+        Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[],
+        recipe_hash="retained-subjects",
+        model=model,
+    )
+    assert pending and reason is None
+    subjects = []
+    for job in jobs:
+        batch = json.loads(job.inputs["messages"][-1]["content"])["candidates"]
+        assert len(batch) <= 2
+        assert job.inputs["max_tokens"] <= route.output_context_limit
+        subjects.extend(c["candidate_id"] for c in batch)
+    assert subjects == [c["candidate_id"] for c in candidates]
+
+
+@pytest.mark.parametrize(
+    "context,ratio,tpm,estimate",
+    [(4096, 1.0, None, 3800), (8192, 2.0, None, 4000), (16384, 1.0, 4000, 3800)],
+)
+def test_single_prelabeler_subject_defers_when_full_reservation_cannot_fit(
+    monkeypatch, context, ratio, tpm, estimate
+):
+    from dataclasses import replace
+
+    from citypods.compute.llm_policy import ROUTES, QuotaPolicy
+    from citypods.tags import llm_prelabel_candidates
+
+    model = "google/gemma-4-31b-it"
+    route = replace(
+        ROUTES[model],
+        input_context_limit=context,
+        output_context_limit=1024,
+        hard_input_ceiling=None,
+        input_token_ratio=ratio,
+        quota=QuotaPolicy(tpm=tpm),
+    )
+    monkeypatch.setattr("citypods.tags.prelabeler_sizing_route", lambda *args, **kwargs: route)
+    monkeypatch.setattr("citypods.compute.llm_policy.estimate_tokens", lambda _: estimate)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+
+    class Backend:
+        storage = None
+
+        def run_inference(self, job):
+            raise AssertionError("oversized singleton must not be submitted")
+
+    result, pending, reason = llm_prelabel_candidates(
+        Backend(),
+        candidates=[
+            {
+                "candidate_id": "one",
+                "id": "housing",
+                "scope": "episode",
+                "evidence": [{"where": "agenda", "quote": "housing"}],
+            }
+        ],
+        taxonomy=taxonomy,
+        chapters=[],
+        recipe_hash="singleton",
+        model=model,
+    )
+    assert result == {}
+    assert pending
+    assert reason == "payload-too-large"

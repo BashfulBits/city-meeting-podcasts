@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Special Citizens Bond Advisory Committee of the City of Denton, Texas"
+      }
+    ],
+    "case_id": "recording-56666be8fc4ca7665a4c57af",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-special-citizens-bond-advisory-committee"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The certified posted agenda (retained-agenda) states that the 'Special Citizens Bond Advisory Committee of the City of Denton, Texas will convene in a meeting on Thursday, June 6, 2019, at 6:00 p.m.' at the Public Safety Training Facility, Room D, City Hall East, with numbered items CBAC19-006A and CBAC19-007B and a City Secretary certificate, proving the convened body. The provider player (provider-player) titles recording 28865 'Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM - Denton, TX', and the chapter list (native-source-chapters) mirrors the same agenda items, confirming this recording belongs to that meeting. The existing feed 'denton-tx-special-citizens-bond-advisory-committee' ('Verified recordings of the Denton Special Citizens Bond Advisory Committee') matches the proven body exactly, so assign_existing applies. The Bond Oversight Committee feed is a differently named, distinct body and is not shown by any evidence as the convening or participating body here; topic overlap with the 2019 Bond Program alone does not confer membership per the identity rule. The walking tour is a posted consideration item within a regular committee meeting that also includes a report-and-discussion item and concluding items, not a ceremony or dedication site-tour segment, so exclude_event does not apply. No joint participants are evidenced, so no additional bodies are named."
+  },
+  "attempt_id": "4adf6d330c374bbb90b1ddc71406d761",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-56666be8fc4ca7665a4c57af",
+  "case_input_hash": "eddb144d08bdf5a66c13d1f81941e31aab68ec8c11bb453b1b5ede0ceece1f62",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 17.308507208002993
+    }
+  ],
+  "end_to_end_seconds": 18.922176290998323,
+  "finished_at": "2026-10-14T18:12:30.280672+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T18:12:11.358342+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "7987f8e372a7079612961a0bcd524915d5aad5e428e561e4df97e7dbe8b92542",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1447,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1008,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3856,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5303
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\": \"recording-56666be8fc4ca7665a4c57af\", \"bodies\": [{\"name\": \"Special Citizens Bond Advisory Committee of the City of Denton, Texas\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}], \"feed_slugs\": [\"denton-tx-special-citizens-bond-advisory-committee\"], \"publication_action\": \"assign_existing\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"], \"missing_evidence\": [], \"rationale\": \"The certified posted agenda (retained-agenda) states that the 'Special Citizens Bond Advisory Committee of the City of Denton, Texas will convene in a meeting on Thursday, June 6, 2019, at 6:00 p.m.' at the Public Safety Training Facility, Room D, City Hall East, with numbered items CBAC19-006A and CBAC19-007B and a City Secretary certificate, proving the convened body. The provider player (provider-player) titles recording 28865 'Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM - Denton, TX', and the chapter list (native-source-chapters) mirrors the same agenda items, confirming this recording belongs to that meeting. The existing feed 'denton-tx-special-citizens-bond-advisory-committee' ('Verified recordings of the Denton Special Citizens Bond Advisory Committee') matches the proven body exactly, so assign_existing applies. The Bond Oversight Committee feed is a differently named, distinct body and is not shown by any evidence as the convening or participating body here; topic overlap with the 2019 Bond Program alone does not confer membership per the identity rule. The walking tour is a posted consideration item within a regular committee meeting that also includes a report-and-discussion item and concluding items, not a ceremony or dedication site-tour segment, so exclude_event does not apply. No joint participants are evidenced, so no additional bodies are named.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is labeled \"Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM\" for Denton, TX.\n\nEvidence:\n1. `retained-agenda`: The official agenda for the \"Special Citizens Bond Advisory Committee of the City of Denton, Texas\" meeting on Thursday, June 6, 2019, at 6:00 PM at Public Safety Training Facility, Room D, City Hall East. Items: walking tour of Denton Police Department and Public Safety Dispatch; report/discussion on public safety facilities for the proposed 2019 Bond Program. Certified by City Secretary.\n\n2. `provider-player`: Swagit video player for the same recording (28865), titled \"Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM - Denton, TX\".\n\n3. `native-source-chapters`: Chapter markers matching agenda items.\n\nExisting feeds: There's a feed `denton-tx-special-citizens-bond-advisory-committee` \u2014 \"Verified recordings of the Denton Special Citizens Bond Advisory Committee.\"\n\nSo the convened body is the Special Citizens Bond Advisory Committee of the City of Denton. There's an existing feed for it.\n\nNote: The agenda's first item is a \"walking tour of the Denton Police Department and Public Safety Dispatch located within City Hall East.\" The policy says: \"events\": \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" Hmm. But this is not a ceremony/dedication \u2014 it's a regular committee meeting whose agenda includes a walking tour as Item A, followed by a report and discussion (Item B) and concluding items. The exclusion rule applies to ceremonies, dedications, and their site-tour segments \u2014 i.e., event recordings where the tour is part of a ceremony/dedication. This is a regular advisory committee meeting with agenda items; the walking tour is a consideration item within a posted public meeting. The whole meeting isn't just a tour \u2014 item B is a report and discussion on public safety facilities for the 2019 Bond Program, and there are concluding items. So the meeting should be assigned to the Special Citizens Bond Advisory Committee feed, not excluded.\n\nAlso there's the Bond Oversight Committee feed: \"Meetings of Denton's continuing Bond Oversight Committee.\" That's a different body \u2014 the Special Citizens Bond Advisory Committee (which advised on the 2019 Bond Program) is distinct from the Bond Oversight Committee. Policy \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" Topic is bond program, but the convened body is the Special Citizens Bond Advisory Committee, which has its own feed. So do not assign to bond-oversight-committee.\n\nIs this a joint meeting? No evidence of other participants; the agenda mentions only the Special Citizens Bond Advisory Committee. So only that body.\n\nPublication action: assign_existing, feed slug: denton-tx-special-citizens-bond-advisory-committee.\n\nBodies: Special Citizens Bond Advisory Committee (of the City of Denton), evidence: retained-agenda (certified agenda naming the body), provider-player (title).\n\nMissing evidence: none significant. Maybe note that no joint participants are evidenced. Could note nothing missing. But the schema requires missing_evidence as an array; can be empty.\n\nRationale: The certified agenda (retained-agenda) identifies the convened body as the Special Citizens Bond Advisory Committee of the City of Denton, meeting June 6, 2019, 6:00 PM; provider-player confirms the same recording title/body. The existing feed denton-tx-special-citizens-bond-advisory-committee matches this proven body. The Bond Oversight Committee feed is a distinct body (different name; not convened here). The walking tour is an agenda consideration item within a posted meeting, not a ceremony/dedication site-tour segment, so exclude_event does not apply. No joint participants proven.\n\nFeed slugs: [\"denton-tx-special-citizens-bond-advisory-committee\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 actually native-source-chapters corroborates agenda items but doesn't add body identification. I could include it as corroboration. It's fine to include or exclude. I'll include retained-agenda and provider-player as primary; native-source-chapters corroborates content. I'll include all three since they all pertain to the recording's identity.\n\nActually, evidence_ref_ids at top-level presumably lists evidence supporting the answer. I'll include retained-agenda and provider-player; native-source-chapters just lists chapters \u2014 same titles. It's safe to include.\n\nCase id: recording-56666be8fc4ca7665a4c57af.\n\nPublication action: assign_existing.\n\nReturn JSON only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is labeled \"Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM\" for Denton, TX.\n\nEvidence:\n1. `retained-agenda`: The official agenda for the \"Special Citizens Bond Advisory Committee of the City of Denton, Texas\" meeting on Thursday, June 6, 2019, at 6:00 PM at Public Safety Training Facility, Room D, City Hall East. Items: walking tour of Denton Police Department and Public Safety Dispatch; report/discussion on public safety facilities for the proposed 2019 Bond Program. Certified by City Secretary.\n\n2. `provider-player`: Swagit video player for the same recording (28865), titled \"Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM - Denton, TX\".\n\n3. `native-source-chapters`: Chapter markers matching agenda items.\n\nExisting feeds: There's a feed `denton-tx-special-citizens-bond-advisory-committee` \u2014 \"Verified recordings of the Denton Special Citizens Bond Advisory Committee.\"\n\nSo the convened body is the Special Citizens Bond Advisory Committee of the City of Denton. There's an existing feed for it.\n\nNote: The agenda's first item is a \"walking tour of the Denton Police Department and Public Safety Dispatch located within City Hall East.\" The policy says: \"events\": \"Ceremonies, dedications and their site-tour segments are excluded from body feeds.\" Hmm. But this is not a ceremony/dedication \u2014 it's a regular committee meeting whose agenda includes a walking tour as Item A, followed by a report and discussion (Item B) and concluding items. The exclusion rule applies to ceremonies, dedications, and their site-tour segments \u2014 i.e., event recordings where the tour is part of a ceremony/dedication. This is a regular advisory committee meeting with agenda items; the walking tour is a consideration item within a posted public meeting. The whole meeting isn't just a tour \u2014 item B is a report and discussion on public safety facilities for the 2019 Bond Program, and there are concluding items. So the meeting should be assigned to the Special Citizens Bond Advisory Committee feed, not excluded.\n\nAlso there's the Bond Oversight Committee feed: \"Meetings of Denton's continuing Bond Oversight Committee.\" That's a different body \u2014 the Special Citizens Bond Advisory Committee (which advised on the 2019 Bond Program) is distinct from the Bond Oversight Committee. Policy \"identity\": \"Use the convened body, not venue, topic or common members; numbered boards differ.\" Topic is bond program, but the convened body is the Special Citizens Bond Advisory Committee, which has its own feed. So do not assign to bond-oversight-committee.\n\nIs this a joint meeting? No evidence of other participants; the agenda mentions only the Special Citizens Bond Advisory Committee. So only that body.\n\nPublication action: assign_existing, feed slug: denton-tx-special-citizens-bond-advisory-committee.\n\nBodies: Special Citizens Bond Advisory Committee (of the City of Denton), evidence: retained-agenda (certified agenda naming the body), provider-player (title).\n\nMissing evidence: none significant. Maybe note that no joint participants are evidenced. Could note nothing missing. But the schema requires missing_evidence as an array; can be empty.\n\nRationale: The certified agenda (retained-agenda) identifies the convened body as the Special Citizens Bond Advisory Committee of the City of Denton, meeting June 6, 2019, 6:00 PM; provider-player confirms the same recording title/body. The existing feed denton-tx-special-citizens-bond-advisory-committee matches this proven body. The Bond Oversight Committee feed is a distinct body (different name; not convened here). The walking tour is an agenda consideration item within a posted meeting, not a ceremony/dedication site-tour segment, so exclude_event does not apply. No joint participants proven.\n\nFeed slugs: [\"denton-tx-special-citizens-bond-advisory-committee\"].\n\nEvidence ref ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"] \u2014 actually native-source-chapters corroborates agenda items but doesn't add body identification. I could include it as corroboration. It's fine to include or exclude. I'll include retained-agenda and provider-player as primary; native-source-chapters corroborates content. I'll include all three since they all pertain to the recording's identity.\n\nActually, evidence_ref_ids at top-level presumably lists evidence supporting the answer. I'll include retained-agenda and provider-player; native-source-chapters just lists chapters \u2014 same titles. It's safe to include.\n\nCase id: recording-56666be8fc4ca7665a4c57af.\n\nPublication action: assign_existing.\n\nReturn JSON only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792001477,
+    "id": "3bb0ae43f19312e9a120b0f7129b0abc",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1447,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1008,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3856,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5303
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

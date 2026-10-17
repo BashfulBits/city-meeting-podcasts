@@ -1,0 +1,88 @@
+{
+  "checked_at": "2026-10-09T12:36:28.638580+00:00",
+  "site": "https://www.citymeetings.fyi",
+  "meta": {
+    "cities": 224,
+    "built": 192,
+    "search_shards": 42
+  },
+  "archive_only": [
+    {
+      "uid": "35a78fa89c7c5c5c",
+      "provider_guid": "55864",
+      "absent_from_search": true,
+      "page_status": 200
+    },
+    {
+      "uid": "58bbcd2c03cc82b8",
+      "provider_guid": "56060",
+      "absent_from_search": true,
+      "page_status": 200
+    },
+    {
+      "uid": "a7ffa0a2ca5e1840",
+      "provider_guid": "56026",
+      "absent_from_search": true,
+      "page_status": 200
+    },
+    {
+      "uid": "a818b6f650cf4030",
+      "provider_guid": "56027",
+      "absent_from_search": true,
+      "page_status": 200
+    },
+    {
+      "uid": "c3e05def1b9a737b",
+      "provider_guid": "56028",
+      "absent_from_search": true,
+      "page_status": 200
+    },
+    {
+      "uid": "efe3faf61b7b949a",
+      "provider_guid": "56059",
+      "absent_from_search": true,
+      "page_status": 200
+    }
+  ],
+  "dallas": {
+    "dallas-tx-2024-bond-streets-and-transportation-subcommittee": {
+      "status": 200,
+      "items": {
+        "8578348e702caf35": "https://audio.citymeetings.fyi/swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+        "b0471f29622b8165": "https://audio.citymeetings.fyi/swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+        "16300c982b358fe9": "https://audio.citymeetings.fyi/swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+        "2d2bc233efd9bf97": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a"
+      }
+    },
+    "dallas-tx-bond-program-meetings": {
+      "status": 200,
+      "items": {
+        "8578348e702caf35": "https://audio.citymeetings.fyi/swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+        "b0471f29622b8165": "https://audio.citymeetings.fyi/swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+        "16300c982b358fe9": "https://audio.citymeetings.fyi/swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+        "2d2bc233efd9bf97": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a"
+      }
+    },
+    "dallas-tx-transportation-and-infrastructure": {
+      "status": 200,
+      "items": {
+        "8578348e702caf35": "https://audio.citymeetings.fyi/swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+        "b0471f29622b8165": "https://audio.citymeetings.fyi/swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+        "16300c982b358fe9": "https://audio.citymeetings.fyi/swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+        "2d2bc233efd9bf97": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a"
+      }
+    }
+  },
+  "search_page": {
+    "status": 200,
+    "origin_relative_manifest": true,
+    "legacy_shard_upgrade": true
+  },
+  "browser_check": {
+    "cities": 11,
+    "coverage": "46.9% (11824 of 25213 retained meetings)",
+    "query": "disabilities",
+    "city": "City of Austin, TX",
+    "displayed_results": 100
+  }
+}

@@ -1,0 +1,1314 @@
+{
+  "version": 2,
+  "frozen_at": "2026-10-03T05:56:13.192478+00:00",
+  "split": "regression",
+  "provenance": "Official source-grounded named-body policy seeds; not independently adjudicated admission cases.",
+  "cases": [
+    {
+      "id": "pflugerville-boa-owner-120",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-120",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=517745&GUID=B3C81AAE-64AC-4F53-9C6A-9149AF4A602D&Options=info|&Search=",
+          "recording_id": "120",
+          "agenda_id": "517745",
+          "retrieved_at": "2026-10-03T05:52:49.280420+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 12/14/2016 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Regular Meeting Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"0f235aa9-d503-4976-8fe2-3a69e9776382\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=120&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "119b1ae562fce5015120fed19fd3a8fc9fad034767218d1004d73dbd611057b6"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "76612e93dd76c006",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=120",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2016-12-14T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=120"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-128",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-128",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=526133&GUID=11309297-403B-40E3-9CE1-41828D24DE79&Options=info|&Search=",
+          "recording_id": "128",
+          "agenda_id": "526133",
+          "retrieved_at": "2026-10-03T05:52:48.962115+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 1/25/2017 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Regular Meeting Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"4bed2d03-c09e-4b3a-8ead-c3ebe0b2786f\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=128&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "7827c8f6ff76d5305ae906d7ed35ca0861d6530b114d429a0da90555b3b7671a"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "326fbc9dfcfa9588",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=128",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2017-01-25T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=128"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-185",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-185",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=588609&GUID=09F034AB-B7D5-4A8B-AAF1-5C3B7B80CED6&Options=info|&Search=",
+          "recording_id": "185",
+          "agenda_id": "588609",
+          "retrieved_at": "2026-10-03T05:52:49.583464+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 1/24/2018 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"32f2e94b-bcf0-45aa-bb2b-ffc0931f695d\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=185&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "4c05647c4a1874d136df87245dbb41492b3a41759e56965858c73ca6fabde6f2"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "b9803eceb98e9e84",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=185",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2018-01-24T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=185"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-205",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-205",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=618291&GUID=8969FC0E-625F-4B25-B645-0EE8E04ADC07&Options=info|&Search=",
+          "recording_id": "205",
+          "agenda_id": "618291",
+          "retrieved_at": "2026-10-03T05:52:49.593159+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 8/22/2018 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Regular Meeting Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"eafd0115-0583-4784-b6c2-c5f5d340bcab\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=205&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "f6f824bc4bda0405ee380107beed7d2427690bfc6c2237cf20e4b49593c8ecf0"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "87acad8c9e383e70",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=205",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2018-08-22T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=205"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-234",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-234",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=689855&GUID=39863264-BB85-4173-8812-F93453210AE5&Options=info|&Search=",
+          "recording_id": "234",
+          "agenda_id": "689855",
+          "retrieved_at": "2026-10-03T05:52:49.934242+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 4/24/2019 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Regular Meeting Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"215525ed-06b8-41fd-a035-d40380269fb2\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=234&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "dba5938fd6911d1171ff18051681893149f070fc5dd61599c1e86462fb6b7223"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "d9cd97daff73abfe",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=234",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2019-04-24T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=234"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-268",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-268",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=758887&GUID=B83E4F3E-9F5B-4DEF-B606-83C3595B2211&Options=info|&Search=",
+          "recording_id": "268",
+          "agenda_id": "758887",
+          "retrieved_at": "2026-10-03T05:52:49.893822+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 1/22/2020 7:00 PM Minutes status: Draft Meeting location: 100 E. Main St., Suite 500 Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"2a20a5c2-1f05-4c1d-a9a9-ce8e349b8f7f\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=268&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "0925571b571af3080a4e1a88047042c4cbb7e7414f62b85257423272a5f3e731"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "c89bdb5542bb32b6",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=268",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2020-01-22T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=268"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-379",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-379",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=860860&GUID=0760B8C1-98CF-4B32-AFEB-A9F3770F66A0&Options=info|&Search=",
+          "recording_id": "379",
+          "agenda_id": "860860",
+          "retrieved_at": "2026-10-03T05:52:49.575519+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 5/12/2021 7:00 PM Minutes status: Final Meeting location: 100 E. Main St., Suite 500 Regular Meeting (Telephone/Video Conference) Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"caf8ab86-ab0f-44a2-a774-ee4a5dc8a1d1\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=379&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "19c93156f249ab953ad40ce947606323ce2bc140978611b27a4bc280024e7093"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a527e54968504697",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=379",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2021-05-12T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=379"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-446",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-446",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=926343&GUID=73311B6D-AB63-4ECC-A5C8-16C4B5DF8EE6&Options=info|&Search=",
+          "recording_id": "446",
+          "agenda_id": "926343",
+          "retrieved_at": "2026-10-03T05:52:48.966335+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 2/16/2022 7:00 PM Minutes status: Draft Meeting location: 100 E. Main St., Suite 500 Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"6f173a77-d60c-46c2-ba6e-c42cb380e3e6\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=446&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "4c736496e0c2c39d486baa20a23e67e60f1830152ac80f5699b4a7e739afd2b4"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "3aa42c1abbaf944e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=446",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2022-02-16T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=446"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-706",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-706",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1193221&GUID=AB1A6971-8124-4F69-948E-008CD7428506&Options=info|&Search=",
+          "recording_id": "706",
+          "agenda_id": "1193221",
+          "retrieved_at": "2026-10-03T05:52:49.289375+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 5/29/2024 7:00 PM Minutes status: Final Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Minutes Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"71199eb6-3a76-4eea-9755-1fce36317bc1\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=706&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "641a37085db46586ca5a1b660cd4fb2b2f88d08a92ca4291ff037838a63477c7"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "7d18895c867ef6d3",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=706",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment Meeting",
+          "date": "2024-05-29T19:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=706"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-owner-933",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this Board of Adjustment proceeding to the reviewed named-body feed, preserving its retained UID.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-not-council",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Treat this BOA hearing as City Council proceedings.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-not-pz",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Assign this variance hearing to Planning and Zoning because its topic is zoning.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-not-duplicate",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment",
+      "claim": "Create a second BOA feed for the same named body.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-topic-suffix",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "adapted",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment Staff Training",
+      "claim": "Automatically include a Board of Adjustment Staff Training label in the meeting feed based only on shared words.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    },
+    {
+      "id": "pflugerville-boa-unseen-extended",
+      "city": "pflugerville-tx",
+      "source_key": "19c2ffe87d08",
+      "decision_type": "named_body",
+      "input_kind": "adapted",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Board of Adjustment and Appeals",
+      "claim": "Automatically assign a future Board of Adjustment and Appeals label to the BOA feed without identity evidence.",
+      "evidence_refs": [
+        {
+          "id": "meeting-933",
+          "url": "https://pflugerville.legistar.com/MeetingDetail.aspx?ID=1439613&GUID=8CC205FF-03E2-4963-A41C-0983094E3D70&Options=info|&Search=",
+          "recording_id": "933",
+          "agenda_id": "1439613",
+          "retrieved_at": "2026-10-03T05:52:49.904951+00:00",
+          "source_span": "Meeting Name: Board of Adjustment Agenda status: Final Meeting date/time: 9/16/2026 7:00 PM Minutes status: Draft Meeting location: 1611 Pfennig Lane Regular Meeting Published agenda: Agenda Published minutes: Not\u00a0available Agenda packet: Not\u00a0available Meeting video: Video  Video target: <a class=\"videolink\" data-event-id=\"195a7e66-68c3-45f8-8d14-c0bb3bcadbbd\" data-running-text=\"In&amp;nbsp;progress\" href=\"#\" id=\"ctl00_ContentPlaceHolder1_hypVideo\" onclick=\"window.open('Video.aspx?Mode=Granicus&amp;ID1=933&amp;Mode2=Video','video');return false;\" style=\"color:Blue;font-family:Tahoma;font-size:10pt;\">Video</a>",
+          "content_hash": "bc06b1ec428e81084a4a0257c733ae3d5eaaeb6c5db7331967779e92ff886b61"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "fcadbe135e692a1e",
+          "provider_guid": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933",
+          "body": "Board of Adjustment",
+          "title": "Board of Adjustment 9-16-26",
+          "date": "2026-09-16T00:00:00+00:00",
+          "canonical_url": "https://pflugerville.granicus.com/MediaPlayer.php?view_id=1&clip_id=933"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "pflugerville-tx-board-of-adjustment",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body_exact": [
+              "Board of Adjustment"
+            ]
+          },
+          "podcast_title": "Pflugerville: Board of Adjustment",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {
+            "identity_names": [
+              "Board of Adjustment"
+            ]
+          }
+        },
+        {
+          "slug": "pflugerville-tx-city-council",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "City Council"
+          },
+          "podcast_title": "Pflugerville: City Council",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "pflugerville-tx-planning-and-zoning-commission",
+          "source": {
+            "feed_url": "https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning & Zoning Worksession",
+              "Planning and Zoning"
+            ]
+          },
+          "podcast_title": "Pflugerville: Planning and Zoning Commission",
+          "source_key": "19c2ffe87d08",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/pflugerville-boa-coverage-2026-10.md",
+        "owner": "pflugerville-tx-board-of-adjustment",
+        "complete_label_ownership_only": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 205,
+        "persisted_rows": 948,
+        "unique_recordings": 832,
+        "limitations": "Identity coverage only; eight old player URLs return404 and 2024 clip returns403. City baseline incomplete. Seed truth, not independent admission holdout."
+      },
+      "split_group": "pflugerville-tx:board-of-adjustment"
+    }
+  ],
+  "superseded_hash": null
+}

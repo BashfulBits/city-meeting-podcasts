@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "dataset": "chapter-locator/manual-review-v2",
+  "evaluated_at_utc": "2026-09-29T07:40:49.499622+00:00",
+  "cohort": {
+    "meetings": 39,
+    "boundary_cases": 381,
+    "timed_boundary_cases": 347,
+    "transcript_status_exclusions": 34,
+    "concurrent_folded_timed_targets": 318,
+    "targets_with_manual_agenda_association": 295,
+    "targets_without_manual_agenda_association": 23
+  },
+  "scoring_contract": {
+    "boundary_tolerance_seconds": 60,
+    "concurrent_cases_folded_by": "connected components from scores.json concurrent_case_ids",
+    "boundary_metric": "one-to-one nearest-prediction recall, any agenda item",
+    "item_metric": "one-to-one nearest-prediction recall, manual agenda association plus boundary",
+    "item_metric_excludes_targets_without_manual_agenda_association": true,
+    "conditional_quality_excludes_invalid_or_missing_responses": true,
+    "full_cohort_lower_bound_assumes_no_hits_for_invalid_or_missing": true,
+    "optimistic_upper_bound_assumes_all_unobserved_targets_would_be_hits": true
+  },
+  "results": [
+    {
+      "model": "moonshotai/kimi-k3",
+      "prompt": "transition_sweep",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 39,
+        "meetings_with_result": 39,
+        "valid_meetings": 31,
+        "invalid_responses": 8,
+        "missing_responses": 0,
+        "invalid_response_uids": [
+          "0514f06cb748dbed",
+          "21451e2edf0b5d9c",
+          "4bdafbfb40214fff",
+          "74e16844b24866f6",
+          "a25c5073da38d890",
+          "a7cafa96abee9fd4",
+          "ab1cfb601c5c94f0",
+          "b5bd376feea8e8ef"
+        ],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 79.5,
+        "timing_hits_60s": 233,
+        "timed_target_denominator": 318,
+        "timing_unobserved_targets": 49,
+        "timing_recall_full_cohort_pct": 73.3,
+        "timing_recall_full_cohort_lower_bound_pct": 73.3,
+        "timing_recall_full_cohort_optimistic_upper_pct": 88.7,
+        "timed_targets_in_valid_meetings": 269,
+        "timing_recall_given_valid_response_pct": 86.6,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          60.0,
+          83.9
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          81.0,
+          91.4
+        ],
+        "item_and_timing_hits_60s": 228,
+        "manual_item_target_denominator": 295,
+        "item_unobserved_targets": 40,
+        "item_and_timing_recall_full_cohort_pct": 77.3,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 77.3,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.8,
+        "item_targets_in_valid_meetings": 255,
+        "item_and_timing_recall_given_valid_response_pct": 89.4,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          64.7,
+          86.8
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          84.8,
+          93.1
+        ],
+        "correct_item_error_samples": 234,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 3.9,
+        "valid_response_latency_mean_s": 95.9,
+        "valid_response_latency_median_s": 81.2
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 16,
+          "meetings_with_result": 16,
+          "valid_meetings": 11,
+          "invalid_responses": 5,
+          "missing_responses": 0,
+          "invalid_response_uids": [
+            "0514f06cb748dbed",
+            "4bdafbfb40214fff",
+            "a7cafa96abee9fd4",
+            "ab1cfb601c5c94f0",
+            "b5bd376feea8e8ef"
+          ],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 68.8,
+          "timing_hits_60s": 83,
+          "timed_target_denominator": 111,
+          "timing_unobserved_targets": 17,
+          "timing_recall_full_cohort_pct": 74.8,
+          "timing_recall_full_cohort_lower_bound_pct": 74.8,
+          "timing_recall_full_cohort_optimistic_upper_pct": 90.1,
+          "timed_targets_in_valid_meetings": 94,
+          "timing_recall_given_valid_response_pct": 88.3,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            56.4,
+            86.1
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            82.4,
+            92.7
+          ],
+          "item_and_timing_hits_60s": 80,
+          "manual_item_target_denominator": 103,
+          "item_unobserved_targets": 12,
+          "item_and_timing_recall_full_cohort_pct": 77.7,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 77.7,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.3,
+          "item_targets_in_valid_meetings": 91,
+          "item_and_timing_recall_given_valid_response_pct": 87.9,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            61.8,
+            86.8
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            81.8,
+            93.4
+          ],
+          "correct_item_error_samples": 82,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 3.8,
+          "valid_response_latency_mean_s": 90.9,
+          "valid_response_latency_median_s": 71.4
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 23,
+          "meetings_with_result": 23,
+          "valid_meetings": 20,
+          "invalid_responses": 3,
+          "missing_responses": 0,
+          "invalid_response_uids": [
+            "21451e2edf0b5d9c",
+            "74e16844b24866f6",
+            "a25c5073da38d890"
+          ],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 87.0,
+          "timing_hits_60s": 150,
+          "timed_target_denominator": 207,
+          "timing_unobserved_targets": 32,
+          "timing_recall_full_cohort_pct": 72.5,
+          "timing_recall_full_cohort_lower_bound_pct": 72.5,
+          "timing_recall_full_cohort_optimistic_upper_pct": 87.9,
+          "timed_targets_in_valid_meetings": 175,
+          "timing_recall_given_valid_response_pct": 85.7,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            53.8,
+            87.3
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            77.5,
+            92.9
+          ],
+          "item_and_timing_hits_60s": 148,
+          "manual_item_target_denominator": 192,
+          "item_unobserved_targets": 28,
+          "item_and_timing_recall_full_cohort_pct": 77.1,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 77.1,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 91.7,
+          "item_targets_in_valid_meetings": 164,
+          "item_and_timing_recall_given_valid_response_pct": 90.2,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            58.8,
+            90.7
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            83.9,
+            95.2
+          ],
+          "correct_item_error_samples": 152,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 3.4,
+          "valid_response_latency_mean_s": 98.6,
+          "valid_response_latency_median_s": 90.7
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 197,
+          "timed_target_denominator": 245,
+          "timing_recall_full_cohort_pct": 80.4,
+          "item_and_timing_hits_60s": 190,
+          "manual_item_target_denominator": 240,
+          "item_and_timing_recall_full_cohort_pct": 79.2
+        },
+        "mixed": {
+          "timing_hits_60s": 1,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 25.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 25.0
+        },
+        "optional": {
+          "timing_hits_60s": 44,
+          "timed_target_denominator": 63,
+          "timing_recall_full_cohort_pct": 69.8,
+          "item_and_timing_hits_60s": 35,
+          "manual_item_target_denominator": 46,
+          "item_and_timing_recall_full_cohort_pct": 76.1
+        },
+        "unrated": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 3,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 75.0
+        },
+        "unsure": {
+          "timing_hits_60s": 0,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 0.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "prompt_text": "First scan the timed transcript from beginning to end and make a private inventory of every clear change into a new substantive topic, agenda discussion, hearing, motion, or announcement. Then map each transition to the single best agenda item using its title, locator cues, and spoken evidence. A speaker change or passing mention alone is not a transition. After the chronological pass, audit every agenda item for a clearly discussed start that the first pass missed. Return all distinct, well-supported starts; do not cap the number of anchors or omit a clear item because it is less prominent. If one item is revisited, use only its first substantive discussion. Omit uncertain matches. Keep exact unit IDs, one anchor per item, one use per unit, and the supplied JSON schema."
+    }
+  ],
+  "gap_fill": {
+    "attempted": 7,
+    "valid_first_pass": 7,
+    "mean_latency_seconds": 58.6,
+    "median_latency_seconds": 51.7,
+    "min_latency_seconds": 17.864,
+    "max_latency_seconds": 132.642,
+    "provider_prompt_tokens_total": 637550,
+    "max_provider_prompt_tokens": 103473,
+    "provider_pause": {
+      "drained": true,
+      "in_flight_at_start": 2,
+      "waited_seconds": 644.8,
+      "pause_expired": false
+    },
+    "route_id": "nvidia_kimi_k3_free",
+    "direct_nvidia_endpoint_used": true,
+    "cloudflare_gateway_note": "Initial custom-nvidia call returned 404 before reaching NVIDIA; gap fill used direct NVIDIA API.",
+    "request_details": [
+      {
+        "uid": "0b7c86c1d697196d",
+        "valid": true,
+        "builder_estimate_tokens": 75939,
+        "provider_prompt_tokens": 95819,
+        "completion_tokens": 359,
+        "elapsed_seconds": 17.864,
+        "anchor_count": 3
+      },
+      {
+        "uid": "5ddb8129cbd21c8d",
+        "valid": true,
+        "builder_estimate_tokens": 70258,
+        "provider_prompt_tokens": 96284,
+        "completion_tokens": 863,
+        "elapsed_seconds": 51.687,
+        "anchor_count": 10
+      },
+      {
+        "uid": "b0255efe9b903f4c",
+        "valid": true,
+        "builder_estimate_tokens": 80890,
+        "provider_prompt_tokens": 103473,
+        "completion_tokens": 1978,
+        "elapsed_seconds": 78.37,
+        "anchor_count": 13
+      },
+      {
+        "uid": "c20e533196fbd578",
+        "valid": true,
+        "builder_estimate_tokens": 40819,
+        "provider_prompt_tokens": 50507,
+        "completion_tokens": 315,
+        "elapsed_seconds": 21.317,
+        "anchor_count": 2
+      },
+      {
+        "uid": "dd2fca265ade6e8d",
+        "valid": true,
+        "builder_estimate_tokens": 66326,
+        "provider_prompt_tokens": 90435,
+        "completion_tokens": 1703,
+        "elapsed_seconds": 84.701,
+        "anchor_count": 7
+      },
+      {
+        "uid": "e0fcd5db5b678a1c",
+        "valid": true,
+        "builder_estimate_tokens": 72089,
+        "provider_prompt_tokens": 97736,
+        "completion_tokens": 530,
+        "elapsed_seconds": 23.628,
+        "anchor_count": 7
+      },
+      {
+        "uid": "f231ad89fc3c8046",
+        "valid": true,
+        "builder_estimate_tokens": 75714,
+        "provider_prompt_tokens": 103296,
+        "completion_tokens": 1689,
+        "elapsed_seconds": 132.642,
+        "anchor_count": 5
+      }
+    ],
+    "private_raw_telemetry": "/private/tmp/chapter-locator-telemetry/locator-kimi-k3-manual-v2-gapfill-20260929T061813Z"
+  }
+}

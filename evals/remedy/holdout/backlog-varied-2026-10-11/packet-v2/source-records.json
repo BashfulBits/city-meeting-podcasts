@@ -1,0 +1,3879 @@
+{
+  "source_snapshot_hashes": {
+    "abbf5e25e078": "dda21f5dbd7152d045b1efdad8dc90420aebb1ffb4a5c764ac05716798d2d7dc",
+    "ecc3710ac47f": "3643e471558ef2fb1de844aa5cf9bb95b9946642f3eb5552a2d67eefc64ec786",
+    "76869ed1994f": "c62d2b709c4e0606609bcfaaaa95c3113eb2877279050110d446d3beb2ee4eda",
+    "3b7588310856": "5dcf378d093cdd54c6fd68bd84426256a33726507923325db5bcee3ee79f34ce",
+    "6540eef2dc2e": "8659be5711af1e8d2e88e816299118f5359c65866c1e7ade8523e84670e5b916"
+  },
+  "records": [
+    {
+      "uid": "31b194e3b25f0bf8",
+      "provider_guid": "359742",
+      "body": "Bond Advisory Committee",
+      "title": "Bond Advisory Committee \u2013 Oct 30, 2025",
+      "published": "2025-10-30T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/359742/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/359742/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/31b194e3b25f0bf8/backup-21ec0ff7ce31f02f",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/31b194e3b25f0bf8/backup-21ec0ff7ce31f02f",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/31b194e3b25f0bf8/agenda-73bed668188d6f65",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/31b194e3b25f0bf8/agenda-73bed668188d6f65",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/359742",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6158&rev=0&ag=7513&ln=39033&nseq=6159&nrev=0&pseq=&prev=",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "1ef623b5f2bc909a"
+      },
+      "source_chapters": [
+        {
+          "end": 24,
+          "start": 4,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 681,
+          "start": 24,
+          "title": "a. Introductions of Committee Members, Town staff, and consultants."
+        },
+        {
+          "end": 4456,
+          "start": 681,
+          "title": "b. Present and discuss topics related to the purpose and charge of the Bond Advisory Committee, including but not limited to: Purpose and Role of the Committee Tentative Committee Meeting Schedule May 2026 Bond Election Timeline Municipal Debt and Financial Review Challenges of Current Police and Courts Facility, including a Tour"
+        },
+        {
+          "end": 4876,
+          "start": 4456,
+          "title": "c. Appoint a Chairperson for the Bond Advisory Committee."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 4876.65,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/359742/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/359742"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:16:12.148810+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "33cf69aecb5aaf02",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-359742-31b194e3b25f0bf8",
+      "document_ids": [
+        "31b194e3b25f0bf8-agenda_text_artifact",
+        "31b194e3b25f0bf8-agenda_backup_artifact",
+        "31b194e3b25f0bf8-agenda"
+      ]
+    },
+    {
+      "uid": "1ef623b5f2bc909a",
+      "provider_guid": "361917",
+      "body": "Bond Advisory Committee",
+      "title": "Bond Advisory Committee \u2013 Nov 20, 2025",
+      "published": "2025-11-20T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/361917/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/361917/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/1ef623b5f2bc909a/backup-cb514a5d17ce7131",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/1ef623b5f2bc909a/backup-cb514a5d17ce7131",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6158&rev=0&ag=7513&ln=39033&nseq=6159&nrev=0&pseq=&prev="
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/1ef623b5f2bc909a/agenda-b4e982590b77a810",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/1ef623b5f2bc909a/agenda-b4e982590b77a810",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/361917",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6176&rev=0&ag=7514&ln=39180&nseq=6177&nrev=0&pseq=&prev=",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "cb34bf9c6001c32a"
+      },
+      "source_chapters": [
+        {
+          "end": 7,
+          "start": 2,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 78,
+          "start": 7,
+          "title": "a. Consider action on the Minutes from the October 30, 2025 Bond Advisory Committee Meeting."
+        },
+        {
+          "end": 6519,
+          "start": 78,
+          "title": "b. Present and discuss topics related to the purpose and charge of the Bond Advisory Committee, including but not limited to: Needs assessment for Police and Courts facility Review of options, including concepts, considerations, and preliminary cost estimates Next steps / timeline for the Committee"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6520.0,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/361917/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/361917"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:14:35.873021+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "4fe20f824fb3ff32",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-361917-1ef623b5f2bc909a",
+      "document_ids": [
+        "1ef623b5f2bc909a-agenda_text_artifact",
+        "1ef623b5f2bc909a-agenda_backup_artifact",
+        "1ef623b5f2bc909a-agenda"
+      ]
+    },
+    {
+      "uid": "cb34bf9c6001c32a",
+      "provider_guid": "362796",
+      "body": "Bond Advisory Committee",
+      "title": "Bond Advisory Committee \u2013 Dec 04, 2025",
+      "published": "2025-12-04T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/362796/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/362796/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/cb34bf9c6001c32a/backup-daa535fc8a0eab9a",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/cb34bf9c6001c32a/backup-daa535fc8a0eab9a",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6176&rev=0&ag=7514&ln=39180&nseq=6177&nrev=0&pseq=&prev="
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/cb34bf9c6001c32a/agenda-9bb57f04ec638a36",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/cb34bf9c6001c32a/agenda-9bb57f04ec638a36",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/362796",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6206&rev=0&ag=7515&ln=39224&nseq=6207&nrev=0&pseq=&prev=",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "902400566a6637b5"
+      },
+      "source_chapters": [
+        {
+          "end": 67,
+          "start": 4,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 160,
+          "start": 67,
+          "title": "a. Consider action on the Minutes from the November 20, 2025 Bond Advisory Committee Meeting."
+        },
+        {
+          "end": 221,
+          "start": 160,
+          "title": "b. Review the Committee Questions &amp; Answers document."
+        },
+        {
+          "end": 7845,
+          "start": 221,
+          "title": "c. Present and discuss topics related to the purpose and charge of the Bond Advisory Committee, including but not limited to: Further review and discussion of Options B and C, including concepts, considerations, and preliminary cost estimates Address questions from the prior meeting and from the Committee"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7845.39,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/362796/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/362796"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:16:41.459798+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2d0c79244c2f3e98",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-362796-cb34bf9c6001c32a",
+      "document_ids": [
+        "cb34bf9c6001c32a-agenda_text_artifact",
+        "cb34bf9c6001c32a-agenda_backup_artifact",
+        "cb34bf9c6001c32a-agenda"
+      ]
+    },
+    {
+      "uid": "902400566a6637b5",
+      "provider_guid": "371625",
+      "body": "Bond Advisory Committee",
+      "title": "Bond Advisory Committee \u2013 Jan 08, 2026",
+      "published": "2026-01-08T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/371625/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/371625/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/902400566a6637b5/backup-ea5365d8b1e59312",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/902400566a6637b5/backup-ea5365d8b1e59312",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=6206&rev=0&ag=7515&ln=39224&nseq=6207&nrev=0&pseq=&prev="
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/902400566a6637b5/agenda-e057ffc1541f3c99",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/902400566a6637b5/agenda-e057ffc1541f3c99",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/371625",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 154,
+          "start": 3,
+          "title": "1. Call Meeting to Order."
+        },
+        {
+          "end": 184,
+          "start": 154,
+          "title": "a. Consider action on the Minutes from the December 4, 2025 Bond Advisory Committee Meeting."
+        },
+        {
+          "end": 4581,
+          "start": 184,
+          "title": "c. Present and discuss topics related to the purpose and charge of the Bond Advisory Committee, including but not limited to: Further review and discussion of Options B and C, including concepts, considerations, and preliminary cost estimates Address questions from the prior meeting and from the Committee."
+        },
+        {
+          "end": 6355,
+          "start": 4581,
+          "title": "d. Consider action on making a recommendation to the Addison City Council including the calling of a bond election regarding a capital project to address the Town&#39;s Police and Courts facility."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6355.53,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/371625/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/371625"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:16:03.990253+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5057d02453a8ac9d",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-371625-902400566a6637b5",
+      "document_ids": [
+        "902400566a6637b5-agenda_text_artifact",
+        "902400566a6637b5-agenda_backup_artifact",
+        "902400566a6637b5-agenda"
+      ]
+    },
+    {
+      "uid": "35a78fa89c7c5c5c",
+      "provider_guid": "55864",
+      "body": "Addison Economic Development Luncheon",
+      "title": "Addison Economic Development Luncheon \u2013 Jun 02, 2017",
+      "published": "2017-06-02T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/55864/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/55864/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/35a78fa89c7c5c5c/backup-4a89f6c391f0c751",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/35a78fa89c7c5c5c/backup-4a89f6c391f0c751",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/35a78fa89c7c5c5c/agenda-6e0d2ab121307fbd",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/35a78fa89c7c5c5c/agenda-6e0d2ab121307fbd",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/55864",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3376.87,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/55864/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55864"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T15:44:15.123985+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "d7cf25588cf1ccef",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-55864-35a78fa89c7c5c5c",
+      "document_ids": [
+        "35a78fa89c7c5c5c-agenda_text_artifact",
+        "35a78fa89c7c5c5c-agenda_backup_artifact",
+        "35a78fa89c7c5c5c-agenda"
+      ]
+    },
+    {
+      "uid": "63b22f80ce9500ff",
+      "provider_guid": "56029",
+      "body": "Citizen Advisory Committee",
+      "title": "Citizen Advisory Committee \u2013 Jun 01, 2007",
+      "published": "2007-06-01T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/56029/download",
+      "links": {
+        "canonical_video": "https://addisontx.new.swagit.com/videos/56029"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1628.384,
+          "duration_basis": "stream-sample",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-16.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 2807.968,
+          "duration_basis": "stream-sample",
+          "id": "s1",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-17.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3270.752,
+          "duration_basis": "stream-sample",
+          "id": "s2",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-18.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 4101.312,
+          "duration_basis": "stream-sample",
+          "id": "s3",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-19.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3765.952,
+          "duration_basis": "stream-sample",
+          "id": "s4",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-20.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3215.072,
+          "duration_basis": "stream-sample",
+          "id": "s5",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-21.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3242.24,
+          "duration_basis": "stream-sample",
+          "id": "s6",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-22.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3514.176,
+          "duration_basis": "stream-sample",
+          "id": "s7",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-23.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 3935.52,
+          "duration_basis": "stream-sample",
+          "id": "s8",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-24.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        },
+        {
+          "backup_key": null,
+          "duration": 2243.072,
+          "duration_basis": "stream-sample",
+          "id": "s9",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2009/05/19/05192009-25.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56029"
+        }
+      ],
+      "media_availability": null,
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-56029-63b22f80ce9500ff",
+      "document_ids": []
+    },
+    {
+      "uid": "4ef85ec6540cf95b",
+      "provider_guid": "276855",
+      "body": "Joint P&Z and City Council Meeting #1",
+      "title": "Joint P&Z and City Council Meeting #1 \u2013 Oct 17, 2023",
+      "published": "2023-10-17T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/276855/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/276855/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/4ef85ec6540cf95b/backup-8928572f440c34ec",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/4ef85ec6540cf95b/backup-8928572f440c34ec",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/4ef85ec6540cf95b/agenda-4560340853bceaf1",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/4ef85ec6540cf95b/agenda-4560340853bceaf1",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/276855",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 62,
+          "start": 0,
+          "title": "1. Call Addison City Council and Planning &amp; Zoning Commission Joint Meeting to Order and Announce that a Quorum is Present: Mayor Bruce Arfsten - Addison City Council Chairman Chris DeFrancisco"
+        },
+        {
+          "end": 7563,
+          "start": 62,
+          "title": "a. Introduce and Discuss the Advance Addison Comprehensive Plan project and provide initial feedback on key themes to be addressed by the plan."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7563.45,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/276855/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/276855"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:44:31.229362+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "e57b12c547eaf91a",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-276855-4ef85ec6540cf95b",
+      "document_ids": [
+        "4ef85ec6540cf95b-agenda_text_artifact",
+        "4ef85ec6540cf95b-agenda_backup_artifact",
+        "4ef85ec6540cf95b-agenda"
+      ]
+    },
+    {
+      "uid": "fcc9bde16c7f47fe",
+      "provider_guid": "295839",
+      "body": "Joint CPAC, P&Z, and City Council Meeting #1",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #1 \u2013 Jan 24, 2024",
+      "published": "2024-01-24T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/295839/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/295839/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/fcc9bde16c7f47fe/backup-0239bd2236cc0926",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/fcc9bde16c7f47fe/backup-0239bd2236cc0926",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/fcc9bde16c7f47fe/agenda-f020f789db2eeb28",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/fcc9bde16c7f47fe/agenda-f020f789db2eeb28",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/295839",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 51,
+          "start": 2,
+          "title": "0. Call Addison City Council, Planning &amp; Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting to Order and Announce that a Quorum is Present: Mayor Bruce Arfsten - City Council Chair Denise Fansler - Planning &amp; Zoning Commission Chair Susan Halpern - COmprehensive Plan Advisory Committee"
+        },
+        {
+          "end": 715,
+          "start": 51,
+          "title": "1. Present and discuss a progress update on the Advance Addison 2050 Comprehensive Plan."
+        },
+        {
+          "end": 6278,
+          "start": 715,
+          "title": "2. Conduct interactive activities, discuss, and share feedback on Town values, assets, aspirations, and decision-making principles."
+        },
+        {
+          "end": 6873,
+          "start": 6278,
+          "title": "3. Present and discuss the Advance Addison 2050 Comprehensive Plan &quot;Meeting in a Box&quot; community engagement tool."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6873.26,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/295839/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/295839"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:40:49.342826+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "b649a1615de98f0e",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-295839-fcc9bde16c7f47fe",
+      "document_ids": [
+        "fcc9bde16c7f47fe-agenda_text_artifact",
+        "fcc9bde16c7f47fe-agenda_backup_artifact",
+        "fcc9bde16c7f47fe-agenda"
+      ]
+    },
+    {
+      "uid": "c95af66385f6cf31",
+      "provider_guid": "310072",
+      "body": "Joint CPAC, P&Z, and City Council Meeting #2",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #2 \u2013 Jul 11, 2024",
+      "published": "2024-07-11T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/310072/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/310072/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/c95af66385f6cf31/backup-659d1a2490d1fdcf",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/c95af66385f6cf31/backup-659d1a2490d1fdcf",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/c95af66385f6cf31/agenda-805f31cdd5965230",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/c95af66385f6cf31/agenda-805f31cdd5965230",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/310072",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 69,
+          "start": 0,
+          "title": "1. Call Addison City Council, Planning &amp; Zoning Commission, and Comprehensive Plan Advisory Committee Joint Meeting to Order and Announce that a Quorum is Present: Mayor Bruce Arfsten - City Council Chair Denise Fansler - Planning &amp; Zoning Commission Chair Susan Halpern - Comprehensive Plan Advisory Committee"
+        },
+        {
+          "end": 200,
+          "start": 69,
+          "title": "1. Discuss and consider action on a replacement business appointee to the Comprehensive Plan Advisory Committee (CPAC)."
+        },
+        {
+          "end": 5774,
+          "start": 200,
+          "title": "2. Present and discuss an update on the Advance Addison 2050 public engagement efforts and market analysis."
+        },
+        {
+          "end": 7997,
+          "start": 5774,
+          "title": "3. Present and conduct interactive exercise on catalyst redevelopment site selection."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7997.88,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/310072/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/310072"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:37:07.472256+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "4b15856e9627313e",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-310072-c95af66385f6cf31",
+      "document_ids": [
+        "c95af66385f6cf31-agenda_text_artifact",
+        "c95af66385f6cf31-agenda_backup_artifact",
+        "c95af66385f6cf31-agenda"
+      ]
+    },
+    {
+      "uid": "e59549e833479e1d",
+      "provider_guid": "55599",
+      "body": "Combined Meeting",
+      "title": "Combined Meeting \u2013 Oct 08, 2013",
+      "published": "2013-10-08T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/55599/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/55599/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/e59549e833479e1d/backup-2a684b64e68a2c3f",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/e59549e833479e1d/backup-2a684b64e68a2c3f",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/docs/2013/CM/20131008_13/45%5FMinutes%20for%20Sept%2E%203%20Special%20Meeting%20%2D%20REVISED%20%2D%20V3%2Epdf",
+          "https://addisontx.new.swagit.com/docs/2013/CM/20131008_13/49%5FMinutes%20for%20Sept%2E%2024%2C%202013%20Regular%20Council%20Meeting%20%2D%20V2%2Epdf"
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/e59549e833479e1d/agenda-09855a182eeb9223",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/e59549e833479e1d/agenda-09855a182eeb9223",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/55599",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/docs/2013/CM/20131022_24/69%5FMinutes%20for%20October%208%2C%202013%20Regular%20Council%20Meeting%2Epdf",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "1e85dcff232fcba8"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 170.24,
+          "duration_basis": "stream-sample",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2013/10/08/10082013-1140.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55599"
+        },
+        {
+          "backup_key": null,
+          "duration": 66.4920625,
+          "duration_basis": "stream-sample",
+          "id": "s1",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2013/10/08/10082013-1141.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55599"
+        },
+        {
+          "backup_key": null,
+          "duration": 273.28,
+          "duration_basis": "stream-sample",
+          "id": "s2",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2013/10/08/10082013-1142.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55599"
+        },
+        {
+          "backup_key": null,
+          "duration": 42.912,
+          "duration_basis": "stream-sample",
+          "id": "s3",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2013/10/08/10082013-1143.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55599"
+        },
+        {
+          "backup_key": null,
+          "duration": 898.816,
+          "duration_basis": "stream-sample",
+          "id": "s4",
+          "media_kind": "direct",
+          "provider": "swagit",
+          "ref": "https://swagit-video.granicus.com/archive/2013/10/08/10082013-1144.h264.mp4",
+          "watch_url": "https://addisontx.new.swagit.com/videos/55599"
+        }
+      ],
+      "media_availability": null,
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-55599-e59549e833479e1d",
+      "document_ids": [
+        "e59549e833479e1d-agenda_text_artifact",
+        "e59549e833479e1d-agenda_backup_artifact",
+        "e59549e833479e1d-agenda"
+      ]
+    },
+    {
+      "uid": "235c1c030568dac0",
+      "provider_guid": "56020",
+      "body": "George Herbert Walker Bush Elementary Dedication",
+      "title": "George Herbert Walker Bush Elementary Dedication \u2013 Dec 09, 2011",
+      "published": "2011-12-09T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/56020/download",
+      "links": {
+        "canonical_video": "https://addisontx.new.swagit.com/videos/56020"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3053.6,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/56020/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56020"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:25:23.481450+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "71866b08d7cbc21c",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-56020-235c1c030568dac0",
+      "document_ids": []
+    },
+    {
+      "uid": "24d5e7dc230eb900",
+      "provider_guid": "56021",
+      "body": "Spruill Park Dedication Ceremony",
+      "title": "Spruill Park Dedication Ceremony \u2013 Sep 20, 2009",
+      "published": "2009-09-20T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/56021/download",
+      "links": {
+        "canonical_video": "https://addisontx.new.swagit.com/videos/56021"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 545.4,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/56021/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56021"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:24:25.399451+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "9ef8cba7d78acad5",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-56021-24d5e7dc230eb900",
+      "document_ids": []
+    },
+    {
+      "uid": "ee80c45122c4f9f0",
+      "provider_guid": "56022",
+      "body": "Beckert Park Dedication Ceremony",
+      "title": "Beckert Park Dedication Ceremony \u2013 Jun 06, 2009",
+      "published": "2009-06-06T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/56022/download",
+      "links": {
+        "canonical_video": "https://addisontx.new.swagit.com/videos/56022"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 356.6,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/56022/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56022"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:25:16.129625+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "23cac2ac90273c8c",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-56022-ee80c45122c4f9f0",
+      "document_ids": []
+    },
+    {
+      "uid": "1f50e2274a6dd26c",
+      "provider_guid": "56023",
+      "body": "City Council Swearing-in Ceremony",
+      "title": "City Council Swearing-in Ceremony \u2013 May 26, 2009",
+      "published": "2009-05-26T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/56023/download",
+      "links": {
+        "canonical_video": "https://addisontx.new.swagit.com/videos/56023"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 940.92,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/56023/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/56023"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T16:25:24.749354+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "45129e18e7b5de6b",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-56023-1f50e2274a6dd26c",
+      "document_ids": []
+    },
+    {
+      "uid": "757ab2a4aaf9bbca",
+      "provider_guid": "394474",
+      "body": "TIRZ #1 Board Meeting",
+      "title": "TIRZ #1 Board Meeting \u2013 Jul 28, 2026",
+      "published": "2026-07-28T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/394474/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/394474/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/757ab2a4aaf9bbca/backup-9f68250e87dd4b6e",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/757ab2a4aaf9bbca/backup-9f68250e87dd4b6e",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/757ab2a4aaf9bbca/agenda-ac990cce14a00345",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/757ab2a4aaf9bbca/agenda-ac990cce14a00345",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/394474",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 21,
+          "start": 3,
+          "title": "1. Call Meeting to Order and Announce that a Quorum is Present"
+        },
+        {
+          "end": 799,
+          "start": 21,
+          "title": "2.a. Present, discuss, and consider action on the recommendation of the Projects and Financing Plan for Tax Increment Reinvestment Zone #1."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 799.64,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/394474/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/394474"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-29T04:01:26.170976+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "47cbaeae78341c83",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-394474-757ab2a4aaf9bbca",
+      "document_ids": [
+        "757ab2a4aaf9bbca-agenda_text_artifact",
+        "757ab2a4aaf9bbca-agenda_backup_artifact",
+        "757ab2a4aaf9bbca-agenda"
+      ]
+    },
+    {
+      "uid": "4b69d73512792a44",
+      "provider_guid": "148373",
+      "body": "Planning & Zoning Commission Work Session",
+      "title": "Planning & Zoning Commission Work Session \u2013 Nov 16, 2021",
+      "published": "2021-11-16T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/148373/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/148373/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/4b69d73512792a44/backup-ee468bad73cbe26a",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/4b69d73512792a44/backup-ee468bad73cbe26a",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/4b69d73512792a44/agenda-fb5c8107a9324783",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/4b69d73512792a44/agenda-fb5c8107a9324783",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/148373",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 13,
+          "start": 7,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 506,
+          "start": 13,
+          "title": "1. Status update on recent Planning and Zoning Commission cases and planning policy items."
+        },
+        {
+          "end": 3154,
+          "start": 506,
+          "title": "2. Discussion regarding items on the agenda for the November 16, 2021 Planning and Zoning Commission Regular Meeting, including: October 19, 2021 Planning and Zoning Commission meeting minutes Replat of the Vitruvian Park Addition (R2021-01) SUP for 14854 Montfort Drive - TK&#39;s Place (1841-SUP) SUP for 14450 Marsh Lane - Tierra Encantada (1842-SUP) Vitruvian Park Concept Plan Amendment and Development Plan Approval - 85 Multifamily Dwelling Units at the Southeast Corner of Spring Valley Road and Vitruvian Way (1839-Z)"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3154.31,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/148373/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/148373"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-28T18:42:10.352055+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2daaf28bc3308132",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-148373-4b69d73512792a44",
+      "document_ids": [
+        "4b69d73512792a44-agenda_text_artifact",
+        "4b69d73512792a44-agenda_backup_artifact",
+        "4b69d73512792a44-agenda"
+      ]
+    },
+    {
+      "uid": "e2e2e4d8c9b5330c",
+      "provider_guid": "150744",
+      "body": "Planning & Zoning Commission Work Session",
+      "title": "Planning & Zoning Commission Work Session \u2013 Dec 21, 2021",
+      "published": "2021-12-21T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/150744/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/150744/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/e2e2e4d8c9b5330c/backup-913592c8e415b047",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/e2e2e4d8c9b5330c/backup-913592c8e415b047",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/e2e2e4d8c9b5330c/agenda-e997fe17f2af9eaf",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/e2e2e4d8c9b5330c/agenda-e997fe17f2af9eaf",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/150744",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=4226&rev=0&ag=6926&ln=30141&nseq=&nrev=&pseq=4225&prev=0",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "52ec3e810707f814"
+      },
+      "source_chapters": [
+        {
+          "end": 9,
+          "start": 2,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 144,
+          "start": 9,
+          "title": "1. Status update on recent Planning and Zoning Commission cases and planning policy items."
+        },
+        {
+          "end": 410,
+          "start": 144,
+          "title": "2. Discuss potential dates in January to hold the annual organizational meeting for the Commission."
+        },
+        {
+          "end": 1687,
+          "start": 410,
+          "title": "3. Discussion regarding items on the agenda for the December 21, 2021 Planning and Zoning Commission Regular Meeting, including: November 16 and December 7, 2021 Planning and Zoning Commission Meeting Minutes SUP for 5294 Belt Line Road, Suite 110 - La La Land Kind Cafe (1845-SUP) PD Text Amendment for Medical Office Use at the Southeast Corner of Belt Line Road and Montfort Drive - Prestonwood Place (1844-Z) Replat and Final Plat, Block D of the Vitruvian Park Addition (R2021-02)"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1687.67,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/150744/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/150744"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-28T18:40:39.432509+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "6bc4b3974d6ed12d",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-150744-e2e2e4d8c9b5330c",
+      "document_ids": [
+        "e2e2e4d8c9b5330c-agenda_text_artifact",
+        "e2e2e4d8c9b5330c-agenda_backup_artifact",
+        "e2e2e4d8c9b5330c-agenda"
+      ]
+    },
+    {
+      "uid": "52ec3e810707f814",
+      "provider_guid": "153032",
+      "body": "Planning & Zoning Commission Work Session",
+      "title": "Planning & Zoning Commission Work Session \u2013 Jan 18, 2022",
+      "published": "2022-01-18T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/153032/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/153032/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/52ec3e810707f814/backup-f96f648db048f0d0",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/52ec3e810707f814/backup-f96f648db048f0d0",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=4226&rev=0&ag=6926&ln=30141&nseq=&nrev=&pseq=4225&prev=0"
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/52ec3e810707f814/agenda-5d60869e8fd57fe3",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/52ec3e810707f814/agenda-5d60869e8fd57fe3",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/153032",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=4250&rev=0&ag=6928&ln=30179&nseq=&nrev=&pseq=4249&prev=0",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "ff8eac28f4881cd2"
+      },
+      "source_chapters": [
+        {
+          "end": 6,
+          "start": 4,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 106,
+          "start": 6,
+          "title": "1. Status update on recent Planning ad Zoning Commission cases and planning policy items."
+        },
+        {
+          "end": 1562,
+          "start": 106,
+          "title": "2. Discussion regarding items on the agenda for the January 18, 2022 Planning and Zoning Commission Regular Meeting, including: Appointment of Chair and Vice Chair for the Planning and Zoning Commission December 21, 2021 Planning and Zoning Commission Meeting Minutes Final Plat and Replat, Block D of the Vitruvian Park Addition (R2021-02) Replat, Block 1, Lot 1 of the Prairie Medical Addition and Site Plan for a medical office building (R2021-03 &amp; SP2021-01) Preliminary Plat, Block C, Lot 1 of the Vitruvian Park Addition (PP2021-01) 2021 Planning and Zoning Commission Annual Report 2022 Planning and Development Work Plan"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1562.4,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/153032/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/153032"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-28T18:40:36.431674+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "e2c266ea551595af",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-153032-52ec3e810707f814",
+      "document_ids": [
+        "52ec3e810707f814-agenda_text_artifact",
+        "52ec3e810707f814-agenda_backup_artifact",
+        "52ec3e810707f814-agenda"
+      ]
+    },
+    {
+      "uid": "ff8eac28f4881cd2",
+      "provider_guid": "154641",
+      "body": "Planning & Zoning Commission Work Session",
+      "title": "Planning & Zoning Commission Work Session \u2013 Feb 15, 2022",
+      "published": "2022-02-15T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/154641/download",
+      "links": {
+        "agenda": "https://addisontx.new.swagit.com/videos/154641/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/ff8eac28f4881cd2/backup-69565329550b9431",
+        "agenda_backup_artifact_key": "documents/abbf5e25e078/ff8eac28f4881cd2/backup-69565329550b9431",
+        "agenda_minutes_candidates": [
+          "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=4250&rev=0&ag=6928&ln=30179&nseq=&nrev=&pseq=4249&prev=0"
+        ],
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/abbf5e25e078/ff8eac28f4881cd2/agenda-4ffac5e21f5d2e88",
+        "agenda_text_artifact_key": "documents/abbf5e25e078/ff8eac28f4881cd2/agenda-4ffac5e21f5d2e88",
+        "canonical_video": "https://addisontx.new.swagit.com/videos/154641",
+        "meetings": "https://www.addisontx.gov/Government/Meetings-Agendas/Watch-City-Council-Meetings",
+        "minutes": "https://addisontx.new.swagit.com/agenda_publish.cfm?id=&mt=ALL&fp=swagit&get_month=8&get_year=2026&dsp=agm&seq=4278&rev=0&ag=6931&ln=30238&nseq=&nrev=&pseq=4277&prev=0",
+        "minutes_source": "agenda_link",
+        "minutes_source_episode_uid": "0ee826769ea9f6f8"
+      },
+      "source_chapters": [
+        {
+          "end": 15,
+          "start": 5,
+          "title": "1. Call Meeting to Order"
+        },
+        {
+          "end": 234,
+          "start": 15,
+          "title": "1. Status update on recent Planning and Zoning Commission cases and planning policy items."
+        },
+        {
+          "end": 3049,
+          "start": 234,
+          "title": "2. Discussion regarding items on the agenda for the February 15, 2022 Planning and Zoning Commission Regular Meeting, including: January 18, 2022 Planning and Zoning Commission Meeting Minutes Preliminary Plat, Block C, Lot 1 of the Vitruvian Park Addition (PP2021-01) PD Rezoning request for 4150 Beltway Drive (1846-Z)"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3049.84,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://addisontx.new.swagit.com/videos/154641/download",
+          "watch_url": "https://addisontx.new.swagit.com/videos/154641"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-28T18:39:53.820364+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2b86e9de5b84ad9a",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "case_id": "addison-154641-ff8eac28f4881cd2",
+      "document_ids": [
+        "ff8eac28f4881cd2-agenda_text_artifact",
+        "ff8eac28f4881cd2-agenda_backup_artifact",
+        "ff8eac28f4881cd2-agenda"
+      ]
+    },
+    {
+      "uid": "1792515fdd51c6c2",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443",
+      "body": "Environmental Task Force",
+      "title": "Environmental Task Force",
+      "published": "2020-04-14T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3443",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3443",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/backup-73716e96190d1b3b",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/1792515fdd51c6c2/backup-73716e96190d1b3b",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/agenda-1cdc5446aa8e9d8f",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/1792515fdd51c6c2/agenda-1cdc5446aa8e9d8f",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2605.07,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3443",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:51:06.489869+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5999f95c2bee5446",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 2580,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-1792515fdd51c6c2-ownership",
+      "document_ids": [
+        "1792515fdd51c6c2-agenda_text_artifact",
+        "1792515fdd51c6c2-agenda_backup_artifact",
+        "1792515fdd51c6c2-agenda"
+      ]
+    },
+    {
+      "uid": "25e9b8510b0a7a66",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494",
+      "body": "Environmental Task Force Meeting",
+      "title": "Environmental Task Force Meeting",
+      "published": "2020-06-09T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3494",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3494",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/backup-86afd15d69becca1",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/25e9b8510b0a7a66/backup-86afd15d69becca1",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/agenda-326e3957aea95c2b",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/25e9b8510b0a7a66/agenda-326e3957aea95c2b",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1702.84,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3494",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:42:07.088652+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "a9baa1a95286c609",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 1680,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "document_ids": [
+        "25e9b8510b0a7a66-agenda_text_artifact",
+        "25e9b8510b0a7a66-agenda_backup_artifact",
+        "25e9b8510b0a7a66-agenda"
+      ]
+    },
+    {
+      "uid": "2d5dc451df2da130",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+      "body": "Environmental Task Force Meeting",
+      "title": "Environmental Task Force Meeting",
+      "published": "2020-04-28T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3454",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3454",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/backup-ef905e99f775fa91",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/2d5dc451df2da130/backup-ef905e99f775fa91",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1850.81,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3454",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:45:41.798387+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "96cd9070b7052051",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 1800,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-2d5dc451df2da130-ownership",
+      "document_ids": [
+        "2d5dc451df2da130-agenda_text_artifact",
+        "2d5dc451df2da130-agenda_backup_artifact",
+        "2d5dc451df2da130-agenda"
+      ]
+    },
+    {
+      "uid": "35b22fcc8d07967b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424",
+      "body": "Environmental Task Force Meeting",
+      "title": "Environmental Task Force Meeting",
+      "published": "2020-03-24T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3424",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3424",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/backup-13f8c07787bcf535",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/35b22fcc8d07967b/backup-13f8c07787bcf535",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/agenda-28a6b1309cb11254",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/35b22fcc8d07967b/agenda-28a6b1309cb11254",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2585.45,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3424",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:49:28.083122+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5999f95c2bee5446",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 2580,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-35b22fcc8d07967b-ownership",
+      "document_ids": [
+        "35b22fcc8d07967b-agenda_text_artifact",
+        "35b22fcc8d07967b-agenda_backup_artifact",
+        "35b22fcc8d07967b-agenda"
+      ]
+    },
+    {
+      "uid": "237c28f30496e3e0",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
+      "body": "Community and Neighborhood Development Committee",
+      "title": "Community and Neighborhood Development Committee",
+      "published": "2020-04-28T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3453",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3453",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/237c28f30496e3e0/backup-7acea974fa428c14",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/237c28f30496e3e0/backup-7acea974fa428c14",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/237c28f30496e3e0/agenda-760478986af0cdb4",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/237c28f30496e3e0/agenda-760478986af0cdb4",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2889.66,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3453",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:50:45.118739+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2403bb76c1217fca",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 2880,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-237c28f30496e3e0-ownership",
+      "document_ids": [
+        "237c28f30496e3e0-agenda_text_artifact",
+        "237c28f30496e3e0-agenda_backup_artifact",
+        "237c28f30496e3e0-agenda"
+      ]
+    },
+    {
+      "uid": "30b28efc23346a6d",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
+      "body": "Community and Neighborhood Development Committee",
+      "title": "Community and Neighborhood Development Committee",
+      "published": "2020-06-23T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3505",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3505",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/30b28efc23346a6d/backup-147efb5dc2c438b7",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/30b28efc23346a6d/backup-147efb5dc2c438b7",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/30b28efc23346a6d/agenda-eeb106c3db36574b",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/30b28efc23346a6d/agenda-eeb106c3db36574b",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1721.34,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3505",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:50:23.685215+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "a9baa1a95286c609",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 1680,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-30b28efc23346a6d-ownership",
+      "document_ids": [
+        "30b28efc23346a6d-agenda_text_artifact",
+        "30b28efc23346a6d-agenda_backup_artifact",
+        "30b28efc23346a6d-agenda"
+      ]
+    },
+    {
+      "uid": "4357f0c39d1ae58f",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
+      "body": "Community and Neighborhood Development Committee",
+      "title": "Community and Neighborhood Development Committee",
+      "published": "2020-05-19T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3480",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3480",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/4357f0c39d1ae58f/backup-4beb325696daeff6",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/4357f0c39d1ae58f/backup-4beb325696daeff6",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/4357f0c39d1ae58f/agenda-e797bc0615bc85b2",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/4357f0c39d1ae58f/agenda-e797bc0615bc85b2",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2841.28,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3480",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:49:32.629796+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "84e607eb2e874998",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 2820,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "document_ids": [
+        "4357f0c39d1ae58f-agenda_text_artifact",
+        "4357f0c39d1ae58f-agenda_backup_artifact",
+        "4357f0c39d1ae58f-agenda"
+      ]
+    },
+    {
+      "uid": "d8f3b672b482369b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
+      "body": "Community and Neighborhood Development Committee",
+      "title": "Community and Neighborhood Development Committee",
+      "published": "2020-06-09T00:00:00+00:00",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3493",
+      "links": {
+        "agenda": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3493",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/d8f3b672b482369b/backup-1a1768bd9735a9f1",
+        "agenda_backup_artifact_key": "documents/ecc3710ac47f/d8f3b672b482369b/backup-1a1768bd9735a9f1",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/d8f3b672b482369b/agenda-b302b68ab4ef8b57",
+        "agenda_text_artifact_key": "documents/ecc3710ac47f/d8f3b672b482369b/agenda-b302b68ab4ef8b57",
+        "canonical_video": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
+        "meetings": "https://www.arlingtontx.gov/Government/Meetings-Agendas/Watch-Meetings"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2292.86,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3493",
+          "watch_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-14T12:49:30.099777+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5ea5e7ec3ceec874",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 2280,
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "case_id": "arlington-tx-d8f3b672b482369b-ownership",
+      "document_ids": [
+        "d8f3b672b482369b-agenda_text_artifact",
+        "d8f3b672b482369b-agenda_backup_artifact",
+        "d8f3b672b482369b-agenda"
+      ]
+    },
+    {
+      "uid": "130a7ebded8e0e1d",
+      "provider_guid": "269608",
+      "body": "2024 Bond Task Force Community Bond Task Force Meeting",
+      "title": "2024 Bond Task Force Community Bond Task Force Meeting \u2013 Aug 15, 2023",
+      "published": "2023-08-15T00:00:00+00:00",
+      "video_url": "https://dallastx.new.swagit.com/videos/269608/download",
+      "links": {
+        "canonical_video": "https://dallastx.new.swagit.com/videos/269608"
+      },
+      "source_chapters": [
+        {
+          "end": 8412,
+          "start": 254,
+          "title": "2024 Bond Task Force Community Bond Task Force Meeting on August 15, 2023."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 8412.79,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dallastx.new.swagit.com/videos/269608/download",
+          "watch_url": "https://dallastx.new.swagit.com/videos/269608"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-27T20:21:30.744279+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "ea47481eeb7ccd2d",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "case_id": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "document_ids": []
+    },
+    {
+      "uid": "16300c982b358fe9",
+      "provider_guid": "270975",
+      "body": "2024 Capital Bond Streets & Transportation Subcommittee Meeting",
+      "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023",
+      "published": "2023-08-22T00:00:00+00:00",
+      "video_url": "https://dallastx.new.swagit.com/videos/270975/download",
+      "links": {
+        "canonical_video": "https://dallastx.new.swagit.com/videos/270975"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 8552.42,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dallastx.new.swagit.com/videos/270975/download",
+          "watch_url": "https://dallastx.new.swagit.com/videos/270975"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-27T19:51:32.652385+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "8c4c73e83a518500",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "case_id": "dallas-tx-16300c982b358fe9-ownership",
+      "document_ids": []
+    },
+    {
+      "uid": "2b172a76868ad86c",
+      "provider_guid": "259821",
+      "body": "2024 Capital Bond Streets and Transportation Meeting",
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 Jun 13, 2023",
+      "published": "2023-06-13T00:00:00+00:00",
+      "video_url": "https://dallastx.new.swagit.com/videos/259821/download",
+      "links": {
+        "canonical_video": "https://dallastx.new.swagit.com/videos/259821"
+      },
+      "source_chapters": [
+        {
+          "end": 5722,
+          "start": 3,
+          "title": "2024 Capital Bond Streets and Transportation Meeting on June 13, 2023"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 5722.53,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dallastx.new.swagit.com/videos/259821/download",
+          "watch_url": "https://dallastx.new.swagit.com/videos/259821"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-27T20:25:54.126968+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "445f1350a0c61631",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "case_id": "dallas-tx-2b172a76868ad86c-ownership",
+      "document_ids": []
+    },
+    {
+      "uid": "2bc4c440c974dba8",
+      "provider_guid": "233032",
+      "body": "2024 Capital Bond Streets and Transportation Meeting",
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+      "published": "2023-05-25T00:00:00+00:00",
+      "video_url": "https://dallastx.new.swagit.com/videos/233032/download",
+      "links": {
+        "canonical_video": "https://dallastx.new.swagit.com/videos/233032"
+      },
+      "source_chapters": [
+        {
+          "end": 3117,
+          "start": 2,
+          "title": "2024 Bond Streets & Transportation Meeting on May 25, 2023."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3117.01,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dallastx.new.swagit.com/videos/233032/download",
+          "watch_url": "https://dallastx.new.swagit.com/videos/233032"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-27T20:27:33.331770+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5d74d5f7ff09b95f",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "case_id": "dallas-tx-2bc4c440c974dba8-ownership",
+      "document_ids": []
+    },
+    {
+      "uid": "bd172b762dd20b63",
+      "provider_guid": "203320",
+      "body": "Saturday Redistricting Commission",
+      "title": "Saturday Redistricting Commission \u2013 Jan 22, 2022",
+      "published": "2022-01-22T00:00:00+00:00",
+      "video_url": "https://dallastx.new.swagit.com/videos/203320/download",
+      "links": {
+        "agenda": "https://dallastx.new.swagit.com/videos/203320/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/bd172b762dd20b63/backup-39e35f1c1f3e39bf",
+        "agenda_backup_artifact_key": "documents/76869ed1994f/bd172b762dd20b63/backup-39e35f1c1f3e39bf",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/bd172b762dd20b63/agenda-7e81fd4e35c6b9ba",
+        "agenda_text_artifact_key": "documents/76869ed1994f/bd172b762dd20b63/agenda-7e81fd4e35c6b9ba",
+        "canonical_video": "https://dallastx.new.swagit.com/videos/203320",
+        "meetings": "https://dallascityhall.com//government/Pages/Live.aspx"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6180.59,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dallastx.new.swagit.com/videos/203320/download",
+          "watch_url": "https://dallastx.new.swagit.com/videos/203320"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-27T00:56:07.078398+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "441ee048e648880b",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "case_id": "dallas-tx-bd172b762dd20b63-ownership",
+      "document_ids": [
+        "bd172b762dd20b63-agenda_text_artifact",
+        "bd172b762dd20b63-agenda_backup_artifact",
+        "bd172b762dd20b63-agenda"
+      ]
+    },
+    {
+      "uid": "04689e3929ac104e",
+      "provider_guid": "28865",
+      "body": "Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM",
+      "title": "Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM \u2013 Jun 06, 2019",
+      "published": "2019-06-06T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/28865/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/28865/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/backup-55ba0f84f31798c0",
+        "agenda_backup_artifact_key": "documents/3b7588310856/04689e3929ac104e/backup-55ba0f84f31798c0",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899",
+        "agenda_text_artifact_key": "documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/28865",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/28865/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/minutes-text-398a0a7b449edd60",
+        "minutes_text_artifact_key": "documents/3b7588310856/04689e3929ac104e/minutes-text-398a0a7b449edd60"
+      },
+      "source_chapters": [
+        {
+          "end": 270,
+          "start": 68,
+          "title": "A. Conduct a walking tour of the Denton Police Department and Public Safety Dispatch located within City Hall East."
+        },
+        {
+          "end": 4171,
+          "start": 270,
+          "title": "B. Receive a report and hold a discussion regarding public safety facilities for consideration in the proposed 2019 Bond Program."
+        },
+        {
+          "end": 5011,
+          "start": 4171,
+          "title": "2. CONCLUDING ITEMS"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 5011.07,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/28865/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/28865"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T20:48:13.666262+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "35dd285448612cad",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-04689e3929ac104e-ownership",
+      "document_ids": [
+        "04689e3929ac104e-agenda_text_artifact",
+        "04689e3929ac104e-agenda_backup_artifact",
+        "04689e3929ac104e-agenda"
+      ]
+    },
+    {
+      "uid": "280db52d91547dd6",
+      "provider_guid": "122398",
+      "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+      "title": "Health & Building Standards Commission on 2021-06-03 3:00 PM \u2013 Jun 03, 2021",
+      "published": "2021-06-03T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/122398/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/122398/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/backup-0ace2bca2b1e59a4",
+        "agenda_backup_artifact_key": "documents/3b7588310856/280db52d91547dd6/backup-0ace2bca2b1e59a4",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3",
+        "agenda_text_artifact_key": "documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/122398",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/122398/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/minutes-text-e66e8d01245f94fb",
+        "minutes_text_artifact_key": "documents/3b7588310856/280db52d91547dd6/minutes-text-e66e8d01245f94fb"
+      },
+      "source_chapters": [
+        {
+          "end": 54,
+          "start": 14,
+          "title": "1. PLEDGE OF ALLEGIANCE"
+        },
+        {
+          "end": 106,
+          "start": 54,
+          "title": "Consider the approval of the May 13, 2021 minutes."
+        },
+        {
+          "end": 607,
+          "start": 106,
+          "title": "Receive a report, hold a discussion and give staff direction relating the process for updates to the construction codes and standards as adopted by the City. (International Codes: Mechanical, Plumbing, Fuel Gas, and related codes to include Building, Fire, Existing Building, Residential, Swimming Pool and Spa, Energy Code and the National Electrical Code). The primary focus will be on the National Electric Code, the International Mechanical, Plumbing, Fuel Gas codes and any associated references to the other codes as applicable."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 607.36,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/122398/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/122398"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:22:47.109770+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "892dd63f0a3ac5fa",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-280db52d91547dd6-ownership",
+      "document_ids": [
+        "280db52d91547dd6-agenda_text_artifact",
+        "280db52d91547dd6-agenda_backup_artifact",
+        "280db52d91547dd6-agenda"
+      ]
+    },
+    {
+      "uid": "7abd583b2ed8189a",
+      "provider_guid": "119886",
+      "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM",
+      "title": "Health & Building Standards Commission on 2021-04-22 3:00 PM \u2013 Apr 22, 2021",
+      "published": "2021-04-22T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/119886/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/119886/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/backup-c095d414874b80ec",
+        "agenda_backup_artifact_key": "documents/3b7588310856/7abd583b2ed8189a/backup-c095d414874b80ec",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20",
+        "agenda_text_artifact_key": "documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/119886",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/119886/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/minutes-text-2f8b6a469543d17c",
+        "minutes_text_artifact_key": "documents/3b7588310856/7abd583b2ed8189a/minutes-text-2f8b6a469543d17c"
+      },
+      "source_chapters": [
+        {
+          "end": 61,
+          "start": 6,
+          "title": "After determining that a quorum is present, the Health and Building Standards Commission of the City of Denton, Texas will convene in a Regular Meeting on Thursday, April 22, 2021, at 3:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be considered:"
+        },
+        {
+          "end": 625,
+          "start": 61,
+          "title": "A. Election of a Chair and Vice-Chair."
+        },
+        {
+          "end": 702,
+          "start": 625,
+          "title": "B. Consider approval of the January 18, 2018, August 16, 2018, and February 21, 2019 minutes."
+        },
+        {
+          "end": 870,
+          "start": 702,
+          "title": "C. Introduction of new Commissioners Torrey Mitchell, Sebastian Delgadillo, and Greg Coward."
+        },
+        {
+          "end": 954,
+          "start": 870,
+          "title": "D. Receive a report and hold a discussion regarding the Boards and Commission attendance policy."
+        },
+        {
+          "end": 2160,
+          "start": 954,
+          "title": "E. Receive a report and hold a discussion on the proposed adoption of 2021 Building Codes and 2020 National Electric Code (NEC)."
+        },
+        {
+          "end": 2347,
+          "start": 2160,
+          "title": "2. CONCLUDING ITEMS"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2347.04,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/119886/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/119886"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:22:45.999752+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "43c85436808c3f32",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-7abd583b2ed8189a-ownership",
+      "document_ids": [
+        "7abd583b2ed8189a-agenda_text_artifact",
+        "7abd583b2ed8189a-agenda_backup_artifact",
+        "7abd583b2ed8189a-agenda"
+      ]
+    },
+    {
+      "uid": "b50c6a018b2c08e7",
+      "provider_guid": "120859",
+      "body": "Library Board on 2021-05-13 3:30 PM",
+      "title": "Library Board on 2021-05-13 3:30 PM \u2013 May 13, 2021",
+      "published": "2021-05-13T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/120859/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/120859/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/backup-7dba4c1f72142412",
+        "agenda_backup_artifact_key": "documents/3b7588310856/b50c6a018b2c08e7/backup-7dba4c1f72142412",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02",
+        "agenda_text_artifact_key": "documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/120859",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/120859/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/minutes-text-12056edd09200ed6",
+        "minutes_text_artifact_key": "documents/3b7588310856/b50c6a018b2c08e7/minutes-text-12056edd09200ed6"
+      },
+      "source_chapters": [
+        {
+          "end": 25,
+          "start": 5,
+          "title": "After determining that a quorum is present, the Library Board of the City of Denton, Texas will convene in a Regular Meeting on Thursday, May 13, 2021, at 3:30 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be considered:"
+        },
+        {
+          "end": 64,
+          "start": 25,
+          "title": "A. Consider approval of the minutes of April 8, 2021."
+        },
+        {
+          "end": 137,
+          "start": 64,
+          "title": "B. Receive an informational report and hold a discussion regarding the Friends of the Denton Public Libraries."
+        },
+        {
+          "end": 174,
+          "start": 137,
+          "title": "C. Receive an informational report and hold a discussion regarding the Emily Fowler Library Foundation."
+        },
+        {
+          "end": 343,
+          "start": 174,
+          "title": "D. Receive a report and hold a discussion regarding library phased reopening plans during the COVID-19 pandemic."
+        },
+        {
+          "end": 1537,
+          "start": 343,
+          "title": "E. Receive a report, hold a discussion, and give staff direction regarding: \u00b7 2021 Summer Reading Challenge Program \u00b7 Nook Park Grand Opening \u00b7 Library Card Youth Art Contest \u00b7 Forge Makerspace Update \u00b7 CARES Grant Update \u00b7 TexTreasures Grant Update \u00b7 Collection Process Reinstatement"
+        },
+        {
+          "end": 1845,
+          "start": 1537,
+          "title": "F. Consider recommending to the City Council approval of an ordinance of the of the City of Denton, Texas, adopting a schedule of fees for the Denton Public Library; superseding all prior ordinances establishing fees in conflict with such schedule; providing for severability; and providing for an effective date."
+        },
+        {
+          "end": 2199,
+          "start": 1845,
+          "title": "G. Receive a report, hold a discussion, and consider recommending approval of the following Denton Public Library Policy updates: \u00b7 Integrated Library System Policy \u00b7 Collection Development Policy \u00b7 Community Use-Forge Policy"
+        },
+        {
+          "end": 2390,
+          "start": 2199,
+          "title": "3. CONCLUDING ITEMS"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2390.47,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/120859/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/120859"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:31:56.403926+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "92a3985532cd7fb4",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-b50c6a018b2c08e7-ownership",
+      "document_ids": [
+        "b50c6a018b2c08e7-agenda_text_artifact",
+        "b50c6a018b2c08e7-agenda_backup_artifact",
+        "b50c6a018b2c08e7-agenda"
+      ]
+    },
+    {
+      "uid": "c10f3f6cd97ac38f",
+      "provider_guid": "118306",
+      "body": "Library Board on 2021-04-08 3:30 PM",
+      "title": "Library Board on 2021-04-08 3:30 PM \u2013 Apr 08, 2021",
+      "published": "2021-04-08T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/118306/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/118306/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/c10f3f6cd97ac38f/backup-db13f6353803fe4a",
+        "agenda_backup_artifact_key": "documents/3b7588310856/c10f3f6cd97ac38f/backup-db13f6353803fe4a",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/c10f3f6cd97ac38f/agenda-105b6b641b98eeca",
+        "agenda_text_artifact_key": "documents/3b7588310856/c10f3f6cd97ac38f/agenda-105b6b641b98eeca",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/118306",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/118306/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/c10f3f6cd97ac38f/minutes-text-aba516577750f7ab",
+        "minutes_text_artifact_key": "documents/3b7588310856/c10f3f6cd97ac38f/minutes-text-aba516577750f7ab"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2925.11,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/118306/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/118306"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:31:50.876886+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2393e2d9a6f4f9bf",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "document_ids": [
+        "c10f3f6cd97ac38f-agenda_text_artifact",
+        "c10f3f6cd97ac38f-agenda_backup_artifact",
+        "c10f3f6cd97ac38f-agenda"
+      ]
+    },
+    {
+      "uid": "a1aa4af8f26e120c",
+      "provider_guid": "13509",
+      "body": "Joint Luncheon with Library Board",
+      "title": "Joint Luncheon with Library Board \u2013 Mar 03, 2014",
+      "published": "2014-03-03T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/13509/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/13509/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/a1aa4af8f26e120c/backup-89dd5e9a66d02fa6",
+        "agenda_backup_artifact_key": "documents/3b7588310856/a1aa4af8f26e120c/backup-89dd5e9a66d02fa6",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/a1aa4af8f26e120c/agenda-791e2ea203a5919d",
+        "agenda_text_artifact_key": "documents/3b7588310856/a1aa4af8f26e120c/agenda-791e2ea203a5919d",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/13509",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/13509/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/a1aa4af8f26e120c/minutes-text-5854d123ff21f094",
+        "minutes_text_artifact_key": "documents/3b7588310856/a1aa4af8f26e120c/minutes-text-5854d123ff21f094"
+      },
+      "source_chapters": [
+        {
+          "end": 282,
+          "start": 168,
+          "title": "1. Call to order; announce quorum, introductions."
+        },
+        {
+          "end": 4069,
+          "start": 282,
+          "title": "2. Receive a report, hold a discussion and give staff direction regarding the Denton Public Library Annual Report and Strategic Plan."
+        },
+        {
+          "end": 39,
+          "start": 4069,
+          "title": "1. Closed Meeting:"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 39.91,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/13509/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/13509"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-06-29T21:54:49.749377+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "successful decode is near-totally silent",
+        "recovered_at": null,
+        "silent_confirmations": 24,
+        "source_fingerprint": "4cfa1d8dcf854465",
+        "state": "confirmed_empty"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-a1aa4af8f26e120c-ownership",
+      "document_ids": [
+        "a1aa4af8f26e120c-agenda_text_artifact",
+        "a1aa4af8f26e120c-agenda_backup_artifact",
+        "a1aa4af8f26e120c-agenda"
+      ]
+    },
+    {
+      "uid": "1c91182b70afefb3",
+      "provider_guid": "111521",
+      "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+      "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+      "published": "2021-01-13T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/111521/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/111521/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/backup-88c224eba559332f",
+        "agenda_backup_artifact_key": "documents/3b7588310856/1c91182b70afefb3/backup-88c224eba559332f",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b",
+        "agenda_text_artifact_key": "documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/111521",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/111521/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/minutes-text-f5c27b62cbd0fd6c",
+        "minutes_text_artifact_key": "documents/3b7588310856/1c91182b70afefb3/minutes-text-f5c27b62cbd0fd6c"
+      },
+      "source_chapters": [
+        {
+          "end": 177,
+          "start": 34,
+          "title": "A. Consider approval of the meeting minutes of February 12, 2020."
+        },
+        {
+          "end": 1010,
+          "start": 177,
+          "title": "B. Receive a report, hold a discussion, and make a recommendation to City Council regarding the 2019/2020 Tax Increment Reinvestment Zone Number Two (Westpark TIRZ) Annual Report."
+        },
+        {
+          "end": 2186,
+          "start": 1010,
+          "title": "C. Receive a report, hold a discussion, and give staff direction regarding the industrial development in Tax Increment Reinvestment Zone Number Two (Westpark TIRZ)."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2186.36,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/111521/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/111521"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T20:58:03.324608+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "b36bbd64225ea4bc",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-1c91182b70afefb3-ownership",
+      "document_ids": [
+        "1c91182b70afefb3-agenda_text_artifact",
+        "1c91182b70afefb3-agenda_backup_artifact",
+        "1c91182b70afefb3-agenda"
+      ]
+    },
+    {
+      "uid": "2493e59c0844a4b4",
+      "provider_guid": "116732",
+      "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM \u2013 Mar 24, 2021",
+      "published": "2021-03-24T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/116732/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/116732/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/backup-d4b243ec6d6dcca6",
+        "agenda_backup_artifact_key": "documents/3b7588310856/2493e59c0844a4b4/backup-d4b243ec6d6dcca6",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f",
+        "agenda_text_artifact_key": "documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/116732",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 103,
+          "start": 17,
+          "title": "A. Consider approval of the minutes of February 5, 2021."
+        },
+        {
+          "end": 1477,
+          "start": 103,
+          "title": "E. Receive a report and hold a discussion regarding the Comprehensive Plan Update."
+        },
+        {
+          "end": 3442,
+          "start": 1477,
+          "title": "D. Receive a report, hold a discussion, and give staff direction regarding the Downtown capital projects update."
+        },
+        {
+          "end": 3661,
+          "start": 3442,
+          "title": "B. Receive a report, hold a discussion, and give staff direction regarding the 2021 annual meeting schedule."
+        },
+        {
+          "end": 5455,
+          "start": 3661,
+          "title": "C. Receive a report, hold a discussion, and give staff direction regarding the ongoing Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 study and analysis."
+        },
+        {
+          "end": 6918,
+          "start": 5455,
+          "title": "F. Receive a report, hold a discussion, and give staff direction regarding the Downtown Reinvestment Grant Program and the possible funding of COVID-19 response health and safety improvements as eligible grant expenses."
+        },
+        {
+          "end": 7006,
+          "start": 6918,
+          "title": "G. Receive Staff Activity Reports: 1. Coming soon: H2Oak (215 E. Hickory); Caskey\u2019s (311 N. Elm) 2. Status of Reinvestment Grants: 104 W. McKinney - Chi Dao, under construction 3. Next meeting date: May 26, 2021"
+        },
+        {
+          "end": 7080,
+          "start": 7006,
+          "title": "2. CONCLUDING ITEMS"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7080.5,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/116732/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/116732"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T20:57:52.030057+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "1d187d137952c070",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-2493e59c0844a4b4-ownership",
+      "document_ids": [
+        "2493e59c0844a4b4-agenda_text_artifact",
+        "2493e59c0844a4b4-agenda_backup_artifact",
+        "2493e59c0844a4b4-agenda"
+      ]
+    },
+    {
+      "uid": "2b458f3c556df459",
+      "provider_guid": "73923",
+      "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM \u2013 Jul 22, 2020",
+      "published": "2020-07-22T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/73923/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/73923/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/backup-b002110a2748ebb1",
+        "agenda_backup_artifact_key": "documents/3b7588310856/2b458f3c556df459/backup-b002110a2748ebb1",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc",
+        "agenda_text_artifact_key": "documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/73923",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/73923/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/minutes-text-252fd6d76000909d",
+        "minutes_text_artifact_key": "documents/3b7588310856/2b458f3c556df459/minutes-text-252fd6d76000909d"
+      },
+      "source_chapters": [
+        {
+          "end": 126,
+          "start": 34,
+          "title": "A. Consider approval of the minutes of January 22, 2020."
+        },
+        {
+          "end": 1757,
+          "start": 126,
+          "title": "C. Receive a report, hold a discussion, and give staff direction regarding a Downtown Reinvestment Grant for signage at 213 E. Hickory St. (Hickory To Oak). The Downtown Economic Development Committee recommends a grant in the amount of $7,313 (8-0)."
+        },
+        {
+          "end": 2098,
+          "start": 1757,
+          "title": "B. Receive a report, hold a discussion, and give staff direction regarding amendments to the Downtown Reinvestment Grant Program Policy."
+        },
+        {
+          "end": 2589,
+          "start": 2098,
+          "title": "D. Receive a report, hold a discussion, and give staff direction regarding the FY 2020-21 Downtown Denton Tax Increment Refinancing Zone No. 1 budget."
+        },
+        {
+          "end": 2827,
+          "start": 2589,
+          "title": "E. Receive Staff Activity Reports: a. Openings: Denton Sports Chiropractic (235 W. Hickory), Red\u2019s Yard (410 N. Bell), The Cookie Crave (519 S. Locust), Salon Indigo (314 E. Hickory #113), Vinyl Lounge (314 E. Hickory #121), 3 Wishes (108 W. Oak) b. Closings: Market on Oak (108 W. Oak), Nifft (201 N. Austin), SCRAP Denton (420 S. Bell), Freaks and Geeks (1807 N. Elm), Source Gaming Lounge (108 W. Congress), Cryptozoology (221 S. Bell), Escaping the Square (318 E. Oak #160), Mad World Records (115 W. Hickory), Denton Trading Co. (112 W. Oak), Wine2 (110 W. Oak), Juice Lab ( 508 S. Elm) c. Coming soon: H2Oak (215 E. Hickory); Caskey\u2019s (311 N. Elm), More Fun Toys! (115 W. Hickory) d. Downtown Reinvestment Program Grants Update: Completed - 109 W. Walnut - the MVMNT Lab; Under Construction - 104 W. McKinney - Chi Dao e. Next meeting date: September 23, 2020"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2827.58,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/73923/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/73923"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T21:00:17.337911+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "0f5e5e61729f55af",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-2b458f3c556df459-ownership",
+      "document_ids": [
+        "2b458f3c556df459-agenda_text_artifact",
+        "2b458f3c556df459-agenda_backup_artifact",
+        "2b458f3c556df459-agenda"
+      ]
+    },
+    {
+      "uid": "5a2ce8afb18c6a82",
+      "provider_guid": "87440",
+      "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called) \u2013 Oct 21, 2020",
+      "published": "2020-10-21T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/87440/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/87440/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/backup-6635327845a62652",
+        "agenda_backup_artifact_key": "documents/3b7588310856/5a2ce8afb18c6a82/backup-6635327845a62652",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71",
+        "agenda_text_artifact_key": "documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/87440",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/87440/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/minutes-text-75fde4970538c41b",
+        "minutes_text_artifact_key": "documents/3b7588310856/5a2ce8afb18c6a82/minutes-text-75fde4970538c41b"
+      },
+      "source_chapters": [
+        {
+          "end": 84,
+          "start": 21,
+          "title": "A. Consider approval of the minutes of September 23, 2020."
+        },
+        {
+          "end": 3898,
+          "start": 84,
+          "title": "B. Receive a report, hold a discussion, and give staff direction regarding the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 study and analysis being conducted by TXP, Inc."
+        },
+        {
+          "end": 4060,
+          "start": 3898,
+          "title": "C. Consider cancelling the regularly scheduled November 25, 2020 meeting due to the Thanksgiving holiday and calling a special called meeting."
+        },
+        {
+          "end": 4307,
+          "start": 4060,
+          "title": "D. Receive Staff Activity Reports: 1. Openings: TB Winds (222 W. Hickory St., Ste. 101), Mashup Market (318 E. Oak) 2. Closings: Circa 77 (227a W. Oak) 3. Downtown Denton COVID-19 Response and Recovery Update 4. Coming soon: H2Oak (215 E. Hickory); Caskey\u2019s (311 N. Elm), Hair Salon (110 W. Oak), More Fun Toys (115 W. Hickory) 5. Status of Downtown Reinvestment Grants: 104 W. McKinney - Chi Dao, under construction 6. Next meeting date: November 25, 2020"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 4307.62,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/87440/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/87440"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T20:56:16.430449+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "e2f7b56d3bf9c25d",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "document_ids": [
+        "5a2ce8afb18c6a82-agenda_text_artifact",
+        "5a2ce8afb18c6a82-agenda_backup_artifact",
+        "5a2ce8afb18c6a82-agenda"
+      ]
+    },
+    {
+      "uid": "0d5832dbd08e6dd8",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
+      "body": "City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop",
+      "title": "City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop",
+      "published": "2008-10-14T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=127",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&clip_id=127",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 9300.05,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=127",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-29T13:21:10.894004+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "ddd8c1b2fe0c6f4e",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 9300,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "document_ids": [
+        "0d5832dbd08e6dd8-agenda"
+      ]
+    },
+    {
+      "uid": "27254aa1a700569f",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
+      "body": "City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force Workshop of October 14",
+      "title": "City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force Workshop of October 14",
+      "published": "2008-10-21T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=125",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=125",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 9300.05,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=125",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-29T12:35:01.221359+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "ddd8c1b2fe0c6f4e",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 9300,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "fort-worth-tx-27254aa1a700569f-ownership",
+      "document_ids": [
+        "27254aa1a700569f-agenda"
+      ]
+    },
+    {
+      "uid": "497b3aa05255bfb9",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+      "body": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+      "title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+      "published": "2016-04-25T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=2491",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=2491",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8",
+        "agenda_backup_artifact_key": "documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225",
+        "agenda_text_artifact_key": "documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+        "meetings": "https://www.fortworthtexas.gov/departments/communications/fwtv",
+        "minutes": "https://fortworthgov.granicus.com/MinutesViewer.php?view_id=9&clip_id=2491&doc_id=ad063da5-2d75-11e6-8170-f04da2064c47"
+      },
+      "source_chapters": [
+        {
+          "start": 8,
+          "title": "A. CALL TO ORDER - Presenter: Board President Dick Elkins"
+        },
+        {
+          "start": 24,
+          "title": "B. WELCOME FROM BOARD PRESIDENT - Presenter: Board President Dick Elkins"
+        },
+        {
+          "start": 71,
+          "title": "C. WELCOME FROM MAYOR - Presenter: Mayor Betsy Price"
+        },
+        {
+          "start": 170,
+          "title": "D. OPENING CEREMONY - HOLLENSTEIN CAREER AND TECHNOLOGY CENTER - Presenter: Director of Career & Technology Dana Eldredge"
+        },
+        {
+          "start": 410,
+          "title": "A. SPECIAL RECOGNITIONS"
+        },
+        {
+          "start": 449,
+          "title": "A. INTRODUCTIONS, WELCOME, AND OVERVIEW - Presenters: Board President Dick Elkins; Mayor Betsy Price; Superintendent Jim Chadwell"
+        },
+        {
+          "start": 963,
+          "title": "B. EMS ISD DEMOGRAPHIC REPORT - Presenter: Chief Operations Officer Clete Welch"
+        },
+        {
+          "start": 1944,
+          "title": "C. HCTC VIDEO AND PRESENTATION"
+        },
+        {
+          "start": 2469,
+          "title": "D. EMS ISD ECONOMIC DEVELOPMENT INITIATIVE"
+        },
+        {
+          "start": 3512,
+          "title": "1. Educational Services"
+        },
+        {
+          "start": 3570,
+          "title": "a. Aspire 2022"
+        },
+        {
+          "start": 4101,
+          "title": "2. Operations"
+        },
+        {
+          "start": 4105,
+          "title": "a. Dozier Elementary School"
+        },
+        {
+          "start": 4329,
+          "title": "b. Infrastructure"
+        },
+        {
+          "start": 4852,
+          "title": "3. Finance"
+        },
+        {
+          "start": 4964,
+          "title": "a. Property Values"
+        },
+        {
+          "start": 5364,
+          "title": "F. REPORT ON CAREER AND TECHNOLOGY INITIATIVES"
+        },
+        {
+          "start": 6182,
+          "title": "IV. REPORTS OF THE CITY OF FORT WORTH"
+        },
+        {
+          "start": 6189,
+          "title": "A. MAYOR'S REPORT ON EDUCATION - Presenter: Mayor Betsy Price"
+        },
+        {
+          "start": 6693,
+          "title": "B. City of Fort Worth Master Thoroughfare Plan - Presenter: Katherine Beck"
+        },
+        {
+          "start": 7788,
+          "title": "V. BOARD PRESIDENT'S ANNOUNCEMENTS - Presenter: Board President Dick Elkins"
+        },
+        {
+          "start": 7884,
+          "title": "VI. MAYOR'S ANNOUNCEMENTS - Presenter: Mayor Betsy Price"
+        },
+        {
+          "start": 8092,
+          "title": "VII. ADJOURNMENT"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 8102.72,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=2491",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-19T13:37:16.682770+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "e6fa93baf5fbb972",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 8100,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "document_ids": [
+        "497b3aa05255bfb9-agenda_text_artifact",
+        "497b3aa05255bfb9-agenda_backup_artifact",
+        "497b3aa05255bfb9-agenda"
+      ]
+    },
+    {
+      "uid": "1ba31685c3061fad",
+      "provider_guid": "116744",
+      "body": "Animal Shelter Advisory Committee on 2021-03-24 3:00 PM",
+      "title": "Animal Shelter Advisory Committee on 2021-03-24 3:00 PM \u2013 Mar 24, 2021",
+      "published": "2021-03-24T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/116744/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/116744/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1ba31685c3061fad/backup-2c26b97af17d986d",
+        "agenda_backup_artifact_key": "documents/3b7588310856/1ba31685c3061fad/backup-2c26b97af17d986d",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1ba31685c3061fad/agenda-65a14eb9c36193a7",
+        "agenda_text_artifact_key": "documents/3b7588310856/1ba31685c3061fad/agenda-65a14eb9c36193a7",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/116744",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/116744/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/1ba31685c3061fad/minutes-text-082f9b7ee380db3a",
+        "minutes_text_artifact_key": "documents/3b7588310856/1ba31685c3061fad/minutes-text-082f9b7ee380db3a"
+      },
+      "source_chapters": [
+        {
+          "end": 382,
+          "start": 32,
+          "title": "A. Receive nominations and elect a Chair and Vice-Chair."
+        },
+        {
+          "end": 485,
+          "start": 382,
+          "title": "B. Discuss and adopt an annual meeting schedule."
+        },
+        {
+          "end": 550,
+          "start": 485,
+          "title": "C. Consider approval of the minutes of October 21, 2020."
+        },
+        {
+          "end": 1600,
+          "start": 550,
+          "title": "D. Receive a report, hold a discussion, and give staff direction regarding the Animal Services first quarter statistics for FY 20/21, shelter operations, and tethering Ordinance implementation."
+        },
+        {
+          "end": 2036,
+          "start": 1600,
+          "title": "E. Receive a report, hold a discussion, and give staff direction regarding proposed amendments to Denton Municipal Code Chapter 6, Article II (Dangerous Animals)."
+        },
+        {
+          "end": 2806,
+          "start": 2036,
+          "title": "F. Receive a report, hold a discussion and give staff direction regarding processes, impacts, and results of service delivery for the City of Denton Animal Shelter during the February 2021 inclement weather event."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 2806.08,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/116744/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/116744"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T15:41:03.567184+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "5113a94282c6f824",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-1ba31685c3061fad",
+      "document_ids": [
+        "1ba31685c3061fad-agenda_text_artifact",
+        "1ba31685c3061fad-agenda_backup_artifact",
+        "1ba31685c3061fad-agenda"
+      ]
+    },
+    {
+      "uid": "345a3a95d050eddf",
+      "provider_guid": "167459",
+      "body": "League of Women Voters Candidate Forum",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 14, 2022",
+      "published": "2022-04-14T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/167459/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/167459/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/345a3a95d050eddf/backup-b15b7f1f88d53d2c",
+        "agenda_backup_artifact_key": "documents/3b7588310856/345a3a95d050eddf/backup-b15b7f1f88d53d2c",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/345a3a95d050eddf/agenda-c9dfe06d919b6e67",
+        "agenda_text_artifact_key": "documents/3b7588310856/345a3a95d050eddf/agenda-c9dfe06d919b6e67",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/167459",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings"
+      },
+      "source_chapters": [
+        {
+          "end": 7011,
+          "start": 3,
+          "title": "League of Women Voters Candidate Forum on April 14, 2022."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7010.77,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/167459/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/167459"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T18:07:31.690562+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "54f34ed7c9fee5e9",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-345a3a95d050eddf",
+      "document_ids": [
+        "345a3a95d050eddf-agenda_text_artifact",
+        "345a3a95d050eddf-agenda_backup_artifact",
+        "345a3a95d050eddf-agenda"
+      ]
+    },
+    {
+      "uid": "3afe3a4c3aaa04d9",
+      "provider_guid": "73990",
+      "body": "Animal Shelter Advisory Committee on 2020-07-23 2:00 PM",
+      "title": "Animal Shelter Advisory Committee on 2020-07-23 2:00 PM \u2013 Jul 23, 2020",
+      "published": "2020-07-23T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/73990/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/73990/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/3afe3a4c3aaa04d9/backup-139db5c4c313504a",
+        "agenda_backup_artifact_key": "documents/3b7588310856/3afe3a4c3aaa04d9/backup-139db5c4c313504a",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/3afe3a4c3aaa04d9/agenda-4d5d85ccc1161dfc",
+        "agenda_text_artifact_key": "documents/3b7588310856/3afe3a4c3aaa04d9/agenda-4d5d85ccc1161dfc",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/73990",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/73990/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/3afe3a4c3aaa04d9/minutes-text-d8463ed9ad4823b6",
+        "minutes_text_artifact_key": "documents/3b7588310856/3afe3a4c3aaa04d9/minutes-text-d8463ed9ad4823b6"
+      },
+      "source_chapters": [
+        {
+          "end": 88,
+          "start": 68,
+          "title": "A. Consider the approval of the minutes for the February 19, 2020 meeting."
+        },
+        {
+          "end": 1692,
+          "start": 88,
+          "title": "B. Receive a report and hold a discussion regarding: 1. Shelter Statistics 2. Shelter Operation Updates 3. Shelter Project Updates"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1692.29,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/73990/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/73990"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T15:41:53.579949+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "0669452a9c480f14",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-3afe3a4c3aaa04d9",
+      "document_ids": [
+        "3afe3a4c3aaa04d9-agenda_text_artifact",
+        "3afe3a4c3aaa04d9-agenda_backup_artifact",
+        "3afe3a4c3aaa04d9-agenda"
+      ]
+    },
+    {
+      "uid": "43599790450713d2",
+      "provider_guid": "381831",
+      "body": "The League of Women Voters Candidate Forum",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 09, 2026",
+      "published": "2026-04-09T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/381831/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/381831"
+      },
+      "source_chapters": [
+        {
+          "end": 6686,
+          "start": 1,
+          "title": "The League of Women Voters Candidate Forum on April 9, 2026."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6686.37,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/381831/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/381831"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:58:04.252444+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "da12474c29e7be1a",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-43599790450713d2",
+      "document_ids": []
+    },
+    {
+      "uid": "93bbf0722bbc0edd",
+      "provider_guid": "224520",
+      "body": "League of Women Voters Candidate Forum",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 20, 2023",
+      "published": "2023-04-20T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/224520/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/224520"
+      },
+      "source_chapters": [
+        {
+          "end": 5218,
+          "start": 3,
+          "title": "League of Women Voters Candidate Forum on April 20, 2023."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 5218.49,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/224520/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/224520"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T18:07:45.154611+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "8d33853e9c01d1ec",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-93bbf0722bbc0edd",
+      "document_ids": []
+    },
+    {
+      "uid": "c33b73995d47d8f3",
+      "provider_guid": "14004",
+      "body": "League of Women Voters Candidate Forum",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 18, 2018",
+      "published": "2018-04-18T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/14004/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/14004"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 9543.68,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/14004/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/14004"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T18:08:19.044542+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "1c5fe61f3c8fe2db",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-c33b73995d47d8f3",
+      "document_ids": []
+    },
+    {
+      "uid": "d38106e9b2725a87",
+      "provider_guid": "340514",
+      "body": "The League of Women Voters Candidate Forum",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 17, 2025",
+      "published": "2025-04-17T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/340514/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/340514"
+      },
+      "source_chapters": [
+        {
+          "end": 7120,
+          "start": 1,
+          "title": "The League of Women Voters Candidate Forum on April 17, 2025."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7120.12,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/340514/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/340514"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:54:21.543140+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "496ee1bf55b740e4",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-d38106e9b2725a87",
+      "document_ids": []
+    },
+    {
+      "uid": "f1e199354d821412",
+      "provider_guid": "301875",
+      "body": "League of Women Voters Candidate Forum",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 04, 2024",
+      "published": "2024-04-04T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/301875/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/301875"
+      },
+      "source_chapters": [
+        {
+          "end": 7114,
+          "start": 3,
+          "title": "League of Women Voters Candidate Forum on April 4, 2024."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 7114.08,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/301875/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/301875"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T18:07:47.775700+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "34fc974105a0fd4e",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-f1e199354d821412",
+      "document_ids": []
+    },
+    {
+      "uid": "f3eac6548e0da80c",
+      "provider_guid": "87453",
+      "body": "Animal Shelter Advisory Committee on 2020-10-21 3:00 PM",
+      "title": "Animal Shelter Advisory Committee on 2020-10-21 3:00 PM \u2013 Oct 21, 2020",
+      "published": "2020-10-21T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/87453/download",
+      "links": {
+        "agenda": "https://dentontx.new.swagit.com/videos/87453/agenda",
+        "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/f3eac6548e0da80c/backup-6a806d395aced4fd",
+        "agenda_backup_artifact_key": "documents/3b7588310856/f3eac6548e0da80c/backup-6a806d395aced4fd",
+        "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/f3eac6548e0da80c/agenda-2c8b6edaf4bcbf1f",
+        "agenda_text_artifact_key": "documents/3b7588310856/f3eac6548e0da80c/agenda-2c8b6edaf4bcbf1f",
+        "canonical_video": "https://dentontx.new.swagit.com/videos/87453",
+        "meetings": "https://www.cityofdenton.com/242/Public-Meetings",
+        "minutes": "https://dentontx.new.swagit.com/videos/87453/minutes",
+        "minutes_text_artifact": "https://audio.citymeetings.fyi/documents/3b7588310856/f3eac6548e0da80c/minutes-text-fc3378ec5a93ddd6",
+        "minutes_text_artifact_key": "documents/3b7588310856/f3eac6548e0da80c/minutes-text-fc3378ec5a93ddd6"
+      },
+      "source_chapters": [
+        {
+          "end": 133,
+          "start": 50,
+          "title": "Consider the approval of the minutes for the July 23, 2020 meeting."
+        },
+        {
+          "end": 1767,
+          "start": 133,
+          "title": "Receive a report and hold a discussion regarding: a. Shelter Statistics b. Shelter Operations Update c. Proposed Tethering Ordinance Amendments d. Proposed Dangerous Dog Amendments"
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1767.5,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/87453/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/87453"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T15:42:23.978106+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "377f6d2bb41156f6",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-f3eac6548e0da80c",
+      "document_ids": [
+        "f3eac6548e0da80c-agenda_text_artifact",
+        "f3eac6548e0da80c-agenda_backup_artifact",
+        "f3eac6548e0da80c-agenda"
+      ]
+    },
+    {
+      "uid": "f9c0123089539a11",
+      "provider_guid": "382624",
+      "body": "The League of Women Voters Candidate Forum",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 16, 2026",
+      "published": "2026-04-16T00:00:00+00:00",
+      "video_url": "https://dentontx.new.swagit.com/videos/382624/download",
+      "links": {
+        "canonical_video": "https://dentontx.new.swagit.com/videos/382624"
+      },
+      "source_chapters": [
+        {
+          "end": 6397,
+          "start": 0,
+          "title": "The League of Women Voters Candidate Forum on April 16, 2026."
+        }
+      ],
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 6398.0,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "hls",
+          "provider": "swagit",
+          "ref": "https://dentontx.new.swagit.com/videos/382624/download",
+          "watch_url": "https://dentontx.new.swagit.com/videos/382624"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-02T17:51:37.971888+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "fabf68b5ba05e004",
+        "state": "available"
+      },
+      "media_kind": "hls",
+      "duration": null,
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "case_id": "untracked-3b7588310856-f9c0123089539a11",
+      "document_ids": []
+    },
+    {
+      "uid": "00c9f506545d220a",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469",
+      "body": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "published": "2016-02-13T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=11&clip_id=2469",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=11&clip_id=2469",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3481.13,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=11&clip_id=2469",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-21T07:08:37.469755+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "45427e7f4b157dd9",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 3480,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "untracked-6540eef2dc2e-00c9f506545d220a",
+      "document_ids": [
+        "00c9f506545d220a-agenda"
+      ]
+    },
+    {
+      "uid": "00e5a51984f89df0",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085",
+      "body": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+      "title": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+      "published": "2023-02-28T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=10&clip_id=5085",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=5085",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1600.93,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=10&clip_id=5085",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-20T21:17:24.144560+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "fbb31effe61b7b11",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 1560,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "untracked-6540eef2dc2e-00e5a51984f89df0",
+      "document_ids": [
+        "00e5a51984f89df0-agenda"
+      ]
+    },
+    {
+      "uid": "01127a49d16869ef",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+      "body": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "published": "2010-04-14T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=11&clip_id=848",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=11&clip_id=848",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3570.2,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=11&clip_id=848",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-29T12:59:13.912526+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "8ce36d9e401e6744",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 3540,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "untracked-6540eef2dc2e-01127a49d16869ef",
+      "document_ids": [
+        "01127a49d16869ef-agenda"
+      ]
+    },
+    {
+      "uid": "014649318804b782",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5203",
+      "body": "Fort Worth Forward - Episode 19 Fort Worth Forward - Episode 19",
+      "title": "Fort Worth Forward - Episode 19 Fort Worth Forward - Episode 19",
+      "published": "2023-07-11T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=10&clip_id=5203",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=5203",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5203"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 3870.57,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=10&clip_id=5203",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5203"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-20T21:14:17.101321+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "2202bfdc6249306d",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 3840,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "untracked-6540eef2dc2e-014649318804b782",
+      "document_ids": [
+        "014649318804b782-agenda"
+      ]
+    },
+    {
+      "uid": "018c23a1b2493ae3",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585",
+      "body": "City Page Update City Page Update",
+      "title": "City Page Update City Page Update",
+      "published": "2009-08-23T00:00:00+00:00",
+      "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=585",
+      "links": {
+        "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&clip_id=585",
+        "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585"
+      },
+      "source_chapters": null,
+      "sources": [
+        {
+          "backup_key": null,
+          "duration": 1457.0,
+          "duration_basis": "decoded",
+          "id": "s0",
+          "media_kind": "direct",
+          "provider": "granicus",
+          "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=585",
+          "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585"
+        }
+      ],
+      "media_availability": {
+        "detector_version": "1",
+        "evidence_ref": null,
+        "last_check": "2026-07-29T13:15:55.127744+00:00",
+        "operator_override": null,
+        "operator_reason": "",
+        "partial_confirmations": 0,
+        "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+        "reason": "playable audio",
+        "recovered_at": null,
+        "silent_confirmations": 0,
+        "source_fingerprint": "64a7ad9da3e5f8dc",
+        "state": "available"
+      },
+      "media_kind": "direct",
+      "duration": 1440,
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3",
+      "document_ids": [
+        "018c23a1b2493ae3-agenda"
+      ]
+    }
+  ]
+}

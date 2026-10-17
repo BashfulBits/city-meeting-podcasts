@@ -1,0 +1,1014 @@
+{
+  "cases": [
+    {
+      "case_id": "addison-359742-31b194e3b25f0bf8",
+      "uid": "31b194e3b25f0bf8",
+      "city": "addison-tx",
+      "title": "Bond Advisory Committee \u2013 Oct 30, 2025",
+      "body_identity_draft": "Bond Advisory Committee",
+      "publication_targets_draft": [
+        "addison-tx-bond-committees"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-361917-1ef623b5f2bc909a",
+      "uid": "1ef623b5f2bc909a",
+      "city": "addison-tx",
+      "title": "Bond Advisory Committee \u2013 Nov 20, 2025",
+      "body_identity_draft": "Bond Advisory Committee",
+      "publication_targets_draft": [
+        "addison-tx-bond-committees"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-362796-cb34bf9c6001c32a",
+      "uid": "cb34bf9c6001c32a",
+      "city": "addison-tx",
+      "title": "Bond Advisory Committee \u2013 Dec 04, 2025",
+      "body_identity_draft": "Bond Advisory Committee",
+      "publication_targets_draft": [
+        "addison-tx-bond-committees"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-371625-902400566a6637b5",
+      "uid": "902400566a6637b5",
+      "city": "addison-tx",
+      "title": "Bond Advisory Committee \u2013 Jan 08, 2026",
+      "body_identity_draft": "Bond Advisory Committee",
+      "publication_targets_draft": [
+        "addison-tx-bond-committees"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-55864-35a78fa89c7c5c5c",
+      "uid": "35a78fa89c7c5c5c",
+      "city": "addison-tx",
+      "title": "Addison Economic Development Luncheon \u2013 Jun 02, 2017",
+      "body_identity_draft": "Luncheon; possible Council attendance is not Council convening",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-only",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-56029-63b22f80ce9500ff",
+      "uid": "63b22f80ce9500ff",
+      "city": "addison-tx",
+      "title": "Citizen Advisory Committee \u2013 Jun 01, 2007",
+      "body_identity_draft": "Historical citizen advisory compilation",
+      "publication_targets_draft": [
+        "addison-tx-town-meetings"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player",
+        "citizen-council-june2007"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-276855-4ef85ec6540cf95b",
+      "uid": "4ef85ec6540cf95b",
+      "city": "addison-tx",
+      "title": "Joint P&Z and City Council Meeting #1 \u2013 Oct 17, 2023",
+      "body_identity_draft": "Joint convening of the explicitly named bodies",
+      "publication_targets_draft": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-295839-fcc9bde16c7f47fe",
+      "uid": "fcc9bde16c7f47fe",
+      "city": "addison-tx",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #1 \u2013 Jan 24, 2024",
+      "body_identity_draft": "Joint convening of the explicitly named bodies",
+      "publication_targets_draft": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission",
+        "addison-tx-comprehensive-plan-advisory-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-310072-c95af66385f6cf31",
+      "uid": "c95af66385f6cf31",
+      "city": "addison-tx",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #2 \u2013 Jul 11, 2024",
+      "body_identity_draft": "Joint convening of the explicitly named bodies",
+      "publication_targets_draft": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission",
+        "addison-tx-comprehensive-plan-advisory-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-55599-e59549e833479e1d",
+      "uid": "e59549e833479e1d",
+      "city": "addison-tx",
+      "title": "Combined Meeting \u2013 Oct 08, 2013",
+      "body_identity_draft": "City Council",
+      "publication_targets_draft": [
+        "addison-tx-city-council"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-56020-235c1c030568dac0",
+      "uid": "235c1c030568dac0",
+      "city": "addison-tx",
+      "title": "George Herbert Walker Bush Elementary Dedication \u2013 Dec 09, 2011",
+      "body_identity_draft": "Ceremony/dedication; official title and approved event policy",
+      "publication_targets_draft": [],
+      "outcome_draft": "event-exclusion",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-56021-24d5e7dc230eb900",
+      "uid": "24d5e7dc230eb900",
+      "city": "addison-tx",
+      "title": "Spruill Park Dedication Ceremony \u2013 Sep 20, 2009",
+      "body_identity_draft": "Ceremony/dedication; official title and approved event policy",
+      "publication_targets_draft": [],
+      "outcome_draft": "event-exclusion",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-56022-ee80c45122c4f9f0",
+      "uid": "ee80c45122c4f9f0",
+      "city": "addison-tx",
+      "title": "Beckert Park Dedication Ceremony \u2013 Jun 06, 2009",
+      "body_identity_draft": "Ceremony/dedication; official title and approved event policy",
+      "publication_targets_draft": [],
+      "outcome_draft": "event-exclusion",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-56023-1f50e2274a6dd26c",
+      "uid": "1f50e2274a6dd26c",
+      "city": "addison-tx",
+      "title": "City Council Swearing-in Ceremony \u2013 May 26, 2009",
+      "body_identity_draft": "Ceremony/dedication; official title and approved event policy",
+      "publication_targets_draft": [],
+      "outcome_draft": "event-exclusion",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-394474-757ab2a4aaf9bbca",
+      "uid": "757ab2a4aaf9bbca",
+      "city": "addison-tx",
+      "title": "TIRZ #1 Board Meeting \u2013 Jul 28, 2026",
+      "body_identity_draft": "TIRZ No. 1 Board",
+      "publication_targets_draft": [
+        "addison-tx-tif"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-148373-4b69d73512792a44",
+      "uid": "4b69d73512792a44",
+      "city": "addison-tx",
+      "title": "Planning & Zoning Commission Work Session \u2013 Nov 16, 2021",
+      "body_identity_draft": "P&Z Commission",
+      "publication_targets_draft": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-150744-e2e2e4d8c9b5330c",
+      "uid": "e2e2e4d8c9b5330c",
+      "city": "addison-tx",
+      "title": "Planning & Zoning Commission Work Session \u2013 Dec 21, 2021",
+      "body_identity_draft": "P&Z Commission",
+      "publication_targets_draft": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-153032-52ec3e810707f814",
+      "uid": "52ec3e810707f814",
+      "city": "addison-tx",
+      "title": "Planning & Zoning Commission Work Session \u2013 Jan 18, 2022",
+      "body_identity_draft": "P&Z Commission",
+      "publication_targets_draft": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "addison-154641-ff8eac28f4881cd2",
+      "uid": "ff8eac28f4881cd2",
+      "city": "addison-tx",
+      "title": "Planning & Zoning Commission Work Session \u2013 Feb 15, 2022",
+      "body_identity_draft": "P&Z Commission",
+      "publication_targets_draft": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-1792515fdd51c6c2-ownership",
+      "uid": "1792515fdd51c6c2",
+      "city": "arlington-tx",
+      "title": "Environmental Task Force",
+      "body_identity_draft": "Environmental Task Force",
+      "publication_targets_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "uid": "25e9b8510b0a7a66",
+      "city": "arlington-tx",
+      "title": "Environmental Task Force Meeting",
+      "body_identity_draft": "Environmental Task Force Meeting",
+      "publication_targets_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-2d5dc451df2da130-ownership",
+      "uid": "2d5dc451df2da130",
+      "city": "arlington-tx",
+      "title": "Environmental Task Force Meeting",
+      "body_identity_draft": "Environmental Task Force Meeting",
+      "publication_targets_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-35b22fcc8d07967b-ownership",
+      "uid": "35b22fcc8d07967b",
+      "city": "arlington-tx",
+      "title": "Environmental Task Force Meeting",
+      "body_identity_draft": "Environmental Task Force Meeting",
+      "publication_targets_draft": [
+        "arlington-tx-environmental-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-237c28f30496e3e0-ownership",
+      "uid": "237c28f30496e3e0",
+      "city": "arlington-tx",
+      "title": "Community and Neighborhood Development Committee",
+      "body_identity_draft": "Community and Neighborhood Development Committee",
+      "publication_targets_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-30b28efc23346a6d-ownership",
+      "uid": "30b28efc23346a6d",
+      "city": "arlington-tx",
+      "title": "Community and Neighborhood Development Committee",
+      "body_identity_draft": "Community and Neighborhood Development Committee",
+      "publication_targets_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "uid": "4357f0c39d1ae58f",
+      "city": "arlington-tx",
+      "title": "Community and Neighborhood Development Committee",
+      "body_identity_draft": "Community and Neighborhood Development Committee",
+      "publication_targets_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "arlington-tx-d8f3b672b482369b-ownership",
+      "uid": "d8f3b672b482369b",
+      "city": "arlington-tx",
+      "title": "Community and Neighborhood Development Committee",
+      "body_identity_draft": "Community and Neighborhood Development Committee",
+      "publication_targets_draft": [
+        "arlington-tx-community-and-neighborhood-development-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "uid": "130a7ebded8e0e1d",
+      "city": "dallas-tx",
+      "title": "2024 Bond Task Force Community Bond Task Force Meeting \u2013 Aug 15, 2023",
+      "body_identity_draft": "2024 CBTF",
+      "publication_targets_draft": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-cbtf-aug15"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "dallas-tx-16300c982b358fe9-ownership",
+      "uid": "16300c982b358fe9",
+      "city": "dallas-tx",
+      "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023",
+      "body_identity_draft": "Bond Streets subcommittee; wider feeds are publication policy",
+      "publication_targets_draft": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player",
+        "dallas-streets-archive"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "dallas-tx-2b172a76868ad86c-ownership",
+      "uid": "2b172a76868ad86c",
+      "city": "dallas-tx",
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 Jun 13, 2023",
+      "body_identity_draft": "Bond Streets subcommittee; wider feeds are publication policy",
+      "publication_targets_draft": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-june13"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "dallas-tx-2bc4c440c974dba8-ownership",
+      "uid": "2bc4c440c974dba8",
+      "city": "dallas-tx",
+      "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+      "body_identity_draft": "Bond Streets subcommittee; wider feeds are publication policy",
+      "publication_targets_draft": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters",
+        "dallas-streets-may25"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "dallas-tx-bd172b762dd20b63-ownership",
+      "uid": "bd172b762dd20b63",
+      "city": "dallas-tx",
+      "title": "Saturday Redistricting Commission \u2013 Jan 22, 2022",
+      "body_identity_draft": "Redistricting Commission",
+      "publication_targets_draft": [
+        "dallas-tx-redistricting-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-04689e3929ac104e-ownership",
+      "uid": "04689e3929ac104e",
+      "city": "denton-tx",
+      "title": "Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM \u2013 Jun 06, 2019",
+      "body_identity_draft": "2019 bond committee",
+      "publication_targets_draft": [
+        "denton-tx-special-citizens-bond-advisory-committee"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-280db52d91547dd6-ownership",
+      "uid": "280db52d91547dd6",
+      "city": "denton-tx",
+      "title": "Health & Building Standards Commission on 2021-06-03 3:00 PM \u2013 Jun 03, 2021",
+      "body_identity_draft": "HBS Commission",
+      "publication_targets_draft": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-7abd583b2ed8189a-ownership",
+      "uid": "7abd583b2ed8189a",
+      "city": "denton-tx",
+      "title": "Health & Building Standards Commission on 2021-04-22 3:00 PM \u2013 Apr 22, 2021",
+      "body_identity_draft": "HBS Commission",
+      "publication_targets_draft": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-b50c6a018b2c08e7-ownership",
+      "uid": "b50c6a018b2c08e7",
+      "city": "denton-tx",
+      "title": "Library Board on 2021-05-13 3:30 PM \u2013 May 13, 2021",
+      "body_identity_draft": "Library Board",
+      "publication_targets_draft": [
+        "denton-tx-library-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "uid": "c10f3f6cd97ac38f",
+      "city": "denton-tx",
+      "title": "Library Board on 2021-04-08 3:30 PM \u2013 Apr 08, 2021",
+      "body_identity_draft": "Library Board",
+      "publication_targets_draft": [
+        "denton-tx-library-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-a1aa4af8f26e120c-ownership",
+      "uid": "a1aa4af8f26e120c",
+      "city": "denton-tx",
+      "title": "Joint Luncheon with Library Board \u2013 Mar 03, 2014",
+      "body_identity_draft": "Council/Library joint",
+      "publication_targets_draft": [
+        "denton-tx-city-council",
+        "denton-tx-library-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-1c91182b70afefb3-ownership",
+      "uid": "1c91182b70afefb3",
+      "city": "denton-tx",
+      "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+      "body_identity_draft": "TIRZ No. 2 Board",
+      "publication_targets_draft": [
+        "denton-tx-tirz-2-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-2493e59c0844a4b4-ownership",
+      "uid": "2493e59c0844a4b4",
+      "city": "denton-tx",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM \u2013 Mar 24, 2021",
+      "body_identity_draft": "TIRZ No. 1 Board",
+      "publication_targets_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-2b458f3c556df459-ownership",
+      "uid": "2b458f3c556df459",
+      "city": "denton-tx",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM \u2013 Jul 22, 2020",
+      "body_identity_draft": "TIRZ No. 1 Board",
+      "publication_targets_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "uid": "5a2ce8afb18c6a82",
+      "city": "denton-tx",
+      "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called) \u2013 Oct 21, 2020",
+      "body_identity_draft": "TIRZ No. 1 Board",
+      "publication_targets_draft": [
+        "denton-tx-tirz-1-board"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "uid": "0d5832dbd08e6dd8",
+      "city": "fort-worth-tx",
+      "title": "City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop",
+      "body_identity_draft": "Council/Gas Task Force joint",
+      "publication_targets_draft": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "fort-worth-tx-27254aa1a700569f-ownership",
+      "uid": "27254aa1a700569f",
+      "city": "fort-worth-tx",
+      "title": "City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force Workshop of October 14",
+      "body_identity_draft": "Council/Gas Task Force joint",
+      "publication_targets_draft": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "uid": "497b3aa05255bfb9",
+      "city": "fort-worth-tx",
+      "title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+      "body_identity_draft": "Council/EMSISD joint",
+      "publication_targets_draft": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-emsisd-board-joint-meetings"
+      ],
+      "outcome_draft": "assignment",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-1ba31685c3061fad",
+      "uid": "1ba31685c3061fad",
+      "city": "denton-tx",
+      "title": "Animal Shelter Advisory Committee on 2021-03-24 3:00 PM \u2013 Mar 24, 2021",
+      "body_identity_draft": "Real Animal Shelter Advisory Committee; no existing local feed",
+      "publication_targets_draft": [],
+      "outcome_draft": "real-body-untracked",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-345a3a95d050eddf",
+      "uid": "345a3a95d050eddf",
+      "city": "denton-tx",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 14, 2022",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-3afe3a4c3aaa04d9",
+      "uid": "3afe3a4c3aaa04d9",
+      "city": "denton-tx",
+      "title": "Animal Shelter Advisory Committee on 2020-07-23 2:00 PM \u2013 Jul 23, 2020",
+      "body_identity_draft": "Real Animal Shelter Advisory Committee; no existing local feed",
+      "publication_targets_draft": [],
+      "outcome_draft": "real-body-untracked",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-43599790450713d2",
+      "uid": "43599790450713d2",
+      "city": "denton-tx",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 09, 2026",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-93bbf0722bbc0edd",
+      "uid": "93bbf0722bbc0edd",
+      "city": "denton-tx",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 20, 2023",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-c33b73995d47d8f3",
+      "uid": "c33b73995d47d8f3",
+      "city": "denton-tx",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 18, 2018",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-d38106e9b2725a87",
+      "uid": "d38106e9b2725a87",
+      "city": "denton-tx",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 17, 2025",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-f1e199354d821412",
+      "uid": "f1e199354d821412",
+      "city": "denton-tx",
+      "title": "League of Women Voters Candidate Forum \u2013 Apr 04, 2024",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-f3eac6548e0da80c",
+      "uid": "f3eac6548e0da80c",
+      "city": "denton-tx",
+      "title": "Animal Shelter Advisory Committee on 2020-10-21 3:00 PM \u2013 Oct 21, 2020",
+      "body_identity_draft": "Real Animal Shelter Advisory Committee; no existing local feed",
+      "publication_targets_draft": [],
+      "outcome_draft": "real-body-untracked",
+      "evidence_ids": [
+        "retained-agenda",
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-3b7588310856-f9c0123089539a11",
+      "uid": "f9c0123089539a11",
+      "city": "denton-tx",
+      "title": "The League of Women Voters Candidate Forum \u2013 Apr 16, 2026",
+      "body_identity_draft": "Candidate forum; not a Council meeting",
+      "publication_targets_draft": [],
+      "outcome_draft": "archive-series",
+      "evidence_ids": [
+        "provider-player",
+        "native-source-chapters"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-6540eef2dc2e-00c9f506545d220a",
+      "uid": "00c9f506545d220a",
+      "city": "fort-worth-tx",
+      "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "body_identity_draft": "Institutional owner not established by supplied program/player evidence",
+      "publication_targets_draft": [],
+      "outcome_draft": "insufficient-owner-proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-6540eef2dc2e-00e5a51984f89df0",
+      "uid": "00e5a51984f89df0",
+      "city": "fort-worth-tx",
+      "title": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+      "body_identity_draft": "Institutional owner not established by supplied program/player evidence",
+      "publication_targets_draft": [],
+      "outcome_draft": "insufficient-owner-proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-6540eef2dc2e-01127a49d16869ef",
+      "uid": "01127a49d16869ef",
+      "city": "fort-worth-tx",
+      "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "body_identity_draft": "Institutional owner not established by supplied program/player evidence",
+      "publication_targets_draft": [],
+      "outcome_draft": "insufficient-owner-proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-6540eef2dc2e-014649318804b782",
+      "uid": "014649318804b782",
+      "city": "fort-worth-tx",
+      "title": "Fort Worth Forward - Episode 19 Fort Worth Forward - Episode 19",
+      "body_identity_draft": "Institutional owner not established by supplied program/player evidence",
+      "publication_targets_draft": [],
+      "outcome_draft": "insufficient-owner-proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    },
+    {
+      "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3",
+      "uid": "018c23a1b2493ae3",
+      "city": "fort-worth-tx",
+      "title": "City Page Update City Page Update",
+      "body_identity_draft": "Institutional owner not established by supplied program/player evidence",
+      "publication_targets_draft": [],
+      "outcome_draft": "insufficient-owner-proof",
+      "evidence_ids": [
+        "provider-player"
+      ],
+      "truth_status": "awaiting-test-answer-approval",
+      "limits": "Global All Meetings aggregates excluded from this body-identity test. No new feed or production decision."
+    }
+  ]
+}

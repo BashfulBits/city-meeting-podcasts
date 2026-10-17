@@ -1039,3 +1039,151 @@ def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
     )
     assert decoded.deferred_request.timeout is None
     assert decoded.deferred_request.max_tokens_mode is None
+
+
+def test_terminal_failure_from_old_handle_cannot_delete_new_snapshot_record():
+    storage = MemStorage()
+    old = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="old")
+    newer = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="new")
+    write_deferred(storage, "r1", newer, now=NOW)
+    snapshot = load_deferred_snapshot(storage)
+    assert discard_terminal_failure(storage, snapshot, old, RuntimeError("failed"), now=NOW) == 0
+    assert look_up_deferred(storage, "r1") == newer
+    assert not storage.exists(deferred_failure_key("r1"))
+    assert list(snapshot.pending()) == [newer]
+
+
+@pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
+def test_structural_audit_preserves_retry_and_schema_state_and_blocks_unchanged_generation(
+    reason, tmp_path, monkeypatch
+):
+    import hashlib
+    import json
+
+    from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    destination = tmp_path / "recovery.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(destination))
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r-structural", backend="llm-dispatch-v2", ref="j1")
+    context = {"route_generations": {"old": "old-gen"}, "input_identity": "input-sha"}
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW, recovery_context=context)
+    _write_json(
+        storage,
+        deferred_failure_key(handle.recipe_hash),
+        b'{"failure_count": 2, "schema_correction_attempted": true}',
+    )
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason=reason, terminal_catalog_digest="catalog-sha"
+    )
+    assert discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW) == 2
+    audit = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert audit["failure_count"] == 2
+    assert audit["schema_correction_attempted"]
+    assert audit["terminal_catalog_digest"] == "catalog-sha"
+    assert audit["input_identity"] == "input-sha"
+    assert audit["original_ref"] == "j1"
+    assert look_up_deferred(storage, handle.recipe_hash) is None
+    assert not terminal_failure_retry_allowed(storage, handle.recipe_hash, recovery_context=context)
+    assert not terminal_failure_retry_allowed(storage, handle.recipe_hash)
+    new = {"route_generations": {"new": "new-gen"}}
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash, recovery_context=new)
+    assert not terminal_failure_retry_allowed(
+        storage, handle.recipe_hash, recovery_context={"route_generations": {}}
+    )
+    events = [json.loads(line) for line in destination.read_text().splitlines()]
+    assert len(events) == 5
+    assert all(
+        event["recipe_fingerprint"] == hashlib.sha256(handle.recipe_hash.encode()).hexdigest()
+        for event in events
+    )
+    assert all(event["terminal_reason"] == reason for event in events)
+    assert all(event["catalog_digest"] == "catalog-sha" for event in events)
+    assert events[0]["operation"] == "audit_persisted"
+    assert events[0]["failure_count_before"] == events[0]["failure_count_after"] == 2
+    assert events[0]["schema_correction_before"] is events[0]["schema_correction_after"] is True
+    assert [event["allowed"] for event in events[1:]] == [False, False, True, False]
+    assert events[2]["disposition"] == "missing_recovery_context"
+    assert events[3]["disposition"] == "new_fitting_generation"
+    for sensitive in (
+        "input-sha",
+        "r-structural",
+        "original_ref",
+        "route_generations",
+        "last_error",
+    ):
+        assert sensitive not in destination.read_text()
+
+
+def test_structural_audit_failure_leaves_handle_and_snapshot_recoverable(monkeypatch, tmp_path):
+    from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    destination = tmp_path / "recovery.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(destination))
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    original = llm_deferred._write_json
+
+    def fail_marker(storage, key, body):
+        if key == deferred_failure_key("r1"):
+            raise OSError("audit unavailable")
+        return original(storage, key, body)
+
+    monkeypatch.setattr(llm_deferred, "_write_json", fail_marker)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason="route_retired", terminal_catalog_digest="catalog"
+    )
+    with pytest.raises(OSError, match="audit unavailable"):
+        discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW)
+    assert look_up_deferred(storage, "r1") == handle
+    assert list(snapshot.pending()) == [handle]
+    assert not destination.exists()
+
+
+def test_recovery_telemetry_io_failure_cannot_change_audit_or_admission(tmp_path, monkeypatch):
+    from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(tmp_path))  # A directory cannot accept JSONL writes.
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason="route_retired", terminal_catalog_digest="catalog"
+    )
+    assert discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW) == 0
+    assert _read_json(storage, deferred_failure_key("r1"))["status"] == "structural_blocked"
+    assert look_up_deferred(storage, "r1") is None
+    assert not terminal_failure_retry_allowed(storage, "r1")
+
+
+def test_structural_submission_fence_outlives_audit_ttl_until_recipe_completes():
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    error = LLMDispatchTerminalError(
+        "oversized", terminal_reason="unadmissible", terminal_catalog_digest="catalog"
+    )
+    discard_terminal_failure(
+        storage,
+        snapshot_deferred_handles(storage, [handle]),
+        handle,
+        error,
+        structural=True,
+        now=NOW,
+    )
+    later = NOW + timedelta(days=DEFAULT_FAILURE_MARKER_TTL_DAYS + 1)
+    assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 0
+    assert storage.exists(deferred_failure_key("r1"))
+    write_deferred(storage, "r1", JobResult(task="tag", recipe_hash="r1", output={}), now=later)
+    assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 1

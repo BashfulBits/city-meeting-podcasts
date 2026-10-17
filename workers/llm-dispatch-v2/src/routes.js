@@ -103,12 +103,48 @@ export function jobPolicy(job) {
   }
 }
 
+/** Route ids that rejected this job's input size (`jobs.size_excluded_routes`, a JSON array). */
+export function sizeExcludedRoutes(job) {
+  const raw = job?.size_excluded_routes;
+  if (!raw) return new Set();
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Physical pins may only narrow the job's declared logical model pool. */
+export function routeIdsOutsideModelPool(job, dispatchLimits) {
+  const policy = jobPolicy(job);
+  if (policy?.allowed_route_ids === undefined) return [];
+  const pins = policy.allowed_route_ids;
+  if (!Array.isArray(pins) || pins.length === 0 || pins.some((id) => typeof id !== "string" || !id.trim())) {
+    return ["<invalid-allowed-route-ids>"];
+  }
+  if (new Set(pins).size !== pins.length) return ["<duplicate-allowed-route-id>"];
+  const models = [
+    ...(Array.isArray(policy.allowed_models) ? policy.allowed_models : []),
+    ...(Array.isArray(policy.backup_models) ? policy.backup_models : []),
+  ];
+  const poolRouteIds = new Set();
+  for (const rawModel of models) {
+    if (typeof rawModel !== "string" || !rawModel.trim()) continue;
+    const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
+    for (const routeId of dispatchLimits.model_routes_map?.[canonical] || []) {
+      poolRouteIds.add(routeId);
+    }
+  }
+  return pins.filter((routeId) => !poolRouteIds.has(routeId));
+}
+
 /**
  * Whether `policy.backup_models` should be folded into a job's eligible model list right now.
  *
  * Two independent triggers, mirroring `LaneConfig.backup_models`/`backup_after_attempts`
- * (citypods/compute/llm_lanes.py): (a) `job.attempts` (a durable, cross-lease dispatch counter --
- * see `attemptStarted` in coordinator.js) has reached the configured threshold without a
+ * (citypods/compute/llm_lanes.py): (a) `job.attempts` (a durable, cross-lease dispatch counter,
+ * counted by each claim and granted 429 retry in coordinator.js) has reached the configured threshold without a
  * successful response, or (b) `job.schema_retry_count` is at least 1 -- this job is itself a
  * schema-correction clone (see `schemaRetry`), which is already evidence of one confirmed
  * structural JSON-output failure on the model that produced it, a different failure class from
@@ -123,20 +159,34 @@ export function backupModelsActive(job, policy) {
   return attempts >= threshold || schemaRetryCount >= 1;
 }
 
-/** Every model a job may currently be dispatched to: `allowed_models`, plus `backup_models` once
- * `backupModelsActive` says so. */
-export function modelsForJob(job, policy) {
+/** Every model a job may use. Structural fallback uses the full configured catalog, never
+ * admission's pause-filtered catalog or live quota/health state. Omitting the catalog retains
+ * the original attempts/schema-only behavior for callers that cannot establish structural fit. */
+export function modelsForJob(job, policy, structuralCatalog = null) {
   const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
-  if (!backupModelsActive(job, policy)) return allowedModels;
   const backupModels = Array.isArray(policy?.backup_models) ? policy.backup_models : [];
-  return [...allowedModels, ...backupModels];
+  if (backupModelsActive(job, policy)) return [...allowedModels, ...backupModels];
+  const threshold = policy?.backup_after_attempts;
+  if (!structuralCatalog || backupModels.length === 0 ||
+      !Number.isInteger(threshold) || threshold <= 0) return allowedModels;
+  const primaryFits = allowedModels.some(rawModel => {
+    if (typeof rawModel !== "string" || !rawModel.trim()) return false;
+    const canonical = canonicalModelName(rawModel.trim(), structuralCatalog);
+    return (structuralCatalog.model_routes_map?.[canonical] || []).some(routeId => {
+      const route = structuralCatalog.routes_by_id?.[routeId];
+      return route && (policy.allow_paid || route.free) &&
+        routeFitsContext(route, job.input_token_estimate || 0, job.max_output_token_estimate || 0);
+    });
+  });
+  return primaryFits ? allowedModels : [...allowedModels, ...backupModels];
 }
 
 /**
- * Every route a job's stored policy (policy_json: { allowed_models, allow_paid, backup_models,
- * backup_after_attempts }) can legally reach, filtered for combined input/output context-window
- * compatibility -- capacity/pacing eligibility (RPM/TPM/buffer/blocked_until) is a separate,
- * live-ledger-dependent check, see pacing.js.
+ * Every route a job's stored policy (policy_json: { allowed_models, allowed_route_ids,
+ * allow_paid, backup_models, backup_after_attempts }) can legally reach. `allowed_route_ids`, when
+ * present, intersects the logical model pool and can only narrow it; it never adds a route.
+ * Routes are also filtered for combined input/output context-window compatibility -- capacity/
+ * pacing eligibility (RPM/TPM/buffer/blocked_until) is a separate live-ledger check, see pacing.js.
  *
  * Returns routes in model_routes_map's own catalog order (config/provider_limits.yml's authored
  * order, e.g. "high-capacity workhorses" listed first) with no additional ranking -- Unit 4's
@@ -144,12 +194,18 @@ export function modelsForJob(job, policy) {
  * preference among otherwise-equal candidates. This intentionally does not replicate v1's
  * rankRoutes(): v1 ranks against its own R2-based ledger, which v2 does not share.
  */
-export function routesEligibleFor(job, dispatchLimits) {
+export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispatchLimits) {
   const policy = jobPolicy(job);
-  const modelsToConsider = modelsForJob(job, policy);
+  const modelsToConsider = modelsForJob(job, policy, structuralCatalog);
   const allowPaid = Boolean(policy?.allow_paid);
+  const allowedRouteIds = policy?.allowed_route_ids === undefined
+    ? null
+    : new Set(Array.isArray(policy.allowed_route_ids)
+      ? policy.allowed_route_ids.filter((id) => typeof id === "string" && id.trim())
+      : []);
   const inputTokens = job.input_token_estimate || 0;
   const outputTokens = job.max_output_token_estimate || 0;
+  const sizeExcluded = sizeExcludedRoutes(job);
 
   const seenRouteIds = new Set();
   const eligible = [];
@@ -157,7 +213,11 @@ export function routesEligibleFor(job, dispatchLimits) {
     const canonical = canonicalModelName(rawModel, dispatchLimits);
     const routeIds = dispatchLimits.model_routes_map?.[canonical] || [];
     for (const routeId of routeIds) {
+      if (allowedRouteIds && !allowedRouteIds.has(routeId)) continue;
       if (seenRouteIds.has(routeId)) continue;
+      // A route that already rejected this job for size is not retried for it (it stays eligible
+      // for every other job).
+      if (sizeExcluded.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
       // An explicit rpd: 0 is the catalog's paused-route convention. Filter it before the

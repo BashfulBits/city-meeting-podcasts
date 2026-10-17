@@ -5,11 +5,9 @@ name: R6 meeting moments
 # extraction and judging from their durable records.
 on:
   schedule:
-    # Each pass shares one 40-dispatch budget between moment extraction and judging. Nine passes
-    # allow at most 360 combined R6 jobs; extraction consumes part of that budget, so judge jobs
-    # stay below 360 and this producer cannot reach the r6-judge lane's 428-job ceiling. The
-    # cadence intentionally provides more than the requested three passes/day without adding
-    # work solely to exhaust a daily allowance.
+    # One shared counter sums 89 extraction and 445 judge slots per pass (nine passes/day).
+    # Full planning demand is 800 extraction + 12,000 panel jobs, beyond the shared free budget.
+    # Daily ingress, actual DO rows and provider quotas still gate all admission.
     - cron: "45 0 * * *"
     - cron: "25 3 * * *"
     - cron: "05 6 * * *"
@@ -36,13 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
           cache: pip
 
       - name: Install
@@ -97,7 +95,7 @@ jobs:
 
       - name: Upload LLM submission telemetry
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: llm-submission-telemetry-${{ github.run_id }}
           path: ${{ runner.temp }}/llm-submission-telemetry.jsonl

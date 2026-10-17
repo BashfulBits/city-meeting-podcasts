@@ -7,6 +7,7 @@
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
+import { apiShapeFor } from "./api_shapes.js";
 import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 import { shapeForRoute } from "./structured_output.js";
 
@@ -120,6 +121,13 @@ export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reaso
   return request;
 }
 
+/** Drops trailing "/" characters in linear time (a `/\/+$/` replace is polynomial on long runs). */
+export function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 /** Resolves which account/API key to use, and whether this call goes through AI Gateway or
  * directly to the provider, exactly matching v1's own resolution order and error messages. */
 export function resolveProviderCredentials(env, route, dispatchLimits) {
@@ -139,11 +147,15 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     throw new Error(`missing secret ${account.api_key_env} for provider ${route.provider}`);
   }
 
-  const apiBase = String(providerCfg.api_base || "").replace(/\/+$/, "");
+  const apiBase = trimTrailingSlashes(String(providerCfg.api_base || ""));
   if (!apiBase) {
     throw new Error(`no api_base configured for provider ${route.provider}`);
   }
-  const chatPath = providerCfg.chat_path || "/v1/chat/completions";
+  // A route may speak a different endpoint than its provider's chat path (BeatAPI's JEV route
+  // posts to /systemone under the same base, review/53 PR1); `request_path` then replaces both the
+  // direct chat path and the AI Gateway path for that route only.
+  const requestPath = typeof route.request_path === "string" && route.request_path ? route.request_path : null;
+  const chatPath = requestPath || providerCfg.chat_path || "/v1/chat/completions";
   const directUrlString = `${apiBase}${chatPath}`;
 
   let parsedDirectUrl;
@@ -157,7 +169,7 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
   }
 
   let url = directUrlString;
-  let aiGatewayBase = String(env?.AI_GATEWAY_BASE_URL || "").trim().replace(/\/+$/, "");
+  let aiGatewayBase = trimTrailingSlashes(String(env?.AI_GATEWAY_BASE_URL || "").trim());
   if (!aiGatewayBase && env?.CLOUDFLARE_ACCOUNT_ID && env?.AI_GATEWAY_ID) {
     const accountId = String(env.CLOUDFLARE_ACCOUNT_ID).trim();
     const gatewayId = String(env.AI_GATEWAY_ID).trim();
@@ -177,7 +189,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
       throw new Error("AI_GATEWAY_BASE_URL must use HTTPS");
     }
     const gatewaySlug = providerCfg.ai_gateway_slug || route.provider;
-    const gatewayPath = providerCfg.ai_gateway_chat_path
+    const gatewayPath = requestPath
+      ? `${requestPath}${parsedDirectUrl.search}`
+      : providerCfg.ai_gateway_chat_path
       ? `${providerCfg.ai_gateway_chat_path}${parsedDirectUrl.search}`
       : `${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
@@ -200,7 +214,7 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
  */
 export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal, shaping }) {
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
-  const upstreamPayload = upstreamRequestForRoute(payload, route, shaping);
+  const upstreamPayload = apiShapeFor(route).buildRequest(payload, route, shaping);
 
   const headers = { accept: "application/json", "content-type": "application/json" };
   if (creds.apiKey) headers.authorization = `Bearer ${creds.apiKey}`;

@@ -1,0 +1,92 @@
+{
+  "records": {
+    "1ef623b5f2bc909a": {
+      "audio": {
+        "attempts": 0,
+        "bytes": 81081602,
+        "duration_served": 6496.938,
+        "encode_time": "2026-07-12T05:35:47.709457+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/1ef623b5f2bc909a-50b7287641c6.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "50b7287641c6",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/1ef623b5f2bc909a-50b7287641c6.m4a",
+        "verification": null
+      },
+      "body": "Bond Advisory Committee",
+      "provider_guid": "361917",
+      "published": "2025-11-20T00:00:00+00:00",
+      "title": "Bond Advisory Committee \u2013 Nov 20, 2025",
+      "uid": "1ef623b5f2bc909a",
+      "video_url": "https://addisontx.new.swagit.com/videos/361917/download"
+    },
+    "31b194e3b25f0bf8": {
+      "audio": {
+        "attempts": 0,
+        "bytes": 60785601,
+        "duration_served": 4868.528,
+        "encode_time": "2026-07-12T05:36:41.969733+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/31b194e3b25f0bf8-98cb271f2489.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "98cb271f2489",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/31b194e3b25f0bf8-98cb271f2489.m4a",
+        "verification": null
+      },
+      "body": "Bond Advisory Committee",
+      "provider_guid": "359742",
+      "published": "2025-10-30T00:00:00+00:00",
+      "title": "Bond Advisory Committee \u2013 Oct 30, 2025",
+      "uid": "31b194e3b25f0bf8",
+      "video_url": "https://addisontx.new.swagit.com/videos/359742/download"
+    },
+    "902400566a6637b5": {
+      "audio": {
+        "attempts": 0,
+        "bytes": 79074668,
+        "duration_served": 6307.913,
+        "encode_time": "2026-07-12T05:34:49.081322+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/902400566a6637b5-8c6b60631f71.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "8c6b60631f71",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/902400566a6637b5-8c6b60631f71.m4a",
+        "verification": null
+      },
+      "body": "Bond Advisory Committee",
+      "provider_guid": "371625",
+      "published": "2026-01-08T00:00:00+00:00",
+      "title": "Bond Advisory Committee \u2013 Jan 08, 2026",
+      "uid": "902400566a6637b5",
+      "video_url": "https://addisontx.new.swagit.com/videos/371625/download"
+    },
+    "cb34bf9c6001c32a": {
+      "audio": {
+        "attempts": 0,
+        "bytes": 97652729,
+        "duration_served": 7819.31,
+        "encode_time": "2026-07-12T05:35:30.007483+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/cb34bf9c6001c32a-49601ce99950.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "49601ce99950",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/cb34bf9c6001c32a-49601ce99950.m4a",
+        "verification": null
+      },
+      "body": "Bond Advisory Committee",
+      "provider_guid": "362796",
+      "published": "2025-12-04T00:00:00+00:00",
+      "title": "Bond Advisory Committee \u2013 Dec 04, 2025",
+      "uid": "cb34bf9c6001c32a",
+      "video_url": "https://addisontx.new.swagit.com/videos/362796/download"
+    }
+  }
+}

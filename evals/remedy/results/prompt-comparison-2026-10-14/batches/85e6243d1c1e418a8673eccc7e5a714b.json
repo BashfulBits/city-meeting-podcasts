@@ -1,0 +1,158 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Animal Shelter Advisory Committee"
+      }
+    ],
+    "case_id": "recording-5fae14c06e8ceb8379204fb7",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [],
+    "publication_action": "unconfigured_body",
+    "rationale": "The official agenda explicitly states that the Animal Shelter Advisory Committee will convene on July 23, 2020 at 2:00 p.m. The provider page for recording 73990 identifies the same committee and matching agenda items. No existing feed is configured for this body, and no supplied publication rule places it in another subscription grouping. This is a proven municipal committee meeting, not an archival or excluded event."
+  },
+  "attempt_id": "d2942814e9ea4a90875c120eeb362e00",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-5fae14c06e8ceb8379204fb7",
+  "case_input_hash": "1a3e56528580d8d82a226fbab045a1e5f4d69bc4a121fd8866a33c2b82fe0d35",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 8.66328004099887
+    }
+  ],
+  "end_to_end_seconds": 54.42709395900056,
+  "finished_at": "2026-10-14T13:40:25.871693+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T13:39:31.444220+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "5b11ae30d11b171147173db16005528ffe9b584e98a075014fe58da08dcf3799",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3593,
+        "output_tokens": 170
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 170,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3593,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3593,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 3763,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-5fae14c06e8ceb8379204fb7\",\"bodies\":[{\"name\":\"Animal Shelter Advisory Committee\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"]}],\"feed_slugs\":[],\"publication_action\":\"unconfigured_body\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\"],\"missing_evidence\":[],\"rationale\":\"The official agenda explicitly states that the Animal Shelter Advisory Committee will convene on July 23, 2020 at 2:00 p.m. The provider page for recording 73990 identifies the same committee and matching agenda items. No existing feed is configured for this body, and no supplied publication rule places it in another subscription grouping. This is a proven municipal committee meeting, not an archival or excluded event.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985225,
+    "id": "resp_09fee0509649ad98016acf8642871881a19f7b28925ddab4ef",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3593,
+          "output_tokens": 170
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 170,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3593,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3593,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 3763,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

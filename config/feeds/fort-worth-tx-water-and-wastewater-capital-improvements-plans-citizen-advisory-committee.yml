@@ -1,0 +1,21 @@
+slug:
+  fort-worth-tx-water-and-wastewater-capital-improvements-plans-citizen-advisory-committee
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: Water and Wastewater CIP Citizens Advisory Committee
+  body_any:
+    - Water and Wastewater Capital Improvements Plan Citizen Advisory Committee
+    - Water and Wastewater Capital Improvements Plans Citizen Advisory Committee
+podcast_title: 'Fort Worth: Water and Wastewater Capital Improvements Plan Advisory
+  Committee'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Water and Wastewater Capital Improvements Plan Advisory
+  Committee recordings for Fort Worth, TX.

@@ -1,0 +1,2469 @@
+{
+  "version": 2,
+  "frozen_at": "2026-10-10T06:10:07.919095+00:00",
+  "split": "holdout",
+  "provenance": "Grounded holdout; independent truth approved by maintainer on 2026-10-10. Official retained agenda excerpts and unchanged recording fixtures.",
+  "cases": [
+    {
+      "id": "denton-health-own",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+      "claim": "This recording belongs in denton-tx-health-building-standards-commission.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3",
+          "recording_id": "122398",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Health & Building Standards Commission\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room3:00 PMThursday, June 3, 2021\nNote:  Chair Greg Coward, Vice Chair Sebastian Delgadillo, and Commissioners Torrey Mitchell, Tim \nStoltzfus, Cyndell Addison, Michael Sweigart, and David Mollen, will be participating in the meeting via \nvideo/teleconference.\nAfter determining that a quorum is present, the Health and Building Standards Commission of the City of \nDenton, Texas will convene in a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m. in the Council \nWork Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be \nconsidered:\n1.  PLEDGE OF ALLEGIANCE\nA.  U.S. Flag\nB.  Texas Flag\n\u00e2\u0080\u009cHonor the Texas Flag \u00e2\u0080\u0093 I pledge allegiance to thee, Texas, one state under God, one and indivisible.\u00e2\u0080\u009d\n2.  ITEMS FOR CONSIDERATION\nConsider the approval of the May 13, 2021 minutes.HBS21-017\nMay 6, 2021Attachments:\nReceive a report, hold a discussion and give staff direction relating the process for \nupdates to the construction codes and standards as adopted by the City.  ( International \nCodes: Mechanical, Plumbing, Fuel Gas, and related codes to include Building, Fire, \nExisting Building, Residential, Swimming Pool and Spa, Energy Code and the National \nElectrical Code).  The primary focus will be on the National Electric Code, the \nInternational Mechanical, Plumbing, Fuel Gas codes and any associated references to the \nother codes as applicable.\nHBS21-016\n3.  CONCLUDING ITEMS\nA.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Health and \nBuilding Standards Commission or the public with specific factual information or recitation of poli",
+          "content_hash": "f5a45b0c5c76de8f0a6bbfd61d11264663f24612255939794280d5efd54f8a69"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "280db52d91547dd6",
+          "provider_guid": "122398",
+          "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+          "title": "Health & Building Standards Commission on 2021-06-03 3:00 PM \u2013 Jun 03, 2021",
+          "date": "2021-06-03T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/122398"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:health"
+    },
+    {
+      "id": "denton-health-council",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+      "claim": "This recording belongs in denton-tx-city-council.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3",
+          "recording_id": "122398",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Health & Building Standards Commission\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room3:00 PMThursday, June 3, 2021\nNote:  Chair Greg Coward, Vice Chair Sebastian Delgadillo, and Commissioners Torrey Mitchell, Tim \nStoltzfus, Cyndell Addison, Michael Sweigart, and David Mollen, will be participating in the meeting via \nvideo/teleconference.\nAfter determining that a quorum is present, the Health and Building Standards Commission of the City of \nDenton, Texas will convene in a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m. in the Council \nWork Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be \nconsidered:\n1.  PLEDGE OF ALLEGIANCE\nA.  U.S. Flag\nB.  Texas Flag\n\u00e2\u0080\u009cHonor the Texas Flag \u00e2\u0080\u0093 I pledge allegiance to thee, Texas, one state under God, one and indivisible.\u00e2\u0080\u009d\n2.  ITEMS FOR CONSIDERATION\nConsider the approval of the May 13, 2021 minutes.HBS21-017\nMay 6, 2021Attachments:\nReceive a report, hold a discussion and give staff direction relating the process for \nupdates to the construction codes and standards as adopted by the City.  ( International \nCodes: Mechanical, Plumbing, Fuel Gas, and related codes to include Building, Fire, \nExisting Building, Residential, Swimming Pool and Spa, Energy Code and the National \nElectrical Code).  The primary focus will be on the National Electric Code, the \nInternational Mechanical, Plumbing, Fuel Gas codes and any associated references to the \nother codes as applicable.\nHBS21-016\n3.  CONCLUDING ITEMS\nA.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Health and \nBuilding Standards Commission or the public with specific factual information or recitation of poli",
+          "content_hash": "f5a45b0c5c76de8f0a6bbfd61d11264663f24612255939794280d5efd54f8a69"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "280db52d91547dd6",
+          "provider_guid": "122398",
+          "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM",
+          "title": "Health & Building Standards Commission on 2021-06-03 3:00 PM \u2013 Jun 03, 2021",
+          "date": "2021-06-03T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/122398"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:health"
+    },
+    {
+      "id": "denton-library-own",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Library Board on 2021-05-13 3:30 PM",
+      "claim": "This recording belongs in denton-tx-library-board.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02",
+          "recording_id": "120859",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Library Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room3:30 PMThursday, May 13, 2021\nNote:  President Kate Margolis, Vice President Jean Greenlaw, Laura Cantu, Jim Owen, Benjamin Huttash, \nand Ling Jeng will be participating in the meeting via video/teleconference.\nREGISTRATION GUIDELINES FOR ADDRESSING THE LIBRARY ADVISORY BOARD.\nDue to COVID -19 precautions, members of the public will not be able to attend the May 13, 2021 Library \nAdvisory Board meeting in person. To accommodate and receive input on agenda items, citizens will be able to  \nparticipate in one of the following ways (NOTE: Other than public hearings, citizens are only able to comment \none time per agenda item; citizens cannot use both methods to comment on a single agenda item. Public \ncomments are not held for work session reports.):\n\u00e2\u0080\u00a2 Virtual White Card \u00e2\u0080\u0093 On May 10, the agenda was posted online at www .cityofdenton.com/publicmeetings. \nOnce the agenda is posted, a link to the Virtual White Card, an online form, will be made available under the \nmain heading on the webpage. Within this form, citizens may indicate support or opposition and submit a brief \ncomment about a specific agenda item. Comments may be submitted up until the start of the meeting, at which \ntime, the Virtual White Card form will be closed. Similar to when a citizen submits a white card to indicate their \nposition on the item, these comment forms will be sent directly to members of the Library Advisory Board and \nrecorded by the Secretary\nMembers review comments received in advance of the meeting and take that public input into consideration \nprior to voting on an agenda item. The Chair will announce the number of Comment Cards submitted in \nsup",
+          "content_hash": "831545548233a43d9a2c719eb37d4e6ee3874b7ce8a1fd283790de009d83d24d"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "b50c6a018b2c08e7",
+          "provider_guid": "120859",
+          "body": "Library Board on 2021-05-13 3:30 PM",
+          "title": "Library Board on 2021-05-13 3:30 PM \u2013 May 13, 2021",
+          "date": "2021-05-13T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/120859"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:library"
+    },
+    {
+      "id": "denton-library-council",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Library Board on 2021-05-13 3:30 PM",
+      "claim": "This recording belongs in denton-tx-city-council.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02",
+          "recording_id": "120859",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Library Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room3:30 PMThursday, May 13, 2021\nNote:  President Kate Margolis, Vice President Jean Greenlaw, Laura Cantu, Jim Owen, Benjamin Huttash, \nand Ling Jeng will be participating in the meeting via video/teleconference.\nREGISTRATION GUIDELINES FOR ADDRESSING THE LIBRARY ADVISORY BOARD.\nDue to COVID -19 precautions, members of the public will not be able to attend the May 13, 2021 Library \nAdvisory Board meeting in person. To accommodate and receive input on agenda items, citizens will be able to  \nparticipate in one of the following ways (NOTE: Other than public hearings, citizens are only able to comment \none time per agenda item; citizens cannot use both methods to comment on a single agenda item. Public \ncomments are not held for work session reports.):\n\u00e2\u0080\u00a2 Virtual White Card \u00e2\u0080\u0093 On May 10, the agenda was posted online at www .cityofdenton.com/publicmeetings. \nOnce the agenda is posted, a link to the Virtual White Card, an online form, will be made available under the \nmain heading on the webpage. Within this form, citizens may indicate support or opposition and submit a brief \ncomment about a specific agenda item. Comments may be submitted up until the start of the meeting, at which \ntime, the Virtual White Card form will be closed. Similar to when a citizen submits a white card to indicate their \nposition on the item, these comment forms will be sent directly to members of the Library Advisory Board and \nrecorded by the Secretary\nMembers review comments received in advance of the meeting and take that public input into consideration \nprior to voting on an agenda item. The Chair will announce the number of Comment Cards submitted in \nsup",
+          "content_hash": "831545548233a43d9a2c719eb37d4e6ee3874b7ce8a1fd283790de009d83d24d"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "b50c6a018b2c08e7",
+          "provider_guid": "120859",
+          "body": "Library Board on 2021-05-13 3:30 PM",
+          "title": "Library Board on 2021-05-13 3:30 PM \u2013 May 13, 2021",
+          "date": "2021-05-13T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/120859"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:library"
+    },
+    {
+      "id": "denton-zone1-own",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+      "claim": "This recording belongs in denton-tx-tirz-1-board.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7",
+          "recording_id": "122084",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Downtown Denton Tax Increment Financing Zone No. 1 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room12:00 PMWednesday, May 26, 2021\nNote: Chair Melissa Lenaburg, Vice Chair Alex Payne, and Members Ben Esely, Paul Meltzer, Jimmy \nMeredith, and Eric Pruett will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Downtown Denton Tax Increment Financing Reinvestment \nZone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, May 26, \n2021, at 12:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas \nat which the following items will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the minutes of March 24, 2021.TIF21-012A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of March 24, 2021\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the programs and \nactivities of the Denton Main Street Association.\nTIF21-017B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Denton Main Street Association Presentation\nAttachments:\nReceive Staff Activity Reports:\n1.  Opened: The Brownlow House (815 N. Locust), Les Muses Vintage (121 N. Elm), \nSalvage Second Hand Shoppe (225 W. Oak), Soma Massage Therapy (531 N. Elm), \nThe Mug (107 Hickory)\n2.  Coming Soon: Patchouli Joe \u00e2\u0080\u0099s Books & Indulgences (221 W. Hickory), Two \nGentlemen of Verona (120 W. Oak)\n3.  Status of Reinvestment Grant: 104 W. McKinney - Chi Dao\n4.  Next meeting date: July 28, 2021\nTIF21-018C.\n2.  CONCLUDING ITEMS\nA.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Downtown Denton \nTax Increment Financing Reinvestment",
+          "content_hash": "27a20bac99ba1e76a856f7b2a7043f040d23182340c93e97572135a31b35bf45"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a9089a57a1557991",
+          "provider_guid": "122084",
+          "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+          "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM \u2013 May 26, 2021",
+          "date": "2021-05-26T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/122084"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone1"
+    },
+    {
+      "id": "denton-zone1-council",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+      "claim": "This recording belongs in denton-tx-city-council.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7",
+          "recording_id": "122084",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Downtown Denton Tax Increment Financing Zone No. 1 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room12:00 PMWednesday, May 26, 2021\nNote: Chair Melissa Lenaburg, Vice Chair Alex Payne, and Members Ben Esely, Paul Meltzer, Jimmy \nMeredith, and Eric Pruett will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Downtown Denton Tax Increment Financing Reinvestment \nZone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, May 26, \n2021, at 12:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas \nat which the following items will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the minutes of March 24, 2021.TIF21-012A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of March 24, 2021\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the programs and \nactivities of the Denton Main Street Association.\nTIF21-017B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Denton Main Street Association Presentation\nAttachments:\nReceive Staff Activity Reports:\n1.  Opened: The Brownlow House (815 N. Locust), Les Muses Vintage (121 N. Elm), \nSalvage Second Hand Shoppe (225 W. Oak), Soma Massage Therapy (531 N. Elm), \nThe Mug (107 Hickory)\n2.  Coming Soon: Patchouli Joe \u00e2\u0080\u0099s Books & Indulgences (221 W. Hickory), Two \nGentlemen of Verona (120 W. Oak)\n3.  Status of Reinvestment Grant: 104 W. McKinney - Chi Dao\n4.  Next meeting date: July 28, 2021\nTIF21-018C.\n2.  CONCLUDING ITEMS\nA.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Downtown Denton \nTax Increment Financing Reinvestment",
+          "content_hash": "27a20bac99ba1e76a856f7b2a7043f040d23182340c93e97572135a31b35bf45"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a9089a57a1557991",
+          "provider_guid": "122084",
+          "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+          "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM \u2013 May 26, 2021",
+          "date": "2021-05-26T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/122084"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone1"
+    },
+    {
+      "id": "denton-zone1-wrong-zone",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+      "claim": "This recording belongs in denton-tx-tirz-2-board.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7",
+          "recording_id": "122084",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Downtown Denton Tax Increment Financing Zone No. 1 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room12:00 PMWednesday, May 26, 2021\nNote: Chair Melissa Lenaburg, Vice Chair Alex Payne, and Members Ben Esely, Paul Meltzer, Jimmy \nMeredith, and Eric Pruett will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Downtown Denton Tax Increment Financing Reinvestment \nZone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, May 26, \n2021, at 12:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas \nat which the following items will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the minutes of March 24, 2021.TIF21-012A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of March 24, 2021\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the programs and \nactivities of the Denton Main Street Association.\nTIF21-017B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Denton Main Street Association Presentation\nAttachments:\nReceive Staff Activity Reports:\n1.  Opened: The Brownlow House (815 N. Locust), Les Muses Vintage (121 N. Elm), \nSalvage Second Hand Shoppe (225 W. Oak), Soma Massage Therapy (531 N. Elm), \nThe Mug (107 Hickory)\n2.  Coming Soon: Patchouli Joe \u00e2\u0080\u0099s Books & Indulgences (221 W. Hickory), Two \nGentlemen of Verona (120 W. Oak)\n3.  Status of Reinvestment Grant: 104 W. McKinney - Chi Dao\n4.  Next meeting date: July 28, 2021\nTIF21-018C.\n2.  CONCLUDING ITEMS\nA.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Downtown Denton \nTax Increment Financing Reinvestment",
+          "content_hash": "27a20bac99ba1e76a856f7b2a7043f040d23182340c93e97572135a31b35bf45"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a9089a57a1557991",
+          "provider_guid": "122084",
+          "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+          "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM \u2013 May 26, 2021",
+          "date": "2021-05-26T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/122084"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone1"
+    },
+    {
+      "id": "denton-zone2-own",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+      "claim": "This recording belongs in denton-tx-tirz-2-board.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b",
+          "recording_id": "111521",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Tax Increment Reinvestment Zone No. 2 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room11:00 AMWednesday, January 13, 2021\nSpecial Called Meeting\nNote:  Chair John Baines, Vice Chair Jill Jester, and Members Tony Clark, Chris Davis, Jesse Davis, Bob \nEames, Steven Edgar,  Jimmy Mejia, Mark McLellan, Alex Payne, Lee Ramsey, Selwyn Rayzor, Jason \nTomlinson will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Tax Increment Reinvestment Zone No. 2 Board of the City of \nDenton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m. in \nthe Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following \nitems will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the meeting minutes of February 12, 2020.TIRZ21-001A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of February 12, 2020\nAttachments:\nReceive a report, hold a discussion, and make a recommendation to City Council \nregarding the 2019/2020 Tax Increment Reinvestment Zone Number Two (Westpark \nTIRZ) Annual Report.\nTIRZ21-002B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - TIRZ Two 2019-20 Annual Report\nExhibit 3 - Form 50-806\nExhibit 4 - Presentation\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the industrial \ndevelopment in Tax Increment Reinvestment Zone Number Two (Westpark TIRZ).\nTIRZ21-003C.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Presentation\nAttachments:\n2.  CONCLUDING ITEMS\nPage 1 Printed on 1/8/2021\nJanuary 13, 2021Tax Increment Reinvestment Zone \nNo. 2 Board\nMeeting Agenda\nA.  Under Section 551.042 of the Texas Ope",
+          "content_hash": "214c3e5b6f45ac3d03440517767d540cf22c7ef6294e629498ab270fd31d8fac"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "1c91182b70afefb3",
+          "provider_guid": "111521",
+          "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+          "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+          "date": "2021-01-13T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/111521"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone2"
+    },
+    {
+      "id": "denton-zone2-council",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+      "claim": "This recording belongs in denton-tx-city-council.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b",
+          "recording_id": "111521",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Tax Increment Reinvestment Zone No. 2 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room11:00 AMWednesday, January 13, 2021\nSpecial Called Meeting\nNote:  Chair John Baines, Vice Chair Jill Jester, and Members Tony Clark, Chris Davis, Jesse Davis, Bob \nEames, Steven Edgar,  Jimmy Mejia, Mark McLellan, Alex Payne, Lee Ramsey, Selwyn Rayzor, Jason \nTomlinson will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Tax Increment Reinvestment Zone No. 2 Board of the City of \nDenton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m. in \nthe Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following \nitems will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the meeting minutes of February 12, 2020.TIRZ21-001A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of February 12, 2020\nAttachments:\nReceive a report, hold a discussion, and make a recommendation to City Council \nregarding the 2019/2020 Tax Increment Reinvestment Zone Number Two (Westpark \nTIRZ) Annual Report.\nTIRZ21-002B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - TIRZ Two 2019-20 Annual Report\nExhibit 3 - Form 50-806\nExhibit 4 - Presentation\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the industrial \ndevelopment in Tax Increment Reinvestment Zone Number Two (Westpark TIRZ).\nTIRZ21-003C.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Presentation\nAttachments:\n2.  CONCLUDING ITEMS\nPage 1 Printed on 1/8/2021\nJanuary 13, 2021Tax Increment Reinvestment Zone \nNo. 2 Board\nMeeting Agenda\nA.  Under Section 551.042 of the Texas Ope",
+          "content_hash": "214c3e5b6f45ac3d03440517767d540cf22c7ef6294e629498ab270fd31d8fac"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "1c91182b70afefb3",
+          "provider_guid": "111521",
+          "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+          "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+          "date": "2021-01-13T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/111521"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone2"
+    },
+    {
+      "id": "denton-zone2-wrong-zone",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "decision_type": "owner_assignment",
+      "input_kind": "real",
+      "policy_version": "p0-2026-10-10",
+      "policy_status": "approved",
+      "body_label": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+      "claim": "This recording belongs in denton-tx-tirz-1-board.",
+      "evidence_refs": [
+        {
+          "id": "official-agenda",
+          "url": "https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b",
+          "recording_id": "111521",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-10",
+          "source_span": "Tax Increment Reinvestment Zone No. 2 Board\nCity of Denton\nMeeting Agenda\nCity Hall\n215 E. McKinney St.\nDenton, Texas 76201\nwww.cityofdenton.com\nCouncil Work Session Room11:00 AMWednesday, January 13, 2021\nSpecial Called Meeting\nNote:  Chair John Baines, Vice Chair Jill Jester, and Members Tony Clark, Chris Davis, Jesse Davis, Bob \nEames, Steven Edgar,  Jimmy Mejia, Mark McLellan, Alex Payne, Lee Ramsey, Selwyn Rayzor, Jason \nTomlinson will be participating in the meeting via video/teleconference.\nAfter determining that a quorum is present, the Tax Increment Reinvestment Zone No. 2 Board of the City of \nDenton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m. in \nthe Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following \nitems will be considered:\n1.  ITEMS FOR CONSIDERATION\nConsider approval of the meeting minutes of February 12, 2020.TIRZ21-001A.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Draft Minutes of February 12, 2020\nAttachments:\nReceive a report, hold a discussion, and make a recommendation to City Council \nregarding the 2019/2020 Tax Increment Reinvestment Zone Number Two (Westpark \nTIRZ) Annual Report.\nTIRZ21-002B.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - TIRZ Two 2019-20 Annual Report\nExhibit 3 - Form 50-806\nExhibit 4 - Presentation\nAttachments:\nReceive a report, hold a discussion, and give staff direction regarding the industrial \ndevelopment in Tax Increment Reinvestment Zone Number Two (Westpark TIRZ).\nTIRZ21-003C.\nExhibit 1 - Agenda Information Sheet\nExhibit 2 - Presentation\nAttachments:\n2.  CONCLUDING ITEMS\nPage 1 Printed on 1/8/2021\nJanuary 13, 2021Tax Increment Reinvestment Zone \nNo. 2 Board\nMeeting Agenda\nA.  Under Section 551.042 of the Texas Ope",
+          "content_hash": "214c3e5b6f45ac3d03440517767d540cf22c7ef6294e629498ab270fd31d8fac"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "1c91182b70afefb3",
+          "provider_guid": "111521",
+          "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+          "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+          "date": "2021-01-13T00:00:00+00:00",
+          "canonical_url": "https://dentontx.new.swagit.com/videos/111521"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "denton-tx-health-building-standards-commission",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122398",
+                "body": "Health & Building Standards Commission on 2021-06-03 3:00 PM"
+              },
+              {
+                "provider_guid": "120835",
+                "body": "Health & Building Standards Commission on 2021-05-13 12:00 PM"
+              },
+              {
+                "provider_guid": "120506",
+                "body": "Health & Building Standards Commission on 2021-05-06 3:00 PM"
+              },
+              {
+                "provider_guid": "119886",
+                "body": "Health & Building Standards Commission on 2021-04-22 3:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: Health & Building Standards Commission",
+          "podcast_description": "Meetings of the Denton Health and Building Standards Commission."
+        },
+        {
+          "slug": "denton-tx-library-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "Library Board",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ]
+          },
+          "podcast_title": "Denton: Library Board",
+          "podcast_description": "Meetings of the Denton Library Board."
+        },
+        {
+          "slug": "denton-tx-tirz-1-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "122084",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+              },
+              {
+                "provider_guid": "116732",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+              },
+              {
+                "provider_guid": "112601",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+              },
+              {
+                "provider_guid": "87440",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+              },
+              {
+                "provider_guid": "78064",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+              },
+              {
+                "provider_guid": "73923",
+                "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 1 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 1 Board."
+        },
+        {
+          "slug": "denton-tx-tirz-2-board",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body_includes": [
+              {
+                "provider_guid": "111521",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+              },
+              {
+                "provider_guid": "14400",
+                "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+              }
+            ]
+          },
+          "podcast_title": "Denton: TIRZ No. 2 Board",
+          "podcast_description": "Meetings of Denton TIRZ No. 2 Board."
+        },
+        {
+          "slug": "denton-tx-city-council",
+          "city": "denton-tx",
+          "provider": "swagit",
+          "source": {
+            "list_url": "https://dentontx.new.swagit.com/views/5",
+            "body": "City Council",
+            "body_exact": [
+              "Joint Luncheon with Library Board"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "112591",
+                "body": "Denton State of the City"
+              },
+              {
+                "provider_guid": "13109",
+                "body": "2nd Tuesday Session"
+              },
+              {
+                "provider_guid": "13733",
+                "body": "Managing Gas Well Emergencies"
+              },
+              {
+                "provider_guid": "13718",
+                "body": "Gas Well Ordinance Discussion"
+              },
+              {
+                "provider_guid": "385753",
+                "body": "Hotel Occupancy Tax Workshop"
+              },
+              {
+                "provider_guid": "357498",
+                "body": "Missing Middle Housing"
+              },
+              {
+                "provider_guid": "353205",
+                "body": "Denton Finance End-of-Year"
+              },
+              {
+                "provider_guid": "301930",
+                "body": "Lily Cantu Inclusive Playground"
+              },
+              {
+                "provider_guid": "301511",
+                "body": "Mayhill Road Name Change"
+              },
+              {
+                "provider_guid": "272798",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "208991",
+                "body": "Joe Skiles Park Renovation"
+              },
+              {
+                "provider_guid": "271071",
+                "body": "Virtual Community Meeting - Aquatic Master Plan"
+              },
+              {
+                "provider_guid": "263945",
+                "body": "2019 Bond Neighborhood 4"
+              },
+              {
+                "provider_guid": "223742",
+                "body": "Neighborhood 1A Construction Kickoff"
+              },
+              {
+                "provider_guid": "209439",
+                "body": "Virtual Community Meeting - Neighborhood 7A"
+              },
+              {
+                "provider_guid": "208992",
+                "body": "Denia Park Renovation"
+              },
+              {
+                "provider_guid": "190454",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "189893",
+                "body": "Quakertown Memorialization"
+              },
+              {
+                "provider_guid": "208162",
+                "body": "Virtual Community Meeting - Roberts Addition"
+              },
+              {
+                "provider_guid": "189918",
+                "body": "Street Sign Topper Program"
+              },
+              {
+                "provider_guid": "179856",
+                "body": "Virtual Community Meeting - Briercliff Park Master Plan"
+              },
+              {
+                "provider_guid": "44214",
+                "body": "Denton Police Press Conference Tarver Shooting"
+              }
+            ]
+          },
+          "podcast_title": "Denton: City Council",
+          "podcast_description": "City Council meetings for Denton."
+        }
+      ],
+      "family_policy": {
+        "identity_policy": "Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct."
+      },
+      "completeness": {
+        "status": "unknown",
+        "limitations": [
+          "This is recording-specific proof, not full archive completeness."
+        ]
+      },
+      "split_group": "denton:3b7588310856:zone2"
+    }
+  ],
+  "superseded_hash": null
+}

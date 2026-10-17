@@ -1,0 +1,14 @@
+{
+  "base_feed_count": 173,
+  "current_feed_count": 224,
+  "cached_source_count": 26555,
+  "base_assignment_count": 27434,
+  "current_assignment_count": 29384,
+  "added_assignment_count": 1980,
+  "removed_assignment_count": 30,
+  "unmatched_record_pairs": 411,
+  "unmatched_uid_strings": 411,
+  "main_commit": "1b6f7b11048630ed6d92e4ba795b84a383cdeb69",
+  "frozen_source_files": 42,
+  "input_hash_mismatches": 0
+}

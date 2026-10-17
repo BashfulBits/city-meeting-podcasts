@@ -1,0 +1,169 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Board of Trustees of Eagle Mountain-Saginaw ISD"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Fort Worth City Council"
+      }
+    ],
+    "case_id": "recording-1fd48da636e2445a9d8ecebb",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "fort-worth-tx-emsisd-board-joint-meetings",
+      "fort-worth-tx-city-council",
+      "fort-worth-tx"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The official agenda and provider player explicitly name both the EMSISD Board of Trustees and Fort Worth City Council as participants in this joint meeting. Assign the whole recording to the configured EMSISD Board joint-meetings feed and the City Council feed under the joint-participant policy. Also assign the broader fort-worth-tx subscription feed, whose description covers Fort Worth City Council recordings. The joint-meetings feed is a publication grouping, not a separate convening body. The opening ceremony and economic-development report are agenda items within the proven joint meeting, not evidence that the recording is an excluded ceremony or archive-only luncheon."
+  },
+  "attempt_id": "464ae763db2e462a8accea6f6b36a287",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-1fd48da636e2445a9d8ecebb",
+  "case_input_hash": "62ec933d9ce1d86fee5d6b0d041703729552c26033c6bb5060d9a625a9670dda",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 15.353321708000294
+    }
+  ],
+  "end_to_end_seconds": 28.290382832999967,
+  "finished_at": "2026-10-14T13:27:23.048255+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T13:26:54.757654+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "60ea3fb4c36bbf11e4a27bb7ab63cf41b52961c8a14b48da52a5980c720e05a7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 5540,
+        "output_tokens": 313
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 313,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 5540,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 5540,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 5853,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-1fd48da636e2445a9d8ecebb\",\n  \"bodies\": [\n    {\n      \"name\": \"Board of Trustees of Eagle Mountain-Saginaw ISD\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    },\n    {\n      \"name\": \"Fort Worth City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"fort-worth-tx-emsisd-board-joint-meetings\",\n    \"fort-worth-tx-city-council\",\n    \"fort-worth-tx\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda and provider player explicitly name both the EMSISD Board of Trustees and Fort Worth City Council as participants in this joint meeting. Assign the whole recording to the configured EMSISD Board joint-meetings feed and the City Council feed under the joint-participant policy. Also assign the broader fort-worth-tx subscription feed, whose description covers Fort Worth City Council recordings. The joint-meetings feed is a publication grouping, not a separate convening body. The opening ceremony and economic-development report are agenda items within the proven joint meeting, not evidence that the recording is an excluded ceremony or archive-only luncheon.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791984442,
+    "id": "resp_0d3fadb363359ad5016acf832db730819d81509a2171d72fd5",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 5540,
+          "output_tokens": 313
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 313,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 5540,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 5540,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 5853,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

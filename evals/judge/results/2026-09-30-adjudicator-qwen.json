@@ -1,0 +1,124 @@
+{
+ "experiment": "adjudicator",
+ "judge": "qwen",
+ "generated_at": "2026-09-30T17:09:22.406816+00:00",
+ "set_version": 1,
+ "prompt_version": "1",
+ "git_sha": "fa522ec9",
+ "calls_asked": 6,
+ "calls_answered": 6,
+ "unanswered_fraction": 0.0,
+ "inconclusive": false,
+ "errors": [],
+ "metrics": {
+  "correct": 30,
+  "items": 30,
+  "answered_items": 30
+ },
+ "verdicts": {
+  "e0": true,
+  "e1": true,
+  "e2": true,
+  "e3": true,
+  "e4": true,
+  "e5": true,
+  "e6": true,
+  "e7": true,
+  "e8": true,
+  "e9": true,
+  "e10": false,
+  "e11": false,
+  "e12": false,
+  "e13": false,
+  "e14": false,
+  "e15": false,
+  "e16": false,
+  "e17": false,
+  "e18": false,
+  "e19": false,
+  "e20": false,
+  "e21": false,
+  "e22": false,
+  "e23": false,
+  "e24": false,
+  "e25": false,
+  "e26": false,
+  "e27": false,
+  "e28": false,
+  "e29": false
+ },
+ "usage": [
+  {
+   "queue_time": 0.072345595,
+   "prompt_tokens": 749,
+   "prompt_time": 0.064751932,
+   "completion_tokens": 786,
+   "completion_time": 1.688319993,
+   "total_tokens": 1535,
+   "total_time": 1.753071925,
+   "completion_tokens_details": {
+    "reasoning_tokens": 563
+   }
+  },
+  {
+   "queue_time": 0.157727579,
+   "prompt_tokens": 762,
+   "prompt_time": 0.057929455,
+   "completion_tokens": 1295,
+   "completion_time": 2.523617431,
+   "total_tokens": 2057,
+   "total_time": 2.581546886,
+   "completion_tokens_details": {
+    "reasoning_tokens": 966
+   }
+  },
+  {
+   "queue_time": 0.024569643,
+   "prompt_tokens": 777,
+   "prompt_time": 0.062411301,
+   "completion_tokens": 672,
+   "completion_time": 1.369593837,
+   "total_tokens": 1449,
+   "total_time": 1.432005138,
+   "completion_tokens_details": {
+    "reasoning_tokens": 514
+   }
+  },
+  {
+   "queue_time": 0.02776993,
+   "prompt_tokens": 776,
+   "prompt_time": 0.058571819,
+   "completion_tokens": 613,
+   "completion_time": 1.385350811,
+   "total_tokens": 1389,
+   "total_time": 1.4439226299999999,
+   "completion_tokens_details": {
+    "reasoning_tokens": 372
+   }
+  },
+  {
+   "queue_time": 0.038265872,
+   "prompt_tokens": 748,
+   "prompt_time": 0.062186551,
+   "completion_tokens": 1238,
+   "completion_time": 2.806301935,
+   "total_tokens": 1986,
+   "total_time": 2.868488486,
+   "completion_tokens_details": {
+    "reasoning_tokens": 1024
+   }
+  },
+  {
+   "queue_time": 0.023860382,
+   "prompt_tokens": 756,
+   "prompt_time": 0.060636152,
+   "completion_tokens": 1122,
+   "completion_time": 2.312368794,
+   "total_tokens": 1878,
+   "total_time": 2.373004946,
+   "completion_tokens_details": {
+    "reasoning_tokens": 966
+   }
+  }
+ ]
+}

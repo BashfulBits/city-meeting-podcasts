@@ -1,0 +1,15 @@
+slug: denton-tx-library-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: 'Library Board'
+  body_exact:
+    - Joint Luncheon with Library Board
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1976 days ago; standing advisory board inactive in provider feed"
+podcast_title: 'Denton: Library Board'
+podcast_author: 'City of Denton, TX'
+podcast_email: ''
+podcast_description: 'Meetings of the Denton Library Board.'

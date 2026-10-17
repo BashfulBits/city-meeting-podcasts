@@ -168,7 +168,7 @@ def test_classify_groq_signatures():
         body={"error": {"code": "rate_limit_exceeded", "message": "Tokens per day limit reached"}},
         route={"provider": "groq"},
     )
-    assert tpd.failure_class == "own_rpd"
+    assert tpd.failure_class == "own_tpd"
     assert tpd.rule_id == "groq-tpd"
 
     rpm = classify_provider_failure(
@@ -525,3 +525,15 @@ def test_mistral_zero_provisioned_limit_precedence():
     )
     assert result.failure_class == "payment_required"
     assert result.rule_id == "zero-provisioned-limit"
+
+
+def test_orcarouter_prompt_cap_metadata_is_non_retryable_size_failure():
+    for status in (400, 429):
+        result = classify_provider_failure(
+            status=status,
+            route={"provider": "orcarouter"},
+            headers={"retry-after": "30"},
+            body={"error": {"metadata": {"reason": "err_free_prompt_cap", "retryable": False}}},
+        )
+        assert result.failure_class == "free_prompt_cap"
+        assert result.retry_after_seconds is None

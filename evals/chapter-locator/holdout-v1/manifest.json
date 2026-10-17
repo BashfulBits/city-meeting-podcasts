@@ -1,0 +1,2295 @@
+{
+  "agenda_inputs_created_with_production_extractor": true,
+  "agenda_source_model": "gemini/gemini-3.1-flash-lite",
+  "agenda_source_result_sha256": "a7d5c93b2cea6e7f1645731dbdf9f6b172115fb8554d07b47994dcca0b59986c",
+  "dataset": "chapter-locator holdout-v1",
+  "eligible_locator_packets_after_upstream_validation": 23,
+  "episodes": [
+    {
+      "agenda": {
+        "bytes": 14120,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/3fd0769f51ca1f05/agenda-36657ef4eb89242f",
+        "sha256": "a2ec384cfe44b05be6ece47df827ec63816caa444d4f65da4857928ffcfd5e94",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/3fd0769f51ca1f05/agenda-36657ef4eb89242f"
+      },
+      "body": "Zoning Commission Zoning Commission",
+      "body_key": "zoning commission zoning commission",
+      "duration_bucket": "4-to-8h",
+      "duration_seconds": 14557.689,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nOverview of Zoning Cases on Today\u2019s Agenda\t\t\tStaff",
+              "title": "Overview of Zoning Cases"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B.\nPresentation on Land Use Bills from the 89th Legislature\tCity Attorney\u2019s Office",
+              "title": "Presentation on Land Use Bills from the 89th Legislature"
+            },
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nAPPROVAL OF MEETING MINUTES of July 9, 2025\t\t\t\tChair",
+              "title": "Approval of Meeting Minutes"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nZC-25-053\t\t\tCase Manager: Beth Knight\t\t\t\t\tCD 11\u00a0 \u00a0  (Continued from June Zoning Commission)",
+              "title": "Zoning Case ZC-25-053"
+            },
+            {
+              "display_ref": "2.",
+              "evidence_text": "2.\nZC-25-057\t\t\tCase Manager: Sandy Michel\t\t\t\tCD 5\u00a0 (Continued from June Zoning Commission)",
+              "title": "Zoning Case ZC-25-057"
+            },
+            {
+              "display_ref": "3.",
+              "evidence_text": "3.\nZC-25-093\t\t\tCase Manager: Lynn Jordan\t\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \t \tCD 11\u00a0 (Continued from June Zoning Commission)",
+              "title": "Zoning Case ZC-25-093"
+            },
+            {
+              "display_ref": "4.",
+              "evidence_text": "4.\nZC-25-108\t\t\tCase Manager: Beth Knight\t\t\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \t \tCD 4\u00a0 (Continued from July Zoning Commission)",
+              "title": "Zoning Case ZC-25-108"
+            },
+            {
+              "display_ref": "5.",
+              "evidence_text": "5.\nZC-25-047\t\t\tCase Manager: Dave\t McCorquodale\t\t\tCD 8",
+              "title": "Zoning Case ZC-25-047"
+            },
+            {
+              "display_ref": "6.",
+              "evidence_text": "6.\nZC-25-112 \t\tCase Manager: Dave McCorquodale\t\t\tCD 11",
+              "title": "Zoning Case ZC-25-112"
+            },
+            {
+              "display_ref": "7.",
+              "evidence_text": "7.\nZC-25-117 (AX-25-002)\tCase Manager: Lynn Jordan\t\t\tFuture CD 8",
+              "title": "Zoning Case ZC-25-117 (AX-25-002)"
+            },
+            {
+              "display_ref": "8.",
+              "evidence_text": "8.\nZC-25-119\t\t\tCase Manager: Sandy Michel\t\t\tCD 8",
+              "title": "Zoning Case ZC-25-119"
+            },
+            {
+              "display_ref": "9.",
+              "evidence_text": "9.\nZC-25-120\t\t\tCase Manager: Christine Ross\t\t\t\tCD 3",
+              "title": "Zoning Case ZC-25-120"
+            },
+            {
+              "display_ref": "10.",
+              "evidence_text": "10.\nZC-25-121\t\t\tCase Manager: Dave\t McCorquodale\t\t\tCD 3",
+              "title": "Zoning Case ZC-25-121"
+            },
+            {
+              "display_ref": "11.",
+              "evidence_text": "11.\nZC-25-122\t\t\tCase Manager: Christine Ross\t\t\t\tCD 9",
+              "title": "Zoning Case ZC-25-122"
+            },
+            {
+              "display_ref": "12.",
+              "evidence_text": "12.\nZC-25-123 \t\tCase Manager: Beth Knight\t\t\t\t\tCD 7",
+              "title": "Zoning Case ZC-25-123"
+            },
+            {
+              "display_ref": "13.",
+              "evidence_text": "13.\nZC-25-125\t\t\tCase Manager: Dave\t McCorquodale\t\t\tCD 4",
+              "title": "Zoning Case ZC-25-125"
+            },
+            {
+              "display_ref": "14.",
+              "evidence_text": "14.\nZC-25-126\t\t\tCase Manager: Sandy Michel\t\t\t\tCD 8",
+              "title": "Zoning Case ZC-25-126"
+            },
+            {
+              "display_ref": "15.",
+              "evidence_text": "15.\nZC-25-127\t\t\tCase Manager: Christine Ross\t\t\t\tCD 3",
+              "title": "Zoning Case ZC-25-127"
+            },
+            {
+              "display_ref": "16.",
+              "evidence_text": "16.\nZC-25-128\t\t\tCase Manager: Dave\t McCorquodale\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \t \tCD 11",
+              "title": "Zoning Case ZC-25-128"
+            },
+            {
+              "display_ref": "17.",
+              "evidence_text": "17.\nZC-25-130\t\t\tCase Manager: Beth Knight\t \t\t\t\tCD 11",
+              "title": "Zoning Case ZC-25-130"
+            },
+            {
+              "display_ref": "18.",
+              "evidence_text": "18.\nZC-25-131\t\t\tCase Manager: Lynn Jordan\t\t\t\tCD 8",
+              "title": "Zoning Case ZC-25-131"
+            },
+            {
+              "display_ref": "19.",
+              "evidence_text": "19.\nZC-25-132\t\t\tCase Manager: Lynn Jordan\t\t\t\tCD 8",
+              "title": "Zoning Case ZC-25-132"
+            },
+            {
+              "display_ref": "20.",
+              "evidence_text": "20.\nZC-25-133\t\t\tCase Manager: Sandy Michel\t\t\t\tCD 10",
+              "title": "Zoning Case ZC-25-133"
+            },
+            {
+              "display_ref": "21.",
+              "evidence_text": "21.\nZC-25-134\t\t\tCase Manager: Beth Knight\t\t\t\t\tCD 11",
+              "title": "Zoning Case ZC-25-134"
+            },
+            {
+              "display_ref": "22.",
+              "evidence_text": "22.\nZC-25-136\t\t\tCase Manager: Ana Alverez \t\t\tCD 8, 9, 11",
+              "title": "Zoning Case ZC-25-136"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT:",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "6085544730ad9923a356e98737c55ac08984deb3967e088d42ae7126d99ba487",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2025-08-13T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/3fd0769f51ca1f05-asr-0f08ea66d7f6.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/3fd0769f51ca1f05-asr-0f08ea66d7f6.vtt",
+        "words_key": "transcripts/6540eef2dc2e/3fd0769f51ca1f05-asr-0f08ea66d7f6.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/3fd0769f51ca1f05-asr-0f08ea66d7f6.words.json"
+      },
+      "uid": "3fd0769f51ca1f05"
+    },
+    {
+      "agenda": {
+        "bytes": 3438,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ecc3710ac47f/149e18205b342017/agenda-35f2ed69a41efecd",
+        "sha256": "fbd2bc2b9aae945afcc32984bc7c8cb6942d911d1d35797503c4e2fbfd93736b",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/149e18205b342017/agenda-35f2ed69a41efecd"
+      },
+      "body": "Council",
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11545.915,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "2.1",
+              "evidence_text": "2.1.\nDiscussion of Fredrick Evans v. City of Arlington lawsuit",
+              "title": "Executive Session: Discussion of Fredrick Evans v. City of Arlington lawsuit"
+            },
+            {
+              "display_ref": "2.2",
+              "evidence_text": "2.2.\nDiscussion Regarding the Acquisition of Property Relative to Affordable Housing",
+              "title": "Executive Session: Discussion Regarding the Acquisition of Property Relative to Affordable Housing"
+            },
+            {
+              "display_ref": "2.3",
+              "evidence_text": "2.3.\nDiscussion Regarding the Acquisition of Property for Parks and Recreational Purposes",
+              "title": "Executive Session: Discussion Regarding the Acquisition of Property for Parks and Recreational Purposes"
+            },
+            {
+              "display_ref": "2.4",
+              "evidence_text": "2.4.\nOffers of Incentives to Business Prospects",
+              "title": "Executive Session: Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "3.1",
+              "evidence_text": "3.1.\nFlood Preparedness and Emergency Response",
+              "title": "Work Session: Flood Preparedness and Emergency Response"
+            },
+            {
+              "display_ref": "3.2",
+              "evidence_text": "3.2.\nFY2026 Budget",
+              "title": "Work Session: FY2026 Budget"
+            },
+            {
+              "display_ref": "3.4",
+              "evidence_text": "3.4.\nCouncil Priority - Enhance Regional Mobility",
+              "title": "Work Session: Council Priority - Enhance Regional Mobility"
+            },
+            {
+              "display_ref": "4.1",
+              "evidence_text": "4.1.\nCommercial Motor Vehicle Parking Violations",
+              "title": "Issues Session: Commercial Motor Vehicle Parking Violations"
+            },
+            {
+              "display_ref": "4.2",
+              "evidence_text": "4.2.\n2026 Neighborhood Matching Grant Call for Projects",
+              "title": "Issues Session: 2026 Neighborhood Matching Grant Call for Projects"
+            },
+            {
+              "display_ref": "4.3",
+              "evidence_text": "4.3.\nCommunity and Neighborhood Development - FY2026 Neighborhood Matching Grant\nProgram",
+              "title": "Issues Session: Community and Neighborhood Development - FY2026 Neighborhood Matching Grant Program"
+            },
+            {
+              "display_ref": "4.4",
+              "evidence_text": "4.4.\nAppointments to Boards and Commissions",
+              "title": "Issues Session: Appointments to Boards and Commissions"
+            },
+            {
+              "display_ref": "4.5",
+              "evidence_text": "4.5.\nCity Council External Committee and Training Reports",
+              "title": "Issues Session: City Council External Committee and Training Reports"
+            },
+            {
+              "display_ref": "4.6",
+              "evidence_text": "4.6.\nLegislative Update",
+              "title": "Issues Session: Legislative Update"
+            },
+            {
+              "display_ref": "4.7",
+              "evidence_text": "4.7.\nEvening Agenda Items",
+              "title": "Issues Session: Evening Agenda Items"
+            },
+            {
+              "display_ref": "4.8",
+              "evidence_text": "4.8.\nIssues Relative to City and TxDOT Projects",
+              "title": "Issues Session: Issues Relative to City and TxDOT Projects"
+            },
+            {
+              "display_ref": "4.9",
+              "evidence_text": "4.9.\nFuture Agenda Items",
+              "title": "Issues Session: Future Agenda Items"
+            }
+          ],
+          "source_result_sha256": "37b35ebfbf03e1b80ae08e101580e570be65e32c1ef51880cd42000e170b68e3",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2025-08-05T00:00:00+00:00",
+      "slug": "arlington-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ecc3710ac47f/149e18205b342017-asr-b61c22b7540d.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/149e18205b342017-asr-b61c22b7540d.vtt",
+        "words_key": "transcripts/ecc3710ac47f/149e18205b342017-asr-b61c22b7540d.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/149e18205b342017-asr-b61c22b7540d.words.json"
+      },
+      "uid": "149e18205b342017"
+    },
+    {
+      "agenda": {
+        "bytes": 6356,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/b37ec9e08413f541/agenda-f9245cd90cc0421e",
+        "sha256": "fe6ccbe6675a637baeeb4fc0ec12c39713915ec1d431bfeec5027a379761bfe6",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/b37ec9e08413f541/agenda-f9245cd90cc0421e"
+      },
+      "body": "City Council Meeting City Council Meeting",
+      "body_key": "city council meeting city council meeting",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 2622.005,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "II.\nINVOCATION - Father Eric Groner, Saint Rita\u2019s Catholic Church",
+              "title": "Invocation"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "III.\nPLEDGE OF ALLEGIANCE",
+              "title": "Pledge of Allegiance"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "IV.\nCONSIDERATION OF MINUTES OF THE REGULAR MEETING OF AUGUST 4, 2015",
+              "title": "Consideration of Minutes of August 4, 2015"
+            },
+            {
+              "display_ref": "V.",
+              "evidence_text": "V.\nITEMS TO BE WITHDRAWN FROM THE CONSENT AGENDA",
+              "title": "Items to be withdrawn from the consent agenda"
+            },
+            {
+              "display_ref": "ITEMS",
+              "evidence_text": "VI.\nITEMS TO BE CONTINUED OR WITHDRAWN BY STAFF",
+              "title": "Items to be continued or withdrawn by staff"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nOCS \u00e2\u20ac\u201c1963 \u00e2\u20ac\u201c Notice of Claims for Alleged Damages and/or Injuries",
+              "title": "City Secretary Consent Item: Notice of Claims"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nPresentation of Proclamation of Miss Texas Shannon Lee Sanderford Day",
+              "title": "Presentation of Proclamation of Miss Texas Shannon Lee Sanderford Day"
+            },
+            {
+              "display_ref": "2.",
+              "evidence_text": "2.\nPresentation of Proclamation of National Health Center Week",
+              "title": "Presentation of Proclamation of National Health Center Week"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nUpcoming and Recent Events",
+              "title": "Announcements of upcoming and recent events"
+            },
+            {
+              "display_ref": "2.",
+              "evidence_text": "2.\nRecognition of Citizens",
+              "title": "Recognition of citizens"
+            },
+            {
+              "display_ref": "3.",
+              "evidence_text": "3.\nApproval of Ceremonial Travel",
+              "title": "Approval of ceremonial travel"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nChanges in Membership on Boards and Commissions",
+              "title": "Changes in membership on boards and commissions"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "PRESENTATIONS AND/OR COMMUNICATIONS FROM BOARDS, COMMISSIONS AND/OR CITY COUNCIL COMMITTEES",
+              "title": "Report from boards, commissions, and committees"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nM&C G-18528\u00a0 - Conduct a Public Hearing and Reject Fiscal Year 2016 Crime Control and Prevention District Budget in the Amount of $69,764,041.00 (ALL COUNCIL DISTRICTS) (PUBLIC HEARING)",
+              "title": "Public hearing and rejection of the fiscal year 2016 Crime Control and Prevention District budget"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nM&C L-15795\u00a0 - Authorize Condemnation by Eminent Domain for a 0.009 Acre Right-of-Way Easement and a 0.029 Acre Temporary-Construction Easement Located at 5817 Parker Henderson Road Owned by Bobby E. Sides for the Parker-Henderson Road Reconstruction from Business 287/Mansfield Highway to Martin Street Project (COUNCIL DISTRICT 5) (Continued from a Previous Meeting)",
+              "title": "Authorization of eminent domain for Parker-Henderson Road reconstruction"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nM&C C-27416\u00a0 - Ratify Application for and Authorize Acceptance of, if Awarded, the Fiscal Year 2015 Paul Coverdell Forensic Science Improvement Grant from the United States Department of Justice, National Institute of Justice, in the Amount of $135,656.00, Authorize Execution of a Grant Agreement with the National Institute of Justice and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)",
+              "title": "Ratification and acceptance of the fiscal year 2015 Paul Coverdell Forensic Science Improvement Grant"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nSecond Public Hearing for a Proposed Owner-Initiated Annexation of Approximately 468.04 Acres of Land in Tarrant County, Located Along South of Altamesa Boulevard, West of the Fort Worth and Western Railroad (AX-14-006, Area 55-2)",
+              "title": "Second public hearing for owner-initiated annexation of land along South of Altamesa Boulevard"
+            },
+            {
+              "display_ref": "1.",
+              "evidence_text": "1.\nZC-15-091 - (CD 7) - Moises Esquivel, 8801 Magnolia Blossom Trail; from: \"AG\" Agricultural to: \"A-2.5\" One-Family (Recommended for Denial without Prejudice by the Zoning Commission) (Continued from a Previous Meeting)",
+              "title": "Zoning case ZC-15-091: 8801 Magnolia Blossom Trail"
+            },
+            {
+              "display_ref": "2.",
+              "evidence_text": "2.\nZC-15-094 - (CD 7) - Mark McCauley, 8464 Heron Drive; from: \"A-10\" One-Family, \"A-5\" One-Family to: \"A-7.5\" One-Family (Recommended for Approval as Amended by the Zoning Commission to \"A-7.5\" One-Family) (Continued from a Previous Meeting)",
+              "title": "Zoning case ZC-15-094: 8464 Heron Drive"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "CITIZEN PRESENTATIONS",
+              "title": "Citizen presentations"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "EXECUTIVE SESSION (PRE-COUNCIL CHAMBER) - SEE ATTACHMENT B",
+              "title": "Executive session"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT",
+              "title": "Adjournment"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "VII.\nCONSENT AGENDA\nItems on the Consent Agenda require little or no deliberation by the City Council. Approval of the Consent Agenda authorizes the City Manager, or his designee, to implement each item in accordance with staff recommendations.\nA.\nGeneral - Consent Items\n1.\nM&C G-18527\u00a0 - Adopt Resolution Increasing the Amount of Fees for Moses, Palmer and Howell, L.L.P., as Outside Counsel in an Amount Not to Exceed $10,000.00 to Advise the City on Oil and Gas Mineral Lease Provisions Related to Gas Marketing and Authorizing Payment of Counsel Fees from Gas Lease Revenues and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)\nB.\nPurchase of Equipment, Materials, and Services - Consent Items\n1.\nM&C P-11774\u00a0 - Authorize Purchase Agreements for Lamps and Ballasts with Dealers Electrical Supply Co., WESCO Distribution, Inc., and Rexel, Inc., for an Annual Amount of $775,000.00 (ALL COUNCIL DISTRICTS)\nC.\nLand - Consent Items\n1.\nM&C L-15801\u00a0 - Authorize Amendment No. 1 to Lease Agreement Between the City of Fort Worth and the Organization of Hispanic Contractors Inc. d/b/a Regional Hispanic Contractors Association, for Office Space in the Fort Worth Business Assistance Center Located at 1150 South Freeway (COUNCIL DISTRICT 8)\nD.\nPlanning & Zoning - Consent Items - None\nE.\nAward of Contract - Consent Items\n1.\nM&C C-27411\u00a0 - Authorize Execution of a Contract with the United States Equal Employment Opportunity Commission in an Amount Up to $85,550.00 to Process Employment Discrimination Cases for Fiscal Year 2015 for the Human Relations Unit of the City Manager\u2019s Office and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)\n2.\nM&C C-27412\u00a0 - Authorize Execution of an Agreement with Tarrant County and the Tarrant County Tax Assessor-Collector for Approximately $647,770.00 for Ad Valorem Tax Assessment and Collection Services for Fiscal Year 2016 (ALL COUNCIL DISTRICTS)\n3.\nM&C C-27413\u00a0 - Adopt Resolution Authorizing Execution of a Local Project Funding Agreement with the Texas Department of Transportation in the Amount of $32,848.00 to Furnish Traffic Signal Equipment for Intersection Improvements at State Highway 114 and Harriet Creek Road and Accept Reimbursement of Costs for Signal Equipment Furnished to the Texas Department of Transportation and Adopt Appropriation Ordinance (COUNCIL DISTRICT 7)\n4.\nM&C C-27414\u00a0 - Authorize Execution of Amendment No. 1 to State Funded Grant Agreement with the Texas Commission on Environmental Quality in the Amount of $275,233.00 for Fiscal Year 2016 Compliance Monitoring for Air Quality, Authorize In-Kind Match in the Amount of $135,563.00, Apply Indirect Costs at Approved Percentage Rate for the Total Project in the Amount of $410,796.00 and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)\n5.\nM&C C-27415\u00a0 - Ratify Application for and Authorize Acceptance of a Grant, if Awarded, from the Texas School Safety Center at Texas State University-San Marcos in an Amount Not to Exceed $69,000.00, Authorize Execution of an Interlocal Agreement with Texas State University-San Marcos to Participate in the Tobacco Enforcement Program and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)",
+              "title": "Consent Agenda"
+            }
+          ],
+          "source_result_sha256": "65b665691624719dc4f8600277e79d7de133940f9730d3ce56316aabf44061c7",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2015-08-11T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/b37ec9e08413f541-asr-43acffe53005.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/b37ec9e08413f541-asr-43acffe53005.vtt",
+        "words_key": "transcripts/6540eef2dc2e/b37ec9e08413f541-asr-43acffe53005.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/b37ec9e08413f541-asr-43acffe53005.words.json"
+      },
+      "uid": "b37ec9e08413f541"
+    },
+    {
+      "agenda": {
+        "bytes": 8451,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/264212d037ce1e52/agenda-31da285290c58a05",
+        "sha256": "efb40008e7b0151b98accbf028aab810f14a8fae6f9230763e18e91fca42205e",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/264212d037ce1e52/agenda-31da285290c58a05"
+      },
+      "body": "City Plan Commissions City Plan Commissions",
+      "body_key": "city plan commission city plan commission",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 1752.425,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nCorrespondence & Comments\t\t\t\u00a0  Staff & Chair",
+              "title": "Work Session Correspondence and Comments"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B.\nReview of Cases on Today\u2019s Agenda\t\t\t\u00a0  Staff",
+              "title": "Work Session Review of Agenda Cases"
+            },
+            {
+              "display_ref": "a.",
+              "evidence_text": "a.\nCALL TO ORDER: STATEMENT OF OPEN MEETINGS ACT",
+              "title": "Call to Order and Statement of Open Meetings Act"
+            },
+            {
+              "display_ref": "b.",
+              "evidence_text": "b.\nANNOUNCEMENTS",
+              "title": "Meeting Announcements"
+            },
+            {
+              "display_ref": "c.",
+              "evidence_text": "c.\nAPPROVAL OF August 14, 2024 MEETING MINUTES",
+              "title": "Approval of August 14, 2024 Meeting Minutes"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nVA-24-015\u00a0  \tVacation of a Portion of Cockrell Avenue Between Berry Street and Bowie Street:\u00a0 Council District 9.",
+              "title": "Vacation of a Portion of Cockrell Avenue (VA-24-015)"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.\nVA-24-016\u00a0 \u00a0 Vacation of an Alley in Block 12, Forest Park Addition, Between Berry Street and Bowie Street:\u00a0 Council District 9.",
+              "title": "Vacation of an Alley in Block 12, Forest Park Addition (VA-24-016)"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nAX-24-007\tLDS \u2013 New Granger (Annexation Request): Proposed for Institutional Type Development. ETJ-Tarrant County. Future Council District 10",
+              "title": "LDS \u2013 New Granger Annexation Request (AX-24-007)"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.\nPP-24-031\u00a0  \tT-Square Townhomes Addition, Lots 1-31 & 1X, BLOCK 3 (Waiver Request):\u00a0 Council District 5",
+              "title": "T-Square Townhomes Addition Waiver Request (PP-24-031)"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3.\nPP-24-034\u00a0  \tBoaz and Dillow Addition, Lots 2R, 2R1, 3R, 4R, 5R, 5R1, Block 6 (Conditional Approval):\u00a0 6 Townhome Lots.\u00a0 Council District 8.",
+              "title": "Boaz and Dillow Addition Conditional Approval (PP-24-034)"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4.\nFS-24-181\u00a0 \u00a0 Johnson Addition Lots 9-12 (Continuance Request): 4 Single-Family Detached Residential Lots.\u00a0 Council District 5.",
+              "title": "Johnson Addition Continuance Request (FS-24-181)"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5.\nVA-24-017\u00a0 \u00a0 Vacation of a Portion of Pleasant Oaks Street:\u00a0 Council District 5",
+              "title": "Vacation of a Portion of Pleasant Oaks Street (VA-24-017)"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT:",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "f57c5b81abe695eec6eebb2c181431098e63049b013446a11891030a19c0a7c3",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2024-08-28T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/264212d037ce1e52-asr-bb653db8fef1.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/264212d037ce1e52-asr-bb653db8fef1.vtt",
+        "words_key": "transcripts/6540eef2dc2e/264212d037ce1e52-asr-bb653db8fef1.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/264212d037ce1e52-asr-bb653db8fef1.words.json"
+      },
+      "uid": "264212d037ce1e52"
+    },
+    {
+      "agenda": {
+        "bytes": 5858,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/bb150f59e23ceda6/agenda-8ce24329cf24e8fc",
+        "sha256": "59b614a88d48b1608620a982be0b279d92e4fc3764735de5e96e74558695bc0e",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/bb150f59e23ceda6/agenda-8ce24329cf24e8fc"
+      },
+      "body": "Board of Adjustment Residential Board of Adjustment Residential",
+      "body_key": "board of adjustment residential board of adjustment residential",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 7129.544,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nReview of Cases on Today\u2019s Agenda",
+              "title": "Review of Cases on Today\u2019s Agenda"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B.\nZoning Ordinance Amendment for Special Exception Expiration",
+              "title": "Zoning Ordinance Amendment for Special Exception Expiration"
+            },
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nApproval of Minutes of December 19, 2018 Hearing",
+              "title": "Approval of Minutes of December 19, 2018 Hearing"
+            },
+            {
+              "display_ref": "BAR-18-121",
+              "evidence_text": "1.\nBAR-18-121\u00a0 Delfino Ramirez \n4120 Hemlock Street\nRequest a VARIANCE in an \u201cA-5\u201d One-Family District to permit an existing 504 square-foot accessory structure where 200 square feet is the maximum allowed, excessive by 304 square feet.\nRequest a VARIANCE in an \u201cA-5\u201d One-Family District to permit an existing accessory structure with a height of 13 feet where 12 feet is the maximum allowed, excessive by 1 foot.",
+              "title": "Variance Request for Accessory Structure at 4120 Hemlock Street (BAR-18-121)"
+            },
+            {
+              "display_ref": "BAR-18-116",
+              "evidence_text": "2.\nBAR-18-116\u00a0 Jimmy Mullins \n9857 Lake Haven Circle\nRequest a VARIANCE in an \u201cA-10\u201d One-Family District to permit the construction of a residence on an 8,684 square-foot lot, where a minimum of 10,000 square feet is required, deficient by 1,317 square feet.",
+              "title": "Variance Request for Lot Size at 9857 Lake Haven Circle (BAR-18-116)"
+            },
+            {
+              "display_ref": "BAR-18-117",
+              "evidence_text": "3.\nBAR-18-117\u00a0 Phillip A Brown by Phillip Kennemer \n5028 Meadowbrook Drive\nRequest a VARIANCE in an \u201cA-10\u201d One-Family District to permit an existing accessory structure that encroaches 7 feet into the 10-foot rear yard setback, creating a 3-foot rear yard setback.\nRequest a VARIANCE in an \u201cA-10\u201d One-Family District to permit an existing accessory structure that encroaches 2 feet into the 5-foot side yard setback, creating a 3-foot side yard setback.",
+              "title": "Variance Request for Setbacks at 5028 Meadowbrook Drive (BAR-18-117)"
+            },
+            {
+              "display_ref": "BAR-18-098",
+              "evidence_text": "4.\nBAR-18-098\u00a0 John & Stacy McKnight \n5220 Byers Avenue\nRequest a SPECIAL EXCEPTION under the \u201cA-5\u201d One-Family District regulations to permit an existing 4-foot solid front-yard wall.",
+              "title": "Special Exception Request for Front-Yard Wall at 5220 Byers Avenue (BAR-18-098)"
+            },
+            {
+              "display_ref": "BAR-19-001",
+              "evidence_text": "5.\nBAR-19-001\u00a0 Vivian & Greg Smith by Greg & Ana Smith \n724 West Anthony Street\nRequest a VARIANCE under the \u201cA-5\u201d One-Family District regulations to permit a habitable accessory structure that encroaches 3 feet into the required 5-foot side-yard setback, creating a 2-foot side-yard setback.",
+              "title": "Variance Request for Side-Yard Setback at 724 West Anthony Street (BAR-19-001)"
+            },
+            {
+              "display_ref": "BAR-19-002",
+              "evidence_text": "6.\nBAR-19-002\u00a0 DFW 70-36 LLC by Hector Guerara-Vargas \n10524 Wild Oak Drive\nRequest a VARIANCE under the \u201cAR\u201d One-Family Restricted District regulations to permit the construction of a residence with a 5-foot side yard setback (south side), where 0 feet is the maximum allowed, excessive by 5 feet.\nRequest a VARIANCE under the \u201cAR\u201d One-Family Restricted District regulations to permit the construction of a residence that deviates from the established lot pattern.",
+              "title": "Variance Request for Construction Standards at 10524 Wild Oak Drive (BAR-19-002)"
+            },
+            {
+              "display_ref": "BAR-19-003",
+              "evidence_text": "BAR-19-003\u00a0 Dhiran Giri \n3213 Vine Street\nRequest a VARIANCE in an \u201cA-10\u201d One-Family District to permit the construction of a residence that encroaches 15 feet, 2 inches into the required 50-foot established front yard setback, creating a 34-foot, 10-inch front yard setback.",
+              "title": "Variance Request for Front Yard Setback at 3213 Vine Street (BAR-19-003)"
+            },
+            {
+              "display_ref": "BAR-19-004",
+              "evidence_text": "BAR-19-004\u00a0 Mary & Daniel Brezik \n3148 Wabash Avenue\nRequest a VARIANCE in an \u201cA-5\u201d One-Family District to permit the construction of an addition that encroaches 5 feet into the 10-foot side yard setback, creating a 5-foot side-yard setback.",
+              "title": "Variance Request for Side-Yard Setback at 3148 Wabash Avenue (BAR-19-004)"
+            },
+            {
+              "display_ref": "BAR-19-005",
+              "evidence_text": "BAR-19-005\u00a0 Stuart Schultz III by Glendarroch Homes \n3636 Hilltop Road\nRequest a VARIANCE in an \u201cA-5\u201d One-Family District to permit the construction of a residence that encroaches 5 feet, 6 inches into the required 40-foot platted front yard setback, creating a 34-foot, 6-inch front yard setback.",
+              "title": "Variance Request for Front Yard Setback at 3636 Hilltop Road (BAR-19-005)"
+            },
+            {
+              "display_ref": "BAR-19-006",
+              "evidence_text": "BAR-19-006\u00a0 Clay & Jamie Hicks by Pulliam Pools \n4449 Fairway View Drive\nRequest a VARIANCE in \u201cPD 1182\u201d Planned Development with \u201cA-10\u201d One-Family District standards to permit the construction of an accessory structure that would encroach 5 feet into the 10-foot rear yard setback, creating a 5-foot rear yard setback.",
+              "title": "Variance Request for Rear Yard Setback at 4449 Fairway View Drive (BAR-19-006)"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT:",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "704ea7cf1e315a7c16046a99a15549ca41e7ea81108a1fe04f9faf779c261068",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2019-01-16T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/bb150f59e23ceda6-asr-b258b8240504.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/bb150f59e23ceda6-asr-b258b8240504.vtt",
+        "words_key": "transcripts/6540eef2dc2e/bb150f59e23ceda6-asr-b258b8240504.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/bb150f59e23ceda6-asr-b258b8240504.words.json"
+      },
+      "uid": "bb150f59e23ceda6"
+    },
+    {
+      "agenda": {
+        "bytes": 3916,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ecc3710ac47f/a25c5073da38d890/agenda-cd49fcdc7d697fb6",
+        "sha256": "9dec9326b7897b5a34642382f781e32a1605afa63efe1231dbce1eca1d6eb466",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/a25c5073da38d890/agenda-cd49fcdc7d697fb6"
+      },
+      "body": "Planning and Zoning Commission",
+      "body_key": "planning and zoning commission",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 4965.08,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "II.A",
+              "evidence_text": "II.A\nMinutes of June 5, 2024 Regular Session Meeting",
+              "title": "Approval of Minutes of June 5, 2024 Regular Session"
+            },
+            {
+              "display_ref": "III.A",
+              "evidence_text": "III.A\nContinued to July 17, 2024 (Action Required)\n \nZoning Case PD23-26 (502 Veritas Way)\n \nApplication for approval of a revision to the approved Development Plan for Residential\nSingle-Family-5 (PD-RS-5) uses, on approximately 5.499 acres.",
+              "title": "Continuance of Zoning Case PD23-26"
+            },
+            {
+              "display_ref": "IV.A",
+              "evidence_text": "IV.A\nZoning Case PD23-39 (\n1117, 1219, and 1221 \nDan Gould) - Application for approval of a\nchange in zoning from Residential Estate (RE) to Planned Development (PD) for\nResidential Medium-Density-12 (RM-12) for a Cottage Community with a development\nplan, on approximately 1.966 acres.",
+              "title": "Public Hearing for Zoning Case PD23-39"
+            },
+            {
+              "display_ref": "IV.B",
+              "evidence_text": "IV.B\nZoning Case PD24-10 (300 East Stephens Street) - Application for approval of a change\nin zoning from Airport Overlay (APO)-General Commercial (GC) to Planned\nDevelopment (PD) for Residential Multi-Family-22 (RMF-22) uses, with a Development\nPlan on approximately 9.792 acres.",
+              "title": "Public Hearing for Zoning Case PD24-10"
+            },
+            {
+              "display_ref": "IV.C",
+              "evidence_text": "IV.C\nZoning Case SUP24-6 (Arlington Tattoo Shop) - Application for approval of a Specific\nUse Permit (SUP) for a Tattoo Parlor, currently zoned Community Commercial (CC)",
+              "title": "Public Hearing for Zoning Case SUP24-6"
+            },
+            {
+              "display_ref": "A.",
+              "evidence_text": "A. Reports from Boards/Commissions Liaisons",
+              "title": "Reports from Boards/Commissions Liaisons"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B. Reports from Staff and Announcements",
+              "title": "Reports from Staff and Announcements"
+            },
+            {
+              "display_ref": "C.",
+              "evidence_text": "C. Discussion of Future Meeting Dates and Times",
+              "title": "Discussion of Future Meeting Dates and Times"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURN",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "304f8dcc423835a70043d819a35bb210e0af14a25be9077a2b07c5380714b49b",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2024-06-26T00:00:00+00:00",
+      "slug": "arlington-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ecc3710ac47f/a25c5073da38d890-asr-81a041803acb.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/a25c5073da38d890-asr-81a041803acb.vtt",
+        "words_key": "transcripts/ecc3710ac47f/a25c5073da38d890-asr-81a041803acb.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/a25c5073da38d890-asr-81a041803acb.words.json"
+      },
+      "uid": "a25c5073da38d890"
+    },
+    {
+      "agenda": {
+        "bytes": 2160,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/0bd43068860d23ac/agenda-6b5db24fce712baa",
+        "sha256": "6e845e4d43921d72a1dc1b57fb4a1d61e70e7dbf0204a44c1bbbc6c2f8ae577e",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/0bd43068860d23ac/agenda-6b5db24fce712baa"
+      },
+      "body": "Audit Committee Audit Committee",
+      "body_key": "audit committee audit committee",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 3973.355,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "A",
+              "evidence_text": "A.\nApproval of August 10, 2021 meeting minutes",
+              "title": "Approval of August 10, 2021 meeting minutes"
+            },
+            {
+              "display_ref": "A",
+              "evidence_text": "A.\nInternal Audit Activities Update - Patrice Randle, City Auditor",
+              "title": "Internal Audit Activities Update"
+            },
+            {
+              "display_ref": "A",
+              "evidence_text": "A.\nRequests for future agenda items",
+              "title": "Requests for future agenda items"
+            },
+            {
+              "display_ref": "B",
+              "evidence_text": "B.\nThe next meeting is scheduled for November 9, 2021, 1:00 PM",
+              "title": "Schedule for next meeting"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT:",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "982ea10df788d247037dea48fce18b58933799c2385755a3f8760d3a7c0b32be",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2021-10-19T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/0bd43068860d23ac-asr-af9e081fba60.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/0bd43068860d23ac-asr-af9e081fba60.vtt",
+        "words_key": "transcripts/6540eef2dc2e/0bd43068860d23ac-asr-af9e081fba60.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/0bd43068860d23ac-asr-af9e081fba60.words.json"
+      },
+      "uid": "0bd43068860d23ac"
+    },
+    {
+      "agenda": {
+        "bytes": 8806,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/21451e2edf0b5d9c/agenda-8fb0c2c3f22955fd",
+        "sha256": "2d1f5249554d9580e0652a69da27ecf1d3b8781fb45677df6ec103bf885d240f",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/21451e2edf0b5d9c/agenda-8fb0c2c3f22955fd"
+      },
+      "body": "Board of Adjustment - Residential Board of Adjustment",
+      "body_key": "board of adjustment residential board of adjustment",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 7142.842,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nDiscussion of Today\u2019s Cases",
+              "title": "Work Session Discussion of Cases"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B.\nObtain Board member\u2019s signature on letter to City Council",
+              "title": "Board Member Signature on Letter to City Council"
+            },
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nApproval of Minutes of the January 17, 2024 Hearings",
+              "title": "Approval of January 17, 2024 Meeting Minutes"
+            },
+            {
+              "display_ref": "BAR-23-075",
+              "evidence_text": "BAR-23-075\u00a0  Address: 4325 Lisbon Street\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Owner: Javier Sanchez\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cB\u201d Two-Family under the \u201cA-5\u201d One-Family standards\nVariance: Permit an existing carport encroaching in the side yard setback\u00a0 \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Required setback: 5 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Requested setback: 2 feet\u00a0 5 inches",
+              "title": "Public Hearing for Variance at 4325 Lisbon Street (BAR-23-075)"
+            },
+            {
+              "display_ref": "BAR-23-074",
+              "evidence_text": "BAR-23-074\u00a0  Address: 3208 Avondale Avenue\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Owner: Michael and Angelique De Luca\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cA-5\u201d One-Family within the TCU Overlay\nSpecial Exception: Permit 5-foot open-design gates in the front yard where 4 feet is allowed by right",
+              "title": "Public Hearing for Special Exception at 3208 Avondale Avenue (BAR-23-074)"
+            },
+            {
+              "display_ref": "BAR-24-002",
+              "evidence_text": "BAR-24-002\u00a0  Address: 1925 Dartmoor Court\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Owner: Guadalupe & Ayesha de la Fuente by Brandon Scuderi\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cA-5\u201d One-Family within the TCU Overlay\nVariance: Permit the continued construction of a porte cochere with an covered patio on top that encroaches into the side yard setback \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Required setback: 5 feet \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Requested setback: Zero (0) feet",
+              "title": "Public Hearing for Variance at 1925 Dartmoor Court (BAR-24-002)"
+            },
+            {
+              "display_ref": "BAR-24-003",
+              "evidence_text": "BAR-24-003\u00a0  Address: 2215 Warner Road\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Owner: Bryan & Carolyn Lingle\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cA-5\u201d One-Family within the TCU Overlay\nVariance: Permit a remodel of a detached garage with habitable space that encroaches into the rear yard setback \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Minimum setback required: 5 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Requested setback: 3 feet\nVariance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Minimum setback required: 5 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Requested setback: 1-foot 5 inches",
+              "title": "Public Hearing for Variances at 2215 Warner Road (BAR-24-003)"
+            },
+            {
+              "display_ref": "BAR-24-004",
+              "evidence_text": "BAR-24-004\u00a0  Address: 2745 Ryan Place Drive\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Owner: Claire Lawrence by Michael Clark\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cA-7.5\u201d One-Family\nVariance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Minimum setback required: 5 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Requested setback: 3 feet\nVariance: Permit the encroachment of the front wall of the home into the established front yard setback \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Established front yard: 38 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Requested setback: 32 feet 5 inches",
+              "title": "Public Hearing for Variances at 2745 Ryan Place Drive (BAR-24-004)"
+            },
+            {
+              "display_ref": "BAR-24-005",
+              "evidence_text": "BAR-24-005\u00a0  Address: 1300 Illinois Avenue\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Owner: Tonia Robinson by Cooper Conger \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Zoning: \u201cA-5\u201d One-Family\nVariance: Permit a residence on a lot with less width than required \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Minimum lot width required: 50 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Requested lot coverage percentage: 33 feet\nVariance: Permit a residence on a lot with less lot area than required \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Minimum lot area required: 5,000 square feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Requested lot area: 3,300 square feet",
+              "title": "Public Hearing for Variances at 1300 Illinois Avenue (BAR-24-005)"
+            },
+            {
+              "display_ref": "BAR-24-009",
+              "evidence_text": "BAR-24-009\u00a0 Address: 406 Grand Avenue\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Owner: Javier & Danette Morales by Cooper Conger \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Zoning: \u201cA-5\u201d One-Family\nVariance: Permit a residence on a lot with less width than required \n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  Minimum lot width required: 50 feet\n\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 Requested lot coverage percentage: 35 feet\nVariance: Permit a residence on a lot with less lot area than required",
+              "title": "Public Hearing for Variances at 406 Grand Avenue (BAR-24-009)"
+            }
+          ],
+          "source_result_sha256": "eaab7b9cff694fdf1ab498c99aee0412b408a0a3502d9214b5f84a539bf3b033",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2024-02-21T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/21451e2edf0b5d9c-asr-84b79acbb364.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/21451e2edf0b5d9c-asr-84b79acbb364.vtt",
+        "words_key": "transcripts/6540eef2dc2e/21451e2edf0b5d9c-asr-84b79acbb364.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/21451e2edf0b5d9c-asr-84b79acbb364.words.json"
+      },
+      "uid": "21451e2edf0b5d9c"
+    },
+    {
+      "agenda": {
+        "bytes": 7173,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ecc3710ac47f/74e16844b24866f6/agenda-f79326137062a611",
+        "sha256": "d6ce7e664ca3dbfd85465af03c567d9122fdef9dca8e34b1ef2d8fc919136c95",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/74e16844b24866f6/agenda-f79326137062a611"
+      },
+      "body": "Council",
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7892.314,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "2.1",
+              "evidence_text": "2.1.\nDiscussion Regarding the Sale of Surplus Property Located at 3012 Calendar Road",
+              "title": "Discussion Regarding the Sale of Surplus Property Located at 3012 Calendar Road"
+            },
+            {
+              "display_ref": "2.2",
+              "evidence_text": "2.2.\nDiscussion Regarding the Sale of Surplus Property Located at 2324 Perkins Road",
+              "title": "Discussion Regarding the Sale of Surplus Property Located at 2324 Perkins Road"
+            },
+            {
+              "display_ref": "2.3",
+              "evidence_text": "2.3.\nDivision Street TxDOT Sidewalk Project (Cooper Street to Collins Street) \u2013 Bassam\nand Leila Darkazally; Project No. PWSW16003\nA resolution authorizing the settlement of negotiations for fee simple ownership of 590\nsquare feet being a portion of Lot 5, Block 39, Original Town of Arlington, an addition to\nthe City of Arlington, Tarrant County, Texas, otherwise known as 300 West Division\nStreet, Arlington, Texas, for the public use of sidewalks and landscaping improvements,\nfor the Division Street TxDOT Sidewalk Project (Cooper Street to Collins Street).",
+              "title": "Resolution Authorizing Settlement of Negotiations for Division Street TxDOT Sidewalk Project (Bassam and Leila Darkazally)"
+            },
+            {
+              "display_ref": "2.4",
+              "evidence_text": "2.4.\nDivision Street TxDOT Sidewalk Project (Cooper Street to Collins Street) \u2013 Rick\nWade; Project No. PWSW16003 \nA resolution authorizing the settlement of negotiations for fee simple ownership of 467\nsquare feet being a portion of Lot 11R1, Steele, Denny & Finch Addition, an addition to\nthe City of Arlington, Tarrant County, Texas, otherwise known as 633 West Division\nStreet, Arlington, Texas, for the public use of sidewalks and landscaping improvements,\nfor the Division Street TxDOT Sidewalk Project (Cooper Street to Collins Street).",
+              "title": "Resolution Authorizing Settlement of Negotiations for Division Street TxDOT Sidewalk Project (Rick Wade)"
+            },
+            {
+              "display_ref": "2.6",
+              "evidence_text": "2.6.\nAll Cash Contract of Sale - FTCOFW, LLC - 7000 East Rosedale Street \nA resolution authorizing the City Manager or his designee to execute an all cash contract\nof sale with FTCOFW, LLC for the purchase of fee simple property rights in land being\nLot 3R, Tract 3, Lake Arlington Industrial Park, an Addition to the City of Fort Worth,\nTarrant County, Texas, according to the Plat thereof recorded under Clerk\u2019s File No.\nD212052244, Plat Records, Tarrant County, Texas, with a physical address being 7000\nEast Rosedale Street, Fort Worth, Tarrant County, Texas, and authorizing acceptance of\nthe conveyance of fee simple property rights.",
+              "title": "Resolution Authorizing All Cash Contract of Sale with FTCOFW, LLC for 7000 East Rosedale Street"
+            },
+            {
+              "display_ref": "2.7",
+              "evidence_text": "2.7.\nAll Cash Contract of Sale - 6208 West Pioneer Parkway and 6215 Lake Arlington\nDrive\n \nA resolution authorizing the City Manager or his designee to execute an all cash contract\nof sale with JDB Real Estate, LLC for the purchase of fee simple property rights in land\nbeing Tract 2, Site 2, Arlington Industrial Park, an addition to the City of Arlington,\nTarrant County, Texas, recorded to the plat thereof, recorded in Volume 388-39, Page\n59, Plat records, Tarrant County, Texas and Tract 3, Lot 2, Lake Arlington Industrial\nPark, an addition to the City of Arlington, Tarrant County, Texas, according to the plat\nrecorded in Volume 388-60, Page 52, Plat Records of Tarrant County, Texas with a\nphysical address being 6208 West Pioneer Parkway and 6215 Lake Arlington Drive, City\nof Arlington, Tarrant County, Texas, and authorizing acceptance of the conveyance of\nfee simple property rights.",
+              "title": "Resolution Authorizing All Cash Contract of Sale with JDB Real Estate, LLC for 6208 West Pioneer Parkway and 6215 Lake Arlington Drive"
+            },
+            {
+              "display_ref": "2.8",
+              "evidence_text": "2.8.\nOffers of Incentives to Business Prospects",
+              "title": "Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "3.1",
+              "evidence_text": "3.1.\nHUD 2025-2029 Consolidated Plan Component:  Housing Needs Assessment",
+              "title": "HUD 2025-2029 Consolidated Plan Component: Housing Needs Assessment"
+            },
+            {
+              "display_ref": "3.2",
+              "evidence_text": "3.2.\nHanditran and On-Demand Services Update",
+              "title": "Handitran and On-Demand Services Update"
+            },
+            {
+              "display_ref": "4.1",
+              "evidence_text": "4.1.\nFY24 Repetitive Loss Area Analysis Plan (RLAA) and Floodplain Program for Public\nInformation Plan (PPI) Annual Reports",
+              "title": "FY24 Repetitive Loss Area Analysis Plan and Floodplain Program for Public Information Plan Annual Reports"
+            },
+            {
+              "display_ref": "4.2",
+              "evidence_text": "4.2.\nMicromobility Pilot Program and License Agreement",
+              "title": "Micromobility Pilot Program and License Agreement"
+            },
+            {
+              "display_ref": "4.3",
+              "evidence_text": "4.3.\nBoarding Home Facilities for Elderly and Disabled Persons",
+              "title": "Boarding Home Facilities for Elderly and Disabled Persons"
+            },
+            {
+              "display_ref": "4.4",
+              "evidence_text": "4.4.\nCity of Arlington/Arlington Independent School District Program for Student ID Library\nServices",
+              "title": "City of Arlington/Arlington Independent School District Program for Student ID Library Services"
+            },
+            {
+              "display_ref": "4.5",
+              "evidence_text": "4.5.\nMunicipal Policy - \nCharter Amendments",
+              "title": "Municipal Policy Charter Amendments"
+            },
+            {
+              "display_ref": "4.6",
+              "evidence_text": "4.6.\nTransportation and Municipal Infrastructure - Safe Streets Arlington Plan Update",
+              "title": "Safe Streets Arlington Plan Update"
+            },
+            {
+              "display_ref": "4.7",
+              "evidence_text": "4.7.\nEconomic Development - Executive Session: Deliberation Regarding Economic\nDevelopment Negotiations: Offers of Incentives to Business Prospects",
+              "title": "Economic Development - Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "4.8",
+              "evidence_text": "4.8.\nArlington Housing Finance Corporation Update",
+              "title": "Arlington Housing Finance Corporation Update"
+            },
+            {
+              "display_ref": "4.9",
+              "evidence_text": "4.9.\nAppointments to Boards and Commissions",
+              "title": "Appointments to Boards and Commissions"
+            },
+            {
+              "display_ref": "4.10",
+              "evidence_text": "4.10.\nNominations for Tarrant Appraisal District Board of Directors",
+              "title": "Nominations for Tarrant Appraisal District Board of Directors"
+            },
+            {
+              "display_ref": "4.11",
+              "evidence_text": "4.11.\nEvening Agenda Items",
+              "title": "Evening Agenda Items"
+            },
+            {
+              "display_ref": "4.12",
+              "evidence_text": "4.12.\nIssues Relative to City and TxDOT Projects",
+              "title": "Issues Relative to City and TxDOT Projects"
+            },
+            {
+              "display_ref": "4.13",
+              "evidence_text": "4.13.\nFuture Agenda Items",
+              "title": "Future Agenda Items"
+            },
+            {
+              "display_ref": "2.5",
+              "evidence_text": "2.5.\n2021 Intersection Improvements (Russell Curry Road to Turner Warnell Road) \u2013\n \n \nTuesday, October \n8, 2024 \n1:30 PM\n \n \n \nSection 551.071, CONSULTATION WITH ATTORNEY\n \nSection 551.072, DELIBERATION REGARDING REAL PROPERTY\n \n \n \n \n \nOswaldo Teran Reyes and Isamar Acuna Nochebuena; Project No. PWTE21006 \nA resolution authorizing the settlement of negotiations for a street right-of-way easement\nof 4,508 square feet across a tract of land situated in William H. Curry Survey, Abstract\nNo. 277, in the City of Arlington, Tarrant County, Texas, otherwise known as 430 Turner\nWarnell Road, Mansfield, Texas, for the public use of street improvements, and all\nnecessary appurtenances for the 2021 Intersection Improvements (Russell Curry Road\nto Turner Warnell Road) project.",
+              "title": "Resolution Authorizing Settlement of Negotiations for 2021 Intersection Improvements (Oswaldo Teran Reyes and Isamar Acuna Nochebuena)"
+            }
+          ],
+          "source_result_sha256": "c79330f21514b81c8803c3282dd46f5c3dff6b6958f74790ed089c3c2e475a39",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2024-10-08T00:00:00+00:00",
+      "slug": "arlington-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ecc3710ac47f/74e16844b24866f6-asr-630f59bcef70.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/74e16844b24866f6-asr-630f59bcef70.vtt",
+        "words_key": "transcripts/ecc3710ac47f/74e16844b24866f6-asr-630f59bcef70.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/74e16844b24866f6-asr-630f59bcef70.words.json"
+      },
+      "uid": "74e16844b24866f6"
+    },
+    {
+      "agenda": {
+        "bytes": 3615,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ecc3710ac47f/8a5215cef2c8f3cf/agenda-b45650cb23e01bfb",
+        "sha256": "3b15cbf0c5edf4487de26434405a3125a2cfcac305daf8dc3f64edd53b6266b9",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/8a5215cef2c8f3cf/agenda-b45650cb23e01bfb"
+      },
+      "body": "Council",
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 8931.938,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "2.1",
+              "evidence_text": "2.1.\nDiscussion of Prestonwood Estates West Home Owners Association, et al. v. City of\nArlington, Texas Lawsuit",
+              "title": "Executive Session: Discussion of Prestonwood Estates West Home Owners Association, et al. v. City of Arlington, Texas Lawsuit"
+            },
+            {
+              "display_ref": "2.2",
+              "evidence_text": "2.2.\nOffers of Incentives to Business Prospects",
+              "title": "Executive Session: Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "3.1",
+              "evidence_text": "3.1.\nProposed Access Agreement at Lake Arlington Golf Course",
+              "title": "Proposed Access Agreement at Lake Arlington Golf Course"
+            },
+            {
+              "display_ref": "3.2",
+              "evidence_text": "3.2.\nFIFA World Cup 2026",
+              "title": "FIFA World Cup 2026"
+            },
+            {
+              "display_ref": "3.3",
+              "evidence_text": "3.3.\n2026 Capital Budget",
+              "title": "2026 Capital Budget"
+            },
+            {
+              "display_ref": "3.4",
+              "evidence_text": "3.4.\nArlington Water Utilities 2025 Year-End Report",
+              "title": "Arlington Water Utilities 2025 Year-End Report"
+            },
+            {
+              "display_ref": "4.1",
+              "evidence_text": "4.1.\nPeriodic Review of Arlington Code of Ordinances",
+              "title": "Periodic Review of Arlington Code of Ordinances"
+            },
+            {
+              "display_ref": "4.2",
+              "evidence_text": "4.2.\n2025 Landmark Preservation Commission Annual Report",
+              "title": "2025 Landmark Preservation Commission Annual Report"
+            },
+            {
+              "display_ref": "4.3",
+              "evidence_text": "4.3.\nCommunity and Neighborhood Development - (1) Multi-Family Recycling; (2) PY2026\nAction Plan \u2013 Finalization of HOME Review",
+              "title": "Community and Neighborhood Development: Multi-Family Recycling and PY2026 Action Plan HOME Review"
+            },
+            {
+              "display_ref": "4.4",
+              "evidence_text": "4.4.\nEconomic Development - E\nxecutive Session: Offers of Incentives to Business Prospects",
+              "title": "Economic Development: Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "4.5",
+              "evidence_text": "4.5.\nArlington Housing Finance Corporation Update",
+              "title": "Arlington Housing Finance Corporation Update"
+            },
+            {
+              "display_ref": "4.6",
+              "evidence_text": "4.6.\nAppointments to Boards and Commissions",
+              "title": "Appointments to Boards and Commissions"
+            },
+            {
+              "display_ref": "4.7",
+              "evidence_text": "4.7.\nEvening Agenda Items",
+              "title": "Evening Agenda Items"
+            },
+            {
+              "display_ref": "4.8",
+              "evidence_text": "4.8.\nIssues Relative to City and TxDOT Projects",
+              "title": "Issues Relative to City and TxDOT Projects"
+            },
+            {
+              "display_ref": "4.9",
+              "evidence_text": "4.9.\nCouncil External Committee and Training Reports",
+              "title": "Council External Committee and Training Reports"
+            },
+            {
+              "display_ref": "4.10",
+              "evidence_text": "4.10.\nFuture Agenda Items",
+              "title": "Future Agenda Items"
+            }
+          ],
+          "source_result_sha256": "40d82e8071bd4f4597ce8049495b144512289a7cc9b786274fbce44d96ceca60",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2026-03-10T00:00:00+00:00",
+      "slug": "arlington-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ecc3710ac47f/8a5215cef2c8f3cf-asr-f83a4115d540.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/8a5215cef2c8f3cf-asr-f83a4115d540.vtt",
+        "words_key": "transcripts/ecc3710ac47f/8a5215cef2c8f3cf-asr-f83a4115d540.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/8a5215cef2c8f3cf-asr-f83a4115d540.words.json"
+      },
+      "uid": "8a5215cef2c8f3cf"
+    },
+    {
+      "agenda": {
+        "bytes": 3858,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ecc3710ac47f/eb5eb0ee29393dbd/agenda-7a36cace8eec213e",
+        "sha256": "a5466152dec3b6bace8ea10b478c142acb47a175768df67dcf7e013a5ef00903",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/eb5eb0ee29393dbd/agenda-7a36cace8eec213e"
+      },
+      "body": "Council",
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11009.671,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "I.",
+              "evidence_text": "I.\nCALL TO ORDER",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "2.1",
+              "evidence_text": "2.1.\nDiscussion of Landfill Lease Agreement",
+              "title": "Discussion of Landfill Lease Agreement"
+            },
+            {
+              "display_ref": "2.2",
+              "evidence_text": "2.2.\nDiscussion Regarding the Possible Purchase, Exchange, Lease, or Value of Real\nProperty for Eligible Projects of the Arlington Economic Development Corporation",
+              "title": "Discussion of Real Property for Arlington Economic Development Corporation"
+            },
+            {
+              "display_ref": "2.3",
+              "evidence_text": "2.3.\nOffers of Incentives to Business Prospects",
+              "title": "Discussion of Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "3.1",
+              "evidence_text": "3.1.\nFY 2026 Budget Planning Update",
+              "title": "FY 2026 Budget Planning Update"
+            },
+            {
+              "display_ref": "3.2",
+              "evidence_text": "3.2.\n2026 FIFA World Cup Update",
+              "title": "2026 FIFA World Cup Update"
+            },
+            {
+              "display_ref": "3.3",
+              "evidence_text": "3.3.\nInnovate Arlington Phase I Engagement Report Out",
+              "title": "Innovate Arlington Phase I Engagement Report Out"
+            },
+            {
+              "display_ref": "3.4",
+              "evidence_text": "3.4.\nArlington Fire Department 2024 Annual Report",
+              "title": "Arlington Fire Department 2024 Annual Report"
+            },
+            {
+              "display_ref": "3.5",
+              "evidence_text": "3.5.\nHousing Annual Report",
+              "title": "Housing Annual Report"
+            },
+            {
+              "display_ref": "3.6",
+              "evidence_text": "3.6.\nCouncil Priority - Leverage Technology.",
+              "title": "Council Priority - Leverage Technology"
+            },
+            {
+              "display_ref": "4.1",
+              "evidence_text": "4.1.\nCity of Arlington Boards and Commissions Review",
+              "title": "City of Arlington Boards and Commissions Review"
+            },
+            {
+              "display_ref": "4.2",
+              "evidence_text": "4.2.\nContract for Medical Direction and Health Authority Services",
+              "title": "Contract for Medical Direction and Health Authority Services"
+            },
+            {
+              "display_ref": "4.3",
+              "evidence_text": "4.3.\nEconomic Development - E\nxecutive Session: Deliberation Regarding Economic\nDevelopment Negotiations: Offers of Incentives to Business Prospects",
+              "title": "Deliberation Regarding Economic Development Negotiations: Offers of Incentives to Business Prospects"
+            },
+            {
+              "display_ref": "4.4",
+              "evidence_text": "4.4.\nAppointments to Boards and Commissions",
+              "title": "Appointments to Boards and Commissions"
+            },
+            {
+              "display_ref": "4.5",
+              "evidence_text": "4.5.\nCity Council External Committee and Training Reports",
+              "title": "City Council External Committee and Training Reports"
+            },
+            {
+              "display_ref": "4.6",
+              "evidence_text": "4.6.\nLegislative Update",
+              "title": "Legislative Update"
+            },
+            {
+              "display_ref": "4.7",
+              "evidence_text": "4.7.\nEvening Agenda Items",
+              "title": "Evening Agenda Items"
+            },
+            {
+              "display_ref": "4.8",
+              "evidence_text": "4.8.\nIssues Relative to City and TxDOT Projects",
+              "title": "Issues Relative to City and TxDOT Projects"
+            },
+            {
+              "display_ref": "4.9",
+              "evidence_text": "4.9.\nFuture Agenda Items",
+              "title": "Future Agenda Items"
+            }
+          ],
+          "source_result_sha256": "223152227162c547b8a653885c0d78934993d4c3a3a943d538e4e330b5b2e17b",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2025-06-10T00:00:00+00:00",
+      "slug": "arlington-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ecc3710ac47f/eb5eb0ee29393dbd-asr-e9444e279dbc.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/eb5eb0ee29393dbd-asr-e9444e279dbc.vtt",
+        "words_key": "transcripts/ecc3710ac47f/eb5eb0ee29393dbd-asr-e9444e279dbc.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ecc3710ac47f/eb5eb0ee29393dbd-asr-e9444e279dbc.words.json"
+      },
+      "uid": "eb5eb0ee29393dbd"
+    },
+    {
+      "agenda": {
+        "bytes": 10878,
+        "class": "complete",
+        "error": null,
+        "key": "documents/6540eef2dc2e/cbdae79171ad8b75/agenda-04f0bc14e7ebc8c4",
+        "sha256": "f389ee69db6a0d08a10a48e32e4540173e4a511e6ddb26ea681a23614fe99182",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/cbdae79171ad8b75/agenda-04f0bc14e7ebc8c4"
+      },
+      "body": "Zoning Commission Zoning Commission",
+      "body_key": "zoning commission zoning commission",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 13791.893,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nOverview of Zoning Cases on Today\u2019s Agenda\t\t\t\tStaff",
+              "title": "Overview of Zoning Cases"
+            },
+            {
+              "display_ref": "A.",
+              "evidence_text": "A.\nRoll Call",
+              "title": "Roll Call"
+            },
+            {
+              "display_ref": "B.",
+              "evidence_text": "B.\nAPPROVAL OF MEETING MINUTES",
+              "title": "Approval of Meeting Minutes"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nZC-26-064\t\tCase Manager: Beth Knight\t\t\tCD 7\nSite Location:\t1401\u00a0Alemeda Street\nAcreage:\t\t24.02\nOwner/Applicant:\tTako, LLC / Ray Oujesky, Kelly Hart & Hallman, LLP / Zach Rakusin, Rak Equities\nRequest:\t\tFrom: \u201cA-5\u201d One-Family Residential, \u201cF\u201d General Commercial \n\t\tTo: \u201cPD/I\u201d Planned Development for all uses in \u201cI\u201d Light Industrial uses excluding Massage Parlor & Tattoo Parlor; site plan \t\t\tincluded\nContinued from the July 8, 2026 Zoning Commission meeting",
+              "title": "Zoning Case ZC-26-064 (1401 Alemeda Street)"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.\nZC-26-071\t\tCase Manager: Enrique Alvarez\t\t\tCD 2\nSite Location:\t1297-1309\u00a0(odds) Cantrell Sansom Road\nAcreage:\t\t12.45\nOwner/Applicant:\tM.C. & Janet Brister / Hopewell Development II, LP / Kimley-Horn and Associates, Inc., Brandon Middleton\nRequest:\t\tFrom: \u201cF\u201d General Commercial, \u201cK\u201d Heavy Industrial \n\t\tTo: \u201cPD/F\u201d Planned Development for all uses in \u201cF\u201d General Commercial plus assembly of pre-manufactured parts (except for \t\t\tvehicles, trailers, airplanes or mobile homes), bottling works, milk or soft drinks, food processing (no slaughtering), \t\t\tfurniture or cabinet repair or construction, machine shops, monument/marble works, finishing and carving only, monument works \t\t\t(stone), sheet metal shop, warehouse or bulk storage, and wholesale office or sample room; site plan included\nContinued from the August 12, 2026 Zoning Commission meeting",
+              "title": "Zoning Case ZC-26-071 (1297-1309 Cantrell Sansom Road)"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3.\nZC-26-084\tCase Manager: Beth Knight\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 9\nSite Location:\t2800 Cleburne Road / 1600 block W. Cantey Street\nAcreage:\t\t1.0\nOwner/Applicant:\tFW Triple Net #2 8th Ave, LLC / Quiktrip, Ben Williams / Westwood Professional Services, Jonathan Schindler\nRequest:\t\tTo: Add a Conditional Use Permit (CUP) in \u201cE\u201d Neighborhood Commercial for an automated car wash; site plan included\nContinued from the August 12, 2026 Zoning Commission meeting",
+              "title": "Zoning Case ZC-26-084 (2800 Cleburne Road / 1600 block W. Cantey Street)"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4.\nZC-26-119\t\tCase Manager: Enrique Alvarez\t\t\tCD 6\nSite Location:\t6345 Altamesa Boulevard\nAcreage:\t\t1.77\nOwner/Applicant:\tCattlemen\u2019s Bank / 4C Engineers, John Hamilton\nRequest:\t\tTo: Amend \u201cPD1063\u201d (PD/G) with a development standard to allow an accessory structure in front of the building; site plan \t\t\tincluded",
+              "title": "Zoning Case ZC-26-119 (6345 Altamesa Boulevard)"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5.\nZC-26-091\t\tCase Manager: Beth Knight\t\t\tCD 2\nSite Location:\t5100 Azle Avenue\nAcreage:\t\t10.90\nOwner/Applicant:\t5050 Azle Ave. Storage, LLC / Brian Sullivan / Karen Tellez\nRequest:\t\tFrom: \u201cE\u201d Neighborhood Commercial \n\t\tTo: Planned Development for all uses in \"E\" Neighborhood Commercial plus mini-warehouses, warehouses and outdoor storage; \t\t\tsite plan included",
+              "title": "Zoning Case ZC-26-091 (5100 Azle Avenue)"
+            },
+            {
+              "display_ref": "6",
+              "evidence_text": "6.\nZC-26-101\t\tCase Manager: Beth Knight\t\t\tCD 10\nSite Location:\t2101 \u2013 2200 (evens) Avondale Haslet Road\nAcreage:\t\t6.86\nOwner/Applicant:\tHunter Crossroads, LP / Kelly Hart & Hallman, LLP, Ray Oujesky\nRequest:\t\tTo: Amend \u201cPD829\u201d (PD/F) to add outdoor storage as a permitted use with a development standard to allow outdoor storage less \t\t\tthan 200 feet from the northern & eastern property lines; site plan included",
+              "title": "Zoning Case ZC-26-101 (2101 \u2013 2200 Avondale Haslet Road)"
+            },
+            {
+              "display_ref": "7",
+              "evidence_text": "7.\nZC-26-103\tCase Manager: Enrique Alvarez\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 5\nSite Location:\t3416 S. Raider Drive, 11099 Trinity Boulevard\nAcreage:\t\t16.39\nOwner/Applicant:\tTrinity River Authority of Texas / Quiddity Engineering, LLC, Jennifer Franklin\nRequest:\t\tFrom: \u201cAG\u201d Agricultural, \u201cPD1234\u201d (PD/I) for all uses in \u201cI\u201d Light Industrial plus outdoor storage with no primary use and \t\t\treduced landscaping requirements \n\t\tTo: \u201cJ\u201d Medium Industrial",
+              "title": "Zoning Case ZC-26-103 (3416 S. Raider Drive, 11099 Trinity Boulevard)"
+            },
+            {
+              "display_ref": "8",
+              "evidence_text": "8.\nZC-26-105\tCase Manager: Enrique Alvarez\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 10\nSite Location:\t9201 NW US Highway 287\nAcreage:\t\t22.55\nOwner/Applicant:\tDickies FW DC Holdings, LLC / Kelly Hart & Hallman, Ray Oujesky\nRequest:\t\tFrom: \u201cG\u201d Intensive Commercial, \u201cI\u201d Light Industrial \n\t\tTo: \u201cI\u201d Light Industrial",
+              "title": "Zoning Case ZC-26-105 (9201 NW US Highway 287)"
+            },
+            {
+              "display_ref": "9",
+              "evidence_text": "9.\nZC-26-106\tCase Manager: Lynn Jordan\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 5\nSite Location:\t7911 Meadowbrook Drive\nAcreage:\t\t50.93\nOwner/Applicant:\tElbaz Family Foundation / Forestar, Landry Stewart / Shield Engineering, Landon Geary\nRequest:\t\tFrom: \u201cA-7.5\u201d One-Family, \u201cC\u201d Medium Density Multifamily, \u201cE\u201d Neighborhood Commercial \n\t\tTo: Tract 1: (33.116 ac) \u201cA-5\u201d One-Family \n\u00a0 \u00a0 \u00a0 \t\t\tTract 2: (17.815 ac) \u201cR1\u201d Zero Lot Line/Cluster",
+              "title": "Zoning Case ZC-26-106 (7911 Meadowbrook Drive)"
+            },
+            {
+              "display_ref": "10",
+              "evidence_text": "10.\nZC-26-107\tCase Manager: Enrique Alvarez\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 8\nSite Location:\t1125 E. Broadway Avenue\nAcreage:\t\t0.24\nOwner/Applicant:\tNewPad Building Company / Cooper Conger, Kasie Dudley\nRequest:\t\tFrom: \u201cA-5/HC District\u201d One-Family / Historic & Cultural Overlay District \n\t\tTo: \u201cB/HC District\u201d Two-Family / Historic & Cultural Overlay District",
+              "title": "Zoning Case ZC-26-107 (1125 E. Broadway Avenue)"
+            },
+            {
+              "display_ref": "11",
+              "evidence_text": "11.\nZC-26-110\tCase Manager: Lynn Jordan\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 7\nSite Location:\t2300 Merrick Street, 5201 & 5209 Collinwood Avenue\nAcreage:\t\t0.48\nOwner/Applicant:\tRPFW Properties, LLC / Jackson Walker, LLP, Tyler Wallach\nRequest:\t\tTo: Amend \u201cPD1226\u201d (PD/SU for a grocery store) to add restaurant, caf\u00e9, cafeteria as a permitted use with a development \t\t\tstandard for reduction in required parking; site plan included",
+              "title": "Zoning Case ZC-26-110 (2300 Merrick Street, 5201 & 5209 Collinwood Avenue)"
+            },
+            {
+              "display_ref": "12",
+              "evidence_text": "12.\nZC-26-112\tCase Manager: Lynn Jordan\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 7\nSite Location:\t3608 & 3612 Dexter Avenue\nAcreage:\t\t0.28\nOwner/Applicant:\tLeslie K, Doris J & Arlynn Purvis, Jr. / Texas Surveying & Engineering, Teresa McGee\nRequest:\t\tTo: Amend \u201cPD1468\u201d to add development standards for reductions in required parking, projected front yard setback and rear \t\t\tyard supplemental setback; site plan included",
+              "title": "Zoning Case ZC-26-112 (3608 & 3612 Dexter Avenue)"
+            },
+            {
+              "display_ref": "13",
+              "evidence_text": "13.\nZC-26-113\tCase Manager: Lynn Jordan\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 7\nSite Location:\t2801 Shoshoni Drive\nAcreage:\t\t16.43\nOwner/Applicant:\tEagle Mountain-Saginaw ISD, Dwayne Jones / TNP, Inc., Philip Varughese\nRequest:\t\tFrom: \u201cA-5\u201d One-Family Residential and \u201cR1\u201d Zero Lot Line/Cluster \n\t\tTo: \u201cPD/CF\u201d Planned Development for all uses in \u201cCF\u201d Community Facilities excluding golf course and country club and to allow \t\t\tan electronic changeable copy sign with development standards to be located across the street from \u201cA-5\u201d or \u201cB\u201d zoning \t\t\t\tdistrict, with an area of 20 square feet (37% of the total sign area); site plan waiver requested",
+              "title": "Zoning Case ZC-26-113 (2801 Shoshoni Drive)"
+            },
+            {
+              "display_ref": "14",
+              "evidence_text": "14.\nZC-26-114\tCase Manager: Tony Herhold\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 2\nSite Location:\tGenerally bounded by or along the Union Pacific Railroad, 29th Street, Hampton Street, 32nd Street, Glendora Street, Strohl \t\t\tStreet, Schwartz Avenue, 31st Street, Schadt Street, Dewey Street, Weber Street, 28th Street, Hutchinson Street, Ohio Street, \t\t\tGlendale Avenue, Brennan Avenue, and Peak Street\nAcreage:\t\t204.43\nOwner/Applicant:\tMultiple owners; City of Fort Worth\nRequest:\t\tFrom: \u201cCUP-29\u201d, \u201cI\u201d Light Industrial, \u201cJ\u201d Medium Industrial, \u201cK\u201d Heavy Industrial, \u201cB\u201d Two-Family, \u201cA-5\u201d One-Family, \u201cER\u201d \t\t\tNeighborhood Commercial Restricted, \u201cE\u201d Neighborhood Commercial \n\t\tTo: \u201cMU-2\u201d High Intensity Mixed-Use, \u201cUR\u201d Urban Residential, \u201cB\u201d Two-Family, \u201cA-5\u201d One-Family, \u201cE\u201d Neighborhood Commercial, \t\t\t\u201cO1\u201d Floodplain,",
+              "title": "Zoning Case ZC-26-114 (Generally bounded by or along the Union Pacific Railroad, etc.)"
+            },
+            {
+              "display_ref": "15",
+              "evidence_text": "15.\nZC-26-121\tCase Manager: Francisco Vega\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 2\nSite Location:\tText Amendment\nAcreage:\nOwner/Applicant:\tCity of Fort Worth\nRequest:\t\tTo: An Ordinance Amending the Comprehensive Zoning Ordinance of the City of Fort Worth, Being Ordinance No. 21653, as \t\t\t\tAmended, Codified as Appendix \u201cA\u201d of the Code of the City of Fort Worth (2015), to Amend Chapter 4, \u201cDistrict Regulations,\u201d \t\t\tArticle 13, \u201cForm-Based Districts,\u201d Section 4.1304, Panther Island (\u201cPI\u201d) District,\u00a0 to Consolidate Existing Subdistricts \t\t\tFrom Nine to Two Primary Districts: \u201cPI-Core\u201d Panther Island Core And \u201cPI-Edge\u201d Panther Island Edge; To Remove the Metes and \t\t\tBounds Descriptions For Core Zones and to Revise in its Entirety the Development Standards and Guidelines; To Add Guiding \t\t\tPrinciples and Development Objectives Based On Panther Island Vision 2.0; To Provide For Revised Administrative and Urban \t\t\tDesign Commission Review and Approval of Certificate of Appropriateness; Amending Appendix B \u201cMaps\u201d, Exhibit B.17 Panther \t\t\tIsland District To Update the District\u2019s Boundary",
+              "title": "Zoning Case ZC-26-121 (Text Amendment - Panther Island District)"
+            },
+            {
+              "display_ref": "16",
+              "evidence_text": "16.\nZC-26-117\tCase Manager: Francisco Vega\t\u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0  \tCD 2\nSite Location:\tGenerally bounded by the Trinity River from N. Main Street, the Clear Fork of the Trinity River, Arthur and Kansas Streets, \t\t\tand the Fort Worth & Western Railroad\nAcreage:\t\t448.96\nOwner/Applicant:\tMultiple owners; City of Fort Worth Development Services\nRequest:\t\tFrom: \u201cPD488\u201d, \u201cPD931\u201d, \u201cPD1097\u201d, PI-LF, PI-N-1, PI-N-2, PI-N-3, PI-NM, PT-TCCD, PI-UL-1, PI-UL-2, PI-UL-3 \n\t\tTo: \u201cPI-Core\u201d Panther Island Core\u00a0 & \u201cPI-Edge\u201d Panther Island Edge",
+              "title": "Zoning Case ZC-26-117 (Panther Island Core & Edge Zoning)"
+            },
+            {
+              "display_ref": "E.",
+              "evidence_text": "E.\nADJOURNMENT\nADJOURNMENT:",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "b766336aea856985df2d19604d9fe60df5116885ffd5f4789304d227f2530114",
+          "status": "completed"
+        }
+      },
+      "provider": "granicus",
+      "published": "2026-09-09T00:00:00+00:00",
+      "slug": "fort-worth-tx",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/6540eef2dc2e/cbdae79171ad8b75-asr-351a2e82fca6.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/cbdae79171ad8b75-asr-351a2e82fca6.vtt",
+        "words_key": "transcripts/6540eef2dc2e/cbdae79171ad8b75-asr-351a2e82fca6.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/6540eef2dc2e/cbdae79171ad8b75-asr-351a2e82fca6.words.json"
+      },
+      "uid": "cbdae79171ad8b75"
+    },
+    {
+      "agenda": {
+        "bytes": 3427,
+        "class": "complete",
+        "error": null,
+        "key": "documents/3b7588310856/b686db6248625fc2/agenda-3563d252b15b4be1",
+        "sha256": "d97461d0e2c4b6a68e7f1a2404799b98f4d7e804acab61d4b481efaeec2198a9",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/3b7588310856/b686db6248625fc2/agenda-3563d252b15b4be1"
+      },
+      "body": "Mobility Committee",
+      "body_key": "mobility committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7339.721,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "1",
+              "evidence_text": "1.  CITIZEN COMMENTS ON AGENDA ITEMS",
+              "title": "Citizen comments on agenda items"
+            },
+            {
+              "display_ref": "MC23-027A",
+              "evidence_text": "Consider approval of the minutes of July 26, 2023MC23-027A.",
+              "title": "Approval of the minutes of July 26, 2023"
+            },
+            {
+              "display_ref": "MC23-032B",
+              "evidence_text": "Receive nominations and elect a Committee Chair and Vice-Chair.MC23-032B.",
+              "title": "Election of Committee Chair and Vice-Chair"
+            },
+            {
+              "display_ref": "MC23-029C",
+              "evidence_text": "Receive a report and hold a discussion regarding the City of Denton \nTransportation/Mobility Project Status Report.\nMC23-029C.",
+              "title": "Transportation/Mobility Project Status Report discussion"
+            },
+            {
+              "display_ref": "MC23-031D",
+              "evidence_text": "Staff MemorandumMC23-031D.",
+              "title": "Staff Memorandum"
+            },
+            {
+              "display_ref": "A",
+              "evidence_text": "A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Mobility \nCommittee or the public with specific factual information or recitation of policy, or accept a proposal to \nplace the matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the Texas \nOpen Meetings Act, provide reports about items of community interest regarding which no action will \nbe taken, to include: expressions of thanks, congratulations, or condolence; information regarding",
+              "title": "Concluding items, inquiries, and community reports"
+            }
+          ],
+          "source_result_sha256": "8b62d47cf173d44c190e52ff25a9996977ee7eb1e11e3fa0bcbdc42b694b547d",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2023-08-23T00:00:00+00:00",
+      "slug": "denton-tx-agenda-committee",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/3b7588310856/b686db6248625fc2-asr-39c4e9f439e9.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/b686db6248625fc2-asr-39c4e9f439e9.vtt",
+        "words_key": "transcripts/3b7588310856/b686db6248625fc2-asr-39c4e9f439e9.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/b686db6248625fc2-asr-39c4e9f439e9.words.json"
+      },
+      "uid": "b686db6248625fc2"
+    },
+    {
+      "agenda": {
+        "bytes": 14535,
+        "class": "complete",
+        "error": null,
+        "key": "documents/76869ed1994f/bfcdafa242d6f4aa/agenda-5d87296a977c87a4",
+        "sha256": "613b6a6bedf4233cb2fa6971d98d67042a17dfe1308557798b5c96b6913bf93c",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/76869ed1994f/bfcdafa242d6f4aa/agenda-5d87296a977c87a4"
+      },
+      "body": "Council Government Performance & Financial Management Committee",
+      "body_key": "council government performance and financial management committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7311.261,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "1",
+              "evidence_text": "1. Approval of the November 14, 2023 Government Performance and \nFinancial Management Committee Meeting Minutes",
+              "title": "Approval of the November 14, 2023 Government Performance and Financial Management Committee Meeting Minutes"
+            },
+            {
+              "display_ref": "A",
+              "evidence_text": "A. Citywide Technical Debt Overview",
+              "title": "Citywide Technical Debt Overview"
+            },
+            {
+              "display_ref": "B",
+              "evidence_text": "B. Development Servies- Monthly Performance Update & Process Map \nImprovements",
+              "title": "Development Services Monthly Performance Update & Process Map Improvements"
+            },
+            {
+              "display_ref": "C",
+              "evidence_text": "C. Review of City Real Estate for Development and Redevelopment \nOpportunities",
+              "title": "Review of City Real Estate for Development and Redevelopment Opportunities"
+            },
+            {
+              "display_ref": "D",
+              "evidence_text": "D. Status Update of Proposed Private Game Club Land Use",
+              "title": "Status Update of Proposed Private Game Club Land Use"
+            },
+            {
+              "display_ref": "E",
+              "evidence_text": "23-3233\nE. Discussion Regarding the Mayor\u2019s State of the City23-3234",
+              "title": "Discussion Regarding the Mayor\u2019s State of the City"
+            },
+            {
+              "display_ref": "F",
+              "evidence_text": "F. GPFM Two-Month Forecast23-3148",
+              "title": "GPFM Two-Month Forecast"
+            },
+            {
+              "display_ref": "G",
+              "evidence_text": "G. Technology Accountability Report Information as of November 30, 2023",
+              "title": "Technology Accountability Report Information as of November 30, 2023"
+            },
+            {
+              "display_ref": "H",
+              "evidence_text": "H. Office of the City Auditor Monthly Update on Internal Audit Reports Released \nBetween November 4, 2023 and December 1, 2023",
+              "title": "Office of the City Auditor Monthly Update on Internal Audit Reports Released Between November 4, 2023 and December 1, 2023"
+            },
+            {
+              "display_ref": "I",
+              "evidence_text": "I. Quarterly Investment Report as of September 30, 2023",
+              "title": "Quarterly Investment Report as of September 30, 2023"
+            },
+            {
+              "display_ref": "J",
+              "evidence_text": "J. Boards and Commissions Audit Update",
+              "title": "Boards and Commissions Audit Update"
+            },
+            {
+              "display_ref": "K",
+              "evidence_text": "K. 2025 Legislative Priorities",
+              "title": "2025 Legislative Priorities"
+            },
+            {
+              "display_ref": "L",
+              "evidence_text": "L. Office of Procurement Services: Authorize Supplemental Agreement No. \n13 to increase the service contract with Workday, Inc. for continued \nlicensing, configuration, hosting, maintenance, and technical support for the \nCity\u2019s existing human resource and payroll system and to extend the \ncontract from March 8, 2024 to March 7, 2025 - Not to exceed \n$4,952,024.05, from $19,970,488.21 to $24,922,512.26 - Financing: Data \nServices Fund",
+              "title": "Office of Procurement Services Supplemental Agreement with Workday, Inc."
+            },
+            {
+              "display_ref": "M",
+              "evidence_text": "M. Park & Recreation Department: Authorize a twenty-four month annual \nfunding agreement with the Dallas Arboretum and Botanical Society, Inc. to \nprovide services and program support within the City of Dallas in the amount \nof $424,393.00 for the period of January 1, 2024, through December 31, \n2024; and in the amount of $424,393.00 for the period of January 1, 2025, \nthrough December 31, 2025 - Not to exceed $848,786.00 - Financing: \nGeneral Fund",
+              "title": "Park & Recreation Department Funding Agreement with Dallas Arboretum and Botanical Society, Inc."
+            }
+          ],
+          "source_result_sha256": "6c766f8be4964507e1fee4792bce666b953a4b3161eb4529b4a76d80ce4b7658",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2023-12-12T00:00:00+00:00",
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/76869ed1994f/bfcdafa242d6f4aa-asr-2f9b84d6b7d7.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/bfcdafa242d6f4aa-asr-2f9b84d6b7d7.vtt",
+        "words_key": "transcripts/76869ed1994f/bfcdafa242d6f4aa-asr-2f9b84d6b7d7.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/bfcdafa242d6f4aa-asr-2f9b84d6b7d7.words.json"
+      },
+      "uid": "bfcdafa242d6f4aa"
+    },
+    {
+      "agenda": {
+        "bytes": 2603,
+        "class": "complete",
+        "error": null,
+        "key": "documents/ac8d461ff3a3/5ddb8129cbd21c8d/agenda-2e4513f64ae35e15",
+        "sha256": "e1e562c1841cb9c78a1b6b2482ce27b565474554b92ba56f2239607331fae334",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/ac8d461ff3a3/5ddb8129cbd21c8d/agenda-2e4513f64ae35e15"
+      },
+      "body": "Public Safety Commission Special Called Meeting",
+      "body_key": "public safety commission special called meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7206.466,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": null,
+              "evidence_text": "CALL TO ORDER (4:00pm)",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1. APPROVAL OF MINUTES (4:00pm - 4:05pm)",
+              "title": "Approval of Minutes"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.   CITIZEN COMMUNICATION: GENERAL (4:05pm - 4:20pm)",
+              "title": "Citizen Communication"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3. Monthly stats from public safety departments \u2013 authorized strength, vacancies, overtime \nhours, call volume, response times. (4:20pm - 4:30pm) Sponsored by Commissioners \nLanduyt and Webber",
+              "title": "Monthly Public Safety Department Statistics Report"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4.  Status report on pending DPS audit of APD sexual assault clearance rates for January, \nNovember, and December 2017  (4:30pm \u2013 4:50pm)   Sponsored by Commissioners \nBernhardt and Webber",
+              "title": "Status Report on DPS Audit of APD Sexual Assault Clearance Rates"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5.  Report on wildfire readiness in Central Texas (4:50pm-5:20pm) Sponsored by \nCommissioners Webber and Haley",
+              "title": "Report on Wildfire Readiness in Central Texas"
+            },
+            {
+              "display_ref": "6",
+              "evidence_text": "6.   Report from Police Monitor on newly formed Office of Police Oversight (OPO) \n(5:20pm-5:45pm)  \nSponsored by Commissioners Haley and Webber",
+              "title": "Report from Police Monitor on Office of Police Oversight"
+            },
+            {
+              "display_ref": "7",
+              "evidence_text": "7.    Report on building repairs at the Police Patrol Station on 8\nth Street (5:45pm \u2013 5:50pm) \nSponsored by Commissioners Webber and Haley",
+              "title": "Report on Police Patrol Station Building Repairs"
+            },
+            {
+              "display_ref": "8",
+              "evidence_text": "8.  Future Agenda Items (5:50pm \u2013 6:00pm)",
+              "title": "Discussion of Future Agenda Items"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURNMENT @ 6pm",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "4d4d3e234164a4abef1981fda2699943bfc1788b1714e2887d999d1f7f3ce28e",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2019-01-07T00:00:00+00:00",
+      "slug": "austin-tx-public-safety-commission",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/ac8d461ff3a3/5ddb8129cbd21c8d-asr-56ae40d22831.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/ac8d461ff3a3/5ddb8129cbd21c8d-asr-56ae40d22831.vtt",
+        "words_key": "transcripts/ac8d461ff3a3/5ddb8129cbd21c8d-asr-56ae40d22831.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/ac8d461ff3a3/5ddb8129cbd21c8d-asr-56ae40d22831.words.json"
+      },
+      "uid": "5ddb8129cbd21c8d"
+    },
+    {
+      "agenda": {
+        "bytes": 2181,
+        "class": "complete",
+        "error": null,
+        "key": "documents/f9afe970563e/e0fcd5db5b678a1c/agenda-7daa95fc0d15eff4",
+        "sha256": "01b721da8f1b8c6039815579654d9f8d59db0a8bf9edad4eafee2bbbeb2bd284",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/f9afe970563e/e0fcd5db5b678a1c/agenda-7daa95fc0d15eff4"
+      },
+      "body": "Council Special Committee on Economic Incentives",
+      "body_key": "council special committee on economic incentive",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7216.192,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": null,
+              "evidence_text": "Call meeting to order.",
+              "title": "Call meeting to order"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1. Approval of Minutes for the August 27, 2012 Regular Committee meeting.",
+              "title": "Approval of August 27, 2012 meeting minutes"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2. Citizen Communications.",
+              "title": "Citizen Communications"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3. Presentation from Michael Oden, Associate Dean fo r Research and Operations Director, Graduate \nProgram in Community & Regional Planning University of Texas at Austin, on Economic Incentives",
+              "title": "Presentation from Michael Oden on Economic Incentives"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4. Presentation from Travis County on Economic Development Policy and Procedures.",
+              "title": "Presentation from Travis County on Economic Development Policy and Procedures"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5. Presentation from Jon Hockenyos, Texas Perspectives.",
+              "title": "Presentation from Jon Hockenyos"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "Adjourn",
+              "title": "Adjourn meeting"
+            }
+          ],
+          "source_result_sha256": "39fde323f99d43184179a9d737ccc151893d17e3b90cafba4254faee2d980d92",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2012-09-26T00:00:00+00:00",
+      "slug": "austin-tx-all-boards-and-commissions",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/fe4d235eef5a/e0fcd5db5b678a1c-asr-f4544f435152.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/fe4d235eef5a/e0fcd5db5b678a1c-asr-f4544f435152.vtt",
+        "words_key": "transcripts/fe4d235eef5a/e0fcd5db5b678a1c-asr-f4544f435152.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/fe4d235eef5a/e0fcd5db5b678a1c-asr-f4544f435152.words.json"
+      },
+      "uid": "e0fcd5db5b678a1c"
+    },
+    {
+      "agenda": {
+        "bytes": 6169,
+        "class": "complete",
+        "error": null,
+        "key": "documents/3b7588310856/9d84baa70ea96075/agenda-f5962be48c3526bd",
+        "sha256": "560b39c946a43f78454b096da3d0133073edaf7e0e6087b560a42407e1866eda",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/3b7588310856/9d84baa70ea96075/agenda-f5962be48c3526bd"
+      },
+      "body": "Planning and Zoning Meeting",
+      "body_key": "planning and zoning meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 12933.08,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nClarification of agenda items listed in the Regular Session agenda for this meeting, and discussion of issues not briefed in the written backup materials.",
+              "title": "Clarification of work session agenda items"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.\nReceive a report, hold a discussion, and give staff direction concerning proposed amendments to\na.\nSubchapter 3 of the Denton Development Code (DDC) regarding authority given to the Zoning Board of Adjustment;\nb.\nSubchapter 16 of the DDC regarding gas well development platting;\nc.\nSubchapter 22 of the DDC regarding gas well drilling and production;\nd.\nSubchapter 23 - Definitions - of the DDC; and\ne.\nthe schedule of fees contained in Ordinances 2005-237, and 2009-098 (2006 City Fire Code) pertaining to gas well drilling and production within the City limits and the Extra Territorial Jurisdiction (DCA10-0003, Mark Cunningham and Nana Appiah)",
+              "title": "Discussion of proposed DDC amendments and gas well fee schedules"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3.\nReceive a report, hold a discussion, and give staff direction concerning the proposed Downtown Implementation Plan.\u00a0 This item will also include discussion on the proposed Form Based Code, proposed Wayfinding System, proposed amendment to the Mobility Plan, and proposed future engineering studies.\u00a0 (S10-0001, Downtown Implementation Plan (DTIP), Brian Lockley/Ron Menguita)",
+              "title": "Discussion of Downtown Implementation Plan and related projects"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4.\nReceive a report, hold a discussion, and give staff direction regarding a proposed amendment to the Denton Development Code, Sections 35.5.7.3 and 35.5.8, regarding maximum building height in the Industrial Center General (IC-G) District.\u00a0 (DCA10-0005, IC-G Max Height Requirement, Cindy Jackson)",
+              "title": "Discussion of Industrial Center General (IC-G) building height amendment"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5.\nConsultation with Attorney - Under Texas Government Code Section 551.071.",
+              "title": "Attorney Consultation"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nPLEDGE OF ALLEGIANCE:",
+              "title": "Pledge of Allegiance"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3.\nCONSENT AGENDA:\u00a0 Staff recommends approval of the following items because they meet the requirements of the Denton Development Code. Approval of the Consent Agenda includes staff recommendations for approvals and authorizes staff to proceed. The Planning and Zoning Commission has reviewed the applications and has had an opportunity to raise questions regarding the items prior to consideration:\nA.\nPreliminary Plat of Lot 2, Block A of the Preserve at Pecan Creek Lodge Apartments.\u00a0 The subject property is approximately 15.645 acres in size and is generally located 550 feet east of Old Highway 77, north of Shady Shores Boulevard, south of Lakeview Boulevard and west of Swisher Road within the Gideon Walker Survey, Abstract No. 1330.\u00a0 The property is located within a Planned Development (PD-132) zoning district.\u00a0 (PP09-0013, Preserve at Pecan Creek Lodge Apartments, Erica Marohnic)\nB.\nFinal Plat of Lot 2, Block A of the Preserve at Pecan Creek Lodge Apartments.\u00a0 The subject property is approximately 15.645 acres in size and is generally located 550 feet east of Old Highway 77, north of Shady Shores Boulevard, south of Lakeview Boulevard and west of Swisher Road within the Gideon Walker Survey, Abstract No. 1330.\u00a0 The property is located within a Planned Development\u00a0 (PD-132) zoning district.\u00a0 (FP09-0014, Preserve at Pecan Creek Lodge Apartments, Erica Marohnic)",
+              "title": "Consent Agenda Items"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4.\nPUBLIC HEARINGS:\u00a0 Hold a public hearing and consider making a recommendation to the Denton City Council on the following items:\nA.\nAmendments to\n1.\nSubchapter 3 of the Denton Development Code (DDC) regarding authority given to the Zoning Board of Adjustment;\n2.\nSubchapter 16 of the DDC regarding gas well development platting;\n3.\nSubchapter 22 of the DDC regarding gas well drilling and production;\n4.\nSubchapter 23 - Definitions - of the DDC; and\n5.\nthe schedule of fees contained in Ordinances 2005-237, and 2009-098 (2006 City Fire Code) pertaining to gas well drilling and production within the City limits and the Extra Territorial Jurisdiction\u00a0  (DCA10-0003, Mark Cunningham and Nana Appiah)",
+              "title": "Public hearing on DDC amendments regarding gas well development and fees"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5.\nFUTURE AGENDA ITEMS:\u00a0 Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Planning and Zoning Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting.",
+              "title": "Future agenda items discussion"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2.\nCONSIDER APPROVAL OF THE PLANNING AND ZONING COMMISSION MINUTES FOR:\nA.\nMay 26, 2010, June 9, 2010 and June 23, 2010",
+              "title": "Approval of meeting minutes"
+            }
+          ],
+          "source_result_sha256": "bd62aac9ec1e75495be727d9e29e3c951c8beb058a9435e1e17a526c80e0c245",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2010-07-14T00:00:00+00:00",
+      "slug": "denton-tx-agenda-committee",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/3b7588310856/9d84baa70ea96075-asr-6372848c9cc4.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/9d84baa70ea96075-asr-6372848c9cc4.vtt",
+        "words_key": "transcripts/3b7588310856/9d84baa70ea96075-asr-6372848c9cc4.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/9d84baa70ea96075-asr-6372848c9cc4.words.json"
+      },
+      "uid": "9d84baa70ea96075"
+    },
+    {
+      "agenda": {
+        "bytes": 6555,
+        "class": "complete",
+        "error": null,
+        "key": "documents/9f866f8efbf2/b0255efe9b903f4c/agenda-aa520a5d3c959e88",
+        "sha256": "63832fb48caed28399ea91075778e6bae054b03c9ddf15eb513cdb66c4416dd8",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/9f866f8efbf2/b0255efe9b903f4c/agenda-aa520a5d3c959e88"
+      },
+      "body": "Environmental Board",
+      "body_key": "environmental board",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11279.859,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "1",
+              "evidence_text": "1. CALL TO ORDER",
+              "title": "Call to order"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2. CITIZEN COMMUNICATION: GENERAL",
+              "title": "General citizen communication"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3. 10 MINUTES OF EDUCATION \nNone",
+              "title": "Education presentation segment"
+            },
+            {
+              "display_ref": "8",
+              "evidence_text": "8. NEW BUSINESS \u2013 Future agenda items",
+              "title": "Discussion of future agenda items"
+            },
+            {
+              "display_ref": "9",
+              "evidence_text": "9. ADJOURNMENT",
+              "title": "Adjournment"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "a. Approve the minutes of the Environmental Board regular meeting of June 3, 2015.",
+              "title": "Approve minutes of the Environmental Board regular meeting of June 3, 2015"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "b. Environmental Officer\u2019s Report and hot topics\u2013 Chuck Lesniak, Environmental Officer \ni. Appreciation for departing board members",
+              "title": "Environmental Officer\u2019s report and appreciation for departing members"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "a.    Name:  Caswell Estates C8-2014-0134.0A",
+              "title": "Public hearing for Caswell Estates variance requests"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "b.   Name: Block 188  SP-2015-0112A",
+              "title": "Public hearing for Block 188 waiver request"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "a. Discuss and consider a recommendation for the Watershed Protection Department\u2019s FY16 budget \n\u2013 Connie Campa, Financial Consultant, Watershed Protection Department",
+              "title": "Recommendation for Watershed Protection Department FY16 budget"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "b. Briefing on the City\u2019s proposed Cemetery Master Plan \u2013 Kim McKnight, Project Coordinator, \nParks and Recreation Department",
+              "title": "Briefing on the City\u2019s proposed Cemetery Master Plan"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "c. Final update on Environmental Commissioning for Water Treatment Plant No. 4 \u2013 David Johns, \nEnvironmental Scientist, Watershed Protection Department and Chuck Lesniak, Environmental \nOfficer, Watershed Protection Department",
+              "title": "Update on Environmental Commissioning for Water Treatment Plant No. 4"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "d. Report on recent flooding in Hemphill Park, Hyde Park, and Shoal Creek \u2013 Watershed Protection \nDepartment",
+              "title": "Report on flooding in Hemphill Park, Hyde Park, and Shoal Creek"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "a. Joint Environmental/Parks Board Subcommittee \u2013 Mary Ann Neely, James Schissler, P.E., \nand Brian Smith. No report this week.",
+              "title": "Joint Environmental/Parks Board Subcommittee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "b. Urban Growth Policy Committee \u2013 Mary Gay Maxwell, Marisa Perales, and James Schissler, \nP. E. No report this week.",
+              "title": "Urban Growth Policy Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "c. Water Treatment Plant #4 Committee \u2013 Mary Gay Maxwell and Mary Ann Neely. No report \nthis week.",
+              "title": "Water Treatment Plant #4 Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "d. Development Committee \u2013 Robert Deegan, Mary Gay Maxwell, Marisa Perales and James \nSchissler, P.E. No report this week.",
+              "title": "Development Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "e. Water Quality Regulations Committee \u2013 Mary Ann Neely, Ruthie Redmond and Brian Smith. \nMary Ann will provide a report.",
+              "title": "Water Quality Regulations Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "f. Watershed Protection Budget Committee \u2013 Mary Gay Maxwell, Marisa Perales, and Mary \nAnn Neely. No report this week.",
+              "title": "Watershed Protection Budget Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "g. Air Quality Committee \u2013 Mary Ann Neely, Ruthie Redmond, and Mary Gay Maxwell. \nNo report this week.",
+              "title": "Air Quality Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "h. Open Space, Environment, and Sustainability Council Committee \u2013 Mary Gay Maxwell.  \nNo report this week.",
+              "title": "Open Space, Environment, and Sustainability Council Committee report"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "i. Other reports from Board members. No report this week.",
+              "title": "Other reports from Board members"
+            }
+          ],
+          "source_result_sha256": "262ca1164024efcaf5f88c3b0acd780e5c0ec1b338b571d57a28073517659b49",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2015-06-17T00:00:00+00:00",
+      "slug": "austin-tx-environmental-board",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/9f866f8efbf2/b0255efe9b903f4c-asr-9f60917607d6.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/9f866f8efbf2/b0255efe9b903f4c-asr-9f60917607d6.vtt",
+        "words_key": "transcripts/9f866f8efbf2/b0255efe9b903f4c-asr-9f60917607d6.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/9f866f8efbf2/b0255efe9b903f4c-asr-9f60917607d6.words.json"
+      },
+      "uid": "b0255efe9b903f4c"
+    },
+    {
+      "agenda": {
+        "bytes": 3092,
+        "class": "complete",
+        "error": null,
+        "key": "documents/79b929283417/f231ad89fc3c8046/agenda-a9561a0adfa1a5c1",
+        "sha256": "038377ee6387964df82d34043ed675fed46f665900bc36d5465b49a9c8ef3279",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/79b929283417/f231ad89fc3c8046/agenda-a9561a0adfa1a5c1"
+      },
+      "body": "Austin Integrated Water Resource Planning Community Task Force",
+      "body_key": "austin integrated water resource planning community task force",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7995.697,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": null,
+              "evidence_text": "CALL TO ORDER \u2013",
+              "title": "Call to order"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "PUBLIC COMMUNICATION: GENERAL",
+              "title": "Public communication"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1. Approve the meeting minutes from the Special  Called Task Force meeting on October 28, \n2024.",
+              "title": "Approve meeting minutes from October 28, 2024"
+            },
+            {
+              "display_ref": "2",
+              "evidence_text": "2. Discussion of revisions to the Water Forward 2024 Plan, Water Conservation Plan, and \nDrought Contingency Plan reports",
+              "title": "Discussion of revisions to water resource plans"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3. Recommend approval of Water Forward 2024, Austin\u2019s Integrated Water Resource Plan",
+              "title": "Recommend approval of Water Forward 2024"
+            },
+            {
+              "display_ref": "4",
+              "evidence_text": "4. Recommend approval of the revised Water Conservation Plan",
+              "title": "Recommend approval of the revised Water Conservation Plan"
+            },
+            {
+              "display_ref": "5",
+              "evidence_text": "5. Recommend approval of the revised Drought Contingency Plan",
+              "title": "Recommend approval of the revised Drought Contingency Plan"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ADJOURN",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "a4381feb32be1500d8c9ca0a64b2e1f0d1e7566ebe1e483973e9469a2dd38aee",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2024-11-04T00:00:00+00:00",
+      "slug": "austin-tx-austin-integrated-water-resource-planning-community-task-force",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/79b929283417/f231ad89fc3c8046-provider-align-9efa893b8121.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/79b929283417/f231ad89fc3c8046-provider-align-9efa893b8121.vtt",
+        "words_key": "transcripts/79b929283417/f231ad89fc3c8046-provider-align-9efa893b8121.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/79b929283417/f231ad89fc3c8046-provider-align-9efa893b8121.words.json"
+      },
+      "uid": "f231ad89fc3c8046"
+    },
+    {
+      "agenda": {
+        "bytes": 1392,
+        "class": "complete",
+        "error": null,
+        "key": "documents/abbf5e25e078/64d910657ceb47fa/agenda-0e9939e13f79a7a5",
+        "sha256": "04a89af348debdb4f557cd7ebc7800089a124c50932f72ceb0c3f33822867930",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/abbf5e25e078/64d910657ceb47fa/agenda-0e9939e13f79a7a5"
+      },
+      "body": "2026 City Council Strategic Planning Session",
+      "body_key": "2026 city council strategic planning session",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 13901.604,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "1",
+              "evidence_text": "1.\nCall Meeting to Order and Announce that a Quorum is Present",
+              "title": "Call Meeting to Order"
+            },
+            {
+              "display_ref": "3",
+              "evidence_text": "3.\nAdjourn Meeting",
+              "title": "Adjourn Meeting"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "a.\nDiscuss the Town's Strategic Plan for 2026.",
+              "title": "Discuss 2026 Strategic Plan"
+            }
+          ],
+          "source_result_sha256": "4148040519bae230ea76f6516c80975dd992336d1ec75ba41aa176bdbaeec434",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2026-01-30T00:00:00+00:00",
+      "slug": "addison-tx-board-of-zoning-adjustment",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/abbf5e25e078/64d910657ceb47fa-provider-align-1357b6138e54.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/abbf5e25e078/64d910657ceb47fa-provider-align-1357b6138e54.vtt",
+        "words_key": "transcripts/abbf5e25e078/64d910657ceb47fa-provider-align-1357b6138e54.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/abbf5e25e078/64d910657ceb47fa-provider-align-1357b6138e54.words.json"
+      },
+      "uid": "64d910657ceb47fa"
+    },
+    {
+      "agenda": {
+        "bytes": 13433,
+        "class": "complete",
+        "error": null,
+        "key": "documents/76869ed1994f/dd2fca265ade6e8d/agenda-ec3624a3b9a6f011",
+        "sha256": "f13e54ec70cd6c48c35f66d195439ff99fe596a39789e2bc0eb45137b533601c",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/76869ed1994f/dd2fca265ade6e8d/agenda-ec3624a3b9a6f011"
+      },
+      "body": "Board of Adjustments",
+      "body_key": "board of adjustment",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 8360.352,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "ITEM Approval",
+              "evidence_text": "ZONING BOARD OF ADJUSTMENT, PANEL C MONDAY, AUGUST 20, 2018 AGENDA BRIEFING 5ES 11:00 A.M. 4500 MARILLA STREET DALLAS CITY HALL COUNCIL CHAMBERS PUBLIC HEARING 1500 MARILLA STREET 1:00 P.M. DALLAS CITY HALL Neva Dean, Assistant Director Steve Long, Board Administrator/ Chief Planner Oscar Aguilera, Senior Planner MISCELLANEOUS ITEM Approval of the June 18, 2018 Board of Adjustment M1 Panel! C Public Hearing Minutes UNCONTESTED CASES BDA178-083(OA) 2639 Searcy Drive 4 REQUEST: Application of Andrea Gonzalez for a special exception to the single-family use regulations BDA178-085(OA) 4101 Duncanville Road 2 REQUEST: Application of John Chisholm, represented by Chase Flanary of Kirkham Engineering, for a special exception to the landscape regulations BDA178-088(0A) 2015 Cullen Avenue 3 REQUEST: Application of Brandon Oberschlake, represented by Bang Dang, for a variance to the front yard setback regulations",
+              "title": "Approval of June 18, 2018 Board of Adjustment Panel C Meeting Minutes"
+            },
+            {
+              "display_ref": "BDA178-083(OA)",
+              "evidence_text": "ZONING BOARD OF ADJUSTMENT, PANEL C MONDAY, AUGUST 20, 2018 AGENDA BRIEFING 5ES 11:00 A.M. 4500 MARILLA STREET DALLAS CITY HALL COUNCIL CHAMBERS PUBLIC HEARING 1500 MARILLA STREET 1:00 P.M. DALLAS CITY HALL Neva Dean, Assistant Director Steve Long, Board Administrator/ Chief Planner Oscar Aguilera, Senior Planner MISCELLANEOUS ITEM Approval of the June 18, 2018 Board of Adjustment M1 Panel! C Public Hearing Minutes UNCONTESTED CASES BDA178-083(OA) 2639 Searcy Drive 4 REQUEST: Application of Andrea Gonzalez for a special exception to the single-family use regulations BDA178-085(OA) 4101 Duncanville Road 2 REQUEST: Application of John Chisholm, represented by Chase Flanary of Kirkham Engineering, for a special exception to the landscape regulations BDA178-088(0A) 2015 Cullen Avenue 3 REQUEST: Application of Brandon Oberschlake, represented by Bang Dang, for a variance to the front yard setback regulations",
+              "title": "BDA178-083(OA) - 2639 Searcy Drive special exception"
+            },
+            {
+              "display_ref": "BDA178-085(OA)",
+              "evidence_text": "ZONING BOARD OF ADJUSTMENT, PANEL C MONDAY, AUGUST 20, 2018 AGENDA BRIEFING 5ES 11:00 A.M. 4500 MARILLA STREET DALLAS CITY HALL COUNCIL CHAMBERS PUBLIC HEARING 1500 MARILLA STREET 1:00 P.M. DALLAS CITY HALL Neva Dean, Assistant Director Steve Long, Board Administrator/ Chief Planner Oscar Aguilera, Senior Planner MISCELLANEOUS ITEM Approval of the June 18, 2018 Board of Adjustment M1 Panel! C Public Hearing Minutes UNCONTESTED CASES BDA178-083(OA) 2639 Searcy Drive 4 REQUEST: Application of Andrea Gonzalez for a special exception to the single-family use regulations BDA178-085(OA) 4101 Duncanville Road 2 REQUEST: Application of John Chisholm, represented by Chase Flanary of Kirkham Engineering, for a special exception to the landscape regulations BDA178-088(0A) 2015 Cullen Avenue 3 REQUEST: Application of Brandon Oberschlake, represented by Bang Dang, for a variance to the front yard setback regulations",
+              "title": "BDA178-085(OA) - 4101 Duncanville Road landscape exception"
+            },
+            {
+              "display_ref": "BDA178-064(SL)",
+              "evidence_text": "HOLDOVER CASES BDA178-064(SL) 5117 W. Lovers Lane 4 REQUEST: Application of Robert Baldwin, represented by Baldwin Associates, for a variance to the off-street parking regulation BDA178-072(SL) 3407 McKinney Avenue 5 REQUEST: Application of Christopher Johnson, represented by Michael R, Coker Company, for a variance to the front yard setback regulations REGULAR CASE BDA178-089(OA) 1 Bella Porta Place 6 REQUEST: Application of David H. Goettsche for a variance to the front yard setback regulations",
+              "title": "BDA178-064(SL) - 5117 W. Lovers Lane parking variance"
+            },
+            {
+              "display_ref": "BDA178-072(SL)",
+              "evidence_text": "HOLDOVER CASES BDA178-064(SL) 5117 W. Lovers Lane 4 REQUEST: Application of Robert Baldwin, represented by Baldwin Associates, for a variance to the off-street parking regulation BDA178-072(SL) 3407 McKinney Avenue 5 REQUEST: Application of Christopher Johnson, represented by Michael R, Coker Company, for a variance to the front yard setback regulations REGULAR CASE BDA178-089(OA) 1 Bella Porta Place 6 REQUEST: Application of David H. Goettsche for a variance to the front yard setback regulations",
+              "title": "BDA178-072(SL) - 3407 McKinney Avenue front yard setback variance"
+            },
+            {
+              "display_ref": "BDA178-089(OA)",
+              "evidence_text": "HOLDOVER CASES BDA178-064(SL) 5117 W. Lovers Lane 4 REQUEST: Application of Robert Baldwin, represented by Baldwin Associates, for a variance to the off-street parking regulation BDA178-072(SL) 3407 McKinney Avenue 5 REQUEST: Application of Christopher Johnson, represented by Michael R, Coker Company, for a variance to the front yard setback regulations REGULAR CASE BDA178-089(OA) 1 Bella Porta Place 6 REQUEST: Application of David H. Goettsche for a variance to the front yard setback regulations",
+              "title": "BDA178-089(OA) - 1 Bella Porta Place front yard setback variance"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "ZONING BOARD OF ADJUSTMENT, PANEL C MONDAY, AUGUST 20, 2018 AGENDA BRIEFING 5ES 11:00 A.M. 4500 MARILLA STREET DALLAS CITY HALL COUNCIL CHAMBERS PUBLIC HEARING 1500 MARILLA STREET 1:00 P.M. DALLAS CITY HALL Neva Dean, Assistant Director Steve Long, Board Administrator/ Chief Planner Oscar Aguilera, Senior Planner MISCELLANEOUS ITEM Approval of the June 18, 2018 Board of Adjustment M1 Panel! C Public Hearing Minutes UNCONTESTED CASES BDA178-083(OA) 2639 Searcy Drive 4 REQUEST: Application of Andrea Gonzalez for a special exception to the single-family use regulations BDA178-085(OA) 4101 Duncanville Road 2 REQUEST: Application of John Chisholm, represented by Chase Flanary of Kirkham Engineering, for a special exception to the landscape regulations BDA178-088(0A) 2015 Cullen Avenue 3 REQUEST: Application of Brandon Oberschlake, represented by Bang Dang, for a variance to the front yard setback regulations",
+              "title": "BDA178-088(OA) - 2015 Cullen Avenue front yard setback variance"
+            }
+          ],
+          "source_result_sha256": "a7e8fad4a446107a3c31464d90273fb9b96d29c84a18499e89af3307f713e9c0",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2018-08-20T00:00:00+00:00",
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/76869ed1994f/dd2fca265ade6e8d-asr-c46b9038a915.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/dd2fca265ade6e8d-asr-c46b9038a915.vtt",
+        "words_key": "transcripts/76869ed1994f/dd2fca265ade6e8d-asr-c46b9038a915.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/dd2fca265ade6e8d-asr-c46b9038a915.words.json"
+      },
+      "uid": "dd2fca265ade6e8d"
+    },
+    {
+      "agenda": {
+        "bytes": 2316,
+        "class": "complete",
+        "error": null,
+        "key": "documents/f9afe970563e/0b7c86c1d697196d/agenda-1870b8941d248402",
+        "sha256": "4b6de74cf81da2afdafd16566ee542165863bff124bb50a426ba74f7b10a1bcd",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/f9afe970563e/0b7c86c1d697196d/agenda-1870b8941d248402"
+      },
+      "body": "City Council Meeting",
+      "body_key": "city council meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 10999.966,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": null,
+              "evidence_text": "9:30 AM \u2013 City Council Convenes",
+              "title": "Call to Order"
+            },
+            {
+              "display_ref": "1",
+              "evidence_text": "1. Briefing and discussion related to the fiscal year 2015-16 Proposed Budget, and \ndiscussion related to the process for council requests regarding changes to the \nproposed budget.",
+              "title": "Briefing on Fiscal Year 2015-16 Proposed Budget and Budget Request Process"
+            },
+            {
+              "display_ref": null,
+              "evidence_text": "Adjourn",
+              "title": "Adjournment"
+            }
+          ],
+          "source_result_sha256": "2fbb3a25811e2866cfb4c32f1d792165f305f9979b92c0a5c371e395a26afcd2",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2015-08-17T00:00:00+00:00",
+      "slug": "austin-tx-all-boards-and-commissions",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/f9afe970563e/0b7c86c1d697196d-asr-cd88253c9433.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/f9afe970563e/0b7c86c1d697196d-asr-cd88253c9433.vtt",
+        "words_key": "transcripts/f9afe970563e/0b7c86c1d697196d-asr-cd88253c9433.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/f9afe970563e/0b7c86c1d697196d-asr-cd88253c9433.words.json"
+      },
+      "uid": "0b7c86c1d697196d"
+    },
+    {
+      "agenda": {
+        "bytes": 3334,
+        "class": "complete",
+        "error": null,
+        "key": "documents/3b7588310856/c20e533196fbd578/agenda-a9f11d957d815bc4",
+        "sha256": "46e7214c63d51a3a1027ea4ffbcfa65c153ab38e79fcc36c69ad5fca9e0e08e7",
+        "source": "public",
+        "url": "https://audio.citymeetings.fyi/documents/3b7588310856/c20e533196fbd578/agenda-a9f11d957d815bc4"
+      },
+      "body": "Development Code Review Committee",
+      "body_key": "development code review committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7382.818,
+      "generated_agenda": {
+        "gemini/gemini-3.1-flash-lite": {
+          "items": [
+            {
+              "display_ref": "DCRC21-023A",
+              "evidence_text": "Consider approval of the April 14, 2021 minutes.DCRC21-023A.",
+              "title": "Approval of April 14, 2021 meeting minutes"
+            },
+            {
+              "display_ref": "items",
+              "evidence_text": "A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Development \nCode Review Committee or the public with specific factual information or recitation of policy, or accept a \nproposal to place the matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the \nTexas Open Meetings Act, provide reports about items of community interest regarding which no action will be \ntaken, to include: expressions of thanks, congratulations, or condolence; information regarding holiday",
+              "title": "Staff and Committee responses to inquiries and reports on community interest"
+            },
+            {
+              "display_ref": "DCRC21-021B",
+              "evidence_text": "Receive a report, hold a discussion, and give staff direction regarding proposed Code \namendments related to nonconforming site features, accessory dwelling units, and \nSubchapter 7 development standards.\nDCRC21-021B.",
+              "title": "Discussion and direction regarding proposed Code amendments"
+            }
+          ],
+          "source_result_sha256": "76775bb9ca3eb0bf6e6c8b2ad82a076255cf68199af6372a192044fe147a1990",
+          "status": "completed"
+        }
+      },
+      "provider": "swagit",
+      "published": "2021-04-28T00:00:00+00:00",
+      "slug": "denton-tx-agenda-committee",
+      "split": "holdout-v1",
+      "transcript": {
+        "key": "transcripts/3b7588310856/c20e533196fbd578-asr-b6fcf80be7db.vtt",
+        "timing_source": "words",
+        "url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/c20e533196fbd578-asr-b6fcf80be7db.vtt",
+        "words_key": "transcripts/3b7588310856/c20e533196fbd578-asr-b6fcf80be7db.words.json",
+        "words_url": "https://audio.citymeetings.fyi/transcripts/3b7588310856/c20e533196fbd578-asr-b6fcf80be7db.words.json"
+      },
+      "uid": "c20e533196fbd578"
+    }
+  ],
+  "frozen_on": "2026-09-27",
+  "provider_labels_in_requests": false,
+  "provider_targets_stored_separately": true,
+  "schema_version": 1,
+  "selected_before_upstream_agenda_calls": 24,
+  "selection_file": "selection.json",
+  "selection_sha256": "6588e9dd6100c83e1d9cc45a954fb48ec3eacfaae03486fa27ca6582fe4a54a8",
+  "split": "holdout-v1",
+  "upstream_agenda_extraction_attrition": [
+    {
+      "attempts": 2,
+      "reason": "upstream_agenda_extraction_invalid_after_retry",
+      "uid": "fb72668fb38af712"
+    }
+  ],
+  "version": 1
+}

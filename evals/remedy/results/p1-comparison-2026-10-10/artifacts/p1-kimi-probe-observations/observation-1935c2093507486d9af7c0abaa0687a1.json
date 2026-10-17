@@ -1,0 +1,87 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:58:54.970521+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-wrong-district",
+        "evidence_ref_ids": [
+          "provider-374872"
+        ],
+        "missing_evidence": [
+          "Any supplied evidence reference identifying this recording or body as the Fort Worth Avenue TIF district",
+          "Official metadata establishing the Downtown Connection TIF District and Fort Worth Avenue district as the same public body"
+        ],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas Downtown Connection TIF District Board of Directors",
+        "rationale": "The only supplied evidence (provider-374872, from the 2026-10-02 archive snapshot) identifies the recording's body label, title, and provider GUID as the 'Dallas Downtown Connection TIF District Board of Directors Meeting.' Official metadata is immutable, so the recording must remain assigned to the Downtown Connection TIF District Board of Directors. The claim proposes merging it into the Fort Worth Avenue district as the same public body, but no supplied evidence supports that cross-name identity; shared city (Dallas) and topic (TIF) tokens do not establish identity under the approved policy. Downtown Connection and Fort Worth Avenue are distinct TIF designations, and with no linking evidence provided, the assignment claim is unsupported and must be rejected.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-wrong-district",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 23.184926708228886,
+      "prompt_case_id": "tif-wrong-district",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"tif-wrong-district\",\n  \"supported\": false,\n  \"proposed_owner\": \"Dallas Downtown Connection TIF District Board of Directors\",\n  \"proposed_action\": \"reject\",\n  \"evidence_ref_ids\": [\"provider-374872\"],\n  \"missing_evidence\": [\n    \"Any supplied evidence reference identifying this recording or body as the Fort Worth Avenue TIF district\",\n    \"Official metadata establishing the Downtown Connection TIF District and Fort Worth Avenue district as the same public body\"\n  ],\n  \"rationale\": \"The only supplied evidence (provider-374872, from the 2026-10-02 archive snapshot) identifies the recording's body label, title, and provider GUID as the 'Dallas Downtown Connection TIF District Board of Directors Meeting.' Official metadata is immutable, so the recording must remain assigned to the Downtown Connection TIF District Board of Directors. The claim proposes merging it into the Fort Worth Avenue district as the same public body, but no supplied evidence supports that cross-name identity; shared city (Dallas) and topic (TIF) tokens do not establish identity under the approved policy. Downtown Connection and Fort Worth Avenue are distinct TIF designations, and with no linking evidence provided, the assignment claim is unsupported and must be rejected.\"\n}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Let me analyze this case. The claim is: \"Assign this recording to Fort Worth Avenue district as the same public body.\" The metadata says the body is \"Dallas Downtown Connection TIF District Board of Directors Meeting.\" The claim proposes assigning to Fort Worth Avenue district as the same body \u2014 a cross-name merge. Policy: Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain where evidence missing.\n\nDowntown Connection TIF District and Fort Worth Avenue TIF district are different TIF districts (both are real Dallas TIFs). No evidence that Fort Worth Avenue district is the same body. So claim is not supported. Proposed owner: based on the immutable metadata: \"Dallas Downtown Connection TIF District Board of Directors\". Proposed action: keep the recording under the Downtown Connection TIF District body; reject assignment to Fort Worth Avenue district. Evidence refs: \"provider-374872\". Missing evidence: any evidence linking to Fort Worth Avenue district.\n\nDallas has TIF districts including Downtown Connection TIF and Fort Worth Avenue TIF \u2014 they are distinct. So supported: false.",
+                "refusal": null
+              },
+              "reasoning_content": "Let me analyze this case. The claim is: \"Assign this recording to Fort Worth Avenue district as the same public body.\" The metadata says the body is \"Dallas Downtown Connection TIF District Board of Directors Meeting.\" The claim proposes assigning to Fort Worth Avenue district as the same body \u2014 a cross-name merge. Policy: Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain where evidence missing.\n\nDowntown Connection TIF District and Fort Worth Avenue TIF district are different TIF districts (both are real Dallas TIFs). No evidence that Fort Worth Avenue district is the same body. So claim is not supported. Proposed owner: based on the immutable metadata: \"Dallas Downtown Connection TIF District Board of Directors\". Proposed action: keep the recording under the Downtown Connection TIF District body; reject assignment to Fort Worth Avenue district. Evidence refs: \"provider-374872\". Missing evidence: any evidence linking to Fort Worth Avenue district.\n\nDallas has TIF districts including Downtown Connection TIF and Fort Worth Avenue TIF \u2014 they are distinct. So supported: false.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626341,
+        "id": "chatcmpl-ebf74a4d-67f1-425d-a317-60582ba7aa08",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 500,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 230,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1065,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1565
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

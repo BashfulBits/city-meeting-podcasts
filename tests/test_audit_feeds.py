@@ -1628,3 +1628,119 @@ def test_main_issue_without_evidence_unresolvable_errors(monkeypatch):
 
     with pytest.raises(SystemExit):
         _mod.main(["--issue", "1238"])
+
+
+def test_body_coverage_cli_never_syncs_state_or_reconciles(monkeypatch, tmp_path, capsys):
+    import json
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("coverage report must not sync state or write GitHub")
+
+    monkeypatch.setattr(_mod, "pull_canonical_state", forbidden)
+    monkeypatch.setattr(_mod, "reconcile", forbidden)
+    monkeypatch.setattr(_mod, "load_site_config", lambda path: {"state_dir": str(tmp_path)})
+    monkeypatch.setattr(_mod, "load_city_configs", lambda *args: [])
+
+    def audit(cities, **kwargs):
+        assert kwargs["body_coverage_only"] is True
+        kwargs["body_coverage_evidence"].append(
+            {
+                "source_key": "source",
+                "city": "city",
+                "completeness": "unknown",
+                "observations": [],
+                "rows": [],
+                "diagnostics": [],
+                "totals": {"rows": 0},
+            }
+        )
+        return []
+
+    monkeypatch.setattr(_mod, "audit_all", audit)
+    path = tmp_path / "coverage.json"
+    assert _mod.main(["--body-coverage-report", str(path)]) == 0
+    report = json.loads(path.read_text())
+    assert report["sources"][0]["completeness"] == "unknown"
+    assert report["schema_version"] == 1
+    diagnostic = report["sources"][0]["diagnostics"][0]
+    assert str(tmp_path) in diagnostic
+    assert "canonical state was not synchronized" in diagnostic
+    assert "may omit retained history" in diagnostic
+    assert "completeness remains unknown" in diagnostic
+    assert diagnostic in capsys.readouterr().out
+    assert len(report["material_hash"]) == 64
+    with pytest.raises(SystemExit):
+        _mod.main(["--body-coverage-report", str(path), "--persist-timeline-integrity"])
+
+
+def test_local_decision_comparison_never_loads_config_or_runs_audit(monkeypatch, tmp_path):
+    import json
+
+    from tests.test_remedy_ledger import comparison_fixture
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("local comparison must not call production services")
+
+    for name in (
+        "load_site_config",
+        "load_city_configs",
+        "audit_all",
+        "pull_canonical_state",
+        "make_storage",
+        "reconcile",
+    ):
+        monkeypatch.setattr(_mod, name, forbidden)
+    payload, case, _, evidence = comparison_fixture()
+    input_path, output_path = tmp_path / "input.json", tmp_path / "report.json"
+    bundle = dict(
+        schema_version=1,
+        coverage=[case],
+        events=[payload],
+        evidence=evidence,
+        config_hash="b" * 64,
+        policy_hash="c" * 64,
+    )
+    original = json.dumps(bundle)
+    input_path.write_text(original)
+    args = [
+        "--decision-comparison-input",
+        str(input_path),
+        "--decision-comparison-report",
+        str(output_path),
+    ]
+    assert _mod.main(args) == 0
+    report = json.loads(output_path.read_text())
+    assert report["rows"][0]["outcome"] == "unchanged"
+    assert not report["rows"][0]["review_required"]
+    assert input_path.read_text() == original
+    with pytest.raises(SystemExit):
+        _mod.main(args + ["--dry-run"])
+    with pytest.raises(SystemExit):
+        _mod.main(["--decision-comparison-input", str(input_path)])
+    with pytest.raises(SystemExit):
+        _mod.main(
+            [
+                "--decision-comparison-input",
+                str(input_path),
+                "--decision-comparison-report",
+                str(input_path),
+            ]
+        )
+    previous_report = output_path.read_text()
+
+    def failed_replace(source, destination):
+        assert destination == output_path
+        assert source.parent == output_path.parent
+        assert json.loads(source.read_text())["rows"][0]["outcome"] == "unchanged"
+        assert output_path.read_text() == previous_report
+        raise OSError("simulated publication failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(_mod.os, "replace", failed_replace)
+        with pytest.raises(OSError, match="simulated publication failure"):
+            _mod.main(args)
+    assert output_path.read_text() == previous_report
+    assert set(tmp_path.iterdir()) == {input_path, output_path}
+    input_path.write_text('{"schema_version":1,"schema_version":1}')
+    with pytest.raises(ValueError, match="duplicate"):
+        _mod.main(args)

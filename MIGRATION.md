@@ -89,3 +89,12 @@ PYTHONPATH=. python scripts/gc_audio.py --pull-state --out gc/    # dry-run + wr
 `--pull-state` restores the durable bucket state first so the live set is current (a no-op for the
 sync-less local backend). It deletes only objects not referenced by any record store and older than
 `--min-age-days` (default 7), so an object written by an in-flight build is never reaped prematurely.
+
+## Dallas and Fort Worth TIF consolidation (proposed, 2026-10-02)
+
+Seven Dallas and two Fort Worth district slugs become aliases of `<city>-tif`. Subscribers
+move to an aggregate of all TIF districts, including historical and joint meetings. District
+configurations are removed, but alias feed stubs and pages preserve their URLs. Existing UIDs,
+source record namespaces and audio pointers stay stable; no pipeline version is bumped.
+Broader selector coverage can admit historical recordings through normal bounded processing.
+See [coverage policy](review/tif-coverage-2026-10.md) for the census and exclusions.

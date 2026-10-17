@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-09-27",
+  "dataset": "chapter-locator holdout-v1",
+  "split_status": "frozen before locator requests; exploratory route evaluation",
+  "agenda_source_model": "gemini/gemini-3.1-flash-lite",
+  "eligible_packets": 23,
+  "upstream_agenda_attrition": 1,
+  "packet_size_estimator": "characters / 4; estimated tokens, not provider tokenizer tokens",
+  "packet_size_estimate_percentiles": {
+    "p50": 72089,
+    "p90": 124134,
+    "p95": 177306,
+    "max": 191294
+  },
+  "cohort_note": "Stratified toward large packets; not representative for estimating production context-fit percentages.",
+  "metrics": {
+    "automated_start_crosswalk": "One-to-one provider-start match within 60 seconds; invalid or failed packet responses count as zero against the fixed hidden target denominator.",
+    "manual_audit": "Timing-blinded agenda-match review of one provider chapter per episode; 18 matched, 1 ambiguous, 4 unmatched. This checks the crosswalk and is not full manual locator gold.",
+    "historical_manual_slice": "The separate 16-meeting adjudicated slice and earlier 115/116 Gemini result are not pooled with this holdout."
+  },
+  "holdout_models": {
+    "gemini/gemini-3.5-flash-lite": {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "scope": "all 23 eligible packets",
+      "valid_packets": "14/23",
+      "attempts": 33,
+      "automated_provider_start_hits": "72/176 (40.9%)",
+      "manual_audit_timing_hits": "14/18",
+      "manual_audit_exact_item_and_boundary": "8/18",
+      "manual_audit_exact_item_given_timing_hit": "8/14",
+      "manual_audit_over_gemini_conservative_gate": {
+        "timing_hits": "2/4",
+        "exact_item_and_boundary": "1/4"
+      },
+      "operational_notes": [
+        "Schema errors included duplicate agenda indices, duplicate units, and unknown unit IDs.",
+        "One 177306-estimate packet was rejected by a Google 250000 input-token-per-minute limit; this is not proof of a context-window limit.",
+        "A 124134-estimate packet passed with 223676 provider prompt tokens.",
+        "Both primary and secondary route scopes were paused and drained for direct testing, then resumed."
+      ]
+    },
+    "moonshotai/kimi-k3": {
+      "route_id": "nvidia_kimi_k3_free",
+      "prompt_arm": "transition_sweep",
+      "scope": "five packets above Gemini's 101802-estimate conservative dispatch gate",
+      "valid_packets": "5/5",
+      "automated_provider_start_hits": "37/49 (75.5%)",
+      "manual_audit_timing_hits": "3/4",
+      "manual_audit_exact_item_and_boundary": "0/4",
+      "long_packet_latency_seconds": [126.4, 99.6, 96.7, 77.5, 58.8],
+      "context_evidence": "Current real packet success through 191294 estimated units; earlier synthetic live probe succeeded at 747074 estimate / 664147 provider prompt tokens with no failure found, only a lower bound.",
+      "interpretation": "Small high-context automated sample is promising; four manual cases conflict with the earlier 16-meeting human slice and do not justify a model decision."
+    },
+    "deepseek/deepseek-v4.1-flash": {
+      "route_id": "nvidia_deepseek_v4_1_flash_free",
+      "prompt_arm": "prompt-only, provider-default thinking",
+      "development_comparison": {
+        "same_eight_packets_as_kimi_prompt_screen": true,
+        "valid_packets": "8/8",
+        "automated_provider_start_hits": "37/39 (94.9%)",
+        "mean_latency_seconds": 718.425,
+        "median_latency_seconds": 590.688,
+        "max_latency_seconds": 1209.56
+      },
+      "holdout_large_packet_191294": {
+        "valid_after_repair": true,
+        "attempts": 2,
+        "elapsed_seconds": 487.808,
+        "automated_provider_start_hits": "0/1",
+        "note": "Single-target result; retained as low-confidence context-band evidence, not a quality conclusion."
+      },
+      "holdout_packet_177306": {
+        "status": "client interrupted after about 2400 seconds",
+        "response_received": false,
+        "request_capture_exists": true,
+        "provider_response_capture_exists": false,
+        "configured_direct_timeout_seconds": 1200,
+        "observed_block": "Synchronous OpenAI/httpx client waiting for HTTP response headers",
+        "quality_scored": false,
+        "note": "The client remained blocked past its configured direct timeout. This is an unresolved transport wait, not a model-quality result. The route pause was resumed and live status verified with zero in-flight calls."
+      },
+      "context_evidence": "Earlier synthetic live probe succeeded at 562750 estimated / 500251 provider prompt tokens; first server errors above 656375 mean the exact limit is unknown."
+    }
+  },
+  "capacity_and_route_gates": {
+    "gemini_3_5_flash_lite": {
+      "daily_quota": "1000/day total; 500/day on each of two keys",
+      "conservative_estimated_packet_gate": 101802,
+      "interpretation": "Dispatch gate, not context-window maximum. Provider input TPM caused one fresh real-packet rejection above the gate."
+    },
+    "deepseek_v4_1_flash": {
+      "daily_quota": "unpublished; 4 rpm configured, route concurrency 1",
+      "interpretation": "Live context lower bound >562750 estimate, exact limit unmeasured."
+    },
+    "kimi_k3": {
+      "daily_quota": "unpublished; 4 rpm configured, route concurrency 1",
+      "scheduler_estimated_input_cap": 234437,
+      "interpretation": "Scheduler cap is below the earlier synthetic live success; do not raise it without separate operational review."
+    },
+    "shared_nvidia_capacity": "Provider concurrency 3 is shared with Nemotron Ultra chapter-agenda work and other lanes; exact residual daily capacity is unmeasured."
+  },
+  "routing_assessment": {
+    "status": "evaluation only; no production route assignment changed",
+    "candidate_bands": [
+      "DeepSeek V4 is a small-request capacity candidate through its observed ~106k Orca free-route success, but does not solve long-context overflow.",
+      "Gemini 3.5 Flash Lite can overlap small requests and may extend beyond its conservative 101.8k scheduler gate when actual provider tokenization and TPM permit; do not equate this with a guaranteed input limit.",
+      "DeepSeek V4.1 remains the stronger long-context quality candidate based on the paired eight-packet development comparison; the fresh one-target miss is inconclusive.",
+      "Kimi K3 may add a higher-context overflow band, subject to resolving the manual-audit discrepancy and its configured scheduler cap."
+    ],
+    "bands_are_not_production_thresholds": true
+  },
+  "chunking_screen": "See 2026-09-27-chunking-development.json. On two development packets, chronological windows avoided measured Google TPM rejection but earliest-start merge scored 1/2 and 0/2; one offline confidence merge reached 2/2 on one packet only. Not ready for production.",
+  "private_raw_telemetry": "/private/tmp/chapter-locator-telemetry",
+  "limitations": [
+    "The holdout packet cohort is enriched for large contexts and cannot estimate fleet fit percentages.",
+    "Only one provider chapter per episode was manually reviewed; this does not replace full manual locator scoring.",
+    "The holdout agenda-generation source is Gemini 3.1 Flash Lite, while earlier development used frozen Mistral Medium 2508 agendas.",
+    "Capacity figures combine published/configured quotas and short observed runs; sustained daily throughput and residual capacity after other lanes are not measured.",
+    "AA is a general model index, not locator accuracy."
+  ]
+}

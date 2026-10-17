@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { LLMSchedulerDO } from "../src/index.js";
+import worker, { LLMSchedulerDO, leaseCoversCall, withLeaseDeadlines } from "../src/index.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const CATALOG = {
@@ -67,7 +67,7 @@ function makeEnv(overrides = {}) {
   const { storage } = createMockSqlStorage();
   const coordinatorEnv = {
     MAX_JOBS_PER_UTC_DAY: "5000",
-    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "25600",
     MAX_BUNDLE_JOBS: "4",
     MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4",
     MAX_CONCURRENT_ROUTE_LANES: "5",
@@ -93,9 +93,11 @@ function makeEnv(overrides = {}) {
     CRON_EXECUTION_LIMIT_SECONDS: "900",
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
-    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "25600",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     B2_ENDPOINT: `https://${B2_HOST}`,
@@ -172,6 +174,8 @@ test("scheduled() claims a job, calls the gateway, writes the result, and comple
     assert.ok(resultBody);
     const parsed = JSON.parse(resultBody);
     assert.equal(parsed.choices[0].message.content, "hello from the model");
+    // One provider call, counted by the claim: the executor makes no per-attempt DO call.
+    assert.equal(pollRes.statuses[0].attempts, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -242,6 +246,8 @@ test("scheduled() retries once after a 429 and completes successfully", async ()
     assert.equal(pollRes.statuses[0].state, "completed");
     const resultBody = JSON.parse(store.get(pollRes.statuses[0].result_key));
     assert.equal(resultBody.choices[0].message.content, "recovered after retry");
+    // The claim counted the first call and the granted retry the second.
+    assert.equal(pollRes.statuses[0].attempts, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -348,4 +354,19 @@ test("cleanup leaves a terminal job that is still inside its retention window un
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("the executor's lease fence admits a call only if it can finish inside the lease", () => {
+  const job = { lease_expires_at: 1_000_000 };
+  assert.equal(leaseCoversCall(job, 1_000_000 - 720_000, 720_000), true);
+  assert.equal(leaseCoversCall(job, 1_000_000 - 719_999, 720_000), false);
+  // A job with no deadline is never admitted.
+  assert.equal(leaseCoversCall({}, Date.now(), 720_000), false);
+  // A plan from a coordinator that predates lease_expires_at gets the deadline that coordinator
+  // set: the claim's `now` plus the lease duration. A returned deadline is kept as is.
+  const [legacy, current] = withLeaseDeadlines(
+    [{ id: "legacy" }, { id: "current", lease_expires_at: 5 }], 1_000, 840_000
+  );
+  assert.equal(legacy.lease_expires_at, 841_000);
+  assert.equal(current.lease_expires_at, 5);
 });

@@ -1,0 +1,21 @@
+{
+  "unique_recordings": 60,
+  "cities": {
+    "addison-tx": 19,
+    "arlington-tx": 8,
+    "dallas-tx": 5,
+    "denton-tx": 20,
+    "fort-worth-tx": 8
+  },
+  "categories": {
+    "bond-program": 13,
+    "community-information": 2,
+    "joint-or-consecutive": 8,
+    "non-meeting-or-archive": 4,
+    "numbered-district": 5,
+    "planning-versus-council": 4,
+    "distinct-or-sparse-body": 9,
+    "sparse-or-untracked": 15
+  },
+  "approved_gold_count": 0
+}

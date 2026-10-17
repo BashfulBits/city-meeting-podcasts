@@ -1,0 +1,144 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Tax Increment Reinvestment Zone No. 2 Board"
+      }
+    ],
+    "case_id": "recording-c2104a6abb6a7a51f3876825",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-2-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda and provider player identify the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting in a special called meeting on 2021-01-13; the native chapters match the TIRZ No. 2 agenda items. The existing feed denton-tx-tirz-2-board is the configured subscription grouping for meetings of Denton TIRZ No. 2 Board, so the recording is assigned there. References to City Council in the agenda are recipients of recommendations/staff direction, not joint convening participants; no evidence proves another body jointly convened."
+  },
+  "attempt_id": "2be15147a2b4465fbd9fa97d334f32b0",
+  "attempt_in_round": 1,
+  "candidate": "deepseek",
+  "case_id": "recording-c2104a6abb6a7a51f3876825",
+  "case_input_hash": "3fcaf9b983139e6bc11ef163a717b387b6daba1e278f211d10da8cad1b76dfab",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 6.742552167001122
+    }
+  ],
+  "end_to_end_seconds": 54.864682874998834,
+  "finished_at": "2026-10-14T20:25:16.975661+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T20:24:22.110674+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "29bc0288cdefbae628964bf93a3d49d84d1cc6dcd0998ea6103b34bf86bf74c0",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 640,
+    "cached_tokens": 640,
+    "completion_thinking_tokens": 696,
+    "completion_tokens": 942,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "reasoning_tokens": 696,
+      "rejected_prediction_tokens": 0
+    },
+    "credit": 0,
+    "prompt_cache_hit_tokens": 640,
+    "prompt_cache_miss_tokens": 3729,
+    "prompt_cache_write_tokens": 0,
+    "prompt_tokens": 4369,
+    "prompt_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cached_tokens": 640,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "total_tokens": 5311
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"recording-c2104a6abb6a7a51f3876825\",\"bodies\":[{\"name\":\"Tax Increment Reinvestment Zone No. 2 Board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"]}],\"feed_slugs\":[\"denton-tx-tirz-2-board\"],\"publication_action\":\"assign_existing\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"rationale\":\"The retained agenda and provider player identify the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting in a special called meeting on 2021-01-13; the native chapters match the TIRZ No. 2 agenda items. The existing feed denton-tx-tirz-2-board is the configured subscription grouping for meetings of Denton TIRZ No. 2 Board, so the recording is assigned there. References to City Council in the agenda are recipients of recommendations/staff direction, not joint convening participants; no evidence proves another body jointly convened.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Evidence supplied. Recording title: Tax Increment Reinvestment Zone No. 2 Board special called meeting. Existing feeds include denton-tx-tirz-2-board. Need identify actual body/program separately from subscription grouping. Body: Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas). Feed slug: denton-tx-tirz-2-board. Publication action assign_existing. Evidence refs: retained-agenda, provider-player, native-source-chapters. Need include evidence_ref_ids overall. Bodies array with name and evidence refs. Missing evidence maybe empty. Rationale concise.\n\nNeed be careful: \"Name every proven participant in a joint meeting.\" No joint meeting. Only one body. Could there be City Council? Agenda says make recommendation to City Council, but not convened. No. TIRZ No. 2 Board. Also \"TIRZ No. 2 Board\" vs \"Tax Increment Reinvestment Zone No. 2 Board\". Existing feed title \"Denton: TIRZ No. 2 Board\". Feed slug denton-tx-tirz-2-board. Assign existing.\n\nNeed maybe mention actual body/program separately from subscription grouping: actual body Tax Increment Reinvestment Zone No. 2 Board; subscription grouping feed Denton: TIRZ No. 2 Board. JSON fields. Evidence_ref_ids list all? Schema requires evidence_ref_ids array. Could use all three. Bodies evidence_ref_ids for body. Missing evidence maybe [] or list of gaps? No gap. Rationale max 2000.\n\nNeed ensure JSON matches exactly. No markdown. Use double quotes.\n\nLet's craft:\n\n{\n \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n \"bodies\": [\n   {\"name\": \"Tax Increment Reinvestment Zone No. 2 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}\n ],\n \"feed_slugs\": [\"denton-tx-tirz-2-board\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n \"missing_evidence\": [],\n \"rationale\": \"The retained agenda and player identify the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting in a special called meeting on 2021-01-13; the native chapters match the TIRZ No. 2 agenda items. The existing feed denton-tx-tirz-2-board is the configured subscription grouping for meetings of Denton TIRZ No. 2 Board, so the recording is assigned there. References to City Council in the agenda are recipients of recommendations/staff direction, not joint convening participants; no evidence proves another body jointly convened.\"\n}\n\nNeed maybe include \"program\" actual? No. That's fine.\n\nCheck policy: \"Identify actual body/program separately from its subscription grouping.\" We name body. Good.\n\nPotential issue: feed slug existing is \"denton-tx-tirz-2-board\". Yes.\n\nNo need \"unconfigured_body\". assign_existing.\n\nNeed only JSON object. Done.",
+            "refusal": null
+          },
+          "reasoning_content": "We need answer JSON only. Need determine municipal body/bodies recording belongs to. Evidence supplied. Recording title: Tax Increment Reinvestment Zone No. 2 Board special called meeting. Existing feeds include denton-tx-tirz-2-board. Need identify actual body/program separately from subscription grouping. Body: Tax Increment Reinvestment Zone No. 2 Board (City of Denton, Texas). Feed slug: denton-tx-tirz-2-board. Publication action assign_existing. Evidence refs: retained-agenda, provider-player, native-source-chapters. Need include evidence_ref_ids overall. Bodies array with name and evidence refs. Missing evidence maybe empty. Rationale concise.\n\nNeed be careful: \"Name every proven participant in a joint meeting.\" No joint meeting. Only one body. Could there be City Council? Agenda says make recommendation to City Council, but not convened. No. TIRZ No. 2 Board. Also \"TIRZ No. 2 Board\" vs \"Tax Increment Reinvestment Zone No. 2 Board\". Existing feed title \"Denton: TIRZ No. 2 Board\". Feed slug denton-tx-tirz-2-board. Assign existing.\n\nNeed maybe mention actual body/program separately from subscription grouping: actual body Tax Increment Reinvestment Zone No. 2 Board; subscription grouping feed Denton: TIRZ No. 2 Board. JSON fields. Evidence_ref_ids list all? Schema requires evidence_ref_ids array. Could use all three. Bodies evidence_ref_ids for body. Missing evidence maybe [] or list of gaps? No gap. Rationale max 2000.\n\nNeed ensure JSON matches exactly. No markdown. Use double quotes.\n\nLet's craft:\n\n{\n \"case_id\": \"recording-c2104a6abb6a7a51f3876825\",\n \"bodies\": [\n   {\"name\": \"Tax Increment Reinvestment Zone No. 2 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}\n ],\n \"feed_slugs\": [\"denton-tx-tirz-2-board\"],\n \"publication_action\": \"assign_existing\",\n \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n \"missing_evidence\": [],\n \"rationale\": \"The retained agenda and player identify the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting in a special called meeting on 2021-01-13; the native chapters match the TIRZ No. 2 agenda items. The existing feed denton-tx-tirz-2-board is the configured subscription grouping for meetings of Denton TIRZ No. 2 Board, so the recording is assigned there. References to City Council in the agenda are recipients of recommendations/staff direction, not joint convening participants; no evidence proves another body jointly convened.\"\n}\n\nNeed maybe include \"program\" actual? No. That's fine.\n\nCheck policy: \"Identify actual body/program separately from its subscription grouping.\" We name body. Good.\n\nPotential issue: feed slug existing is \"denton-tx-tirz-2-board\". Yes.\n\nNo need \"unconfigured_body\". assign_existing.\n\nNeed only JSON object. Done.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792009511,
+    "id": "d72393d9b2a872d06265d16223441d5e",
+    "model": "deepseek-v4.1-flash-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 640,
+      "cached_tokens": 640,
+      "completion_thinking_tokens": 696,
+      "completion_tokens": 942,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 696,
+        "rejected_prediction_tokens": 0
+      },
+      "credit": 0,
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 3729,
+      "prompt_cache_write_tokens": 0,
+      "prompt_tokens": 4369,
+      "prompt_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cached_tokens": 640,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "total_tokens": 5311
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_deepseek_v4_1_flash_free",
+  "route_settings_hash": "f100e55a5ba7c5634db96c4be9e8672b39478e9f4ae5b4e6435150cb756feafc",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "deepseek-v4.1-flash-free",
+  "upstream_model_requested": "deepseek-v4.1-flash-free"
+}

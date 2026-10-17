@@ -211,6 +211,11 @@ _NOTICE_RE = re.compile(
     re.I,
 )
 _AGENDA_NUMBER_RE = re.compile(r"(?:^|\n)\s*(?:\d+|[IVXLC]+)(?:\.[A-Z])?\.", re.I)
+_GLYPH_TOKEN_SEQUENCE_RE = re.compile(r"(?:/[A-Za-z0-9_-]+[\s\n]*){5,}")
+_READABLE_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{2,}")
+_BULLET_PREFIX_RE = re.compile(
+    r"^(?:(?:[\u00c5\u212b]\s+)|(?:[•·\uf0b7\u25aa\u25cf\u25cb\u2022\u2023\u2043*–—\-]\s*))+"
+)
 
 
 def _alpha_chars(text: str) -> int:
@@ -239,6 +244,38 @@ def agenda_content_score(text: str) -> int:
     if _alpha_chars(text) >= 500:
         score += 1
     return score
+
+
+def _is_corrupted_native_text(text: str) -> bool:
+    """Detect unreadable native PDF extraction from missing ToUnicode maps or broken fonts.
+
+    PyPDF extracts literal glyph-name tokens (e.g. '/i255', '/1/2/3') or unmapped character
+    sequences when a font lacks a valid ToUnicode CMap. This check catches unusable extractions
+    while preserving clean multilingual, accented, and legitimate Unicode texts.
+    """
+    if not text or len(text) < 40:
+        return False
+    # Strip URLs so legitimate URL path slashes do not trigger slash checks
+    no_urls = _URL_RE.sub("", text)
+    if not no_urls:
+        return False
+    # 1. Pervasive PDF glyph-name tokens (e.g. /i255/1/5/6/7)
+    if no_urls.count("/") / len(no_urls) > 0.05 or bool(_GLYPH_TOKEN_SEQUENCE_RE.search(no_urls)):
+        return True
+    # 2. Repeated unmapped replacement characters (U+00FF 'ÿ', U+FFFD) or control bytes
+    unmapped_count = text.count("\u00ff") + text.count("\ufffd")
+    if unmapped_count >= 5 and (unmapped_count / len(text) > 0.01):
+        return True
+    if sum(1 for c in text if ord(c) < 32 and c not in "\n\r\t") >= 5:
+        return True
+    # 3. Garbled character mappings where letters do not form readable words
+    alpha_total = _alpha_chars(text)
+    if alpha_total >= 200:
+        words = _READABLE_WORD_RE.findall(text)
+        alpha_in_words = sum(len(w) for w in words)
+        if alpha_in_words / alpha_total < 0.50:
+            return True
+    return False
 
 
 def _is_placeholder_text(text: str) -> bool:
@@ -399,14 +436,16 @@ def assess_agenda_document(
     native = native[:AGENDA_TEXT_MAX_CHARS]
     native_alpha = _alpha_chars(native)
     native_score = agenda_content_score(native)
+    native_corrupted = _is_corrupted_native_text(native)
     native_suspicious = (
         _is_placeholder_text(native)
+        or native_corrupted
         or native_alpha < 200
         or native_score == 0
         or _repeated_line_ratio(native) > 0.55
     )
 
-    if _is_short_notice(native) and not _is_placeholder_text(native):
+    if _is_short_notice(native) and not _is_placeholder_text(native) and not native_corrupted:
         return (
             AgendaTextAssessment(
                 native,
@@ -470,7 +509,9 @@ def assess_agenda_document(
     try:
         probe_text, probe_confidence = runner(content, pages, timeout=OCR_PROBE_TIMEOUT_SECONDS)
     except Exception as exc:  # noqa: BLE001 - convert tool failures into durable diagnostics
-        if isinstance(exc, subprocess.TimeoutExpired):
+        if native_corrupted:
+            reason = "corrupted-native-text"
+        elif isinstance(exc, subprocess.TimeoutExpired):
             reason = "ocr-timeout"
         elif isinstance(exc, OcrUnavailableError):
             reason = "ocr-unavailable"
@@ -505,7 +546,7 @@ def assess_agenda_document(
                 "none",
                 "rejected",
                 "unknown",
-                "ambiguous-native-and-ocr",
+                "corrupted-native-text" if native_corrupted else "ambiguous-native-and-ocr",
                 native_chars=len(native),
                 ocr_chars=len(probe_text),
                 page_count=page_count,
@@ -520,6 +561,10 @@ def assess_agenda_document(
     )
     if not materially_better and native_suspicious and native_alpha >= OCR_MIN_ALPHA_CHARS:
         materially_better = probe_score > native_score and probe_alpha >= native_alpha * 1.5
+    if not materially_better and native_corrupted:
+        # Corrupted native PDF text (e.g. broken font encodings or glyph dumps) cannot be used
+        # even if OCR word counts happen to be lower than the corrupted stream's token count.
+        materially_better = probe_score > 0 and probe_alpha >= OCR_MIN_ALPHA_CHARS
     if not materially_better and native_similarity < _SIMILARITY_ACCEPTANCE_THRESHOLD:
         return (
             AgendaTextAssessment(
@@ -529,7 +574,7 @@ def assess_agenda_document(
                 "none",
                 "rejected",
                 "unknown",
-                "ambiguous-native-and-ocr",
+                "corrupted-native-text" if native_corrupted else "ambiguous-native-and-ocr",
                 native_chars=len(native),
                 ocr_chars=len(probe_text),
                 page_count=page_count,
@@ -549,7 +594,9 @@ def assess_agenda_document(
                 ),
             )
         except Exception as exc:  # noqa: BLE001 - required OCR failure is durable and retryable
-            if isinstance(exc, subprocess.TimeoutExpired):
+            if native_corrupted:
+                reason = "corrupted-native-text"
+            elif isinstance(exc, subprocess.TimeoutExpired):
                 reason = "ocr-timeout"
             elif isinstance(exc, OcrUnavailableError):
                 reason = "ocr-unavailable"
@@ -574,10 +621,15 @@ def assess_agenda_document(
             )
         full_text = full_text[:AGENDA_TEXT_MAX_CHARS]
         full_alpha = _alpha_chars(full_text)
+        score_insufficient = (
+            agenda_content_score(full_text) == 0
+            if native_corrupted
+            else agenda_content_score(full_text) <= native_score
+        )
         if (
             full_alpha < OCR_MIN_ALPHA_CHARS
             or (full_confidence is not None and full_confidence < OCR_MIN_CONFIDENCE)
-            or agenda_content_score(full_text) <= native_score
+            or score_insufficient
         ):
             return (
                 AgendaTextAssessment(
@@ -587,7 +639,7 @@ def assess_agenda_document(
                     "none",
                     "rejected",
                     "unknown",
-                    "ocr-full-quality-failed",
+                    "corrupted-native-text" if native_corrupted else "ocr-full-quality-failed",
                     native_chars=len(native),
                     ocr_chars=len(full_text),
                     page_count=page_count,
@@ -612,6 +664,24 @@ def assess_agenda_document(
                 native_ocr_similarity=native_similarity,
                 ocr_mean_confidence=full_confidence,
                 truncated=len(full_text) >= AGENDA_TEXT_MAX_CHARS,
+            ),
+            discovered,
+        )
+    if native_corrupted:
+        return (
+            AgendaTextAssessment(
+                "",
+                source_url,
+                "pdf",
+                "none",
+                "rejected",
+                "unknown",
+                "corrupted-native-text",
+                native_chars=len(native),
+                ocr_chars=len(probe_text),
+                page_count=page_count,
+                native_ocr_similarity=native_similarity,
+                ocr_mean_confidence=probe_confidence,
             ),
             discovered,
         )
@@ -831,6 +901,9 @@ def extract_agenda_title_candidates(
         line = _normalize_ws(raw_line)
         if not line:
             continue
+        line = _BULLET_PREFIX_RE.sub("", line).strip()
+        if not line:
+            continue
         if _AGENDA_MARKER_RE.fullmatch(line):
             after_marker = True
             pending_prefix = None
@@ -853,7 +926,8 @@ def extract_agenda_title_candidates(
             section = re.match(r"^(?:\d+|[IVXLC]+)\.", prefix, re.I)
             if section:
                 current_section_prefix = section.group(0)
-            add(f"{prefix} {numbered.group('title')}", line_number)
+            clean_title = _BULLET_PREFIX_RE.sub("", numbered.group("title")).strip()
+            add(f"{prefix} {clean_title}", line_number)
             pending_prefix = None
             continue
         if pending_prefix:

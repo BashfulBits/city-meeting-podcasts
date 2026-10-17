@@ -3,6 +3,7 @@ import {
   parseRetryAfterSeconds,
   upstreamCapacityFailure,
 } from "./gateway.js";
+import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
@@ -54,9 +55,15 @@ export const FAILURE_SIGNATURES = [
   {
     rule_id: "groq-tpd",
     provider: "groq",
-    failure_class: "own_rpd",
+    failure_class: "own_tpd",
     match: ({ msg }) =>
-      msg.includes("tokens per day") || msg.includes("requests per day"),
+      msg.includes("tokens per day"),
+  },
+  {
+    rule_id: "groq-rpd",
+    provider: "groq",
+    failure_class: "own_rpd",
+    match: ({ msg }) => msg.includes("requests per day"),
   },
   {
     rule_id: "groq-rate-limit",
@@ -348,7 +355,16 @@ function isProviderCapacityMessage(body, msg) {
  * @returns {{failure_class:string, rule_id:string, retry_after_seconds:number|null,
  *            scope:"route"|"provider"|"account"}}
  */
-export function classifyProviderFailure({ status, body, headers, route }) {
+// Share of a systemone route's hard_input_ceiling at or above which its processing_failed 503 is
+// read as an oversize request (review/53 PR1).
+export const SYSTEMONE_OVERSIZE_FRACTION = 0.85;
+
+function isSystemoneProcessingFailed(body) {
+  const code = body?.code ?? body?.error?.code;
+  return code === "processing_failed";
+}
+
+export function classifyProviderFailure({ status, body, headers, route, inputTokens = null }) {
   // Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error": {...}}]`
   // -- not a bare object. Every check below (`body.error`, upstreamCapacityFailure, the
   // FAILURE_SIGNATURES message extraction) assumes a bare object; against the unwrapped array,
@@ -377,6 +393,24 @@ export function classifyProviderFailure({ status, body, headers, route }) {
   // 2. Use actionable provider details before the generic 5xx fallback. These classes let the
   // coordinator try another route without adding a provider call or a durable diagnostic row.
   if (status >= 500 && status <= 599) {
+    // JEV (api_shape systemone) answers an oversized request with a misleading
+    // `503 {"code":"processing_failed","retryable":true}` (measured 2026-09-30, review/49 section 7).
+    // Near the route's ceiling that is this job's size, which no retry can fix: fail the job so the
+    // producer re-packs it smaller. Well below the ceiling it is ordinary upstream capacity.
+    if (route?.api_shape === "systemone" && isSystemoneProcessingFailed(body)) {
+      const ceiling = Number(route.hard_input_ceiling);
+      const scaled =
+        Number.isFinite(Number(inputTokens)) && Number(inputTokens) > 0
+          ? scaledInputTokens(Number(inputTokens), routeInputTokenRatio(route))
+          : 0;
+      const oversize = Number.isFinite(ceiling) && ceiling > 0 && scaled >= SYSTEMONE_OVERSIZE_FRACTION * ceiling;
+      return {
+        failure_class: oversize ? "request_defect" : "upstream_capacity",
+        rule_id: oversize ? "systemone-oversize-503" : "systemone-processing-503",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
     const msg = providerFailureMessage(body);
     if (isInputLimitMessage(msg)) {
       return {
@@ -440,6 +474,12 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
+  if ((status === 400 || status === 429) && route?.provider === "orcarouter" &&
+      body?.error?.metadata?.reason === "err_free_prompt_cap") {
+    return { failure_class: "free_prompt_cap", rule_id: "orcarouter-free-prompt-cap",
+      retry_after_seconds: null, scope: "route" };
+  }
+
   // 5. HTTP 429 -> walk FAILURE_SIGNATURES
   if (status === 429) {
     const msg = providerFailureMessage(body);
@@ -463,6 +503,12 @@ export function classifyProviderFailure({ status, body, headers, route }) {
           rule_id: rule.rule_id,
           retry_after_seconds: retryAfterSeconds,
           scope: "route",
+          ...(rule.failure_class === "own_tpd" ? {
+            token_quota: (() => {
+              const match = msg.match(/limit:?\s*([\d.]+),\s*used:?\s*([\d.]+)/i);
+              return match ? { limit: Number(match[1]), used: Number(match[2]) } : null;
+            })(),
+          } : {}),
         };
       }
     }
@@ -509,6 +555,20 @@ export function classifyProviderFailure({ status, body, headers, route }) {
         msg.includes("(tpm)") ||
         msg.includes("(itpm)")
       ) {
+        // "Limit L, Requested R" with R > L: ONE request larger than the whole minute quota,
+        // whatever is already "Used". No amount of waiting admits it on this route, so it is a
+        // size rejection (the job moves to a sibling route), not pacing. With R <= L the bucket
+        // was merely full, which clears on its own.
+        const limit = /limit\s*[:=]?\s*(\d+)/.exec(msg);
+        const requested = /requested\s*[:=]?\s*(\d+)/.exec(msg);
+        if (limit && requested && Number(requested[1]) > Number(limit[1])) {
+          return {
+            failure_class: "route_input_limit",
+            rule_id: "size-status-request-exceeds-tpm",
+            retry_after_seconds: retryAfterSeconds,
+            scope: "route",
+          };
+        }
         return {
           failure_class: "own_tpm",
           rule_id: "size-status-token-rate-limit",
@@ -574,7 +634,51 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 9. Any other status -> request_defect
+
+
+  // 9. HTTP 401 Unauthorized or HTTP 403 Forbidden -> route_unavailable: the provider or gateway
+  //    has rejected the API key or authentication token (e.g. SambaNova #2027). A credential
+  //    error is never this job's fault and retrying immediately fails identically. Classifying
+  //    it as route_unavailable ensures the coordinator refunds reserved capacity, stands down
+  //    the affected provider/account routes for hours, and requeues the job so healthy candidate
+  //    providers can drain it.
+  if (status === 401) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "http-401-invalid-credentials",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+  if (status === 403) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "http-403-forbidden",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+
+  // Also catch explicit authentication error payloads regardless of HTTP status code.
+  const rawMsg = providerFailureMessage(body);
+  const errCode = String(body?.error?.code || body?.code || "").toLowerCase();
+  const errType = String(body?.error?.type || body?.type || "").toLowerCase();
+  if (
+    errCode === "invalid_api_key" ||
+    errType === "authentication_error" ||
+    rawMsg.includes("incorrect api key") ||
+    rawMsg.includes("invalid api key") ||
+    rawMsg.includes("invalid token")
+  ) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "auth-credential-invalid",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "account",
+    };
+  }
+
+  // 10. Any other status -> request_defect
   return {
     failure_class: "request_defect",
     rule_id: "http-4xx",

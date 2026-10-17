@@ -1,0 +1,220 @@
+{
+  "agenda_backup": null,
+  "agenda_text": null,
+  "audio": {
+    "attempts": 0,
+    "bytes": 100166649,
+    "duration_served": 8006.288,
+    "encode_time": "2026-07-27T20:14:36.905059+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/76869ed1994f/84fcc0492e66906d-dcb858cd97fb.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "dcb858cd97fb",
+    "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/84fcc0492e66906d-dcb858cd97fb.m4a",
+    "verification": null
+  },
+  "body": "2024 Capital Bond CBTF Meeting",
+  "chapter_tags": [
+    {
+      "chapter_id": "ch-2eadf153ab10",
+      "tags": []
+    }
+  ],
+  "chapters": [],
+  "chapters_basis": "served:silence:3+swagit-concat:1",
+  "duration": null,
+  "generated_agenda_candidates": {
+    "locator_status": "not_applicable",
+    "provider_chapter_count": 1,
+    "reason": "provider_chapters",
+    "status": "not_applicable"
+  },
+  "generated_chapters": null,
+  "generated_chapters_spec_hash": "",
+  "integrity": null,
+  "links": {
+    "canonical_video": "https://dallastx.new.swagit.com/videos/233037"
+  },
+  "llm_tag_candidates": null,
+  "media_availability": {
+    "detector_version": "1",
+    "evidence_ref": null,
+    "last_check": "2026-07-27T20:14:36.902293+00:00",
+    "operator_override": null,
+    "operator_reason": "",
+    "partial_confirmations": 0,
+    "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+    "reason": "playable audio",
+    "recovered_at": null,
+    "silent_confirmations": 0,
+    "source_fingerprint": "3dbf2628309bf321",
+    "state": "available"
+  },
+  "media_kind": "hls",
+  "minutes_roster": null,
+  "minutes_text": null,
+  "minutes_votes": null,
+  "moments": null,
+  "provider_guid": "233037",
+  "provider_transcript": null,
+  "published": "2023-05-25T00:00:00+00:00",
+  "served_duration_seconds": 8006.288,
+  "source_chapters": [
+    {
+      "end": 8578,
+      "start": 374,
+      "title": "2024 Bond CBTF Meeting on May 25, 2023."
+    }
+  ],
+  "source_duration_seconds": null,
+  "sources": [
+    {
+      "backup_key": null,
+      "duration": 8578.45,
+      "duration_basis": "decoded",
+      "id": "s0",
+      "media_kind": "hls",
+      "provider": "swagit",
+      "ref": "https://dallastx.new.swagit.com/videos/233037/download",
+      "watch_url": "https://dallastx.new.swagit.com/videos/233037"
+    }
+  ],
+  "speakers": null,
+  "stage_completion": {
+    "agenda_text": {
+      "input_fingerprint": "d6905da9b6c19108bb454281448269ecb42c4615014036beaca898eb28df9915",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "audio": {
+      "completed_at": "2026-07-27T20:20:37.864190+00:00",
+      "input_fingerprint": "5db7a6f39ca4d967bb8b4afe84a321189d4750f1551e1b7c6ec1e09ebc50e582",
+      "output": "swagit/76869ed1994f/84fcc0492e66906d-dcb858cd97fb.m4a",
+      "state": "complete",
+      "version": "1"
+    },
+    "chapter_agenda": {
+      "completed_at": "2026-09-02T19:17:20.236097+00:00",
+      "input_fingerprint": "cc196fbe3f61f4454a9c3bb70453ca2b1d6ce6105b9fbf21e7f915f616b6853a",
+      "output": "not_applicable",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapter_locator": {
+      "completed_at": "2026-09-02T19:42:42.981629+00:00",
+      "input_fingerprint": "569aad6b9a84776c5f73dbe686c8925e5b9cd9232fef0115984a0a6618e5cb24",
+      "output": "",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapters": {
+      "completed_at": "2026-07-27T20:11:46.099583+00:00",
+      "input_fingerprint": "25b31d154a818d52953cf9f12398588f688cdd3f5e710bd797d871c246f7490e",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "links": {
+      "input_fingerprint": "8227c2d225a384fecfb6180559b9f975023345451c8728c16ca71659b21beeeb",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "minutes_text": {
+      "input_fingerprint": "741afb47f70acb672915138adc1e7a1b44d68eeb2859dda635872a50d13627c4",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-admission": {
+      "completed_at": "2026-10-04T00:58:14.516832+00:00",
+      "input_fingerprint": "046be35c717658b1bbc1608731e752a2250bd9f2c00d02037fb43833a3e817b7",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-judge": {
+      "completed_at": "2026-10-04T00:58:14.516767+00:00",
+      "input_fingerprint": "c96054566bc179ab03f7d0229bd33509c633cc0cef91dbc358fdc5db1a035be6",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moments": {
+      "completed_at": "2026-09-25T05:43:09.129346+00:00",
+      "input_fingerprint": "0830315472c2be754e85d72f68afd69cd1622f46a74cdb4e56b22b14b9ee274a",
+      "output": [],
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "remap": {
+      "completed_at": "2026-08-10T21:40:37.971889+00:00",
+      "input_fingerprint": "6ce3c8b3bf4452ef0145cc4dbf6bbd348fd4c1e5fe6e2a2a6ed70d30305f52e2",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "tags": {
+      "completed_at": "2026-07-28T21:19:53.611173+00:00",
+      "input_fingerprint": "d9b5cfc8d0f70c6f753593f18c649e2e4aa07009fd075555a728c8cea54a44fa",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "timeline": {
+      "completed_at": "2026-07-27T20:14:36.904663+00:00",
+      "input_fingerprint": "841ef6908d0dbc4307a5bb6d2411b395683f8c7014f5246d934621ed8830049b",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "video-clips": {
+      "completed_at": "2026-08-23T20:09:40.638926+00:00",
+      "input_fingerprint": "c73933b6e5154dd1f575f68d67a893e8e2efb44904b4fb1404c4032e1b6ee629",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    }
+  },
+  "summary": "",
+  "tags": null,
+  "tags_input_fingerprint": "ca787c8d91af2bfb",
+  "tags_llm_call_attempts": null,
+  "tags_llm_recipe_hash": null,
+  "tags_spec_hash": "00945ce5b844112f",
+  "timeline": {
+    "basis": "served",
+    "segments": [
+      {
+        "asset_id": null,
+        "asset_version": null,
+        "insert": null,
+        "kind": "source",
+        "served_end": 3360.859542,
+        "served_start": 0.0,
+        "source_end": 3735.412729,
+        "source_id": "s0",
+        "source_start": 374.553187
+      },
+      {
+        "asset_id": null,
+        "asset_version": null,
+        "insert": null,
+        "kind": "source",
+        "served_end": 8006.288397,
+        "served_start": 3360.859542,
+        "source_end": 8576.470667,
+        "source_id": "s0",
+        "source_start": 3931.041812
+      }
+    ],
+    "version": "silence:3+swagit-concat:1"
+  },
+  "title": "2024 Capital Bond CBTF Meeting \u2013 May 25, 2023",
+  "transcript": null,
+  "uid": "84fcc0492e66906d",
+  "video_url": "https://dallastx.new.swagit.com/videos/233037/download"
+}

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "dataset": "dataset-v3",
+  "purpose": "DeepSeek V4.1 JSON mode and thinking-mode diagnostic",
+  "split": "development",
+  "packet_uid": "d9ed782861f549dc",
+  "packet_slug": "arlington-tx",
+  "packet_builder_estimate_chars_div_4": 1370,
+  "provider_labels_in_requests": false,
+  "route": "deepseek/deepseek-v4.1-flash",
+  "route_id": "nvidia_deepseek_v4_1_flash_free",
+  "route_transport": "Cloudflare AI Gateway to NVIDIA; direct streamed HTTP",
+  "message_roles": ["system", "user"],
+  "prompt_controls": [
+    "one system message first; packet is the final user message",
+    "explicit locator schema and allowed anchor fields",
+    "concrete JSON example with placeholder values",
+    "example warns not to copy placeholder unit IDs or quotes"
+  ],
+  "pause": {
+    "scope": "provider:nvidia",
+    "drained": true,
+    "in_flight_at_start": 3,
+    "drain_seconds": 482.9,
+    "requests_sequential": true,
+    "resumed_after_run": true
+  },
+  "variants": [
+    {
+      "name": "json_object_example_thinking_off",
+      "response_format": {"type": "json_object"},
+      "chat_template_kwargs": {"enable_thinking": false},
+      "http_status": 200,
+      "elapsed_seconds": 268.287,
+      "first_byte_seconds": 249.379,
+      "finish_reason": "stop",
+      "prompt_tokens": 2213,
+      "completion_tokens": 251,
+      "reasoning_tokens": 0,
+      "visible_content_bytes": 958,
+      "schema_valid": true,
+      "anchor_count": 5,
+      "provider_start_hits": 3,
+      "provider_start_denominator": 3,
+      "request_sha256": "156a43c144828fc4101398988f40d1d64a7d3ebeac3585820eea35f09e8f8939",
+      "response_id": "b4242c4677a3d838"
+    },
+    {
+      "name": "prompt_only_example_thinking_off",
+      "response_format": null,
+      "chat_template_kwargs": {"enable_thinking": false},
+      "http_status": 200,
+      "elapsed_seconds": 313.427,
+      "first_byte_seconds": 221.649,
+      "finish_reason": "stop",
+      "prompt_tokens": 2213,
+      "completion_tokens": 679,
+      "reasoning_tokens": 0,
+      "visible_content_bytes": 2783,
+      "json_parsed": true,
+      "schema_valid": false,
+      "schema_error": "duplicate locator unit: u00016",
+      "request_sha256": "9170a4cf4553f04ff9215f3b57ccb7ae90316a573a9210a6a14ac9e978f1358b",
+      "response_id": "b002161944e40815"
+    },
+    {
+      "name": "json_object_example_default_thinking",
+      "response_format": {"type": "json_object"},
+      "chat_template_kwargs": "provider default",
+      "http_status": 200,
+      "elapsed_seconds": 225.997,
+      "first_byte_seconds": 221.349,
+      "finish_reason": "stop",
+      "prompt_tokens": 2238,
+      "completion_tokens": 391,
+      "reasoning_tokens": 390,
+      "visible_content_bytes": 0,
+      "reasoning_content_bytes": 1461,
+      "schema_valid": false,
+      "schema_error": "empty output content",
+      "request_sha256": "bd3dd4c87887869faf5149ac30d457a9f0a291b2a3d24a01fa8c2d5b324d1e3b",
+      "response_id": "b507c28b46a31c3e"
+    }
+  ],
+  "conclusion": "On this one small packet, json_object plus the documented example and thinking disabled produced valid structured output. With the same ordered messages and example, default thinking again produced a normal stop with reasoning tokens but no visible content. This points to thinking-mode interaction as the main cause in this comparison; message order and the JSON example alone did not resolve it.",
+  "limitations": [
+    "Only one small development packet was used; this does not measure overall locator quality or long-context reliability.",
+    "The JSON-mode result must be repeated across development packets before changing route or lane policy.",
+    "The separate DeepSeek Chat Completions docs document json_object; json_schema appears in the Responses API with a different request envelope."
+  ],
+  "private_raw_artifacts": {
+    "directory": "/private/tmp/chapter-locator-telemetry/nvidia-v41-json-format-20260927T024601Z/",
+    "contains": "raw requests, complete SSE response bodies, timestamped events, and protocol summaries; response bodies may contain private reasoning text"
+  },
+  "official_references": [
+    "https://api-docs.deepseek.com/guides/json_mode/",
+    "https://api-docs.deepseek.com/api/create-chat-completion/",
+    "https://api-docs.deepseek.com/api/create-response/",
+    "https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1_flash-infer",
+    "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/encoding/README.md"
+  ]
+}

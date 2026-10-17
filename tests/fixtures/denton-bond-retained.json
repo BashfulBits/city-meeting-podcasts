@@ -1,0 +1,24 @@
+[
+  {
+    "uid": "04689e3929ac104e",
+    "provider_guid": "28865",
+    "body": "Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM",
+    "title": "Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM \u2013 Jun 06, 2019",
+    "published": "2019-06-06T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/28865/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 62151016,
+      "duration_served": 5011.054,
+      "encode_time": "2026-06-19T08:52:44.340948+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/04689e3929ac104e-8842e26bc64f.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "8842e26bc64f",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/04689e3929ac104e-8842e26bc64f.m4a",
+      "verification": null
+    }
+  }
+]

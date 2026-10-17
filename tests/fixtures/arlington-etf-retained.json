@@ -1,0 +1,134 @@
+[
+  {
+    "uid": "1792515fdd51c6c2",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443",
+    "body": "Environmental Task Force",
+    "title": "Environmental Task Force",
+    "published": "2020-04-14T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3443",
+    "audio": {
+      "attempts": 0,
+      "bytes": 33562349,
+      "duration_served": 2605.07,
+      "encode_time": "2026-07-14T12:51:06.492760+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "6ce74547f120",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "25e9b8510b0a7a66",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494",
+    "body": "Environmental Task Force Meeting",
+    "title": "Environmental Task Force Meeting",
+    "published": "2020-06-09T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3494",
+    "audio": {
+      "attempts": 0,
+      "bytes": 21492371,
+      "duration_served": 1700.511,
+      "encode_time": "2026-07-14T12:42:07.090035+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "52d20ccf2d77",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "2d5dc451df2da130",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+    "body": "Environmental Task Force Meeting",
+    "title": "Environmental Task Force Meeting",
+    "published": "2020-04-28T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3454",
+    "audio": {
+      "attempts": 0,
+      "bytes": 23396872,
+      "duration_served": 1848.525,
+      "encode_time": "2026-07-14T12:45:41.799193+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "257b989183aa",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "35b22fcc8d07967b",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424",
+    "body": "Environmental Task Force Meeting",
+    "title": "Environmental Task Force Meeting",
+    "published": "2020-03-24T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3424",
+    "audio": {
+      "attempts": 0,
+      "bytes": 32593662,
+      "duration_served": 2585.45,
+      "encode_time": "2026-07-14T12:49:28.086034+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "bedc78824c46",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "9b66e98b682a47f2",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3508",
+    "body": "Environmental Task Force Meeting",
+    "title": "Environmental Task Force Meeting",
+    "published": "2020-06-30T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3508",
+    "audio": {
+      "attempts": 0,
+      "bytes": 45071257,
+      "duration_served": 3563.849,
+      "encode_time": "2026-07-14T12:42:09.737153+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "5965cabd9a0a",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "a683af6e13e2bd7a",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3479",
+    "body": "Environmental Task Force Meeting",
+    "title": "Environmental Task Force Meeting",
+    "published": "2020-05-19T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3479",
+    "audio": {
+      "attempts": 0,
+      "bytes": 65341395,
+      "duration_served": 5152.2,
+      "encode_time": "2026-07-14T12:46:29.693216+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "3a59dddd57ab",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a",
+      "verification": null
+    }
+  }
+]

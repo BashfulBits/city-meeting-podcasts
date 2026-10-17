@@ -1,0 +1,49 @@
+{
+  "routes": [
+    {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "worker_status": {
+        "ok": true,
+        "now": 1791764087534,
+        "selection": "route:gemini_3_5_flash_lite_primary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_5_flash_lite_primary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 500,
+            "rpd_used": 0,
+            "rpd_remaining": 500,
+            "rpd_resets_at": 1791788443784
+          }
+        }
+      },
+      "local_requests_today": 0,
+      "local_rpd_remaining": 500
+    },
+    {
+      "route_id": "gemini_3_5_flash_lite_secondary",
+      "worker_status": {
+        "ok": true,
+        "now": 1791764087642,
+        "selection": "route:gemini_3_5_flash_lite_secondary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_5_flash_lite_secondary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 500,
+            "rpd_used": 0,
+            "rpd_remaining": 500,
+            "rpd_resets_at": 1791788443892
+          }
+        }
+      },
+      "local_requests_today": 0,
+      "local_rpd_remaining": 500
+    }
+  ],
+  "worker_usage_today": []
+}

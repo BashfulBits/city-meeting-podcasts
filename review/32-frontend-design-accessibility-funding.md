@@ -89,6 +89,45 @@ implementation details such as source keys or rule provenance unless a research/
 asks for it. This preserves the simple catalog → municipality → body hierarchy while making a topic
 result materially more useful than a meeting-level hit.
 
+### Feed-page history, pagination, and RSS cap (maintainer direction, 2026-10-07)
+
+The maintainer prefers a project RSS cap of **300 episodes**. Podcast RSS and website history are
+separate: older retained meetings should remain reachable through the website, and the feed page must
+say that podcast apps receive only the latest 300 episodes from RSS. Do not imply that 300 is a limit
+imposed by Apple: Apple's published
+[RSS requirements](https://podcasters.apple.com/support/823-podcast-requirements) specify required
+feed structure and episode fields but do not state a 300-item maximum.
+
+This policy cannot be achieved by changing `max_episodes` alone. Today that setting is used both when
+building RSS (`citypods/feeds.py`) and when preparing the page's episode list (`citypods/run.py`),
+while body-aware retention and work priority also use the 500 value. The redesign must separate the
+RSS output limit from history navigation and from the existing 500-item materialization window,
+preserving stable episode GUIDs and URLs and avoiding any reduction in retained history or search
+inputs. The website currently has a 500-item "Recent meetings" list and a separate archive page that
+lists every retained episode in one unpaginated HTML page (`citypods/site.py` and
+`templates/city_archive.html.j2`). The prior design deferred pagination unless one archive page grew
+large; the maintainer has reopened that decision.
+
+**Open decision — fixed window or pagination?** Compare these choices before template implementation:
+
+1. **Keep a fixed recent list plus the existing full archive page.** Lowest implementation and
+   navigation complexity, and the archive already prevents older meetings from disappearing. The
+   fixed number is arbitrary, though, and the single archive page can become slow or unwieldy as the
+   catalog grows.
+2. **Paginate the full meeting list on the feed page or archive.** No hidden cutoff: listeners can
+   move through the retained history in predictable chunks, and each page stays smaller. It adds
+   page-generation, links, URL stability, boundary, and accessibility work; the design must choose
+   whether pagination applies to the main feed page, the archive, or both.
+3. **Keep a short recent list and paginate only the archive.** Keeps the subscription page focused
+   while providing complete history. This still chooses a recent-list size, but that number controls
+   the preview rather than whether older meetings are reachable.
+
+The implementation must present these trade-offs and get a maintainer choice. Whichever option wins,
+the 300-item RSS notice must link to a complete website history path. Verify RSS contains at most 300
+newest eligible episodes; page/archive navigation reaches older retained records; and search inputs
+remain unchanged. Search is currently not published on the live site; this redesign requirement does
+not claim that it is.
+
 ### A.2 This doc specifies a process, not a visual identity — deliberately
 
 **Maintainer decision, 2026-07-13: this session produces roadmap/design documents, not the actual visual

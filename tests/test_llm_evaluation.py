@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -42,13 +43,59 @@ def candidate(confidence: float, *, label: str = "housing", episode: str = "ep-1
 
 
 def test_llm_evaluation_cli_is_importable_outside_checkout(tmp_path):
-    """The console command must not depend on the un-packaged ``scripts/`` directory."""
+    """The packaged CLI must import outside the checkout, without a stale editable install."""
+    repo_root = Path(__file__).resolve().parents[1]
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    built = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            str(wheelhouse),
+            str(repo_root),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stderr
+
+    install_dir = tmp_path / "installed"
+    wheel = next(wheelhouse.glob("citypods-*.whl"))
+    installed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--no-build-isolation",
+            "--target",
+            str(install_dir),
+            str(wheel),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert installed.returncode == 0, installed.stderr
+
+    import_code = (
+        f"import sys; sys.path.insert(0, {str(install_dir)!r}); "
+        "from citypods.cli import main; "
+        "main(['llm-evaluation', 'package', '--help'])"
+    )
     result = subprocess.run(
         [
             sys.executable,
             "-I",
             "-c",
-            ("from citypods.cli import main; main(['llm-evaluation', 'package', '--help'])"),
+            import_code,
         ],
         cwd=tmp_path,
         capture_output=True,

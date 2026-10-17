@@ -6,6 +6,13 @@ source:
   body: "Planning and Zoning Commission"
   body_any:
     - "Planning and Zoning"
+  body_includes:
+    - provider_guid: "295839"
+      body: "Joint CPAC, P&Z, and City Council Meeting #1"
+    - provider_guid: "310072"
+      body: "Joint CPAC, P&Z, and City Council Meeting #2"
+    - provider_guid: "276855"
+      body: "Joint P&Z and City Council Meeting #1"
 podcast_title: "Addison: Planning and Zoning Commission"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

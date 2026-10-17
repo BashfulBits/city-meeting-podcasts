@@ -27,7 +27,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -43,7 +43,9 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_deferred import (
     look_up_deferred,
+    structural_recovery_context,
     terminal_failure_retry_allowed,
+    terminal_recovery_generation,
     write_deferred,
 )
 from citypods.compute.llm_failure_class import (
@@ -91,6 +93,7 @@ LLM_TASKS: frozenset[Task] = frozenset(
         "agenda-chapter-locate",
         "moment-extraction",
         "moment-judge",
+        "judge",
     }
 )
 TASK_VERSIONS: dict[Task, str] = {
@@ -102,6 +105,7 @@ TASK_VERSIONS: dict[Task, str] = {
     "agenda-chapter-locate": "1",
     "moment-extraction": "1",
     "moment-judge": "1",
+    "judge": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -129,6 +133,9 @@ TASK_PROMPTS: dict[Task, str] = {
     "moment-judge": (
         "Score a supplied grounded candidate only. Never rewrite, repair, or create a candidate."
     ),
+    # review/53: judge packets always carry their own messages (sibling) or systemone questions
+    # (JEV); this default is never sent.
+    "judge": "Judge only the supplied evidence. Never rewrite, repair, or create a candidate.",
 }
 
 SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
@@ -272,6 +279,32 @@ class LLMStructuredOutputError(LLMBackendError):
 
 class LLMDispatchTerminalError(LLMBackendError):
     """The dispatch Worker recorded a terminal failure for this one request."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        terminal_reason: str | None = None,
+        terminal_catalog_digest: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        # Unknown future reasons retain generic failure semantics. A structural disposition
+        # requires both recognized metadata and a nonempty catalog identity.
+        self.terminal_reason = (
+            terminal_reason
+            if isinstance(terminal_reason, str)
+            and terminal_reason in {"route_retired", "unadmissible"}
+            else None
+        )
+        self.terminal_catalog_digest = (
+            terminal_catalog_digest
+            if isinstance(terminal_catalog_digest, str) and terminal_catalog_digest.strip()
+            else None
+        )
+
+    @property
+    def structural(self) -> bool:
+        return self.terminal_reason is not None and self.terminal_catalog_digest is not None
 
 
 class LLMUpstreamPassthroughError(LLMDispatchTerminalError):
@@ -643,8 +676,27 @@ def _is_rate_limited_or_capacity(source: Any) -> bool:
     return False
 
 
+@dataclass
+class _ProviderAttemptBudget:
+    limit: int
+    used: int = 0
+
+    def consume(self) -> None:
+        if self.used >= self.limit:
+            raise LLMBackendError("immediate provider-attempt limit reached")
+        self.used += 1
+
+
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     """Return caller-supplied messages or construct the task's default structured prompt."""
+    systemone = job.inputs.get("systemone")
+    if systemone is not None:
+        # A JEV job (api_shape systemone, review/53) sends {state, questions}, not messages. This
+        # stand-in exists for admission and token estimation only and is never sent: the dispatch
+        # payload carries ``systemone`` itself, and only the Worker can reach such a route.
+        if not isinstance(systemone, dict) or not isinstance(systemone.get("questions"), dict):
+            raise ValueError("LLM inputs.systemone must be a mapping with a questions mapping")
+        return [{"role": "user", "content": json.dumps(systemone, sort_keys=True)}]
     supplied = job.inputs.get("messages")
     if supplied is not None:
         if not isinstance(supplied, list) or not supplied:
@@ -661,6 +713,15 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
 
 def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
     """The reasoning level the job's lane sets for this route's model, if any."""
+    explicit = job.inputs.get("reasoning_level")
+    if explicit is not None:
+        if explicit == "provider-default":
+            return None
+        if explicit not in {"off", "minimal", "low", "medium", "high", "max"}:
+            raise ValueError("unsupported explicit reasoning_level")
+        if not route_reasoning_controls(route, explicit):
+            raise ValueError("route does not support explicit reasoning_level")
+        return explicit
     policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
     purpose = getattr(policy, "purpose", "") or ""
     if not purpose:
@@ -671,6 +732,24 @@ def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
     if lane is None:
         return None
     return lane.reasoning_levels.get(canonical_model(getattr(route, "model", "") or ""))
+
+
+def _direct_result_provenance(result: JobResult, job: InferenceJob, route: Any) -> JobResult:
+    if route is None:
+        return result
+    controls = route_request_params(route)
+    level = _lane_reasoning_level(job, route)
+    effort_controls = route_reasoning_controls(route, level)
+    controls.update(effort_controls)
+    return replace(
+        result,
+        route_id=route.route_id or None,
+        upstream_model=route.upstream_model or None,
+        reasoning_level=level if effort_controls else None,
+        request_params_hash=hashlib.sha256(
+            json.dumps(controls, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+    )
 
 
 def _job_timeout(job: InferenceJob) -> float | None:
@@ -694,6 +773,37 @@ def _positive_seconds(name: str, default: float) -> float:
     if not math.isfinite(value) or value <= 0:
         raise ValueError(f"{name} must be a finite number of seconds greater than 0, got {raw!r}")
     return value
+
+
+def _dispatch_policy_json_payload(
+    policy: LLMRequestPolicy | None, allowed_models: Sequence[str]
+) -> dict[str, Any]:
+    """Build the coordinator policy, keeping physical pins out of provider request bodies."""
+    payload: dict[str, Any] = {
+        "allowed_models": list(allowed_models),
+        "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
+        "purpose": getattr(policy, "purpose", "") if policy else "",
+    }
+    if policy and policy.allowed_route_ids is not None:
+        payload["allowed_route_ids"] = list(policy.allowed_route_ids)
+    backup_models = getattr(policy, "backup_models", ()) if policy else ()
+    backup_after_attempts = getattr(policy, "backup_after_attempts", None) if policy else None
+    if backup_models and backup_after_attempts:
+        payload["backup_models"] = list(backup_models)
+        payload["backup_after_attempts"] = backup_after_attempts
+    return payload
+
+
+def _dispatch_request_digest(payload: Mapping[str, Any], policy: LLMRequestPolicy | None) -> str:
+    """Bind a physical route pin into request identity without sending it upstream."""
+    identity: Any = payload
+    if policy and policy.allowed_route_ids is not None:
+        identity = {
+            "provider_payload": payload,
+            "allowed_route_ids": list(policy.allowed_route_ids),
+        }
+    canonical = json.dumps(identity, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _messages_with_schema(
@@ -995,6 +1105,15 @@ class LiteLLMBackend(Backend):
             payload = {"model": resolved_model, "messages": messages, "stream": False}
             if response_format is not None:
                 payload["response_format"] = response_format
+        elif job.inputs.get("systemone") is not None:
+            if direct:
+                raise LLMBackendError("a systemone (JEV) job can only be dispatched to the Worker")
+            _messages(job)  # validates the shape
+            payload = {
+                "model": resolved_model,
+                "systemone": job.inputs["systemone"],
+                "stream": False,
+            }
         else:
             payload = {"model": resolved_model, "messages": _messages(job), "stream": False}
         if policy is not None:
@@ -1006,6 +1125,10 @@ class LiteLLMBackend(Backend):
                 # Durable requests are routed by the Worker.  Retain every permitted logical
                 # model there so independent quota pools can be used when the first is full.
                 payload["allowed_models"] = list(policy.allowed_models)
+            if policy.queue_only and policy.allowed_route_ids is not None:
+                # A physical route constraint narrows the logical model pool. The Worker applies
+                # it against its current catalog and never falls back outside this exact set.
+                payload["allowed_route_ids"] = list(policy.allowed_route_ids)
             if input_tokens_estimate is not None:
                 payload["input_tokens_estimate"] = input_tokens_estimate
             if output_token_budget is not None:
@@ -1251,6 +1374,7 @@ class LiteLLMBackend(Backend):
         output: Any,
         structured_output: str | None,
         model: str | None = None,
+        route_id: str | None = None,
     ) -> JobResult:
         """Validate and normalize a terminal Worker response from either POST or poll."""
         if not isinstance(output, Mapping):
@@ -1261,7 +1385,13 @@ class LiteLLMBackend(Backend):
         # be persisted/acknowledged as a genuine successful completion.
         self._raise_if_upstream_passthrough(output)
         self._validate_reconciled(output, structured_output)
-        return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
+        return JobResult(
+            task=task,
+            recipe_hash=recipe_hash,
+            output=output,
+            model=model,
+            route_id=route_id,
+        )
 
     def _deferred_handle(
         self,
@@ -1290,14 +1420,23 @@ class LiteLLMBackend(Backend):
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
+        from citypods.compute.llm_work import validate_work_binding
+
+        validate_work_binding(job)
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
+        if job.inputs.get("reasoning_level") is not None:
+            raise ValueError("explicit reasoning_level requires run_immediate")
+        if job.inputs.get("max_provider_attempts") is not None:
+            raise ValueError("max_provider_attempts requires run_immediate")
         policy = job.inputs.get("llm_policy")
         structured = self._response_model(job)
         if policy is None:
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
+        if policy.allowed_route_ids is not None and not policy.queue_only:
+            raise ValueError("physical route allowlist requires run_immediate")
         if self.storage is None or (
             not policy.queue_only and not getattr(self.storage, "cas_capable", False)
         ):
@@ -1312,11 +1451,13 @@ class LiteLLMBackend(Backend):
         existing = look_up_deferred(self.storage, job.recipe_hash)
         if existing is not None:
             return existing
-        if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
+        if not terminal_failure_retry_allowed(
+            self.storage, job.recipe_hash, recovery_context=self._structural_recovery_context(job)
+        ):
             raise LLMBackendError(
-                "LLM terminal failure retry limit reached for this recipe; "
+                "LLM terminal retry limit or structural recovery gate blocks this recipe; "
                 "change the input/recipe, clear its failure marker after investigating, "
-                "or wait for the marker's audit retention to expire"
+                "or wait for an eligible route generation"
             )
 
         messages = _messages(job)
@@ -1327,6 +1468,26 @@ class LiteLLMBackend(Backend):
         write_deferred(self.storage, job.recipe_hash, result)
         return result
 
+    def _structural_recovery_context(self, job: InferenceJob) -> dict[str, Any]:
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        policy = policy or LLMRequestPolicy(allowed_models=(self.config.model,))
+        messages = _messages(job)
+        structured = self._response_model(job)
+        response_model = structured[1] if structured else None
+        allowed = policy.allowed_models or (self.config.model,)
+        payload = self._payload(
+            job, response_model, resolved_model=canonical_model(allowed[0]), schema_only=True
+        )
+        input_estimate = estimate_tokens(payload.get("messages", messages))
+        if payload.get("structured_output"):
+            input_estimate += math.ceil(len(json.dumps(payload["structured_output"])) / 4)
+        return structural_recovery_context(
+            policy,
+            input_estimate=input_estimate,
+            output_budget=self._output_token_budget(job),
+            input_identity=hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),
+        )
+
     def run_immediate(self, job: InferenceJob) -> JobResult:
         """Direct, same-process inference with quota accounting and no durable result registry.
 
@@ -1334,6 +1495,13 @@ class LiteLLMBackend(Backend):
         handles may escape into the shared sweep. The paced implementation still reserves and
         settles every actual provider attempt, including its local structured-output retry.
         """
+        limit = job.inputs.get("max_provider_attempts")
+        budget = None
+        if limit is not None:
+            if type(limit) is not int or limit <= 0:
+                raise ValueError("max_provider_attempts must be a positive integer")
+            budget = _ProviderAttemptBudget(limit)
+            job = replace(job, inputs={**job.inputs, "_provider_attempt_budget": budget})
         policy = job.inputs.get("llm_policy")
         if not isinstance(policy, LLMRequestPolicy) or not policy.require_direct:
             raise ValueError("immediate inference requires a direct request policy")
@@ -1346,11 +1514,16 @@ class LiteLLMBackend(Backend):
         if policy.deadline_at <= self._now():
             raise TimeoutError("Immediate inference deadline reached")
         structured = self._response_model(job)
-        result = self._run_policy_job_paced(job, policy, structured, _messages(job))
-        if isinstance(result, JobHandle):
-            raise TimeoutError("No direct route capacity before the request deadline")
-        self._validate_reconciled(result.output, self._structured_output(job))
-        return result
+        try:
+            result = self._run_policy_job_paced(job, policy, structured, _messages(job))
+            if isinstance(result, JobHandle):
+                raise TimeoutError("No direct route capacity before the request deadline")
+            self._validate_reconciled(result.output, self._structured_output(job))
+        except Exception as exc:
+            if budget is not None:
+                exc.provider_attempts = budget.used
+            raise
+        return replace(result, provider_attempts=budget.used) if budget is not None else result
 
     def _enqueue_durable_policy_job(
         self,
@@ -1389,7 +1562,12 @@ class LiteLLMBackend(Backend):
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
         # single terminal response's actual usage only ever releases back what wasn't needed.
+        budget = job.inputs.get("_provider_attempt_budget")
         max_provider_attempts = 2 if structured else 1
+        if isinstance(budget, _ProviderAttemptBudget):
+            if budget.used >= budget.limit:
+                raise LLMBackendError("immediate provider-attempt limit reached")
+            max_provider_attempts = min(max_provider_attempts, budget.limit - budget.used)
         admission_messages = self._admission_messages(messages, structured, policy)
         input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
@@ -1398,6 +1576,10 @@ class LiteLLMBackend(Backend):
             len(policy.allowed_models) if policy.allowed_models else len(ROUTE_REGISTRY), 10
         )
         for _capacity_attempt in range(max_capacity_retries + 1):
+            if isinstance(budget, _ProviderAttemptBudget):
+                if budget.used >= budget.limit:
+                    raise LLMBackendError("immediate provider-attempt limit reached")
+                max_provider_attempts = min(2 if structured else 1, budget.limit - budget.used)
             selection = select_and_reserve(
                 self.storage,
                 job.recipe_hash,
@@ -1448,6 +1630,7 @@ class LiteLLMBackend(Backend):
         assert resolved_model is not None and route is not None and owner is not None
         attempted = False
         attempted_requests = 0
+        budget = job.inputs.get("_provider_attempt_budget")
 
         def _cleanup() -> None:
             if attempted:
@@ -1474,13 +1657,17 @@ class LiteLLMBackend(Backend):
                 route=route,
                 retry_after_seconds=int(retry_after) if retry_after is not None else None,
             )
-            now = datetime.now(UTC)
+            now = self._now()
             if classification.failure_class == "own_rpd":
                 tz = route.quota.reset_timezone or "UTC"
                 until = _next_local_midnight(tz, now)
                 if retry_after is not None:
                     until = max(until, now + timedelta(seconds=retry_after))
                 retry_sibling = False
+            elif classification.failure_class == "own_tpd":
+                cooldown = retry_after if retry_after is not None else _DEFAULT_BLOCK_SECONDS
+                until = now + timedelta(seconds=cooldown)
+                retry_sibling = True
             elif classification.failure_class == "upstream_capacity":
                 cooldown = (
                     retry_after if retry_after is not None else UPSTREAM_CAPACITY_COOLDOWN_SECONDS
@@ -1543,6 +1730,9 @@ class LiteLLMBackend(Backend):
 
                     def guarded_completion(**kwargs):
                         nonlocal attempted, attempted_requests
+                        if isinstance(budget, _ProviderAttemptBudget):
+                            budget.consume()
+                            kwargs["num_retries"] = 0
                         attempted = True
                         attempted_requests += 1
                         return completion_fn(**kwargs)
@@ -1566,6 +1756,9 @@ class LiteLLMBackend(Backend):
                         job, resolved_model=direct_model, route=route, direct=True
                     )
                     completion_fn = self._completion_fn()
+                    if isinstance(budget, _ProviderAttemptBudget):
+                        budget.consume()
+                        payload["num_retries"] = 0
                     attempted = True
                     attempted_requests += 1
                     response = completion_fn(**payload)
@@ -1588,6 +1781,7 @@ class LiteLLMBackend(Backend):
             _cleanup()
             raise
 
+        result = _direct_result_provenance(result, job, route)
         input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
         actual_tokens, actual_cost = _priced_actual(
             result.output,
@@ -1595,12 +1789,7 @@ class LiteLLMBackend(Backend):
             output_per_token=output_rate,
         )
         if result.model != resolved_model:
-            result = JobResult(
-                task=result.task,
-                recipe_hash=result.recipe_hash,
-                output=result.output,
-                model=resolved_model,
-            )
+            result = replace(result, model=resolved_model)
         settle_route_reservation(
             self.storage,
             owner,
@@ -1683,7 +1872,12 @@ class LiteLLMBackend(Backend):
         predicted to free up (``None`` if none ever will -- no eligible route), and ``.rejected``
         names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
+        budget = job.inputs.get("_provider_attempt_budget")
         max_provider_attempts = 2 if structured else 1
+        if isinstance(budget, _ProviderAttemptBudget):
+            if budget.used >= budget.limit:
+                raise LLMBackendError("immediate provider-attempt limit reached")
+            max_provider_attempts = min(max_provider_attempts, budget.limit - budget.used)
         admission_messages = self._admission_messages(messages, structured, policy)
         input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
@@ -1748,20 +1942,19 @@ class LiteLLMBackend(Backend):
                 result = self._run_structured_direct(
                     job, structured[1], resolved_model=direct_model, route=route
                 )
-                return JobResult(
-                    task=result.task,
-                    recipe_hash=result.recipe_hash,
-                    output=result.output,
-                    model=logical_model,
-                )
+                return _direct_result_provenance(replace(result, model=logical_model), job, route)
             response = self._completion_fn()(
                 **self._payload(job, resolved_model=direct_model, route=route, direct=True)
             )
-            return JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output=_response_mapping(response),
-                model=logical_model,
+            return _direct_result_provenance(
+                JobResult(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    output=_response_mapping(response),
+                    model=logical_model,
+                ),
+                job,
+                route,
             )
 
         # Dispatch mode: the v2 Worker owns provider access (mode validation guarantees its URL).
@@ -1798,7 +1991,22 @@ class LiteLLMBackend(Backend):
         """
         if not jobs:
             return []
+        from citypods.compute.llm_work import validate_work_binding
 
+        for job in jobs:
+            validate_work_binding(job)
+
+        if any(
+            isinstance(job.inputs.get("llm_policy"), LLMRequestPolicy)
+            and job.inputs["llm_policy"].allowed_route_ids is not None
+            and not job.inputs["llm_policy"].queue_only
+            for job in jobs
+        ):
+            raise ValueError("physical route allowlist requires queue_only dispatch")
+        if any(job.inputs.get("reasoning_level") is not None for job in jobs):
+            raise ValueError("dispatch cannot enforce explicit reasoning_level")
+        if any(job.inputs.get("max_provider_attempts") is not None for job in jobs):
+            raise ValueError("dispatch cannot enforce max_provider_attempts")
         enqueue_started = time.monotonic()
         telemetry_outcomes: list[tuple[InferenceJob, str, str | None]] = []
 
@@ -1820,6 +2028,8 @@ class LiteLLMBackend(Backend):
         # Only an in-flight row refuses a changed payload (idempotency_conflict); the handle is
         # kept for that case so the running attempt finishes and is polled normally.
         prior_pending: dict[int, JobHandle] = {}
+        recovery_contexts: dict[int, dict[str, Any]] = {}
+        recovery_generations: dict[int, str] = {}
         for i, job in enumerate(jobs):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
@@ -1828,6 +2038,25 @@ class LiteLLMBackend(Backend):
             else:
                 if isinstance(cached, JobHandle):
                     prior_pending[i] = cached
+                context = recovery_contexts[i] = self._structural_recovery_context(job)
+                marker: dict[str, Any] = {}
+                if not terminal_failure_retry_allowed(
+                    self.storage,
+                    job.recipe_hash,
+                    recovery_context=context,
+                    marker_snapshot=marker,
+                ):
+                    out[i] = LLMBackendError(
+                        "LLM recipe awaits structural recovery or retry review"
+                    )
+                    telemetry_outcomes.append((job, "rejected", "terminal_recovery_blocked"))
+                    continue
+                if marker.get("status") == "structural_blocked":
+                    generation = terminal_recovery_generation(
+                        self.storage, job.recipe_hash, context, marker=marker
+                    )
+                    if generation:
+                        recovery_generations[i] = generation
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -1929,8 +2158,11 @@ class LiteLLMBackend(Backend):
                 schema_only=True,
             )
             canonical_payload_str = json.dumps(payload, sort_keys=True)
-            request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
+            request_digest = _dispatch_request_digest(payload, policy)
             idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
+            generation = recovery_generations.get(idx)
+            if generation:
+                idempotency_key += f":recovery:{generation}"
 
             if storage is not None:
                 # Unconditional PUT (no if_none_match/if_match): job_id is a fresh UUID for
@@ -1940,22 +2172,13 @@ class LiteLLMBackend(Backend):
                 payload_writes.append((payload_key, canonical_payload_str.encode("utf-8")))
 
             messages = _messages(job)
-            in_tokens = estimate_tokens(messages)
+            in_tokens = estimate_tokens(payload.get("messages", messages))
+            if payload.get("structured_output"):
+                in_tokens += math.ceil(len(json.dumps(payload["structured_output"])) / 4)
             out_tokens = self._output_token_budget(job)
             priority = policy.priority if policy else 1
 
-            policy_json_payload: dict[str, Any] = {
-                "allowed_models": allowed,
-                "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
-                "purpose": getattr(policy, "purpose", "") if policy else "",
-            }
-            backup_models = getattr(policy, "backup_models", ()) if policy else ()
-            backup_after_attempts = (
-                getattr(policy, "backup_after_attempts", None) if policy else None
-            )
-            if backup_models and backup_after_attempts:
-                policy_json_payload["backup_models"] = list(backup_models)
-                policy_json_payload["backup_after_attempts"] = backup_after_attempts
+            policy_json_payload = _dispatch_policy_json_payload(policy, allowed)
 
             prepared_jobs.append(
                 {
@@ -2135,7 +2358,7 @@ class LiteLLMBackend(Backend):
         rejected_count = 0
         unknown_count = 0
         rejection_reasons: dict[str, int] = {}
-        deferred_writes: list[tuple[str, JobHandle]] = []
+        deferred_writes: list[tuple[int, JobHandle]] = []
         for idx, job, structured_name, logical_model, job_id in job_meta:
             if job_id in accepted_by_submitted_id:
                 canonical_id = accepted_by_submitted_id[job_id]
@@ -2154,7 +2377,7 @@ class LiteLLMBackend(Backend):
                     structured_output=structured_name,
                     model=logical_model,
                 )
-                deferred_writes.append((job.recipe_hash, handle))
+                deferred_writes.append((idx, handle))
                 out[idx] = handle
             else:
                 reason = rejected_by_id.get(job_id, "unknown")
@@ -2180,7 +2403,7 @@ class LiteLLMBackend(Backend):
                             max_tokens_mode=_job_max_tokens_mode(job),
                         ),
                     )
-                    deferred_writes.append((job.recipe_hash, handle))
+                    deferred_writes.append((idx, handle))
                     out[idx] = handle
                 elif reason == "idempotency_conflict" and idx in prior_pending:
                     # In flight under its previous payload (e.g. across a payload-shape change):
@@ -2204,9 +2427,15 @@ class LiteLLMBackend(Backend):
                     telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
-        def _persist_deferred(item: tuple[str, JobHandle]) -> None:
-            recipe_hash, handle = item
-            write_deferred(storage, recipe_hash, handle)
+        def _persist_deferred(item: tuple[int, JobHandle]) -> None:
+            idx, handle = item
+            recipe_hash = jobs[idx].recipe_hash
+            write_deferred(
+                storage,
+                recipe_hash,
+                handle,
+                recovery_context=recovery_contexts[idx],
+            )
 
         persist_started = time.monotonic()
         if deferred_writes:
@@ -2335,7 +2564,12 @@ class LiteLLMBackend(Backend):
         results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
 
-        def _resolve_completed(h: JobHandle, result_key: str, completed_model: str | None = None):
+        def _resolve_completed(
+            h: JobHandle,
+            result_key: str,
+            completed_model: str | None = None,
+            completed_route_id: str | None = None,
+        ):
             """Fetch, validate and persist one completed job's result.
 
             Runs on a worker thread. Each handle touches only keys derived from its own
@@ -2368,7 +2602,15 @@ class LiteLLMBackend(Backend):
                     output=output,
                     structured_output=h.structured_output,
                     model=completed_model or h.model,
+                    route_id=completed_route_id,
                 )
+                if completed_route_id:
+                    route = ROUTE_REGISTRY.get(completed_route_id)
+                    if route is not None:
+                        res = replace(
+                            res,
+                            upstream_model=route.upstream_model or None,
+                        )
                 write_deferred(storage, h.recipe_hash, res)
             except LLMBackendError as exc:
                 return "error", exc
@@ -2391,7 +2633,7 @@ class LiteLLMBackend(Backend):
 
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
         # is pure bookkeeping over the already-fetched statuses.
-        completed: list[tuple[JobHandle, str, str | None]] = []
+        completed: list[tuple[JobHandle, str, str | None, str | None]] = []
         payload_keys: dict[str, str | None] = {}
         for h in v2_handles:
             st = statuses.get(h.ref)
@@ -2405,11 +2647,19 @@ class LiteLLMBackend(Backend):
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
-                completed.append((h, st["result_key"], st.get("model")))
+                route_id = st.get("route_id")
+                if route_id is not None and not isinstance(route_id, str):
+                    results[h.ref] = LLMBackendError(
+                        "LLM dispatch v2 poll-batch returned malformed route identity"
+                    )
+                    continue
+                completed.append((h, st["result_key"], st.get("model"), route_id))
                 payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
-                    f"LLM dispatch v2 job {h.ref} failed permanently"
+                    f"LLM dispatch v2 job {h.ref} failed permanently",
+                    terminal_reason=st.get("terminal_reason"),
+                    terminal_catalog_digest=st.get("terminal_catalog_digest"),
                 )
             else:
                 results[h.ref] = None
@@ -2427,12 +2677,14 @@ class LiteLLMBackend(Backend):
                     outcomes = list(pool.map(lambda item: _resolve_completed(*item), completed))
             else:
                 outcomes = [_resolve_completed(*item) for item in completed]
-            for (h, _key, _model), (kind, value) in zip(completed, outcomes, strict=True):
+            for (h, _key, _model, _route_id), (kind, value) in zip(
+                completed, outcomes, strict=True
+            ):
                 resolved.append((h, kind, value))
 
         acked_refs: list[str] = []
         consumed: list[tuple[str, str, str | None]] = []
-        result_keys = {h.ref: key for h, key, _model in completed}
+        result_keys = {h.ref: key for h, key, _model, _route_id in completed}
         for h, kind, value in resolved:
             if kind == "done":
                 results[h.ref] = value
@@ -2698,6 +2950,68 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 ingress status returned a malformed response")
         return data
 
+    def dispatch_v2_route_stats(self) -> Mapping[str, Any]:
+        """Return the v2 Worker's cheap per-route view (``GET /v2/stats?routes=1``).
+
+        Read-only and unmetered: one row per route that has a ledger, never the job scan that
+        ``?detail=1`` does (about 79,000 Durable Object rows a call, the 2026-10-13 outage).
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 route stats require LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/stats?routes=1")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 route stats request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 route stats returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 route stats returned malformed JSON") from exc
+        if not isinstance(data, Mapping) or not isinstance(
+            (data.get("routes") or {}).get("all"), list
+        ):
+            raise LLMBackendError("LLM dispatch v2 route stats returned a malformed response")
+        return data
+
+    def dispatch_v2_pack_ceiling(self, model: str, prompt_family: str) -> Mapping[str, Any]:
+        """Return the Worker's packing preflight for ``model`` and ``prompt_family``.
+
+        Read-only (``GET /v2/calibration?model=``): ``pack_ceiling_input_estimate`` is the largest
+        chars/4 input estimate a packet may carry and still be admissible on the smallest free
+        route of the model, from its tightest size limit over the p95 packing ratio (review/55).
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 packing ceiling requires LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        query = urlencode({"model": model, "prompt_family": prompt_family})
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/calibration?{query}")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 packing ceiling request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 packing ceiling returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError(
+                "LLM dispatch v2 packing ceiling returned malformed JSON"
+            ) from exc
+        if not isinstance(data, Mapping):
+            raise LLMBackendError("LLM dispatch v2 packing ceiling returned a malformed response")
+        return data
+
     def dispatch_v2_calibration(self, route_id: str, prompt_family: str) -> Mapping[str, Any]:
         """Return the input ratio the v2 claim applies to ``route_id`` and ``prompt_family``.
 
@@ -2830,10 +3144,24 @@ class LiteLLMBackend(Backend):
                 "content": (
                     "Retry this task. Your previous response failed local schema validation. "
                     "Return only one JSON object that exactly matches the requested response "
-                    "schema."
+                    "schema. Put the JSON in the assistant message content; reasoning text alone "
+                    "is not a response."
                 ),
             }
         )
+        if getattr(handle, "task", "") == "agenda-chapter-locate":
+            corrected_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "For this locator retry, use only supplied transcript unit IDs and times. "
+                        "If distinct agenda items share one start time, reconsider the conflicting "
+                        "anchors: use another supplied unit only for a transcript-supported later "
+                        "start; otherwise keep the most specific chapter and omit a more general "
+                        "duplicate heading. Never invent a timestamp or add an arbitrary offset."
+                    ),
+                }
+            )
         corrected_payload = dict(payload)
         corrected_payload["messages"] = corrected_messages
         canonical_payload = json.dumps(corrected_payload, sort_keys=True)
@@ -2843,6 +3171,10 @@ class LiteLLMBackend(Backend):
         corrected_key = f"payloads/{handle.ref}/schema-correction.json"
         request_digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
         input_token_estimate = estimate_tokens(corrected_messages)
+        if corrected_payload.get("structured_output"):
+            input_token_estimate += math.ceil(
+                len(json.dumps(corrected_payload["structured_output"])) / 4
+            )
 
         try:
             storage.put_cas(
@@ -2956,6 +3288,9 @@ class BatchingDispatchBackend:
         )
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
+        from citypods.compute.llm_work import validate_work_binding
+
+        validate_work_binding(job)
         if not self._can_batch(job):
             return self._backend.run_inference(job)
 
@@ -2981,7 +3316,13 @@ class BatchingDispatchBackend:
                 else:
                     _observe_locked("prior_pending")
             return existing
-        if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+        recovery_context_for = getattr(self._backend, "_structural_recovery_context", None)
+        recovery_context = recovery_context_for(job) if callable(recovery_context_for) else None
+        if not terminal_failure_retry_allowed(
+            self._backend.storage,
+            job.recipe_hash,
+            recovery_context=recovery_context,
+        ):
             # Preserve the wrapped backend's specific terminal-failure error message.
             return self._backend.run_inference(job)
 
@@ -3040,6 +3381,12 @@ class BatchingDispatchBackend:
                     self._backend, jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
                 )
             )
+        from citypods.compute.llm_work import validate_work_binding
+
+        for job, result in zip(jobs, results, strict=True):
+            work = validate_work_binding(job)
+            if work is not None:
+                work.result(job, result)
         return [
             BatchDispatchOutcome(job=job, result=result)
             for job, result in zip(jobs, results, strict=True)
@@ -3366,10 +3713,10 @@ def dispatch_v2_ingress_open(
 ) -> tuple[bool, Mapping[str, Any] | None]:
     """Whether the v2 coordinator would admit new work for ``purpose`` right now.
 
-    Fails OPEN: with no v2 Worker configured, or when the preflight itself errors, returns
-    ``(True, None)``. The check only saves a producer from building work the Worker would refuse;
-    enqueue still enforces every limit, so a missed "closed" costs a rejected submission, while a
-    spurious "closed" would idle a lane for no reason.
+    With no v2 Worker configured, returns ``(True, None)`` for direct-mode compatibility. When a
+    configured v2 preflight errors, fails closed for this lane: otherwise an outage of the budget
+    endpoint would make every producer assume unlimited headroom and continue building/submitting
+    work while the coordinator is already rejecting it.
     """
     try:
         client = backend or LiteLLMBackend(LLMBackendConfig.from_env())
@@ -3380,9 +3727,91 @@ def dispatch_v2_ingress_open(
     try:
         status = client.dispatch_v2_ingress_status(purpose)
     except LLMBackendError as exc:
-        print(f"llm ingress preflight for {purpose!r} failed ({exc}); assuming open", flush=True)
-        return True, None
+        print(f"llm ingress preflight for {purpose!r} failed ({exc}); closing lane", flush=True)
+        return False, {"open": False, "purpose": purpose, "reasons": ["preflight_unavailable"]}
     return bool(status.get("open")), status
+
+
+def dispatch_v2_pack_ceilings(
+    models: Sequence[str], prompt_family: str, *, backend: Any = None
+) -> dict[str, int]:
+    """Per model, the largest chars/4 packet estimate the Worker will admit on its smallest route.
+
+    Empty when no Worker is configured or the read fails; a model the Worker states no limit for is
+    left out. Callers then keep their configured packet ceilings."""
+    client = backend if hasattr(backend, "dispatch_v2_pack_ceiling") else None
+    if client is None:
+        try:
+            client = LiteLLMBackend(LLMBackendConfig.from_env())
+        except ValueError:
+            return {}
+    if not client.config.dispatch_v2_url:
+        return {}
+    ceilings: dict[str, int] = {}
+    for model in models:
+        try:
+            data = client.dispatch_v2_pack_ceiling(model, prompt_family)
+        except LLMBackendError as exc:
+            print(
+                f"llm packing ceiling lookup for {model} failed ({exc}); using the default",
+                flush=True,
+            )
+            continue
+        value = data.get("pack_ceiling_input_estimate")
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            ceilings[model] = int(value)
+    return ceilings
+
+
+def dispatch_v2_model_headroom(models: Sequence[str], *, backend: Any = None) -> dict[str, float]:
+    """Usable route capacity per logical model, from the Worker's cheap route view.
+
+    A model's headroom is the sum, over its catalog routes, of each route's ``capacity`` fraction
+    (0 while the route is blocked). A route the Worker has no ledger for yet counts as fully
+    available. Empty when no Worker is configured or the read fails: callers then treat every
+    model as equally available and decide by their own backlog.
+    """
+    client = backend if hasattr(backend, "dispatch_v2_route_stats") else None
+    if client is None:
+        try:
+            client = LiteLLMBackend(LLMBackendConfig.from_env())
+        except ValueError:
+            return {}
+    if not client.config.dispatch_v2_url:
+        return {}
+    try:
+        data = client.dispatch_v2_route_stats()
+    except LLMBackendError as exc:
+        print(f"llm route stats lookup failed ({exc}); balancing by backlog only", flush=True)
+        return {}
+    now = data.get("now")
+    by_route = {
+        str(row.get("route_id")): row for row in data["routes"]["all"] if isinstance(row, Mapping)
+    }
+    headroom: dict[str, float] = {}
+    for model in models:
+        total = 0.0
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            row = by_route.get(str(route.route_id))
+            if row is None:
+                total += 1.0
+                continue
+            blocked = row.get("blocked_until")
+            if (
+                isinstance(now, (int, float))
+                and isinstance(blocked, (int, float))
+                and not isinstance(blocked, bool)
+                and blocked > now
+            ):
+                continue
+            capacity = row.get("capacity")
+            if isinstance(capacity, (int, float)) and not isinstance(capacity, bool):
+                value = float(capacity)
+                total += max(0.0, value) if math.isfinite(value) else 1.0
+            else:
+                total += 1.0
+        headroom[model] = total
+    return headroom
 
 
 _V2_LEARNED_INPUT_RATIOS: dict[tuple[str, str], float | None] = {}

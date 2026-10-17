@@ -10,6 +10,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import re
 import shutil
 import tempfile
@@ -18,11 +19,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from citypods.archive_visibility import archive_policy_hash, is_archive_only, load_archive_index
 from citypods.bodies import matches, source_body_filter, source_body_inclusions
 from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
+from citypods.publication_selection import load_selection_index, select_search_publication
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.site import _clean_body_label
 from citypods.tags import chapter_id
 
 SEARCH_SCHEMA_VERSION = 3
@@ -255,7 +259,8 @@ def _record_to_document(
         return None
     city_key = city.city_entity or city.slug
     city_label = city.podcast_author or city.city_entity or city.slug
-    body = ep.body or city.source.get("body") or city.podcast_title
+    raw_body = ep.body or city.source.get("body") or city.podcast_title
+    body = _clean_body_label(raw_body, city)
     availability, withheld = _availability(ep)
     chapters: list[dict[str, Any]] = []
     chapter_annotations = {
@@ -348,8 +353,12 @@ def _shard_cities(cities: Iterable[City]) -> dict[str, list[City]]:
     return grouped
 
 
-def _city_for_record(candidates: list[City], record: dict[str, Any]) -> City:
+def _city_for_record(
+    candidates: list[City], record: dict[str, Any], *, owner: City | None = None
+) -> City:
     """Prefer a body-specific feed when one shares this source's record store."""
+    if owner is not None:
+        return owner
     body = str(record.get("body") or "").casefold()
     provider_guid = str(record.get("provider_guid") or "")
     for city in candidates:
@@ -412,7 +421,14 @@ def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) -> str:
+def _shard_hash(
+    records: dict[str, Any],
+    candidates: list[City],
+    base_url: str,
+    *,
+    selection: Any = None,
+    archive_hash: str = "",
+) -> str:
     """Hash only local, durable inputs so unchanged shards skip sidecar reads and writes."""
     payload = {
         "version": SEARCH_CACHE_VERSION,
@@ -424,6 +440,9 @@ def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) 
                 "body": city.source.get("body"),
                 "body_any": city.source.get("body_any"),
                 "body_includes": city.source.get("body_includes"),
+                **(
+                    {"body_exact": city.source["body_exact"]} if "body_exact" in city.source else {}
+                ),
                 "entity": city.city_entity,
                 "title": city.podcast_title,
                 "author": city.podcast_author,
@@ -431,6 +450,13 @@ def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) 
             for city in candidates
         ],
     }
+    if selection is not None and selection.policy_hash:
+        payload["publication_selection"] = {
+            "policy_hash": selection.policy_hash,
+            "selected_uids": selection.selected_uids,
+        }
+    if archive_hash:
+        payload["archive_only"] = archive_hash
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -476,24 +502,51 @@ def build_search_index(
     state_dir = Path(state_dir)
     output_dir = Path(output_dir)
     search_dir = output_dir / "data" / "search"
-    search_dir.mkdir(parents=True, exist_ok=True)
     all_cities = list(cities)
     representatives = _shard_source(all_cities)
     candidates_by_source = _shard_cities(all_cities)
+    selection_index = load_selection_index(all_cities)
+    archive_index = load_archive_index(all_cities)
+    records_by_source = {src_key: load_records(state_dir, src_key) for src_key in representatives}
+    plans = {
+        src_key: select_search_publication(selection_index, src_key, records)
+        for src_key, records in records_by_source.items()
+    }
+    for plan in plans.values():
+        if plan.held:
+            logging.getLogger(__name__).warning(
+                "Search publication selection held: %s", plan.diagnostics
+            )
+            return None
+    # Validate all identities before touching any shard so a conflict preserves the complete index.
+    try:
+        for src_key, records in records_by_source.items():
+            for record in records.values():
+                is_archive_only(archive_index, src_key, record)
+    except ValueError as exc:
+        logging.getLogger(__name__).warning("Search archive visibility held: %s", exc)
+        return None
+    search_dir.mkdir(parents=True, exist_ok=True)
     cache_shards = cache.setdefault("shards", {}) if cache is not None else {}
+    partials = cache.setdefault("partials", {}) if cache is not None else {}
     artifact_cache: dict[str, bytes] = {}
     manifest: list[dict[str, Any]] = []
     wanted_names = {"manifest.json"}
 
     for src_key, city in sorted(representatives.items()):
-        if stop is not None and stop():
-            return None
         filename = f"{src_key}.json"
         wanted_names.add(filename)
         shard_path = search_dir / filename
-        records = load_records(state_dir, src_key)
+        records = records_by_source[src_key]
+        plan = plans[src_key]
         candidates = candidates_by_source[src_key]
-        digest = _shard_hash(records, candidates, base_url)
+        digest = _shard_hash(
+            records,
+            candidates,
+            base_url,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
         cached = cache_shards.get(src_key)
         if (
             isinstance(cached, dict)
@@ -505,17 +558,98 @@ def build_search_index(
             manifest.append(cached["manifest"])
             continue
 
+        base_path = urlsplit(base_url).path.rstrip("/")
+        partial_hash = _shard_hash(
+            {},
+            candidates,
+            base_path,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
+        legacy_partial_hash = _shard_hash(
+            {},
+            candidates,
+            base_url,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
+        partial = partials.get(src_key)
+        if (
+            not isinstance(partial, dict)
+            or partial.get("version") != SEARCH_CACHE_VERSION
+            or partial.get("hash") not in {partial_hash, legacy_partial_hash}
+            or not isinstance(partial.get("records"), dict)
+        ):
+            partial = {"version": SEARCH_CACHE_VERSION, "hash": partial_hash, "records": {}}
+            partials[src_key] = partial
+        processed = partial["records"]
         documents: list[dict[str, Any]] = []
-        for record in records.values():
+        public_records = [
+            record
+            for record in plan.public_items
+            if not is_archive_only(archive_index, src_key, record)
+        ]
+        record_hashes = {
+            str(record["uid"]): _shard_hash(
+                {str(record["uid"]): record},
+                candidates,
+                base_path,
+                selection=plan,
+                archive_hash=archive_policy_hash(archive_index, src_key),
+            )
+            for record in public_records
+        }
+        legacy_record_hashes = {
+            str(record["uid"]): _shard_hash(
+                {str(record["uid"]): record},
+                candidates,
+                base_url,
+                selection=plan,
+                archive_hash=archive_policy_hash(archive_index, src_key),
+            )
+            for record in public_records
+        }
+        for uid in list(processed):
+            item = processed[uid]
+            if (
+                uid not in record_hashes
+                or not isinstance(item, dict)
+                or item.get("hash") not in {record_hashes[uid], legacy_record_hashes[uid]}
+            ):
+                del processed[uid]
+        for record in public_records:
+            uid = str(record["uid"])
+            if uid in processed:
+                document = processed[uid]["document"]
+                if document:
+                    owner_city = _city_for_record(
+                        candidates, record, owner=plan.owner_by_uid.get(uid)
+                    )
+                    document["page_url"] = meeting_page_url(
+                        owner_city, record_to_episode(record), base_url
+                    )
+                    documents.append(document)
+                continue
             if stop is not None and stop():
+                if cache is not None:
+                    cache["last_deferred"] = {
+                        "source_key": src_key,
+                        "processed_records": len(processed),
+                        "total_records": len(public_records),
+                        "completed_sources": len(manifest),
+                        "total_sources": len(representatives),
+                    }
                 return None
             document = _record_to_document(
-                _city_for_record(candidates, record),
+                _city_for_record(
+                    candidates, record, owner=plan.owner_by_uid.get(str(record.get("uid") or ""))
+                ),
                 record,
                 base_url=base_url,
                 storage=storage,
                 artifact_cache=artifact_cache,
             )
+            processed[uid] = {"hash": record_hashes[uid], "document": document}
             if document:
                 documents.append(document)
         documents.sort(key=lambda document: (document["date"], document["uid"]), reverse=True)
@@ -536,7 +670,7 @@ def build_search_index(
             "source_key": src_key,
             "city": city_key,
             "city_label": city_label,
-            "body": city.source.get("body") or city.podcast_title,
+            "body": _clean_body_label(city.source.get("body") or city.podcast_title, city),
             "fields": list(SEARCH_FIELDS),
             "documents": documents,
         }
@@ -550,6 +684,9 @@ def build_search_index(
             if gzip_bytes > SHARD_SOFT_GZIP_BYTES
             else None
         )
+        shard_rel_url = (
+            f"{base_path}/data/search/{filename}" if base_path else f"/data/search/{filename}"
+        )
         entry = {
             "source_key": src_key,
             "city": city_key,
@@ -557,7 +694,7 @@ def build_search_index(
             "body": shard["body"],
             "bodies": sorted({document["body"] for document in documents if document["body"]}),
             "tags": sorted({tag for document in documents for tag in document["tags"]}),
-            "shard_url": f"{base_url.rstrip('/')}/data/search/{filename}",
+            "shard_url": shard_rel_url,
             **coverage,
             "transcript_coverage_pct": transcript_coverage_pct,
             "body_coverage": body_coverage,
@@ -567,6 +704,7 @@ def build_search_index(
         }
         manifest.append(entry)
         cache_shards[src_key] = {"version": SEARCH_CACHE_VERSION, "hash": digest, "manifest": entry}
+        # Retain per-record documents so later source edits reuse unchanged sidecars.
 
     # Cached docs survive deploys.  Remove deleted-source shards and their cache entries so neither
     # browser search nor the next cache hit can serve a retired feed.
@@ -577,6 +715,11 @@ def build_search_index(
         if src_key not in representatives:
             del cache_shards[src_key]
 
+    for src_key in list(partials):
+        if src_key not in representatives:
+            del partials[src_key]
+    if cache is not None:
+        cache.pop("last_deferred", None)
     manifest.sort(key=lambda shard: (shard["city_label"].casefold(), shard["source_key"]))
     manifest_payload = {
         "schema_version": SEARCH_SCHEMA_VERSION,
@@ -593,3 +736,173 @@ def build_search_index(
     )
     _write_search_asset(output_dir)
     return manifest_payload
+
+
+def build_search_site(
+    *,
+    state_dir: str | Path,
+    output_dir: str | Path,
+    context_path: str | Path,
+    site_config_path: str | Path = "config/site_config.yml",
+    config_dir: str | Path = "config",
+    base_url: str | None = None,
+) -> str:
+    """Build with a resumable working checkpoint and a separate complete publication.
+
+    The only durable inputs are the render job's records and handoff context. Storage is used
+    solely by the existing indexer's sidecar readers. No state synchronization or writes occur.
+    """
+    import time
+
+    from citypods.config import load_city_configs, load_site_config
+    from citypods.site import render_index, render_search_page
+    from citypods.storage import make_storage
+
+    config = load_site_config(site_config_path)
+    defaults = config.get("defaults", {})
+    budget = float(defaults.get("search_index_budget_minutes", 120))
+    if not 0 < budget <= 120:
+        raise ValueError("search_index_budget_minutes must be greater than zero and at most 120")
+    deadline = time.monotonic() + budget * 60
+    context = json.loads(Path(context_path).read_text())
+    resolved_base = base_url if base_url is not None else context["base_url"]
+    cities = load_city_configs(config_dir, defaults)
+    output = Path(output_dir).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = output.parent / ".citypods-search-checkpoint"
+    search_paths = (
+        "data/search",
+        "search",
+        f"assets/{SEARCH_ASSET}",
+        f"assets/{SEARCH_LICENSE}",
+        ".search-cache.json",
+    )
+
+    def overlay(source: Path, target: Path) -> None:
+        for relative in search_paths:
+            src, dst = source / relative, target / relative
+            if not src.exists():
+                continue
+            if src.is_dir():
+                shutil.rmtree(dst, ignore_errors=True)
+                shutil.copytree(src, dst)
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+
+    def save_checkpoint(source: Path, name: str) -> None:
+        checkpoint.mkdir(parents=True, exist_ok=True)
+        replacement = checkpoint / f"{name}-next"
+        shutil.rmtree(replacement, ignore_errors=True)
+        replacement.mkdir()
+        overlay(source, replacement)
+        destination = checkpoint / name
+        prior = checkpoint / f"{name}-prior"
+        shutil.rmtree(prior, ignore_errors=True)
+        if destination.exists():
+            destination.rename(prior)
+        try:
+            replacement.rename(destination)
+        except BaseException:
+            if prior.exists():
+                prior.rename(destination)
+            raise
+        shutil.rmtree(prior, ignore_errors=True)
+
+    def prior_publication() -> str:
+        complete = checkpoint / "complete"
+        try:
+            prior = json.loads((complete / "data/search/manifest.json").read_text())
+            if not isinstance(prior["shards"], list):
+                raise ValueError("invalid complete search manifest")
+            for shard in prior["shards"]:
+                filename = shard["shard_url"].rsplit("/", 1)[-1]
+                shard_data = json.loads((complete / "data/search" / filename).read_text())
+                if not isinstance(shard_data["documents"], list):
+                    raise ValueError("invalid complete shard")
+            if not (complete / "search/index.html").is_file():
+                raise ValueError("missing complete search page")
+        except (OSError, ValueError, KeyError, TypeError):
+            return "deferred: no complete search index available"
+        # Re-render navigation with current feed information, retaining all fresh non-search pages.
+        navigation = render_index(
+            cities, config, resolved_base, context["feed_info"], search_enabled=True
+        )
+        meta_path = output / "meta.json"
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        meta["search_shards"] = len(prior["shards"])
+        overlay(complete, output)
+        (output / "index.html").write_text(navigation)
+        meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        return "deferred: retaining complete prior site"
+
+    with tempfile.TemporaryDirectory(prefix=".search-stage-", dir=output.parent) as temporary:
+        staged = Path(temporary) / "site"
+        shutil.copytree(output, staged)
+        overlay(checkpoint / "working", staged)
+        cache_path = staged / ".search-cache.json"
+        try:
+            cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+            if not isinstance(cache, dict):
+                cache = {}
+        except (OSError, ValueError):
+            cache = {}
+        enabled = bool(defaults.get("search", True))
+        manifest: dict[str, Any] = {"shards": []}
+        try:
+            if enabled:
+                built = build_search_index(
+                    state_dir,
+                    cities,
+                    staged,
+                    resolved_base,
+                    storage=make_storage(config, resolved_base, staged),
+                    cache=cache,
+                    stop=lambda: time.monotonic() >= deadline,
+                )
+                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+                save_checkpoint(staged, "working")
+                if built is None:
+                    status = prior_publication()
+                    progress = cache.get("last_deferred")
+                    if isinstance(progress, dict):
+                        status += (
+                            f"; source {progress['source_key']}: "
+                            f"{progress['processed_records']}/{progress['total_records']} records; "
+                            f"{progress['completed_sources']}/{progress['total_sources']} sources"
+                        )
+                    return status
+                manifest = built
+                page = staged / "search" / "index.html"
+                page.parent.mkdir(parents=True, exist_ok=True)
+                page.write_text(render_search_page(config, resolved_base))
+                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+            else:
+                shutil.rmtree(staged / "search", ignore_errors=True)
+                shutil.rmtree(staged / "data" / "search", ignore_errors=True)
+                (staged / "assets" / SEARCH_ASSET).unlink(missing_ok=True)
+                (staged / "assets" / SEARCH_LICENSE).unlink(missing_ok=True)
+                cache_path.unlink(missing_ok=True)
+            (staged / "index.html").write_text(
+                render_index(
+                    cities, config, resolved_base, context["feed_info"], search_enabled=enabled
+                )
+            )
+            meta_path = staged / "meta.json"
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            meta["search_shards"] = len(manifest["shards"])
+            meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        except Exception:
+            logging.getLogger(__name__).exception("Search staging failed; retaining prior site")
+            return prior_publication()
+        # Both renames stay on the same filesystem. Restore the original on publication failure.
+        backup = Path(temporary) / "prior-site"
+        output.rename(backup)
+        try:
+            staged.rename(output)
+        except BaseException:
+            backup.rename(output)
+            raise
+        save_checkpoint(output, "complete")
+        save_checkpoint(output, "working")
+    return "complete" if enabled else "disabled"

@@ -253,6 +253,25 @@ def test_episode_notes_html_empty_when_no_enrichment():
     assert episode_notes_html(ep) == ""
 
 
+def test_episode_notes_html_escapes_publication_note_without_replacing_description():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import episode_notes_html
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="g",
+        title="Official title",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        description="Official description.",
+        publication_note="Board & Council <proceedings>.",
+    )
+    html = episode_notes_html(ep)
+    assert "Board &amp; Council &lt;proceedings&gt;." in html
+    assert "Official description." in html
+
+
 def test_episode_notes_html_confirmed_partial_prepends_disclaimer():
     """GH#851: a confirmed-partial episode publishes with a factual disclaimer, linked to the
     source watch page when known, rather than being excluded or silently truncated."""

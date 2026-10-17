@@ -1,0 +1,29 @@
+{
+ "experiment": "question-types",
+ "judge": "qwen",
+ "generated_at": "2026-09-30T17:01:52.362199+00:00",
+ "set_version": 1,
+ "prompt_version": "1",
+ "git_sha": "fa522ec9",
+ "calls_asked": 6,
+ "calls_answered": 6,
+ "unanswered_fraction": 0.0,
+ "inconclusive": false,
+ "errors": [],
+ "winners": {
+  "41b2c58a6d7767b6": "m0q0",
+  "b8894534c463f6ef": "m1q1",
+  "59646234b4a138f9": "m2q2",
+  "32911f2064da1723": "m3q1",
+  "8358c58b44bf3ee2": "m4q2",
+  "657e0912c48af4f8": "m5q2"
+ },
+ "completion_tokens": {
+  "41b2c58a6d7767b6": 818,
+  "b8894534c463f6ef": 747,
+  "59646234b4a138f9": 764,
+  "32911f2064da1723": 745,
+  "8358c58b44bf3ee2": 532,
+  "657e0912c48af4f8": 727
+ }
+}

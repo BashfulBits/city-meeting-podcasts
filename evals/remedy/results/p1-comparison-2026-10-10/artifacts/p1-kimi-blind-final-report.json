@@ -1,0 +1,49 @@
+{
+  "derived": "report",
+  "reports": [
+    {
+      "attempt_counts": {
+        "first_attempt_completed": 9,
+        "known_provider_attempts": 11,
+        "retried_completed": 1,
+        "unknown_attempt_count": 0
+      },
+      "configuration_id": "cfed5340c776b744aacdc9b06384f896f61cd27877e910d8f3df8751a1550770",
+      "mode": "blind_owner",
+      "report": {
+        "accepted_precision": null,
+        "admission_eligible_cases": 10,
+        "breakdown": {},
+        "counts": {
+          "abstained": 0,
+          "accepted": 0,
+          "accepted_correct": 0,
+          "correct": 0,
+          "critical_errors": 0,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 0,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "gold_hash": "30f1634ddc099de35a5c83a1266ee784530273b9f32b7c4fbb687e4cc86a22e0",
+        "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+        "mode": "blind_owner",
+        "owner_selection": {
+          "abstained": 0,
+          "correct": 10,
+          "evaluated": 10,
+          "failed": 0,
+          "incorrect": 0,
+          "known_truth": 10,
+          "unattempted": 0,
+          "unknown_truth": 0
+        },
+        "supported_claim_recall": null
+      },
+      "results_hash": "d15291ca9b147e20c109517e1302455de3b9d46b50336219ffa002c0f2ff8e6f",
+      "results_path": "/private/tmp/p1-kimi-blind-final.json"
+    }
+  ],
+  "version": 1
+}

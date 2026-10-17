@@ -1,0 +1,1548 @@
+{
+  "version": 2,
+  "frozen_at": "2026-10-02T00:00:00Z",
+  "split": "regression",
+  "provenance": "Approved policy seeds grounded in refreshed provider observations and official sources; not admission truth.",
+  "cases": [
+    {
+      "id": "arlington-hfc-owner",
+      "city": "arlington-tx",
+      "body_label": "Arlington Housing Finance Corporation Board Meeting",
+      "claim": "Assign to Arlington Housing Finance Corporation feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-3579",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"Arlington Housing Finance Corporation Board Meeting\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\", \"published\": \"2020-08-25T00:00:00+00:00\", \"title\": \"Arlington Housing Finance Corporation Board Meeting\"}",
+          "content_hash": "7a9e06ea1c92455b06173bd4c40f52f0a53744dd8f749dddbf57a9d5148128f1"
+        },
+        {
+          "id": "official-agenda-3579",
+          "url": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579",
+          "recording_id": null,
+          "agenda_id": "3579",
+          "retrieved_at": "2026-10-02",
+          "source_span": "ARLINGTON HOUSING FINANCE CORPORATION \u2026 August 25, 2020 \u2026 10:00 AM \u2026 I. CALL TO ORDER",
+          "content_hash": "ccc0c09bb52a578b0c193f1df1f66f66daba9d140d5044ac08128bf91b2fac12"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a711cf888edf66bc",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "body": "Arlington Housing Finance Corporation Board Meeting",
+          "title": "Arlington Housing Finance Corporation Board Meeting",
+          "date": "2020-08-25T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-hfc-not-council",
+      "city": "arlington-tx",
+      "body_label": "Arlington Housing Finance Corporation Board Meeting",
+      "claim": "Assign to City Council as the same meeting body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-3579",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"Arlington Housing Finance Corporation Board Meeting\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\", \"published\": \"2020-08-25T00:00:00+00:00\", \"title\": \"Arlington Housing Finance Corporation Board Meeting\"}",
+          "content_hash": "7a9e06ea1c92455b06173bd4c40f52f0a53744dd8f749dddbf57a9d5148128f1"
+        },
+        {
+          "id": "official-agenda-3579",
+          "url": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579",
+          "recording_id": null,
+          "agenda_id": "3579",
+          "retrieved_at": "2026-10-02",
+          "source_span": "ARLINGTON HOUSING FINANCE CORPORATION \u2026 August 25, 2020 \u2026 10:00 AM \u2026 I. CALL TO ORDER",
+          "content_hash": "ccc0c09bb52a578b0c193f1df1f66f66daba9d140d5044ac08128bf91b2fac12"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a711cf888edf66bc",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "body": "Arlington Housing Finance Corporation Board Meeting",
+          "title": "Arlington Housing Finance Corporation Board Meeting",
+          "date": "2020-08-25T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-hfc-not-pz",
+      "city": "arlington-tx",
+      "body_label": "Arlington Housing Finance Corporation Board Meeting",
+      "claim": "Assign to Planning and Zoning Commission.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-3579",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"Arlington Housing Finance Corporation Board Meeting\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\", \"published\": \"2020-08-25T00:00:00+00:00\", \"title\": \"Arlington Housing Finance Corporation Board Meeting\"}",
+          "content_hash": "7a9e06ea1c92455b06173bd4c40f52f0a53744dd8f749dddbf57a9d5148128f1"
+        },
+        {
+          "id": "official-agenda-3579",
+          "url": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579",
+          "recording_id": null,
+          "agenda_id": "3579",
+          "retrieved_at": "2026-10-02",
+          "source_span": "ARLINGTON HOUSING FINANCE CORPORATION \u2026 August 25, 2020 \u2026 10:00 AM \u2026 I. CALL TO ORDER",
+          "content_hash": "ccc0c09bb52a578b0c193f1df1f66f66daba9d140d5044ac08128bf91b2fac12"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a711cf888edf66bc",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "body": "Arlington Housing Finance Corporation Board Meeting",
+          "title": "Arlington Housing Finance Corporation Board Meeting",
+          "date": "2020-08-25T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-zba-owner",
+      "city": "arlington-tx",
+      "body_label": "ZBA Regular Session",
+      "claim": "Assign to Arlington Zoning Board of Adjustment feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-1069",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"ZBA Regular Session\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=1069\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\", \"published\": \"2012-05-31T00:00:00+00:00\", \"title\": \"ZBA Regular Session\"}",
+          "content_hash": "0358c1f4dea29e1c5d1c405ac6a0d8b717c5bb7c318803784954f7c089f7f03c"
+        },
+        {
+          "id": "official-zba-calendar",
+          "url": "https://www.arlingtontx.gov/Community-Calendar/Planning-and-Development-Services-Events/ZBA/Zoning-Board-of-Adjustment-Meeting",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "Zoning Board of Adjustment Meeting \u2026 The ZBA will hear and discuss cases for residential variances.",
+          "content_hash": "cf734c9548c44dc37b27297d88bc4402eb350c41a3f8809fa3e6a93f0dd8e186"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "97655ff1190b7f0e",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "body": "ZBA Regular Session",
+          "title": "ZBA Regular Session",
+          "date": "2012-05-31T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-zba-not-pz",
+      "city": "arlington-tx",
+      "body_label": "ZBA Regular Session",
+      "claim": "Assign to Planning and Zoning Commission as the same body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-1069",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"ZBA Regular Session\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=1069\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\", \"published\": \"2012-05-31T00:00:00+00:00\", \"title\": \"ZBA Regular Session\"}",
+          "content_hash": "0358c1f4dea29e1c5d1c405ac6a0d8b717c5bb7c318803784954f7c089f7f03c"
+        },
+        {
+          "id": "official-zba-calendar",
+          "url": "https://www.arlingtontx.gov/Community-Calendar/Planning-and-Development-Services-Events/ZBA/Zoning-Board-of-Adjustment-Meeting",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "Zoning Board of Adjustment Meeting \u2026 The ZBA will hear and discuss cases for residential variances.",
+          "content_hash": "cf734c9548c44dc37b27297d88bc4402eb350c41a3f8809fa3e6a93f0dd8e186"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "97655ff1190b7f0e",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "body": "ZBA Regular Session",
+          "title": "ZBA Regular Session",
+          "date": "2012-05-31T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-hfc-duplicate",
+      "city": "arlington-tx",
+      "body_label": "Arlington Housing Finance Corporation Board Meeting",
+      "claim": "Create a second feed for this raw title instead of the approved HFC feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-3579",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"Arlington Housing Finance Corporation Board Meeting\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579\", \"published\": \"2020-08-25T00:00:00+00:00\", \"title\": \"Arlington Housing Finance Corporation Board Meeting\"}",
+          "content_hash": "7a9e06ea1c92455b06173bd4c40f52f0a53744dd8f749dddbf57a9d5148128f1"
+        },
+        {
+          "id": "official-agenda-3579",
+          "url": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579",
+          "recording_id": null,
+          "agenda_id": "3579",
+          "retrieved_at": "2026-10-02",
+          "source_span": "ARLINGTON HOUSING FINANCE CORPORATION \u2026 August 25, 2020 \u2026 10:00 AM \u2026 I. CALL TO ORDER",
+          "content_hash": "ccc0c09bb52a578b0c193f1df1f66f66daba9d140d5044ac08128bf91b2fac12"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "a711cf888edf66bc",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+          "body": "Arlington Housing Finance Corporation Board Meeting",
+          "title": "Arlington Housing Finance Corporation Board Meeting",
+          "date": "2020-08-25T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-zba-duplicate",
+      "city": "arlington-tx",
+      "body_label": "ZBA Regular Session",
+      "claim": "Create a second ZBA Regular Session feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "provider-1069",
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"ZBA Regular Session\", \"links\": {\"agenda\": \"https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=1069\", \"canonical_video\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\"}, \"provider_guid\": \"https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069\", \"published\": \"2012-05-31T00:00:00+00:00\", \"title\": \"ZBA Regular Session\"}",
+          "content_hash": "0358c1f4dea29e1c5d1c405ac6a0d8b717c5bb7c318803784954f7c089f7f03c"
+        },
+        {
+          "id": "official-zba-calendar",
+          "url": "https://www.arlingtontx.gov/Community-Calendar/Planning-and-Development-Services-Events/ZBA/Zoning-Board-of-Adjustment-Meeting",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "Zoning Board of Adjustment Meeting \u2026 The ZBA will hear and discuss cases for residential variances.",
+          "content_hash": "cf734c9548c44dc37b27297d88bc4402eb350c41a3f8809fa3e6a93f0dd8e186"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "97655ff1190b7f0e",
+          "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+          "body": "ZBA Regular Session",
+          "title": "ZBA Regular Session",
+          "date": "2012-05-31T00:00:00+00:00",
+          "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-council-hfc-topic",
+      "city": "arlington-tx",
+      "body_label": "City Council discussion of Arlington Housing Finance Corporation",
+      "claim": "Assign to Housing Finance Corporation feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "synthetic",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "synthetic-label",
+          "url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"City Council discussion of Arlington Housing Finance Corporation\"}",
+          "content_hash": "dc6198b0264e9d3bf1ef4c3eec1243f3e8747096ef8f4f4be6315df5736cdc80"
+        },
+        {
+          "id": "official-agenda-3579",
+          "url": "https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3579",
+          "recording_id": null,
+          "agenda_id": "3579",
+          "retrieved_at": "2026-10-02",
+          "source_span": "ARLINGTON HOUSING FINANCE CORPORATION \u2026 August 25, 2020 \u2026 10:00 AM \u2026 I. CALL TO ORDER",
+          "content_hash": "ccc0c09bb52a578b0c193f1df1f66f66daba9d140d5044ac08128bf91b2fac12"
+        }
+      ],
+      "recordings": [],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    },
+    {
+      "id": "arlington-other-city-zba",
+      "city": "arlington-tx",
+      "body_label": "Fort Worth Zoning Board of Adjustment",
+      "claim": "Assign to Arlington Zoning Board of Adjustment feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "synthetic",
+      "source_key": "ecc3710ac47f",
+      "decision_type": "named_body",
+      "evidence_refs": [
+        {
+          "id": "synthetic-label",
+          "url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "{\"body\": \"Fort Worth Zoning Board of Adjustment\"}",
+          "content_hash": "414ccd130a7885cf41870bbd6b41190449dffcc9c52dbef7649fb5ce6fc4aa16"
+        },
+        {
+          "id": "official-zba-calendar",
+          "url": "https://www.arlingtontx.gov/Community-Calendar/Planning-and-Development-Services-Events/ZBA/Zoning-Board-of-Adjustment-Meeting",
+          "recording_id": null,
+          "agenda_id": null,
+          "retrieved_at": "2026-10-02",
+          "source_span": "Zoning Board of Adjustment Meeting \u2026 The ZBA will hear and discuss cases for residential variances.",
+          "content_hash": "cf734c9548c44dc37b27297d88bc4402eb350c41a3f8809fa3e6a93f0dd8e186"
+        }
+      ],
+      "recordings": [],
+      "existing_feeds": [
+        {
+          "slug": "arlington-tx-housing-finance-corporation",
+          "podcast_title": "Arlington: Housing Finance Corporation",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Arlington Housing Finance Corporation *"
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "Arlington Housing Finance Corporation Board Meeting",
+              "Arlington Housing Finance Corporation",
+              "Arlington Housing Finance Corporation Board of Directors"
+            ],
+            "member_names": [
+              "Arlington Housing Finance Corporation",
+              "Housing Finance Corporation"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "podcast_title": "Arlington: Zoning Board of Adjustment",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "ZBA *",
+            "body_any": [
+              "Zoning Board of Adjustment *"
+            ]
+          },
+          "remedy_policy": {
+            "identity_names": [
+              "ZBA Regular Session",
+              "Zoning Board of Adjustment"
+            ],
+            "member_names": [
+              "Zoning Board of Adjustment",
+              "ZBA"
+            ]
+          }
+        },
+        {
+          "slug": "arlington-tx-council",
+          "podcast_title": "Arlington: Council",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Council",
+            "body_any": [
+              "Budget Town Hall Meeting",
+              "Special and Budget Town Hall Meeting",
+              "Special Meeting and Budget Town Hall Meeting",
+              "Community and Neighborhood Development Committee",
+              "Environmental Task Force",
+              "Evening Meeting",
+              "Afternoon Meeting",
+              "Special Meeting",
+              "Special Meeting - Evening",
+              "Special Meeting - Afternoon",
+              "Special Evening Meeting",
+              "Special Meeting - Canvassing",
+              "Special Afternoon Meeting"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890",
+                "body": "Special Joint Meeting"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
+                "body": "Virtual Town Hall on Future Active Adult Center"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=648",
+                "body": "Special Meeting-Phase I Gas Well Report"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=484",
+                "body": "Special Meeting-Budget"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=232",
+                "body": "Special Meeting and District 5 Town Hall"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        },
+        {
+          "slug": "arlington-tx-planning-and-zoning-commission",
+          "podcast_title": "Arlington: Planning and Zoning Commission",
+          "source_key": "ecc3710ac47f",
+          "source": {
+            "feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "P&Z Regular Session",
+              "P&Z Regular Session Meeting",
+              "P&Z Reg. Session",
+              "P&Z Evening Session"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1645",
+                "body": "Special P&Z Regular Session"
+              },
+              {
+                "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=549",
+                "body": "P&Z Sitting as CIPAC"
+              }
+            ]
+          },
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/arlington-coverage-2026-10.md",
+        "owners": [
+          "arlington-tx-housing-finance-corporation",
+          "arlington-tx-zoning-board-of-adjustment"
+        ],
+        "same_topic_does_not_establish_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 1506,
+        "persisted_rows": 1515,
+        "limitations": "All available observations replayed; no claim of recordings absent from both sources."
+      },
+      "split_group": "arlington-tx:named_body"
+    }
+  ],
+  "superseded_hash": null
+}

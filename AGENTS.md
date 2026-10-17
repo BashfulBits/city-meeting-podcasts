@@ -28,6 +28,22 @@ Read this first, then the doc it points you to for your task.
 3. **Update the docs per the lifecycle contract** (below + in CONTRIBUTING) — this is mandatory, because
    stale design docs are how this project's earlier reviews went out of date.
 
+## Implementing from a breakout doc: stop and ask
+
+When you implement from an L3 `review/NN` doc:
+
+1. **Do exactly what the doc specifies**; its "Do not modify" list is binding. Do not invent new code paths, files, config keys, schemas, endpoints, workflow steps or
+   dependencies the doc does not name.
+2. **Stop and ask the maintainer** (a comment on the GitHub issue or PR, or in chat, stating the question and what you found) instead of assuming, when any of these happen:
+   - the code does not match what the doc describes (a function moved or was renamed, a field is missing, a signature differs);
+   - the doc is silent or ambiguous about something you need to decide;
+   - a needed change touches a file on the "Do not modify" list, or a file/module the doc does not mention;
+   - a test the doc specifies cannot pass as written, or a golden value differs from what the code produces;
+   - a result is surprising (live data, limits, costs) or a step would change production behaviour, spend quota, or touch credentials.
+3. Do not widen scope to fix unrelated problems you notice; record them in the PR description as follow-ups.
+4. Finish with the doc-update contract (below): update `review/11`, `changelog.d/`, and
+   `ARCHITECTURE.md` as the doc lists.
+
 ## GitHub execution metadata
 
 [`review/11`](review/11-technical-design-roadmap.md) owns scope and strategic sequence. The public
@@ -58,11 +74,15 @@ When you move a feature along the pipeline, update the listed docs in the **same
 | Committed to near-term | `ROADMAP.md` + `review/11` catalog (L1 sketch inline) |
 | Designed (approach chosen) | break out to `review/NN`; `review/11` entry → L2 + link |
 | Development-ready | mature `review/NN` to L3; cut GitHub Issue(s); `review/11` → L3 |
-| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
+| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add a **changelog fragment in `changelog.d/<slug>.md`** (do NOT edit `CHANGELOG.md` directly); update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 
 `review/11` is a **living** document; `review/00–10` and frozen breakouts are point-in-time records.
 
 ## Conventions you must respect
+
+- **Changelog fragments (`changelog.d/`)** — never edit `CHANGELOG.md` directly in a PR. Add
+  `changelog.d/<id>-<slug>.md` instead. This ensures concurrent PRs rebase cleanly on main
+  without merge conflicts. A GitHub Action compiles fragments into `CHANGELOG.md` upon merge.
 
 - **Append-only records** (`records.merge_persisted`) — never drop archived meetings (#52).
 - **Split hashes** — `audio_spec_hash` (bytes) vs `feed_content_hash` (RSS) invalidate independently;
@@ -82,7 +102,9 @@ When you move a feature along the pipeline, update the listed docs in the **same
   can queue weeks of catalog rework; one that *doesn't* can leave a stale-format catalog while the docs
   claim otherwise — both have bitten this project.
 - **Dependencies are pinned; adding one has a contract.** Declare `>=` floors in `pyproject.toml`,
-  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`), never re-declare deps in the
+  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`, which regenerates the per-lane
+  `constraints/*.in`), set workflow Pythons only via the two `.python-version` files (never a
+  `python-version:` literal; `scripts/python_lanes.py` enforces it), never re-declare deps in the
   external-worker image builders, and treat *output-affecting* bumps (`faster-whisper`, `ctranslate2`,
   `stable-ts`, `Pillow`, ffmpeg, base image, model revisions) as version-coupled per the rule above.
   Full policy + the light-touch update flow: [`review/22`](review/22-dependency-and-reproducibility-policy.md).
@@ -195,8 +217,9 @@ coderabbit review --agent --type committed --base-commit "$root" --dir citypods 
 - **Free-tier rate limit:** the CLI free tier is a **rolling allowance** (~3 reviews/hour/dev, no
   queuing — you get a "limit reached" message, not a fixed cooldown), so 6 directory-scoped reviews
   back-to-back stall fast (a promotional credit can land mid-run and unblock some unpredictably).
-  Don't sleep a fixed hour — check remaining budget (`@coderabbitai reviews remaining?` on a PR, or
-  `cr stats`) and retry each blocked dir from a **backgrounded** shell that re-polls as slots age out
+  Don't sleep a fixed hour — check remaining budget (`coderabbit usage` prints `Remaining : N of 3`,
+  `Window : rolling 1 hour` and `Next available : in M minutes` for this repo; or
+  `@coderabbitai reviews remaining?` on a PR) and retry each blocked dir from a **backgrounded** shell that re-polls as slots age out
   of the rolling window (e.g. a short `sleep`-and-retry loop, minutes not an hour) rather than blocking
   synchronously. The root-commit and working-tree diff both resolve at execution time, so a `git pull`
   in between is picked up.

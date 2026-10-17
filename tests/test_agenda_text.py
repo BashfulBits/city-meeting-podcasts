@@ -6,7 +6,9 @@ from pathlib import Path
 from citypods.agenda_text import (
     OCR_FULL_SECONDS_PER_PAGE,
     AgendaTitleCandidate,
+    OcrUnavailableError,
     _extract_pdf,
+    _is_corrupted_native_text,
     agenda_title_similarity,
     assess_agenda_document,
     attribute_links_by_content,
@@ -295,6 +297,80 @@ def test_pdf_quality_gate_fails_closed_when_full_ocr_times_out(monkeypatch):
     )
     assert assessment.status == "rejected"
     assert assessment.reason == "ocr-timeout"
+
+
+def test_pdf_quality_gate_detects_corrupted_font_and_falls_back_to_ocr():
+    fixture_path = FIXTURES / "fort_worth_budget_2026_08_11_corrupted_font.pdf"
+    content = fixture_path.read_bytes()
+    native, _ = _extract_pdf(content)
+    assert _is_corrupted_native_text(native)
+
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/fort_worth_budget.pdf",
+    )
+    assert assessment.status == "accepted"
+    assert assessment.method == "ocr"
+    assert assessment.reason == "ocr-materially-better"
+    assert "FORT WORTH" in assessment.text.upper() or "BUDGET" in assessment.text.upper()
+
+
+def test_pdf_quality_gate_rejects_corrupted_font_when_ocr_unavailable():
+    fixture_path = FIXTURES / "fort_worth_budget_2026_08_11_corrupted_font.pdf"
+    content = fixture_path.read_bytes()
+
+    def unavailable_ocr(*_args, **_kwargs):
+        raise OcrUnavailableError("ocr unavailable")
+
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/fort_worth_budget.pdf",
+        ocr_runner=unavailable_ocr,
+    )
+    assert assessment.status == "rejected"
+    assert assessment.method == "none"
+    assert assessment.reason == "corrupted-native-text"
+
+
+def test_extract_agenda_title_candidates_strips_stray_bullets_and_preserves_proper_names():
+    text = (
+        "AGENDA\n"
+        "Å 1. Call to Order\n"
+        "• 2. Approval of Minutes\n"
+        "Åsa Lindgren\n"
+        "- 3. Public Hearing on Zoning\n"
+        "• CALL TO ORDER\n"
+        "Å APPROVAL OF MINUTES\n"
+    )
+    candidates = extract_agenda_title_candidates(text)
+    titles = [c.title for c in candidates]
+    assert "1. Call to Order" in titles
+    assert "2. Approval of Minutes" in titles
+    assert "3. Public Hearing on Zoning" in titles
+    assert "CALL TO ORDER" in titles
+    assert "APPROVAL OF MINUTES" in titles
+    assert "sa Lindgren" not in titles
+
+
+def test_is_corrupted_native_text_heuristics():
+    # Glyph name sequence (pypdf unmapped font tokens)
+    glyph_dump = "/i255 /1 /2 /3 /4 /5 /6 /7 /8 /9 /10 /11 /12 /13 /14"
+    assert _is_corrupted_native_text(glyph_dump)
+
+    # Unmapped replacement char flood
+    unmapped = "meeting notice " + "\ufffd" * 20 + " items"
+    assert _is_corrupted_native_text(unmapped)
+
+    # Clean text with URLs should not be marked corrupted
+    clean_text = (
+        "City Council Agenda\n"
+        "Item 1. Discussion on road infrastructure\n"
+        "See https://example.gov/agenda/2026/08/11/packet.pdf for materials.\n"
+        "Item 2. Consideration of municipal budget amendments\n"
+    )
+    assert not _is_corrupted_native_text(clean_text)
 
 
 def test_extract_html_no_longer_gates_backup_links_on_english_keywords():

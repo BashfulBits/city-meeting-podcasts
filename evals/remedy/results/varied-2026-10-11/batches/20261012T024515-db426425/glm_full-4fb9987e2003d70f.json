@@ -1,0 +1,88 @@
+{
+  "candidate": "glm_full",
+  "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_glm_5_3_eval",
+  "reasoning": "provider-default",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:57:01.224563+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "1d67679b13eb1454184dc4da67725d0cf168ff253de7bc801995005be2f4b70a",
+  "route_settings_hash": "07fa801673edbb5cc3ed80b5fff74097408df9016be417facc7ede7a161432cc",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_glm_5_3_eval": 0
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-a9c2b40f-d6d2-40f2-a9c2-8c4683d34a82",
+    "created": 1791773823,
+    "model": "z-ai/glm-5.3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board\",\"evidence_ref_ids\":[\"retained-agenda\",\"provider-player\",\"native-source-chapters\"],\"missing_evidence\":[],\"proposed_action\":\"Add recording uid 1c91182b70afefb3 (https://dentontx.new.swagit.com/videos/111521, Tax Increment Reinvestment Zone No. 2 Board Special Called Meeting, 2021-01-13 11:00 AM) to the denton-tx-tirz-2-board feed.\",\"proposed_owner\":\"denton-tx-tirz-2-board\",\"rationale\":\"The retained official agenda explicitly identifies the convened body: 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.' at Denton City Hall. The recording title, provider-player page, and native-source chapters all match this body, date, meeting type, and agenda items A\u2013C (minutes approval, Westpark TIRZ annual report, industrial development), corroborating that the recording captures this exact meeting. Under the approved family policy, identity follows the convened body rather than venue, topic, or shared members, and numbered boards differ; the body is unambiguously TIRZ No. 2 (Westpark TIRZ), matching the denton-tx-tirz-2-board feed ('Meetings of Denton TIRZ No. 2 Board') and distinct from denton-tx-tirz-1-board. No conflicting or ambiguous evidence is present, so the publication-membership claim is supported with no missing evidence.\",\"supported\":true}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "Let me analyze this case carefully.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-2-board.\"\n\nEvidence:\n1. `retained-agenda`: The official agenda from the City of Denton for a \"Tax Increment Reinvestment Zone No. 2 Board\" Special Called Meeting on Wednesday, January 13, 2021 at 11:00 AM in the Council Work Session Room at City Hall. It explicitly states the \"Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting.\" This directly establishes the convened body.\n\n2. `provider-player`: The Swagit player page confirms the recording title \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) - Denton, TX\" with matching agenda items A, B, C.\n\n3. `native-source-chapters`: Chapter markers matching the same agenda items.\n\nExisting feeds include \"denton-tx-tirz-2-board\" described as \"Meetings of Denton TIRZ No. 2 Board.\"\n\nFamily policy:\n- identity: \"Use convened body, not venue, topic or common members; numbered boards differ.\"\n- joint: same recording may serve every proven participant\n- publication: Ordinary public comment doesn't add Public Info membership; ceremonies excluded\n- untracked: unassigned real body is not automatically non-meeting; missing proof permits abstention\n\nThe convened body per the agenda is clearly the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas. This matches the feed denton-tx-tirz-2-board (\"Meetings of Denton TIRZ No. 2 Board\").\n\nNote the policy warning: \"numbered boards differ\" \u2014 so we must ensure this is TIRZ No. 2, not TIRZ No. 1. The agenda says \"Tax Increment Reinvestment Zone No. 2 Board\" and \"Tax Increment Reinvestment Zone Number Two (Westpark TIRZ)\". So it's clearly No. 2.\n\nThe claim is supported. The proposed owner is denton-tx-tirz-2-board. The proposed action would be to add the recording to that feed (publication-membership decision).\n\nDecision type: publication-membership. So proposed action: \"Add recording uid 1c91182b70afefb3 (recording_id 111521) to denton-tx-tirz-2-board\" or similar.\n\nEvidence ref IDs: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n\nMissing evidence: none \u2014 the agenda is retained, the player page confirms, chapters confirm. Is there anything missing? The completeness status is \"recording-specific\" with limitations noted about historical challenge. But for this specific recording, we have the agenda directly identifying the convened body. No missing evidence needed.\n\nSupported: true\n\nRationale: The retained agenda explicitly identifies the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, convening a Special Called Meeting on 2021-01-13 at 11:00 AM. The provider player and native chapters corroborate the same title and agenda items. Per the approved family policy, identity follows the convened body, not venue or topic; the numbered board (No. 2) matches the denton-tx-tirz-2-board feed description. This is distinct from TIRZ No. 1 Board feed.\n\nLet me write the JSON.\n\ncase_id: \"denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board\" (the id field).\n\nProposed action: \"Add recording uid 1c91182b70afefb3 (https://dentontx.new.swagit.com/videos/111521) to the denton-tx-tirz-2-board feed.\"\n\nProposed owner: \"denton-tx-tirz-2-board\"\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n\nmissing_evidence: []\n\nsupported: true\n\nRationale should be under 2000 characters.\n\nLet me draft:\n\n\"The retained agenda explicitly names the convened body: 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.' The recording's title, provider player text, and native-source chapters all match this body, date, and meeting type, and the agenda items (A\u2013C) align with the chapter markers. Per the approved family policy, identity is determined by the convened body, not venue, topic, or shared members, and numbered boards differ; the body is unambiguously TIRZ No. 2 (Westpark TIRZ), matching the denton-tx-tirz-2-board feed description and distinct from denton-tx-tirz-1-board. No conflicting evidence exists, so the publication-membership claim is supported and no evidence is missing.\"\n\nThat's good. Output JSON only.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "Let me analyze this case carefully.\n\nThe claim: \"Under the supplied approved publication policy, this recording belongs in denton-tx-tirz-2-board.\"\n\nEvidence:\n1. `retained-agenda`: The official agenda from the City of Denton for a \"Tax Increment Reinvestment Zone No. 2 Board\" Special Called Meeting on Wednesday, January 13, 2021 at 11:00 AM in the Council Work Session Room at City Hall. It explicitly states the \"Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting.\" This directly establishes the convened body.\n\n2. `provider-player`: The Swagit player page confirms the recording title \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) - Denton, TX\" with matching agenda items A, B, C.\n\n3. `native-source-chapters`: Chapter markers matching the same agenda items.\n\nExisting feeds include \"denton-tx-tirz-2-board\" described as \"Meetings of Denton TIRZ No. 2 Board.\"\n\nFamily policy:\n- identity: \"Use convened body, not venue, topic or common members; numbered boards differ.\"\n- joint: same recording may serve every proven participant\n- publication: Ordinary public comment doesn't add Public Info membership; ceremonies excluded\n- untracked: unassigned real body is not automatically non-meeting; missing proof permits abstention\n\nThe convened body per the agenda is clearly the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas. This matches the feed denton-tx-tirz-2-board (\"Meetings of Denton TIRZ No. 2 Board\").\n\nNote the policy warning: \"numbered boards differ\" \u2014 so we must ensure this is TIRZ No. 2, not TIRZ No. 1. The agenda says \"Tax Increment Reinvestment Zone No. 2 Board\" and \"Tax Increment Reinvestment Zone Number Two (Westpark TIRZ)\". So it's clearly No. 2.\n\nThe claim is supported. The proposed owner is denton-tx-tirz-2-board. The proposed action would be to add the recording to that feed (publication-membership decision).\n\nDecision type: publication-membership. So proposed action: \"Add recording uid 1c91182b70afefb3 (recording_id 111521) to denton-tx-tirz-2-board\" or similar.\n\nEvidence ref IDs: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n\nMissing evidence: none \u2014 the agenda is retained, the player page confirms, chapters confirm. Is there anything missing? The completeness status is \"recording-specific\" with limitations noted about historical challenge. But for this specific recording, we have the agenda directly identifying the convened body. No missing evidence needed.\n\nSupported: true\n\nRationale: The retained agenda explicitly identifies the convened body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, convening a Special Called Meeting on 2021-01-13 at 11:00 AM. The provider player and native chapters corroborate the same title and agenda items. Per the approved family policy, identity follows the convened body, not venue or topic; the numbered board (No. 2) matches the denton-tx-tirz-2-board feed description. This is distinct from TIRZ No. 1 Board feed.\n\nLet me write the JSON.\n\ncase_id: \"denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board\" (the id field).\n\nProposed action: \"Add recording uid 1c91182b70afefb3 (https://dentontx.new.swagit.com/videos/111521) to the denton-tx-tirz-2-board feed.\"\n\nProposed owner: \"denton-tx-tirz-2-board\"\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]\n\nmissing_evidence: []\n\nsupported: true\n\nRationale should be under 2000 characters.\n\nLet me draft:\n\n\"The retained agenda explicitly names the convened body: 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.' The recording's title, provider player text, and native-source chapters all match this body, date, and meeting type, and the agenda items (A\u2013C) align with the chapter markers. Per the approved family policy, identity is determined by the convened body, not venue, topic, or shared members, and numbered boards differ; the body is unambiguously TIRZ No. 2 (Westpark TIRZ), matching the denton-tx-tirz-2-board feed description and distinct from denton-tx-tirz-1-board. No conflicting evidence exists, so the publication-membership claim is supported and no evidence is missing.\"\n\nThat's good. Output JSON only."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 1481,
+      "prompt_tokens": 3871,
+      "total_tokens": 5352,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1099,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "z-ai/glm-5.3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "denton-tx-1c91182b70afefb3-ownership-member-denton-tx-tirz-2-board",
+    "supported": true,
+    "proposed_owner": "denton-tx-tirz-2-board",
+    "proposed_action": "Add recording uid 1c91182b70afefb3 (https://dentontx.new.swagit.com/videos/111521, Tax Increment Reinvestment Zone No. 2 Board Special Called Meeting, 2021-01-13 11:00 AM) to the denton-tx-tirz-2-board feed.",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "missing_evidence": [],
+    "rationale": "The retained official agenda explicitly identifies the convened body: 'the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, Texas, will convene in a Special Called Meeting on Wednesday, January 13, 2021, at 11:00 a.m.' at Denton City Hall. The recording title, provider-player page, and native-source chapters all match this body, date, meeting type, and agenda items A\u2013C (minutes approval, Westpark TIRZ annual report, industrial development), corroborating that the recording captures this exact meeting. Under the approved family policy, identity follows the convened body rather than venue, topic, or shared members, and numbered boards differ; the body is unambiguously TIRZ No. 2 (Westpark TIRZ), matching the denton-tx-tirz-2-board feed ('Meetings of Denton TIRZ No. 2 Board') and distinct from denton-tx-tirz-1-board. No conflicting or ambiguous evidence is present, so the publication-membership claim is supported with no missing evidence."
+  },
+  "end_to_end_seconds": 158.91858395794407,
+  "diagnostics": [
+    {
+      "duration_seconds": 157.16949408268556
+    }
+  ]
+}

@@ -10,6 +10,10 @@ source:
   body_includes:
     - provider_guid: "308431"
       body: "ACP Community Meeting"
+    - provider_guid: "295839"
+      body: "Joint CPAC, P&Z, and City Council Meeting #1"
+    - provider_guid: "310072"
+      body: "Joint CPAC, P&Z, and City Council Meeting #2"
 lifecycle:
   status: dormant
   reason: "Temporary committee"

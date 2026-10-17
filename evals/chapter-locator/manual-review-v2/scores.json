@@ -1,0 +1,3825 @@
+{
+  "B-DEFBE134": {
+    "truth_start_seconds": 5018.46,
+    "updated_at": "2026-09-29T00:03:42.285Z",
+    "bundle_agenda_indices": [
+      10
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:03:44.183Z"
+  },
+  "B-E86B5B24": {
+    "truth_start_seconds": 6369.84,
+    "updated_at": "2026-09-29T00:20:36.366Z",
+    "bundle_agenda_indices": [
+      6
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:20:38.853Z"
+  },
+  "B-0F0253E4": {
+    "truth_start_seconds": 3.32,
+    "is_composite": false,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-28T23:11:54.537Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:23:09.379Z"
+  },
+  "B-6BD967EE": {
+    "truth_start_seconds": 164.12,
+    "updated_at": "2026-09-29T00:44:42.362Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:44:37.855Z",
+    "bundle_agenda_indices": [
+      5
+    ]
+  },
+  "B-20AF619C": {
+    "truth_start_seconds": 1964.2,
+    "updated_at": "2026-09-29T00:49:38.218Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:49:36.648Z",
+    "bundle_agenda_indices": [
+      6
+    ]
+  },
+  "B-5AB5755B": {
+    "truth_start_seconds": 3229.6,
+    "updated_at": "2026-09-28T22:13:20.723Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:50:37.688Z"
+  },
+  "B-473316FA": {
+    "truth_start_seconds": 4935.3,
+    "updated_at": "2026-09-29T00:54:41.499Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:54:40.109Z",
+    "bundle_agenda_indices": [
+      2
+    ]
+  },
+  "B-886E772A": {
+    "truth_start_seconds": 454.12,
+    "updated_at": "2026-09-29T02:37:27.649Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:37:25.465Z",
+    "bundle_agenda_indices": [
+      4
+    ]
+  },
+  "B-2DAB8AC8": {
+    "truth_start_seconds": 10201.12,
+    "updated_at": "2026-09-29T03:52:59.383Z",
+    "bundle_agenda_indices": [
+      18
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:53:00.268Z",
+    "manual_agenda_indices": [
+      18
+    ],
+    "excluded_agenda_indices": [
+      20
+    ]
+  },
+  "B-97D4D72F": {
+    "truth_start_seconds": 2765.7,
+    "updated_at": "2026-09-29T04:29:44.678Z",
+    "bundle_agenda_indices": [
+      2
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:29:45.776Z",
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": [
+      7
+    ]
+  },
+  "B-A27C01A8": {
+    "truth_start_seconds": 7434.61,
+    "updated_at": "2026-09-29T05:11:13.201Z",
+    "bundle_agenda_indices": [
+      12
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:11:11.829Z"
+  },
+  "B-E3E11F06": {
+    "truth_start_seconds": 45.94,
+    "updated_at": "2026-09-29T05:14:51.077Z",
+    "bundle_agenda_indices": [
+      2
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:14:52.622Z"
+  },
+  "B-77948876": {
+    "truth_start_seconds": 4.22,
+    "is_composite": false,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-28T23:59:53.068Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-28T23:40:08.049Z"
+  },
+  "B-2C3196C2": {
+    "truth_start_seconds": 30.92,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:00:13.266Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:00:21.599Z"
+  },
+  "B-361997AE": {
+    "truth_start_seconds": 38.1,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:00:34.913Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:00:39.139Z"
+  },
+  "B-7CF05944": {
+    "truth_start_seconds": 54.26,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:00:45.146Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:00:46.953Z"
+  },
+  "B-96AAD84D": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:00:51.128Z",
+    "truth_start_seconds": 252.5,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:36:37.632Z"
+  },
+  "B-BEE0A60D": {
+    "truth_start_seconds": 2434.54,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T00:00:58.328Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:00:59.575Z"
+  },
+  "B-249A56B8": {
+    "truth_start_seconds": 2790.78,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T00:01:04.967Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:01:06.187Z"
+  },
+  "B-A43CB1E7": {
+    "truth_start_seconds": 4493.8,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T00:01:27.621Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:01:29.769Z"
+  },
+  "B-56134EF4": {
+    "truth_start_seconds": 5000.98,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T00:03:04.595Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      10
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:03:27.842Z"
+  },
+  "B-0130C974": {
+    "truth_start_seconds": 5006.18,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T00:03:37.283Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:03:38.987Z"
+  },
+  "B-AE25C0BA": {
+    "truth_start_seconds": 5024.08,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T00:03:47.718Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:03:48.603Z"
+  },
+  "B-1CB91D87": {
+    "truth_start_seconds": 5032.8,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T00:04:22.902Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:04:31.924Z"
+  },
+  "B-05810BEE": {
+    "truth_start_seconds": 5102.54,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T00:05:06.379Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:05:08.907Z"
+  },
+  "B-D02AE49C": {
+    "truth_start_seconds": 7.26,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:05:16.349Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:05:17.404Z"
+  },
+  "B-610D5756": {
+    "truth_start_seconds": 29.06,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:14:09.777Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:05:32.621Z"
+  },
+  "B-7AAEDB0E": {
+    "truth_start_seconds": 1232.22,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T00:14:42.926Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:14:46.483Z"
+  },
+  "B-8311F998": {
+    "truth_start_seconds": 1269.42,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:15:27.045Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:15:39.504Z"
+  },
+  "B-84BD77FB": {
+    "truth_start_seconds": 2932,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T00:16:35.399Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:16:42.129Z"
+  },
+  "B-F0BE229C": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:16:49.153Z",
+    "truth_start_seconds": 4.44,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:16:56.428Z"
+  },
+  "B-FCDC8669": {
+    "truth_start_seconds": 11.14,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:17:10.845Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:17:13.479Z"
+  },
+  "B-7D459829": {
+    "truth_start_seconds": 32.18,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T00:17:25.687Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:18:00.923Z"
+  },
+  "B-E9E03026": {
+    "truth_start_seconds": 1038.2,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:19:25.031Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:19:28.890Z"
+  },
+  "B-FA87EAAE": {
+    "truth_start_seconds": 1698.82,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:19:37.475Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:19:41.022Z"
+  },
+  "B-00724995": {
+    "truth_start_seconds": 3453.06,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T00:20:03.330Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:20:05.923Z"
+  },
+  "B-311F1B17": {
+    "truth_start_seconds": 5309.44,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T00:20:13.186Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:20:18.091Z"
+  },
+  "B-5AC858A5": {
+    "truth_start_seconds": 9110.98,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T00:20:47.198Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:20:48.913Z"
+  },
+  "B-54E59B6A": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:35:39.319Z",
+    "truth_start_seconds": 1.989,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:35:37.902Z"
+  },
+  "B-04A92735": {
+    "truth_start_seconds": 49.912,
+    "bundle_agenda_indices": [
+      2,
+      3
+    ],
+    "updated_at": "2026-09-29T05:35:32.245Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:21:26.453Z",
+    "manual_agenda_indices": [
+      2,
+      3
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-6C07D433": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:22:10.127Z",
+    "truth_start_seconds": 523.084,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T05:35:24.086Z"
+  },
+  "B-6B813E4F": {
+    "truth_start_seconds": 2234.898,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T00:22:37.676Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:22:46.329Z"
+  },
+  "B-D7363F9C": {
+    "truth_start_seconds": 6914.932,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T00:22:55.870Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:23:01.743Z"
+  },
+  "B-1BE320FF": {
+    "truth_start_seconds": 20.961,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:23:26.650Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:23:36.888Z",
+    "manual_agenda_indices": [
+      1
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-D4C1A5F3": {
+    "truth_start_seconds": 219.81,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:23:55.622Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:23:57.315Z"
+  },
+  "B-679A3881": {
+    "manual_agenda_indices": [
+      5,
+      6
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      4,
+      5,
+      6
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:24:30.841Z",
+    "truth_start_seconds": 261.697,
+    "updated_at": "2026-09-29T05:35:08.423Z"
+  },
+  "B-48A5BB71": {
+    "manual_agenda_indices": [
+      7
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 348.823,
+    "updated_at": "2026-09-29T00:25:10.675Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:25:15.665Z"
+  },
+  "B-6DB4198D": {
+    "truth_start_seconds": 367.544,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T00:26:34.967Z",
+    "manual_agenda_indices": [
+      7
+    ],
+    "excluded_agenda_indices": [],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:26:50.302Z"
+  },
+  "B-E8990B98": {
+    "manual_agenda_indices": [
+      11,
+      12,
+      13
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      11,
+      12,
+      13
+    ],
+    "truth_start_seconds": 416.228,
+    "updated_at": "2026-09-29T00:28:37.557Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:29:48.214Z"
+  },
+  "B-FA1E5A8E": {
+    "manual_agenda_indices": [
+      14
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      14
+    ],
+    "truth_start_seconds": 875.775,
+    "updated_at": "2026-09-29T00:30:21.711Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:30:23.595Z"
+  },
+  "B-7C81D9AD": {
+    "truth_start_seconds": 1342.186,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T00:30:32.929Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:30:34.489Z"
+  },
+  "B-875DCC71": {
+    "truth_start_seconds": 1370.628,
+    "bundle_agenda_indices": [
+      19
+    ],
+    "updated_at": "2026-09-29T00:31:09.408Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:31:11.077Z"
+  },
+  "B-928E9085": {
+    "truth_start_seconds": 1647.966,
+    "bundle_agenda_indices": [
+      20
+    ],
+    "updated_at": "2026-09-29T00:31:24.019Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:31:25.641Z"
+  },
+  "B-09C3222E": {
+    "truth_start_seconds": 2540.546,
+    "bundle_agenda_indices": [
+      21
+    ],
+    "updated_at": "2026-09-29T00:31:35.459Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:31:37.092Z"
+  },
+  "B-12FF84D7": {
+    "truth_start_seconds": 2777.421,
+    "bundle_agenda_indices": [
+      22
+    ],
+    "updated_at": "2026-09-29T00:32:07.224Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:32:08.647Z"
+  },
+  "B-C20FD0BB": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:32:20.147Z",
+    "truth_start_seconds": 4065.967,
+    "bundle_agenda_indices": [
+      23
+    ],
+    "updated_at": "2026-09-29T05:34:58.996Z"
+  },
+  "B-4047445E": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:32:36.339Z",
+    "truth_start_seconds": 4267.04,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T05:34:50.131Z"
+  },
+  "B-421E2F10": {
+    "truth_start_seconds": 5059.674,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T00:32:45.201Z"
+  },
+  "B-4E8787FA": {
+    "truth_start_seconds": 3777.03,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T00:33:03.141Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:33:05.843Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      9
+    ]
+  },
+  "B-C220D7A4": {
+    "truth_start_seconds": 14,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:34:30.220Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:34:32.418Z"
+  },
+  "B-88F83209": {
+    "truth_start_seconds": 75.5,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:34:47.996Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:34:55.511Z"
+  },
+  "B-AA0D5AD3": {
+    "truth_start_seconds": 87.14,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:35:10.450Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:35:12.324Z"
+  },
+  "B-285D4453": {
+    "truth_start_seconds": 3480.21,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T00:35:18.956Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:35:20.264Z"
+  },
+  "B-9292F596": {
+    "truth_start_seconds": 3752.09,
+    "bundle_agenda_indices": [
+      5,
+      6,
+      7
+    ],
+    "updated_at": "2026-09-29T00:35:52.725Z",
+    "manual_agenda_indices": [
+      5,
+      6,
+      7
+    ],
+    "excluded_agenda_indices": [],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:36:37.490Z"
+  },
+  "B-68FC0D44": {
+    "truth_start_seconds": 3790.15,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T00:37:21.170Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:37:23.788Z"
+  },
+  "B-0187CA29": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:41:28.201Z",
+    "truth_start_seconds": 0,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:41:40.353Z"
+  },
+  "B-7B9CAC79": {
+    "truth_start_seconds": 474.359,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:42:20.406Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:42:23.138Z"
+  },
+  "B-254DEA46": {
+    "truth_start_seconds": 5.88,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:42:37.035Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:42:48.545Z"
+  },
+  "B-C4211EE8": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:42:54.742Z",
+    "truth_start_seconds": 1.12,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:42:57.899Z"
+  },
+  "B-10EF2C49": {
+    "truth_start_seconds": 58.2,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T00:43:17.049Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:43:38.923Z"
+  },
+  "B-A6954074": {
+    "truth_start_seconds": 98.42,
+    "bundle_agenda_indices": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "updated_at": "2026-09-29T00:44:27.908Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:44:29.711Z"
+  },
+  "B-4E6E8CC9": {
+    "truth_start_seconds": 272.82,
+    "bundle_agenda_indices": [
+      6,
+      7
+    ],
+    "updated_at": "2026-09-29T00:44:47.038Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:44:51.063Z"
+  },
+  "B-DA13012F": {
+    "truth_start_seconds": 315.98,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T00:45:08.278Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:45:10.892Z"
+  },
+  "B-6D2BC483": {
+    "truth_start_seconds": 4619.16,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:45:57.912Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:46:02.003Z",
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": [],
+    "concurrent_case_ids": [
+      "B-B859F329"
+    ],
+    "truth_before_concurrency_seconds": 4619.16
+  },
+  "B-B859F329": {
+    "concurrent_case_ids": [
+      "B-6D2BC483"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 4619.16,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:47:06.766Z"
+  },
+  "B-EF58B6EF": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:47:11.780Z",
+    "truth_start_seconds": 3.08,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:33:53.484Z"
+  },
+  "B-1E1CD8AE": {
+    "truth_start_seconds": 10.34,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:47:21.356Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:47:26.766Z"
+  },
+  "B-C77C0FA7": {
+    "truth_start_seconds": 33.48,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T00:47:33.495Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:47:34.798Z"
+  },
+  "B-1E476842": {
+    "truth_start_seconds": 97.44,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:47:48.027Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:47:49.122Z",
+    "concurrent_case_ids": [
+      "B-B8ECF7F9"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": 91.18
+  },
+  "B-B8ECF7F9": {
+    "truth_start_seconds": 97.44,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:48:09.977Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:48:07.893Z",
+    "concurrent_case_ids": [
+      "B-1E476842"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": 97.44
+  },
+  "B-B25A6D6B": {
+    "truth_start_seconds": 587.62,
+    "bundle_agenda_indices": [
+      4,
+      5,
+      6
+    ],
+    "updated_at": "2026-09-29T00:49:09.697Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:49:16.401Z"
+  },
+  "B-03F57359": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:49:20.240Z",
+    "truth_start_seconds": 74.78,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:33:41.910Z"
+  },
+  "B-E55EF1E6": {
+    "truth_start_seconds": 597.9,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T00:49:27.711Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:49:29.337Z"
+  },
+  "B-D94E1192": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:49:47.983Z",
+    "truth_start_seconds": 2380.32,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T05:33:34.680Z"
+  },
+  "B-C723B2D1": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:50:09.567Z",
+    "truth_start_seconds": 9.68,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:33:28.657Z"
+  },
+  "B-F0EF94C7": {
+    "truth_start_seconds": 218.58,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:50:22.756Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:50:27.962Z"
+  },
+  "B-614E7666": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T00:51:01.357Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:33:15.879Z"
+  },
+  "B-99DAD56D": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:51:09.969Z",
+    "truth_start_seconds": 54.7,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:37:57.938Z"
+  },
+  "B-9DE30D18": {
+    "truth_start_seconds": 6511.76,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:51:17.372Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:51:19.762Z"
+  },
+  "B-047C9E75": {
+    "truth_start_seconds": 0.54,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T00:51:34.485Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:51:36.703Z"
+  },
+  "B-33264962": {
+    "truth_start_seconds": 50.14,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:52:07.553Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:52:21.155Z"
+  },
+  "B-47446532": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T00:53:51.627Z",
+    "truth_start_seconds": 74.38,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T05:32:59.295Z"
+  },
+  "B-51F40491": {
+    "truth_start_seconds": 417.48,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:54:10.345Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:54:16.846Z"
+  },
+  "B-5F722488": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T00:55:40.829Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:38:27.103Z"
+  },
+  "B-B349D707": {
+    "truth_start_seconds": 4.039,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:55:51.039Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:55:53.094Z"
+  },
+  "B-E76F5CA3": {
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      2
+    ],
+    "truth_start_seconds": 65.523,
+    "updated_at": "2026-09-29T00:56:24.842Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:56:32.654Z"
+  },
+  "B-723AC3E8": {
+    "truth_start_seconds": 5765.583,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T00:56:56.437Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:57:05.953Z"
+  },
+  "B-861D0BA6": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:57:11.322Z",
+    "truth_start_seconds": 10.46,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T00:57:21.939Z"
+  },
+  "B-C2418144": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:57:36.158Z",
+    "truth_start_seconds": 24.6,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T00:57:38.731Z"
+  },
+  "B-F25740F7": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:57:48.321Z",
+    "truth_start_seconds": 242.4,
+    "bundle_agenda_indices": [
+      2,
+      3
+    ],
+    "updated_at": "2026-09-29T00:58:12.652Z"
+  },
+  "B-9FA33DEE": {
+    "truth_start_seconds": 272.66,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T00:58:37.743Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T00:58:42.525Z"
+  },
+  "B-8CB55F6C": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:58:51.026Z",
+    "truth_start_seconds": 275.34,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T05:32:08.051Z"
+  },
+  "B-0980D4A1": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:59:11.214Z",
+    "truth_start_seconds": 2093.76,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:32:02.038Z"
+  },
+  "B-FE4E6D0B": {
+    "truth_start_seconds": 6947.76,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T00:59:34.718Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:59:36.532Z"
+  },
+  "B-CD161AD9": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T00:59:43.910Z",
+    "truth_start_seconds": 10935.59,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T00:59:47.509Z"
+  },
+  "B-D6B00051": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T01:01:17.949Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:31:42.743Z"
+  },
+  "B-6A42B470": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T01:03:01.973Z",
+    "truth_start_seconds": 12766.25,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T01:03:07.578Z"
+  },
+  "B-66AD093F": {
+    "truth_start_seconds": 16.04,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T01:21:24.539Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T01:21:25.437Z"
+  },
+  "B-D7D05118": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T01:21:43.023Z",
+    "truth_start_seconds": 19.62,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T01:21:45.906Z"
+  },
+  "B-995889B4": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T01:21:57.016Z",
+    "truth_start_seconds": 42.34,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T01:21:59.676Z"
+  },
+  "B-F8A0A746": {
+    "truth_start_seconds": 57.7,
+    "bundle_agenda_indices": [
+      5,
+      6
+    ],
+    "updated_at": "2026-09-29T01:22:18.323Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T01:22:19.574Z"
+  },
+  "B-C592114B": {
+    "manual_agenda_indices": [
+      10
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      10
+    ],
+    "truth_start_seconds": 83.92,
+    "updated_at": "2026-09-29T02:36:12.677Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:36:15.169Z"
+  },
+  "B-511014FA": {
+    "truth_start_seconds": 0.74,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T02:36:45.144Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:36:49.814Z"
+  },
+  "B-2FF52023": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:37:08.324Z",
+    "truth_start_seconds": 164.48,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T02:37:11.015Z"
+  },
+  "B-852C2053": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:37:34.090Z",
+    "truth_start_seconds": 716.74,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T02:37:35.141Z"
+  },
+  "B-75A840D5": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:37:40.765Z",
+    "truth_start_seconds": 922.94,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T02:37:41.574Z"
+  },
+  "B-0DCCEB28": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:37:48.574Z",
+    "truth_start_seconds": 2417.8,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T02:37:49.817Z"
+  },
+  "B-90355260": {
+    "truth_start_seconds": 4897.76,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T02:38:03.337Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:38:07.672Z"
+  },
+  "B-005811FD": {
+    "truth_start_seconds": 5392.78,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T02:38:24.198Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:38:22.660Z"
+  },
+  "B-5A43B4FE": {
+    "truth_start_seconds": 7457.31,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T02:38:39.302Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:38:38.447Z"
+  },
+  "B-7A572BF2": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:39:10.286Z",
+    "truth_start_seconds": 20.54,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T02:39:11.483Z"
+  },
+  "B-371F7BD3": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T02:39:40.523Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:31:29.740Z"
+  },
+  "B-EE55A94E": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T02:40:13.364Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:31:30.894Z"
+  },
+  "B-3F5B3450": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:40:21.318Z",
+    "truth_start_seconds": 278.36,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T02:40:45.901Z"
+  },
+  "B-CD850C24": {
+    "manual_agenda_indices": [
+      1
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      1
+    ],
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T02:43:11.913Z",
+    "concurrent_case_ids": [],
+    "updated_at": "2026-09-29T02:49:55.547Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript."
+  },
+  "B-CC67A251": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [],
+    "bundle_agenda_indices": [
+      1
+    ],
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T02:50:14.982Z"
+  },
+  "B-CD2CED67": {
+    "truth_start_seconds": 360,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T02:50:39.881Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:50:43.101Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      3
+    ],
+    "concurrent_case_ids": [
+      "B-BD54A67F"
+    ],
+    "truth_before_concurrency_seconds": 360
+  },
+  "B-BD54A67F": {
+    "concurrent_case_ids": [
+      "B-CD2CED67"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 360,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:55:23.091Z"
+  },
+  "B-144CC438": {
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      3
+    ],
+    "concurrent_case_ids": [
+      "B-7A69B17D"
+    ],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 3946.98,
+    "updated_at": "2026-09-29T02:56:12.337Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:56:11.377Z"
+  },
+  "B-7A69B17D": {
+    "concurrent_case_ids": [
+      "B-144CC438"
+    ],
+    "manual_agenda_indices": [],
+    "bundle_agenda_indices": [
+      3
+    ],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 3946.98,
+    "updated_at": "2026-09-29T02:56:12.337Z"
+  },
+  "B-09D100C2": {
+    "truth_start_seconds": 3951.22,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T02:56:50.144Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:56:51.751Z"
+  },
+  "B-57F61378": {
+    "truth_start_seconds": 3970.36,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T02:57:05.503Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:57:06.704Z"
+  },
+  "B-BF259A87": {
+    "manual_agenda_indices": [
+      0
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      0
+    ],
+    "truth_start_seconds": 0,
+    "updated_at": "2026-09-29T02:57:25.412Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:57:28.022Z"
+  },
+  "B-69B7DBA5": {
+    "truth_start_seconds": 11.82,
+    "bundle_agenda_indices": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "updated_at": "2026-09-29T02:57:50.092Z"
+  },
+  "B-A9618B90": {
+    "truth_start_seconds": 25.22,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T02:58:21.973Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T02:58:19.645Z"
+  },
+  "B-30DF3138": {
+    "truth_start_seconds": 28.44,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T02:58:34.178Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:58:37.203Z"
+  },
+  "B-7256CE20": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T02:58:57.145Z",
+    "truth_start_seconds": 4354.7,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T02:58:59.193Z"
+  },
+  "B-8B3DD4E8": {
+    "truth_start_seconds": 8742.42,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T03:01:41.382Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:01:42.786Z"
+  },
+  "B-0A1EC620": {
+    "truth_start_seconds": 10651.84,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T03:01:58.947Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:02:01.966Z"
+  },
+  "B-AE64FF46": {
+    "truth_start_seconds": 10770.88,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T03:02:54.761Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:03:03.182Z"
+  },
+  "B-B1C65008": {
+    "truth_start_seconds": 10781.62,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:03:27.325Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:03:28.374Z"
+  },
+  "B-FD2FB61A": {
+    "truth_start_seconds": 10959.84,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T03:03:40.851Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:03:42.223Z"
+  },
+  "B-52D106E7": {
+    "truth_start_seconds": 11057.28,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T03:03:50.619Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:03:51.916Z"
+  },
+  "B-0CCB7D90": {
+    "truth_start_seconds": 10969.52,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T03:03:59.797Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:04:02.562Z"
+  },
+  "B-9F744DC3": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:04:09.239Z",
+    "truth_start_seconds": 11064.88,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T03:04:10.306Z"
+  },
+  "B-E800336C": {
+    "truth_start_seconds": 11249.12,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T03:04:15.879Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:04:57.502Z"
+  },
+  "B-2232FE3F": {
+    "truth_start_seconds": 11299.98,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T03:04:53.437Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:04:52.276Z"
+  },
+  "B-38191681": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:05:33.323Z",
+    "truth_start_seconds": 11306,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T03:05:48.977Z"
+  },
+  "B-46FC827C": {
+    "truth_start_seconds": 11312.36,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T03:06:04.669Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:06:03.267Z"
+  },
+  "B-AAE55670": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [],
+    "bundle_agenda_indices": [],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:17:42.802Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T03:18:12.195Z"
+  },
+  "B-3418C543": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [],
+    "bundle_agenda_indices": [],
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T03:18:13.728Z",
+    "excluded_agenda_indices": [
+      8,
+      9
+    ]
+  },
+  "B-07567990": {
+    "concurrent_case_ids": [
+      "B-19AB6DB2",
+      "B-807B62FE"
+    ],
+    "manual_agenda_indices": [
+      3
+    ],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "truth_start_seconds": 339.2,
+    "updated_at": "2026-09-29T03:21:14.498Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:19:11.846Z",
+    "excluded_agenda_indices": []
+  },
+  "B-19AB6DB2": {
+    "concurrent_case_ids": [
+      "B-07567990"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "truth_start_seconds": 339.2,
+    "updated_at": "2026-09-29T03:21:14.498Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:20:10.024Z"
+  },
+  "B-807B62FE": {
+    "concurrent_case_ids": [
+      "B-07567990",
+      "B-26AC8079"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 339.2,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T03:21:14.498Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:21:03.727Z"
+  },
+  "B-26AC8079": {
+    "concurrent_case_ids": [
+      "B-807B62FE",
+      "B-4638A3C1",
+      "B-F0791258"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 339.2,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T03:21:14.498Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:21:15.958Z"
+  },
+  "B-4638A3C1": {
+    "concurrent_case_ids": [
+      "B-26AC8079"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 339.2,
+    "bundle_agenda_indices": [
+      3
+    ]
+  },
+  "B-F0791258": {
+    "concurrent_case_ids": [
+      "B-26AC8079"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 339.2,
+    "bundle_agenda_indices": [
+      3
+    ]
+  },
+  "B-97DAE894": {
+    "manual_agenda_indices": [
+      8
+    ],
+    "excluded_agenda_indices": [
+      6
+    ],
+    "bundle_agenda_indices": [
+      8
+    ],
+    "concurrent_case_ids": [
+      "B-DFC5D2D2",
+      "B-36ECD345"
+    ],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 1752.96,
+    "updated_at": "2026-09-29T03:28:09.222Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:25:43.585Z"
+  },
+  "B-DFC5D2D2": {
+    "concurrent_case_ids": [
+      "B-97DAE894",
+      "B-05FBCBD0"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "truth_start_seconds": 1752.96,
+    "updated_at": "2026-09-29T03:28:09.222Z"
+  },
+  "B-36ECD345": {
+    "concurrent_case_ids": [
+      "B-97DAE894",
+      "B-85A65065"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "truth_start_seconds": 1752.96,
+    "updated_at": "2026-09-29T03:28:09.222Z"
+  },
+  "B-05FBCBD0": {
+    "concurrent_case_ids": [
+      "B-DFC5D2D2"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 1752.96,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:28:09.222Z"
+  },
+  "B-85A65065": {
+    "truth_start_seconds": 1752.96,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:28:09.222Z",
+    "concurrent_case_ids": [
+      "B-36ECD345"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": 1782.52,
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:27:59.334Z"
+  },
+  "B-89152A73": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:28:43.233Z",
+    "truth_start_seconds": 1752.96,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T03:28:46.593Z"
+  },
+  "B-8A390E56": {
+    "manual_agenda_indices": [
+      9
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      9
+    ],
+    "concurrent_case_ids": [
+      "B-C97AA019",
+      "B-94B9AE1C"
+    ],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 1782.52,
+    "updated_at": "2026-09-29T03:30:43.510Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:30:45.250Z"
+  },
+  "B-C97AA019": {
+    "concurrent_case_ids": [
+      "B-8A390E56",
+      "B-36CB9119"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "truth_start_seconds": 1782.52,
+    "updated_at": "2026-09-29T03:30:43.510Z"
+  },
+  "B-94B9AE1C": {
+    "concurrent_case_ids": [
+      "B-8A390E56",
+      "B-A6148558"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "truth_start_seconds": 1782.52,
+    "updated_at": "2026-09-29T03:30:43.510Z"
+  },
+  "B-36CB9119": {
+    "concurrent_case_ids": [
+      "B-C97AA019"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 1782.52,
+    "bundle_agenda_indices": [
+      9
+    ]
+  },
+  "B-A6148558": {
+    "concurrent_case_ids": [
+      "B-94B9AE1C"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 1782.52,
+    "bundle_agenda_indices": [
+      9
+    ]
+  },
+  "B-1DF6F5FF": {
+    "concurrent_case_ids": [
+      "B-8020158C",
+      "B-C0352F4A"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "truth_start_seconds": 3136.98,
+    "updated_at": "2026-09-29T03:31:59.403Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:32:00.983Z"
+  },
+  "B-8020158C": {
+    "concurrent_case_ids": [
+      "B-1DF6F5FF"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "truth_start_seconds": 3136.98,
+    "updated_at": "2026-09-29T03:31:59.403Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:32:28.826Z"
+  },
+  "B-C0352F4A": {
+    "concurrent_case_ids": [
+      "B-1DF6F5FF"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 3136.98,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:32:35.781Z"
+  },
+  "B-1CBDA352": {
+    "manual_agenda_indices": [
+      6
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      6
+    ],
+    "truth_start_seconds": 6221.88,
+    "updated_at": "2026-09-29T03:33:07.872Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:33:06.873Z",
+    "concurrent_case_ids": [
+      "B-AAF4BB6D",
+      "B-AD733E3F"
+    ],
+    "truth_before_concurrency_seconds": 6221.88
+  },
+  "B-AAF4BB6D": {
+    "concurrent_case_ids": [
+      "B-1CBDA352"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6221.88,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:33:28.978Z"
+  },
+  "B-AD733E3F": {
+    "concurrent_case_ids": [
+      "B-1CBDA352",
+      "B-4ECB9C62",
+      "B-9F12E1A9"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6221.88,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:33:30.419Z"
+  },
+  "B-4ECB9C62": {
+    "concurrent_case_ids": [
+      "B-AD733E3F"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6221.88,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:33:44.938Z"
+  },
+  "B-9F12E1A9": {
+    "concurrent_case_ids": [
+      "B-AD733E3F"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6221.88,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:33:46.582Z"
+  },
+  "B-6EC11AC5": {
+    "concurrent_case_ids": [
+      "B-68225DBE",
+      "B-04928AD8"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 6964.32,
+    "updated_at": "2026-09-29T03:34:09.834Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:34:13.081Z"
+  },
+  "B-68225DBE": {
+    "concurrent_case_ids": [
+      "B-6EC11AC5",
+      "B-76B738D0"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 6964.32,
+    "updated_at": "2026-09-29T03:34:09.834Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:34:29.195Z"
+  },
+  "B-04928AD8": {
+    "concurrent_case_ids": [
+      "B-6EC11AC5",
+      "B-539AE7BC"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 6964.32,
+    "updated_at": "2026-09-29T03:34:09.834Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:34:31.037Z"
+  },
+  "B-76B738D0": {
+    "concurrent_case_ids": [
+      "B-68225DBE"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6964.32,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:34:36.699Z"
+  },
+  "B-539AE7BC": {
+    "concurrent_case_ids": [
+      "B-04928AD8",
+      "B-80A64705"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6964.32,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:34:39.916Z"
+  },
+  "B-80A64705": {
+    "concurrent_case_ids": [
+      "B-539AE7BC"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": null,
+    "truth_start_seconds": 6964.32,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:34:51.587Z"
+  },
+  "B-D6F67003": {
+    "truth_start_seconds": 21.76,
+    "bundle_agenda_indices": [
+      3,
+      12
+    ],
+    "updated_at": "2026-09-29T03:35:52.166Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:35:50.714Z"
+  },
+  "B-5E275DCD": {
+    "truth_start_seconds": 280.96,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T03:36:12.346Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:36:09.357Z"
+  },
+  "B-D2C7C029": {
+    "manual_agenda_indices": [
+      5
+    ],
+    "excluded_agenda_indices": [
+      8
+    ],
+    "bundle_agenda_indices": [
+      5
+    ],
+    "truth_start_seconds": 368.76,
+    "updated_at": "2026-09-29T03:38:39.884Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:38:40.833Z"
+  },
+  "B-165A85D3": {
+    "truth_start_seconds": 661.07,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T03:39:24.173Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:39:26.695Z"
+  },
+  "B-9EB305F9": {
+    "truth_start_seconds": 825.61,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:39:41.827Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:39:43.524Z"
+  },
+  "B-9F855412": {
+    "truth_start_seconds": 1070.29,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T03:39:57.189Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:39:59.531Z"
+  },
+  "B-3D24F205": {
+    "truth_start_seconds": 1402.43,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T03:40:14.089Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:40:15.410Z"
+  },
+  "B-5501C20E": {
+    "truth_start_seconds": 1623.75,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T03:40:31.948Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:40:30.543Z"
+  },
+  "B-00547EEA": {
+    "truth_start_seconds": 243.06,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T03:41:09.041Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:41:10.156Z"
+  },
+  "B-E6D28875": {
+    "truth_start_seconds": 1343.1,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T03:43:25.707Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:43:24.863Z"
+  },
+  "B-05C7F78A": {
+    "truth_start_seconds": 2109.26,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T03:43:52.510Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:43:51.235Z"
+  },
+  "B-7F6DD3E6": {
+    "truth_start_seconds": 2268.18,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T03:44:01.345Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:44:02.740Z"
+  },
+  "B-33ED81F2": {
+    "truth_start_seconds": 2931.04,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T03:44:15.356Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:44:16.934Z"
+  },
+  "B-F68EF353": {
+    "truth_start_seconds": 3049.08,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:45:14.267Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:45:15.865Z"
+  },
+  "B-92F1D40B": {
+    "truth_start_seconds": 3157.36,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T03:45:37.312Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:45:38.566Z"
+  },
+  "B-C44851A9": {
+    "truth_start_seconds": 5006.52,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T03:46:16.432Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:46:15.336Z",
+    "concurrent_case_ids": [
+      "B-99FB71D6"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": 5006.52
+  },
+  "B-99FB71D6": {
+    "truth_start_seconds": 5006.52,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T03:46:50.587Z",
+    "concurrent_case_ids": [
+      "B-C44851A9"
+    ],
+    "manual_agenda_indices": [],
+    "truth_before_concurrency_seconds": 5008.88,
+    "excluded_agenda_indices": [
+      22
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:47:17.966Z"
+  },
+  "B-B355280A": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [
+      8
+    ],
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T03:49:47.185Z",
+    "excluded_agenda_indices": [],
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T03:49:07.325Z",
+    "truth_start_seconds": 5006.52
+  },
+  "B-06941CBC": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [
+      10
+    ],
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T03:50:32.246Z",
+    "excluded_agenda_indices": [
+      8
+    ],
+    "truth_start_seconds": 5918.92,
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:50:30.565Z"
+  },
+  "B-DA265473": {
+    "truth_start_seconds": 6762.08,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T03:51:09.209Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:51:07.706Z"
+  },
+  "B-77CCE914": {
+    "truth_start_seconds": 6883.08,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T03:51:37.323Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:51:38.980Z"
+  },
+  "B-F7D5B45A": {
+    "truth_start_seconds": 7025.1,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T03:51:48.184Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:51:49.243Z"
+  },
+  "B-90B834CF": {
+    "truth_start_seconds": 8221.76,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T03:52:00.276Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:52:01.887Z"
+  },
+  "B-F29DD497": {
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      24
+    ],
+    "bundle_agenda_indices": [
+      16
+    ],
+    "truth_start_seconds": 9768.86,
+    "updated_at": "2026-09-29T03:52:33.867Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:52:34.915Z"
+  },
+  "B-9C23E6DF": {
+    "truth_start_seconds": 10057.54,
+    "bundle_agenda_indices": [
+      17
+    ],
+    "updated_at": "2026-09-29T03:52:49.193Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:52:50.412Z"
+  },
+  "B-07BF0EFB": {
+    "truth_start_seconds": 12856.5,
+    "bundle_agenda_indices": [
+      19,
+      23
+    ],
+    "updated_at": "2026-09-29T03:53:33.859Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:53:35.105Z"
+  },
+  "B-3837967F": {
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      21
+    ],
+    "bundle_agenda_indices": [
+      20
+    ],
+    "truth_start_seconds": 13700.74,
+    "updated_at": "2026-09-29T03:53:50.116Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:53:52.487Z"
+  },
+  "B-84BC5A5A": {
+    "manual_agenda_indices": [
+      1
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      1
+    ],
+    "truth_start_seconds": 15.9,
+    "updated_at": "2026-09-29T03:54:26.361Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:54:28.238Z"
+  },
+  "B-B2B3A196": {
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": [
+      1
+    ],
+    "bundle_agenda_indices": [
+      2
+    ],
+    "truth_start_seconds": 33.86,
+    "updated_at": "2026-09-29T03:54:44.033Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:54:47.519Z"
+  },
+  "B-A87E54CA": {
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      3
+    ],
+    "truth_start_seconds": 778.48,
+    "updated_at": "2026-09-29T03:55:19.764Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:55:26.530Z"
+  },
+  "B-AE037CF1": {
+    "manual_agenda_indices": [
+      4
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      4
+    ],
+    "truth_start_seconds": 1466.04,
+    "updated_at": "2026-09-29T03:55:44.954Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:55:45.996Z"
+  },
+  "B-57E5E684": {
+    "manual_agenda_indices": [
+      5
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      5
+    ],
+    "truth_start_seconds": 3444.78,
+    "updated_at": "2026-09-29T03:55:59.351Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:56:00.600Z"
+  },
+  "B-DA566712": {
+    "manual_agenda_indices": [
+      6
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      6
+    ],
+    "truth_start_seconds": 5459.86,
+    "updated_at": "2026-09-29T03:56:14.513Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:56:16.954Z"
+  },
+  "B-7C9CCD74": {
+    "manual_agenda_indices": [
+      7
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 6871.76,
+    "updated_at": "2026-09-29T03:56:31.618Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:56:32.628Z"
+  },
+  "B-D26E1817": {
+    "manual_agenda_indices": [
+      8
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      8
+    ],
+    "truth_start_seconds": 7022.76,
+    "updated_at": "2026-09-29T03:56:48.330Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T03:56:49.311Z"
+  },
+  "B-FFA8CF1D": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T03:57:27.597Z",
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:01:06Z",
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near the 00:00 provider chapter; the available transcript begins at 04:57."
+  },
+  "B-98BE1337": {
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near the 01:27 provider chapter; the available transcript begins at 04:57.",
+    "updated_at": "2026-09-29T04:01:06Z"
+  },
+  "B-04FE9AA4": {
+    "truth_start_seconds": 183.72,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:03:55.694Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:03:57.730Z"
+  },
+  "B-B30654E8": {
+    "truth_start_seconds": 190.32,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:04:15.093Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:04:13.700Z"
+  },
+  "B-13E4C265": {
+    "truth_start_seconds": 230.18,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:04:49.409Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:05:37.211Z"
+  },
+  "B-5D79CAA0": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:05:40.680Z",
+    "truth_start_seconds": 291.9,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T04:05:52.420Z"
+  },
+  "B-AE96DB0F": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:06:02.178Z",
+    "truth_start_seconds": 3034.1,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:06:03.828Z"
+  },
+  "B-B961E744": {
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      7
+    ],
+    "bundle_agenda_indices": [],
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:06:25.428Z",
+    "truth_start_seconds": 6855.96,
+    "updated_at": "2026-09-29T04:06:44.051Z"
+  },
+  "B-335E2D74": {
+    "truth_start_seconds": 6868.56,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T04:09:07.064Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:06:51.755Z",
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      16,
+      11
+    ]
+  },
+  "B-C5337623": {
+    "manual_agenda_indices": [
+      11
+    ],
+    "excluded_agenda_indices": [
+      16
+    ],
+    "bundle_agenda_indices": [
+      11
+    ],
+    "concurrent_case_ids": [],
+    "updated_at": "2026-09-29T04:10:03.899Z",
+    "truth_start_seconds": 6873.78,
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:10:06.523Z"
+  },
+  "B-528718BD": {
+    "truth_start_seconds": 6957.02,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T04:10:21.468Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:10:22.322Z"
+  },
+  "B-C08BE6FA": {
+    "truth_start_seconds": 7004.98,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T04:10:31.470Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:10:32.433Z"
+  },
+  "B-18940B5F": {
+    "truth_start_seconds": 7010.24,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T04:11:08.231Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:11:06.821Z"
+  },
+  "B-CFC90B3A": {
+    "truth_start_seconds": 7412.88,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T04:11:49.108Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:11:50.187Z"
+  },
+  "B-3C305804": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:12:04.455Z",
+    "truth_start_seconds": 7526.28,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T04:12:17.105Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      7
+    ]
+  },
+  "B-4F954907": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:12:39.850Z",
+    "truth_start_seconds": 7543.9,
+    "bundle_agenda_indices": [
+      17
+    ],
+    "updated_at": "2026-09-29T04:12:40.969Z"
+  },
+  "B-A20173BD": {
+    "truth_start_seconds": 7586.74,
+    "bundle_agenda_indices": [
+      18
+    ],
+    "updated_at": "2026-09-29T04:12:52.750Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:12:53.553Z"
+  },
+  "B-B27E2D9F": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:13:07.416Z",
+    "truth_start_seconds": 7596.6,
+    "bundle_agenda_indices": [
+      19
+    ],
+    "updated_at": "2026-09-29T04:13:08.599Z"
+  },
+  "B-096C901F": {
+    "truth_start_seconds": 7711.9,
+    "bundle_agenda_indices": [
+      20
+    ],
+    "updated_at": "2026-09-29T04:13:16.484Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:13:17.429Z"
+  },
+  "B-9C0D2331": {
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:14:00.790Z"
+  },
+  "B-B91E3A9D": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:14:11.969Z",
+    "truth_start_seconds": 7780.16,
+    "bundle_agenda_indices": [
+      22
+    ],
+    "updated_at": "2026-09-29T04:14:12.884Z"
+  },
+  "B-4392833A": {
+    "truth_start_seconds": 24.1,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:14:23.281Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:14:25.591Z"
+  },
+  "B-3EBB3FFE": {
+    "truth_start_seconds": 34.58,
+    "bundle_agenda_indices": [
+      1,
+      2
+    ],
+    "updated_at": "2026-09-29T04:14:47.722Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:14:48.731Z",
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-CDE98390": {
+    "truth_start_seconds": 45.02,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:15:20.401Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:15:38.272Z"
+  },
+  "B-45FD2481": {
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      3,
+      10
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:15:48.136Z",
+    "truth_start_seconds": 51.56,
+    "updated_at": "2026-09-29T04:16:13.400Z"
+  },
+  "B-F6145174": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:16:21.711Z",
+    "truth_start_seconds": 2441.98,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T04:16:23.019Z"
+  },
+  "B-8C5273C9": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:16:29.392Z",
+    "truth_start_seconds": 3333.9,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T04:16:31.963Z"
+  },
+  "B-ADE374B3": {
+    "truth_start_seconds": 5248.66,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T04:16:49.993Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:16:51.019Z"
+  },
+  "B-DDD97200": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:16:55.520Z",
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:18:16.965Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript."
+  },
+  "B-834C43C6": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:18:28.836Z",
+    "truth_start_seconds": 6472.96,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T04:18:30.234Z"
+  },
+  "B-F9180FC7": {
+    "truth_start_seconds": 7230.02,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T04:18:43.225Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:18:44.669Z"
+  },
+  "B-0543486B": {
+    "truth_start_seconds": 7350.88,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:19:12.839Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:19:14.652Z"
+  },
+  "B-DA6FBFDF": {
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      2
+    ],
+    "bundle_agenda_indices": [
+      10
+    ],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:19:28.431Z",
+    "truth_start_seconds": 7619.74,
+    "updated_at": "2026-09-29T04:19:29.682Z"
+  },
+  "B-6ACAEADA": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:19:36.629Z",
+    "truth_start_seconds": 7630.18,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T04:19:38.366Z"
+  },
+  "B-CC2B6ACE": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:19:43.929Z",
+    "truth_start_seconds": 7668.6,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T04:19:46.881Z"
+  },
+  "B-B310E40D": {
+    "truth_start_seconds": 7678.08,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T04:20:19.863Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:20:20.824Z"
+  },
+  "B-A4A1A2BA": {
+    "truth_start_seconds": 8192.78,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T04:20:28.611Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:20:29.615Z"
+  },
+  "B-5339B31A": {
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T04:22:24.769Z",
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near this provider chapter."
+  },
+  "B-F92422C0": {
+    "truth_start_seconds": 8564.12,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T04:22:47.437Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:22:48.377Z"
+  },
+  "B-F1842713": {
+    "truth_start_seconds": 0,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:23:26.333Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:23:27.971Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      0
+    ]
+  },
+  "B-184A98F8": {
+    "truth_start_seconds": 18.24,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:23:39.991Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:23:40.920Z",
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [
+      0
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-C7747B3E": {
+    "truth_start_seconds": 44.54,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T04:24:17.057Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:24:16.016Z",
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": []
+  },
+  "B-6DEEAC55": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [],
+    "bundle_agenda_indices": [],
+    "excluded_agenda_indices": [
+      1
+    ],
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:29:34.292Z"
+  },
+  "B-5D80AD9D": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:30:44.258Z",
+    "truth_start_seconds": 4585.76,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T04:30:46.658Z"
+  },
+  "B-2221B824": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:30:59.852Z",
+    "truth_start_seconds": 4705.26,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:31:17.631Z"
+  },
+  "B-8EF1BFEE": {
+    "truth_start_seconds": 4710.62,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T04:31:23.361Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:31:24.684Z"
+  },
+  "B-B6DA385E": {
+    "truth_start_seconds": 4748.7,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:31:34.012Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:31:34.893Z"
+  },
+  "B-609132BB": {
+    "truth_start_seconds": 4808.12,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T04:32:18.468Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:32:20.247Z"
+  },
+  "B-14650F6E": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:34:58.703Z",
+    "updated_at": "2026-09-29T04:34:48.163Z",
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [
+      7
+    ],
+    "bundle_agenda_indices": [
+      7
+    ],
+    "truth_start_seconds": 4834.32,
+    "excluded_agenda_indices": []
+  },
+  "B-2A1C1A05": {
+    "concurrent_case_ids": [],
+    "manual_agenda_indices": [
+      7
+    ],
+    "bundle_agenda_indices": [
+      7
+    ],
+    "excluded_agenda_indices": [],
+    "truth_start_seconds": 4834.32,
+    "updated_at": "2026-09-29T04:37:10.835Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:35:07.584Z"
+  },
+  "B-0A96966E": {
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T04:38:07.352Z",
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near this provider chapter."
+  },
+  "B-D8CBDC40": {
+    "truth_start_seconds": 8.12,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:39:27.535Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:39:24.751Z"
+  },
+  "B-7E0F2B74": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:39:44.076Z",
+    "truth_start_seconds": 131.48,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T04:39:45.042Z"
+  },
+  "B-96788F6E": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:39:52.701Z",
+    "truth_start_seconds": 166.14,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T04:39:53.792Z"
+  },
+  "B-3BC8DAF5": {
+    "truth_start_seconds": 231.78,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T04:40:04.443Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:40:05.365Z"
+  },
+  "B-1EFB4C3D": {
+    "truth_start_seconds": 347.04,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T04:41:35.939Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:41:34.756Z"
+  },
+  "B-316B06B6": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:41:42.582Z",
+    "truth_start_seconds": 3971.14,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T04:41:43.551Z"
+  },
+  "B-A92D7B71": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T04:41:57.164Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:41:58.955Z"
+  },
+  "B-76BA5C80": {
+    "truth_start_seconds": 4911.86,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:42:07.343Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:42:08.494Z"
+  },
+  "B-5D908FE1": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:42:14.885Z",
+    "truth_start_seconds": 28.44,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:42:15.926Z"
+  },
+  "B-2F30B666": {
+    "manual_agenda_indices": [
+      12
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      12
+    ],
+    "truth_start_seconds": 55.46,
+    "updated_at": "2026-09-29T04:43:19.545Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:43:17.863Z"
+  },
+  "B-8468D6CC": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T04:44:30.999Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:46:24.035Z",
+    "manual_agenda_indices": [
+      1
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      1
+    ]
+  },
+  "B-9725B4C1": {
+    "truth_start_seconds": 330.62,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T04:45:03.971Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:45:07.364Z",
+    "manual_agenda_indices": [
+      5
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-0775B806": {
+    "truth_start_seconds": 425.78,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T04:45:20.736Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:45:18.969Z",
+    "manual_agenda_indices": [
+      6
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-5B832ADA": {
+    "truth_start_seconds": 1016.16,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T04:46:55.640Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:46:57.269Z",
+    "manual_agenda_indices": [
+      7
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-FE6E297C": {
+    "truth_start_seconds": 2813.02,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T04:47:28.769Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:47:30.505Z",
+    "manual_agenda_indices": [
+      8
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-B244850E": {
+    "truth_start_seconds": 4111.04,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:48:53.798Z",
+    "manual_agenda_indices": [
+      9
+    ],
+    "excluded_agenda_indices": [],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:48:52.237Z"
+  },
+  "B-37F69F9E": {
+    "truth_start_seconds": 5388.06,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T04:49:09.396Z",
+    "manual_agenda_indices": [
+      10
+    ],
+    "excluded_agenda_indices": [],
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:49:08.479Z"
+  },
+  "B-5FABE0EA": {
+    "truth_start_seconds": 10220.53,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T04:49:22.797Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:49:24.189Z",
+    "manual_agenda_indices": [
+      11
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-03544E06": {
+    "truth_start_seconds": 12.15,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T04:50:06.016Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:51:10.661Z"
+  },
+  "B-BD74E34A": {
+    "truth_start_seconds": 24.16,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T04:50:29.656Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:51:08.166Z"
+  },
+  "B-487CD842": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:51:05.758Z",
+    "truth_start_seconds": 28.3,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:51:04.575Z"
+  },
+  "B-DDBA84DD": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:14.637Z",
+    "truth_start_seconds": 101.8,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T04:51:15.542Z"
+  },
+  "B-9846438A": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:19.104Z",
+    "truth_start_seconds": 113.7,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T04:51:19.976Z"
+  },
+  "B-C5EE4E64": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:22.731Z",
+    "truth_start_seconds": 117.88,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T04:51:23.910Z"
+  },
+  "B-A25217FF": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:27.673Z",
+    "truth_start_seconds": 128.56,
+    "bundle_agenda_indices": [
+      23
+    ],
+    "updated_at": "2026-09-29T04:51:28.645Z"
+  },
+  "B-DA699E65": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:34.823Z",
+    "truth_start_seconds": 139.04,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T04:51:35.791Z"
+  },
+  "B-4005AC1E": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:51:46.273Z",
+    "truth_start_seconds": 321.44,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T04:51:47.873Z"
+  },
+  "B-DEEA5DC4": {
+    "truth_start_seconds": 608.8,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T04:52:10.806Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:52:15.126Z"
+  },
+  "B-2910DAD2": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:52:31.333Z",
+    "truth_start_seconds": 608.8,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T04:52:32.352Z"
+  },
+  "B-F25DCC90": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:52:38.061Z",
+    "truth_start_seconds": 1021.48,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T04:52:38.948Z"
+  },
+  "B-D6F7B769": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:52:45.037Z",
+    "truth_start_seconds": 1047.58,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T04:52:45.948Z"
+  },
+  "B-E57D831D": {
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:53:00.186Z"
+  },
+  "B-B8321088": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:53:07.067Z",
+    "truth_start_seconds": 1056.3,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T04:53:08.084Z"
+  },
+  "B-A188F1F3": {
+    "truth_start_seconds": 1280.12,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T04:53:25.716Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:53:26.912Z"
+  },
+  "B-86C16D90": {
+    "truth_start_seconds": 1285.12,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T04:53:31.466Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:53:32.521Z"
+  },
+  "B-5BCADAF3": {
+    "truth_start_seconds": 1318.2,
+    "bundle_agenda_indices": [
+      17
+    ],
+    "updated_at": "2026-09-29T04:53:39.357Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:53:40.524Z"
+  },
+  "B-7E01E144": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T04:54:09.849Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:54:10.936Z"
+  },
+  "B-67EDFA81": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T04:54:24.938Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T04:54:26.170Z"
+  },
+  "B-9FC82BC0": {
+    "truth_start_seconds": 1448.84,
+    "bundle_agenda_indices": [
+      18
+    ],
+    "updated_at": "2026-09-29T04:54:36.664Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:54:37.901Z"
+  },
+  "B-E64A0063": {
+    "truth_start_seconds": 1512.52,
+    "bundle_agenda_indices": [
+      19
+    ],
+    "updated_at": "2026-09-29T04:54:45.465Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:54:46.530Z"
+  },
+  "B-501D62B0": {
+    "truth_start_seconds": 1543.6,
+    "bundle_agenda_indices": [
+      20
+    ],
+    "updated_at": "2026-09-29T04:54:52.203Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:54:53.147Z"
+  },
+  "B-920BA2F5": {
+    "truth_start_seconds": 2615.72,
+    "bundle_agenda_indices": [
+      22
+    ],
+    "updated_at": "2026-09-29T04:54:57.508Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T04:54:59.895Z"
+  },
+  "B-EE60E697": {
+    "truth_start_seconds": 50.2,
+    "bundle_agenda_indices": [
+      1
+    ],
+    "updated_at": "2026-09-29T04:55:23.142Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:55:24.061Z"
+  },
+  "B-7E85A59C": {
+    "truth_start_seconds": 71.9,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T04:55:46.704Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:55:47.942Z"
+  },
+  "B-F4764A80": {
+    "truth_start_seconds": 142.48,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T04:56:00.250Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:56:01.252Z"
+  },
+  "B-377CB55C": {
+    "truth_start_seconds": 5574.12,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T04:56:37.187Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T04:56:34.674Z"
+  },
+  "B-DC0AE87C": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:02:01.939Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:02:15.978Z"
+  },
+  "B-59539BA3": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T05:02:31.158Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:02:33.927Z"
+  },
+  "B-5EFFBEC2": {
+    "truth_start_seconds": 339.96,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T05:03:00.209Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:02.234Z",
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [
+      4
+    ]
+  },
+  "B-D47BBAF7": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:14.715Z",
+    "truth_start_seconds": 429.4,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:03:19.200Z"
+  },
+  "B-CCF4820B": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:24.930Z",
+    "truth_start_seconds": 706.36,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T05:03:25.839Z"
+  },
+  "B-4E1755E4": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:33.156Z",
+    "truth_start_seconds": 809.92,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:03:34.061Z"
+  },
+  "B-6B273FE8": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:41.558Z",
+    "truth_start_seconds": 2020.76,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T05:03:42.537Z"
+  },
+  "B-D3800190": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:51.437Z",
+    "truth_start_seconds": 4054.84,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T05:03:52.345Z"
+  },
+  "B-973E64E3": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:03:55.804Z",
+    "truth_start_seconds": 4279.88,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T05:03:58.985Z"
+  },
+  "B-ED1E4DB9": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:04:05.893Z",
+    "truth_start_seconds": 5714.86,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T05:04:07.064Z"
+  },
+  "B-0FB077DA": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:04:16.567Z",
+    "truth_start_seconds": 6679.78,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T05:04:17.632Z"
+  },
+  "B-F5CADA5C": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:04:24.492Z",
+    "truth_start_seconds": 6836.9,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T05:04:26.099Z"
+  },
+  "B-24DA5A9B": {
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:04:44.440Z"
+  },
+  "B-425AFE50": {
+    "truth_start_seconds": 17.36,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:04:53.208Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:04:54.623Z"
+  },
+  "B-C7991E4E": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:05:21.400Z",
+    "truth_start_seconds": 50.82,
+    "bundle_agenda_indices": [
+      2
+    ],
+    "updated_at": "2026-09-29T05:05:27.874Z"
+  },
+  "B-12C9F80C": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:05:37.697Z",
+    "truth_start_seconds": 7327.82,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T05:06:01.170Z"
+  },
+  "B-C717716C": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:06:37.850Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:06:40.806Z"
+  },
+  "B-B4758134": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:06:49.738Z",
+    "truth_start_seconds": 302.66,
+    "bundle_agenda_indices": [
+      3
+    ],
+    "updated_at": "2026-09-29T05:07:06.267Z"
+  },
+  "B-71ED54DD": {
+    "truth_start_seconds": 1592.01,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:07:18.823Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:07:19.956Z"
+  },
+  "B-00D2EED9": {
+    "truth_start_seconds": 2002.59,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T05:07:42.819Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:07:41.813Z"
+  },
+  "B-958C5368": {
+    "truth_start_seconds": 3799.87,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:07:48.653Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:07:49.659Z"
+  },
+  "B-778C8FE3": {
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T05:09:08.421Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript."
+  },
+  "B-9D68077C": {
+    "truth_start_seconds": 4471.15,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T05:09:40.477Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:09:42.650Z"
+  },
+  "B-CDD73BD6": {
+    "truth_start_seconds": 4774.13,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T05:09:58.788Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:10:00.045Z"
+  },
+  "B-BA793546": {
+    "truth_start_seconds": 6166.51,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T05:10:17.037Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:10:18.505Z"
+  },
+  "B-2DEEED37": {
+    "truth_start_seconds": 6857.67,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T05:10:39.382Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:10:40.271Z",
+    "manual_agenda_indices": [],
+    "excluded_agenda_indices": [
+      10
+    ]
+  },
+  "B-0808ED31": {
+    "truth_start_seconds": 10601.25,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T05:11:29.926Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:11:28.555Z"
+  },
+  "B-597A089A": {
+    "truth_start_seconds": 11732.79,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T05:11:44.455Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:11:46.110Z"
+  },
+  "B-65BB1D0F": {
+    "truth_start_seconds": 11904.63,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T05:12:16.002Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:12:24.193Z"
+  },
+  "B-70F6EF0B": {
+    "truth_start_seconds": 12564.07,
+    "bundle_agenda_indices": [
+      17
+    ],
+    "updated_at": "2026-09-29T05:12:54.018Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:12:55.298Z"
+  },
+  "B-56E8F24F": {
+    "truth_start_seconds": 13145.87,
+    "bundle_agenda_indices": [
+      18
+    ],
+    "updated_at": "2026-09-29T05:13:26.309Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:14:22.607Z"
+  },
+  "B-240AC885": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T05:14:24.328Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:29:45.806Z"
+  },
+  "B-6A64BF1E": {
+    "flow_importance": "unsure",
+    "importance_updated_at": "2026-09-29T05:14:26.451Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:29:44.535Z"
+  },
+  "B-B88E5504": {
+    "manual_agenda_indices": [
+      1
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      1
+    ],
+    "truth_start_seconds": 19.16,
+    "updated_at": "2026-09-29T05:14:43.045Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:14:44.880Z"
+  },
+  "B-EA55420C": {
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      3
+    ],
+    "truth_start_seconds": 2897.14,
+    "updated_at": "2026-09-29T05:15:42.322Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:15:44.185Z"
+  },
+  "B-8509BE63": {
+    "manual_agenda_indices": [
+      4
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      4
+    ],
+    "truth_start_seconds": 4228.92,
+    "updated_at": "2026-09-29T05:16:55.376Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:16:00.243Z"
+  },
+  "B-A3C37475": {
+    "manual_agenda_indices": [
+      5
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      5
+    ],
+    "truth_start_seconds": 5427.84,
+    "updated_at": "2026-09-29T05:17:08.518Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:17:09.576Z"
+  },
+  "B-1D94798F": {
+    "truth_start_seconds": 0,
+    "bundle_agenda_indices": [
+      0
+    ],
+    "updated_at": "2026-09-29T05:17:19.526Z",
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:17:20.693Z"
+  },
+  "B-F506AB05": {
+    "truth_start_seconds": 13.38,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T05:17:33.247Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:17:34.743Z"
+  },
+  "B-BA05EFEA": {
+    "truth_start_seconds": 26.02,
+    "bundle_agenda_indices": [],
+    "updated_at": "2026-09-29T05:17:50.515Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:17:51.533Z"
+  },
+  "B-A5FC1E6D": {
+    "truth_start_seconds": 42.9,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:17:59.821Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:18:00.671Z"
+  },
+  "B-D2D09058": {
+    "truth_start_seconds": 3388.26,
+    "bundle_agenda_indices": [
+      5,
+      11
+    ],
+    "updated_at": "2026-09-29T05:18:11.600Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:18:12.439Z",
+    "manual_agenda_indices": [
+      5
+    ],
+    "excluded_agenda_indices": []
+  },
+  "B-5C90930D": {
+    "truth_start_seconds": 3940.52,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:18:52.783Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:18:55.106Z"
+  },
+  "B-1CD0F7B2": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:19:00.469Z",
+    "truth_start_seconds": 5111.4,
+    "bundle_agenda_indices": [
+      7
+    ],
+    "updated_at": "2026-09-29T05:19:01.695Z"
+  },
+  "B-B193497B": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:19:14.073Z",
+    "truth_start_seconds": 7496.92,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T05:19:15.108Z"
+  },
+  "B-01A0A160": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:19:23.832Z",
+    "truth_start_seconds": 9812.76,
+    "bundle_agenda_indices": [
+      9
+    ],
+    "updated_at": "2026-09-29T05:19:25.117Z"
+  },
+  "B-D6DDFA1F": {
+    "flow_importance": "optional",
+    "importance_updated_at": "2026-09-29T05:19:32.711Z",
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:19:37.575Z"
+  },
+  "B-5CCC110A": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:19:47.384Z",
+    "truth_start_seconds": 10212.98,
+    "bundle_agenda_indices": [
+      10
+    ],
+    "updated_at": "2026-09-29T05:19:48.314Z"
+  },
+  "B-F489422C": {
+    "truth_start_seconds": 10249.66,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T05:21:48.467Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:21:47.674Z"
+  },
+  "B-A235741F": {
+    "truth_start_seconds": 10267.34,
+    "bundle_agenda_indices": [
+      12
+    ],
+    "updated_at": "2026-09-29T05:21:57.240Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:21:58.418Z"
+  },
+  "B-FD41F4DE": {
+    "truth_start_seconds": 10296.98,
+    "bundle_agenda_indices": [
+      13
+    ],
+    "updated_at": "2026-09-29T05:22:07.688Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:22:08.509Z"
+  },
+  "B-75336B2C": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:22:18.932Z",
+    "truth_start_seconds": 10303.52,
+    "bundle_agenda_indices": [
+      14
+    ],
+    "updated_at": "2026-09-29T05:22:19.828Z"
+  },
+  "B-8A1220C7": {
+    "truth_start_seconds": 10697.6,
+    "bundle_agenda_indices": [
+      15
+    ],
+    "updated_at": "2026-09-29T05:22:49.890Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:22:51.897Z"
+  },
+  "B-8327BA45": {
+    "truth_start_seconds": 10845.68,
+    "bundle_agenda_indices": [
+      16
+    ],
+    "updated_at": "2026-09-29T05:22:56.021Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:22:56.860Z"
+  },
+  "B-B7EAF0BE": {
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:23:04.659Z",
+    "truth_start_seconds": 10858.22,
+    "bundle_agenda_indices": [
+      17
+    ],
+    "updated_at": "2026-09-29T05:23:05.607Z"
+  },
+  "B-633825F8": {
+    "truth_start_seconds": 10863.94,
+    "bundle_agenda_indices": [
+      18
+    ],
+    "updated_at": "2026-09-29T05:23:11.787Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:23:12.650Z"
+  },
+  "B-21309B42": {
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near this provider chapter.",
+    "updated_at": "2026-09-29T05:25:17.246Z"
+  },
+  "B-55AF63BF": {
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near this provider chapter.",
+    "updated_at": "2026-09-29T05:25:23.673Z"
+  },
+  "B-F2B56381": {
+    "manual_agenda_indices": [
+      2
+    ],
+    "excluded_agenda_indices": [],
+    "bundle_agenda_indices": [
+      2
+    ],
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:25:39.348Z"
+  },
+  "B-04311BA2": {
+    "target_status": "transcript_gap",
+    "target_status_note": "Word-timed transcript has no coverage near this provider chapter.",
+    "updated_at": "2026-09-29T05:26:12.192Z",
+    "manual_agenda_indices": [
+      3
+    ],
+    "excluded_agenda_indices": [
+      4
+    ],
+    "bundle_agenda_indices": [
+      3
+    ]
+  },
+  "B-D8744ABA": {
+    "truth_start_seconds": 5112.2,
+    "bundle_agenda_indices": [
+      4
+    ],
+    "updated_at": "2026-09-29T05:26:52.295Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:26:53.018Z"
+  },
+  "B-CB1BEC00": {
+    "truth_start_seconds": 6190.23,
+    "bundle_agenda_indices": [
+      5
+    ],
+    "updated_at": "2026-09-29T05:27:21.043Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:27:22.538Z"
+  },
+  "B-F457BE3D": {
+    "truth_start_seconds": 7699.59,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:27:47.132Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:27:45.935Z"
+  },
+  "B-F12C8D07": {
+    "target_status": "not_in_transcript",
+    "target_status_note": "Provider chapter has no corresponding spoken segment in the transcript.",
+    "updated_at": "2026-09-29T05:28:09.116Z"
+  },
+  "B-B6EBC85B": {
+    "truth_start_seconds": 6318.8,
+    "bundle_agenda_indices": [
+      11
+    ],
+    "updated_at": "2026-09-29T05:30:47.728Z"
+  },
+  "B-4629CA7C": {
+    "truth_start_seconds": 537.44,
+    "bundle_agenda_indices": [
+      6
+    ],
+    "updated_at": "2026-09-29T05:31:03.185Z"
+  },
+  "B-EF324FD7": {
+    "truth_start_seconds": 12775.15,
+    "bundle_agenda_indices": [
+      8
+    ],
+    "updated_at": "2026-09-29T05:39:15.036Z",
+    "flow_importance": "core",
+    "importance_updated_at": "2026-09-29T05:39:16.919Z"
+  }
+}

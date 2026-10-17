@@ -1323,9 +1323,13 @@ integration testing.
 ### Unit 1 — SQL schema (`src/coordinator.js`, DO constructor; Phase 1 creates `jobs`+`scheduler`, Phase 2 adds the rest)
 
 All tables are created with `CREATE TABLE IF NOT EXISTS` in the DO constructor, guarded by
-`migrations` with `new_sqlite_classes` per the wrangler config. Timestamps are Unix milliseconds
-(`INTEGER`), not ISO strings — comparisons and arithmetic must stay in integer ms throughout every
-unit below. No table stores payload or response bytes.
+`migrations` with `new_sqlite_classes` per the wrangler config. On cold start, the constructor first
+checks the required tables, compatibility columns, one-time model migration, clustered table
+shapes, and query-critical indexes/triggers through read-only catalog queries. A current schema
+skips DDL and data migrations; an incomplete schema uses the initializer below, which logs the
+specific phase if a storage operation fails. Timestamps are Unix milliseconds (`INTEGER`), not
+ISO strings — comparisons and arithmetic must stay in integer ms throughout every unit below. No
+table stores payload or response bytes.
 
 ```sql
 CREATE TABLE IF NOT EXISTS jobs (
@@ -2113,6 +2117,55 @@ the eight-worker pool sits idle, and re-uploads every source's whole `episodes.j
 rather than skipping unchanged ones. `push_state`/`pull_state` were both given a bounded upload pool
 for exactly this latency-bound cost; `push_records_merged` never was. The duty-cycle bound contains
 the impact by checkpointing less often, which widens the loss window rather than reducing the cost.
+
+## Row-write brake follow-up (2026-09-27/28)
+
+Two consecutive production days exhausted the Free-plan 100,000 billed DO-row limit. A live
+read-only probe of `/v2/stats` and `/v2/ingress-status` returned Cloudflare's
+`Exceeded allowed rows written in Durable Objects free tier` error. The code review found a
+concrete gap in the progressive brake: `enqueueBatch` checked the 90,000-row threshold only once
+at request entry, then accepted up to `ENQUEUE_BATCH_MAX=1000` jobs in the same transaction. A
+large batch starting just below the stop could commit past it before the next claim tick observed
+the new total. Superseding a stale job also rewrote the job and model indexes without consuming
+ingress units, so those writes were absent from the per-purpose and global ingress quotas (though
+they did honor the threshold as sampled at batch entry).
+
+The implementation now reserves conservative billed-row headroom per new job and supersede,
+plus shared batch bookkeeping, inside the transaction. Once the reservation reaches the enqueue
+stop, remaining items are rejected for that request. Exact idempotent replays stay write-free.
+Producer preflight errors now close only the affected lane for new submissions, preventing a
+status outage from being interpreted as unlimited capacity. The build still reconciles completed
+results; the weekly tournament and manual R5 benchmark preflight their registered lanes before
+preparing new samples. This does not claim protection from writes made through Cloudflare Data
+Studio or other account-level tooling, which the coordinator cannot observe.
+
+## Rollover log follow-up (2026-09-28)
+
+The supplied Workers traces show the same outage from 2026-09-27 23:49:54Z through 2026-09-28
+00:59:54Z: 97 requests failed before an RPC method ran, all with the free-tier row-limit error
+during Durable Object schema readiness. The first successful RPC was at 01:01:07Z on the same
+Worker version. This confirms a platform quota lockout that self-cleared after about 71 minutes;
+it does not identify which RPCs consumed the billed rows because the export contains method names
+but no `rowsWritten` values or budget snapshots.
+
+The fixed 97,000 claim stop left only 3,000 rows for already-admitted work, and the account-wide
+limit can also include writers the scheduler cannot count. The follow-up therefore preserves a
+10,000-row account reserve and, before each claim, projects the worst-case write cost of every
+active leased job and bundle plus the next bundle. It closes claim admission when the projection
+reaches the 90,000 safe stop. The same safe stop clamps optional writes, including out-of-band
+route-probe reservations; completions, retry fencing, and safety pauses remain allowed. A
+`do_row_write_budget` structured log records each RPC's billed-row delta and the running counter,
+so future traces can compare the local tally with account-level usage. When an operation is
+actually deferred, a separate `do_row_budget_stop` event names the gate and records remaining
+headroom and its projection. It is rate-limited to one event per gate every five minutes per DO
+instance to keep repeated cron ticks from flooding logs. The 10,000-row reserve is a conservative
+initial setting, not an incident-derived estimate; tune it after comparing these logs with
+account-level usage.
+
+The historical telemetry API was unavailable during the initial investigation (HTTP 403), so the
+account-wide contribution of other Durable Objects remains unverified. The reserve protects
+against that unknown until per-RPC and gate-hit logs can be compared with Cloudflare's account
+usage.
 
 ## Consequences and rejected alternatives
 

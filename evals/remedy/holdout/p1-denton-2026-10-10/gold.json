@@ -1,0 +1,155 @@
+{
+  "version": 2,
+  "cases": {
+    "denton-health-own": {
+      "supported": true,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-health-building-standards-commission"
+    },
+    "denton-health-council": {
+      "supported": false,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-health-building-standards-commission"
+    },
+    "denton-library-own": {
+      "supported": true,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-library-board"
+    },
+    "denton-library-council": {
+      "supported": false,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-library-board"
+    },
+    "denton-zone1-own": {
+      "supported": true,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-1-board"
+    },
+    "denton-zone1-council": {
+      "supported": false,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-1-board"
+    },
+    "denton-zone1-wrong-zone": {
+      "supported": false,
+      "rationale": "The retained dated official agenda convenes the Tax Increment Reinvestment Zone No. 1 Board. The numbered TIRZ boards are distinct bodies and must not be interchanged.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-1-board"
+    },
+    "denton-zone2-own": {
+      "supported": true,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-2-board"
+    },
+    "denton-zone2-council": {
+      "supported": false,
+      "rationale": "The retained dated official agenda names the convening body; Council Work Session Room is a venue, not a Council convening.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-2-board"
+    },
+    "denton-zone2-wrong-zone": {
+      "supported": false,
+      "rationale": "The retained dated official agenda convenes the Tax Increment Reinvestment Zone No. 2 Board. The numbered TIRZ boards are distinct bodies and must not be interchanged.",
+      "evidence_refs": [
+        "official-agenda"
+      ],
+      "adjudicator": "maintainer approval in chat, 2026-10-10",
+      "provenance": "verified",
+      "policy_approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/2247",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "denton-tx-tirz-2-board"
+    }
+  }
+}

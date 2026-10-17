@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm import (
     LLMDispatchTerminalError,
@@ -218,7 +220,8 @@ def test_sweep_reports_unavailable_snapshot_records(monkeypatch, capsys):
     assert "reason=TimeoutError" in out.err
 
 
-def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, capsys):
+@pytest.mark.parametrize("reason", [None, "route_retired", "unadmissible"])
+def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, capsys, reason):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
@@ -237,8 +240,9 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     monkeypatch.setattr(
         llm_deferred_sweep,
         "discard_terminal_failure",
-        lambda _storage, _snapshot, handle, error, **_kw: (
-            recovered.append((handle.recipe_hash, type(error).__name__)) or 1
+        lambda _storage, _snapshot, handle, error, **kwargs: (
+            recovered.append((handle.recipe_hash, type(error).__name__, kwargs.get("structural")))
+            or 1
         ),
     )
     monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: False)
@@ -269,7 +273,11 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
 
         def reconcile(self, handle):
             if handle.recipe_hash == "recipe-502":
-                raise LLMDispatchTerminalError("LLM dispatch poll returned HTTP 502")
+                raise LLMDispatchTerminalError(
+                    "LLM dispatch poll returned HTTP 502",
+                    terminal_reason=reason,
+                    terminal_catalog_digest="catalog" if reason else None,
+                )
             raise LLMStructuredOutputError(
                 "structured dispatched response failed Pydantic validation"
             )
@@ -291,12 +299,13 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
 
     assert llm_deferred_sweep.main([]) == 0
     out = capsys.readouterr()
-    assert recovered == [("recipe-502", "LLMDispatchTerminalError")]
+    assert recovered == [("recipe-502", "LLMDispatchTerminalError", reason is not None)]
     assert corrections == ["recipe-malformed"]
     assert rewritten == [("recipe-malformed", "corrected:recipe-malformed")]
     assert events == ["write", "marker", "ack"]
     assert "2 failed (1 terminally recovered)" in out.out
     assert "submitted one schema correction" in out.err
+    assert ("structurally blocked" in out.err) == (reason is not None)
 
 
 def test_sweep_never_schema_corrects_an_upstream_error_passthrough(monkeypatch, capsys):

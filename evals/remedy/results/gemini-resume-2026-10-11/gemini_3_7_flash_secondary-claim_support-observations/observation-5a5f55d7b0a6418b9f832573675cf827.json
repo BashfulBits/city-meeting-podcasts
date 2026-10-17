@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "25199ba74eb8c3cc29c534ad32ef2d314f68d4a304a9572b54a8b2e1fc8b9bbe",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "2dbcebc4b79660717aa0e677a76a49b69a43cd2e",
+  "dry_run": false,
+  "manifest_hash": "0faf69e7738668cc965075360f49afd2609abe380b19ceff55b5e0728e092fc5",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-11T08:33:23.472876+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone1-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": null,
+        "proposed_owner": "denton-tx-tirz-1-board",
+        "rationale": "The official agenda confirms that the meeting on May 26, 2021 was held by the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, matching feed denton-tx-tirz-1-board per identity policy.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone1-own",
+      "configuration_id": "3e4314005a0bbeba2cc205db65bbed4222a980ef2115379ba56cc275dc5457cf",
+      "latency_seconds": 97.5018530418165,
+      "prompt_case_id": "denton-zone1-own",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"denton-zone1-own\",\n  \"supported\": true,\n  \"proposed_owner\": \"denton-tx-tirz-1-board\",\n  \"proposed_action\": null,\n  \"evidence_ref_ids\": [\"official-agenda\"],\n  \"missing_evidence\": [],\n  \"rationale\": \"The official agenda confirms that the meeting on May 26, 2021 was held by the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board, matching feed denton-tx-tirz-1-board per identity policy.\"\n}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791707617,
+        "id": "4UnLar2qDPKsz7IP14WhuA0",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2846,
+          "completion_tokens_details": {
+            "reasoning_tokens": 675,
+            "text_tokens": 137
+          },
+          "prompt_tokens": 5676,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 2886,
+            "video_tokens": null
+          },
+          "total_tokens": 8522
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_secondary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": true
+}

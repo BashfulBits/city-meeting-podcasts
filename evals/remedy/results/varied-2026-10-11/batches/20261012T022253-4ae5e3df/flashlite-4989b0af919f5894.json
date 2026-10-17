@@ -1,0 +1,93 @@
+{
+  "candidate": "flashlite",
+  "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "gemini_3_5_flash_lite_primary",
+  "reasoning": "provider-default",
+  "request_timeout": 120,
+  "output_token_cap": 4096,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:24:10.394447+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "868859b4802708a1cdac14d1e47ab7634f923e7e9632576c3f4d163640dd83c6",
+  "route_settings_hash": "c51dfb7c938be7f1ce106d11a1e4a235ce970e02492add3144b0b792a23aa7f8",
+  "capacity": {
+    "observed_usage": {
+      "gemini_3_5_flash_lite_primary": 24,
+      "gemini_3_5_flash_lite_secondary": 0
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "zETMaoiaJ5iq1MkPudGT4A8",
+    "created": 1791771852,
+    "model": "gemini-3.5-flash-lite",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target\",\n  \"supported\": false,\n  \"proposed_owner\": null,\n  \"proposed_action\": null,\n  \"evidence_ref_ids\": [\n    \"provider-player\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The provided evidence only shows a general 'City Page Update' page without explicit proof linking this specific recording to the City Council feed. Therefore, the claim is unsupported.\"\n}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "images": [],
+          "thinking_blocks": [],
+          "provider_specific_fields": {
+            "thought_signatures": [
+              "EmAKXgFpFH0TutwNNbq1yCqaSZLWKo2vNKKasLNJuhiSThd8ZmgK6v4yu59x9xjkx04dCCx3iv3eLqJDvOmKcWzX6SHJyt6patKtXUHTwuEWpi6F6TyMpGKR2wImlblFb5g="
+            ]
+          }
+        }
+      }
+    ],
+    "usage": {
+      "completion_tokens": 138,
+      "prompt_tokens": 3291,
+      "total_tokens": 3429,
+      "completion_tokens_details": {
+        "text_tokens": 138
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": null,
+        "text_tokens": 3291,
+        "image_tokens": null,
+        "video_tokens": null
+      },
+      "cache_read_input_tokens": null
+    },
+    "vertex_ai_grounding_metadata": [],
+    "vertex_ai_url_context_metadata": [],
+    "vertex_ai_safety_results": [],
+    "vertex_ai_citation_metadata": [],
+    "service_tier": "default"
+  },
+  "upstream_model": "gemini-3.5-flash-lite",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+    "supported": false,
+    "proposed_owner": null,
+    "proposed_action": null,
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "missing_evidence": [],
+    "rationale": "The provided evidence only shows a general 'City Page Update' page without explicit proof linking this specific recording to the City Council feed. Therefore, the claim is unsupported."
+  },
+  "end_to_end_seconds": 3.507702042348683,
+  "diagnostics": [
+    {
+      "duration_seconds": 0.9334223330952227
+    }
+  ]
+}

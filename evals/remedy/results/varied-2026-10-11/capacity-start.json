@@ -1,0 +1,224 @@
+{
+  "routes": [
+    {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "local_used": 20,
+      "rpd": 500,
+      "status": {
+        "ok": true,
+        "now": 1791769890968,
+        "selection": "route:gemini_3_5_flash_lite_primary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_5_flash_lite_primary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 500,
+            "rpd_used": 20,
+            "rpd_remaining": 480,
+            "rpd_resets_at": 1791788453468
+          }
+        }
+      }
+    },
+    {
+      "route_id": "gemini_3_7_flash_primary",
+      "local_used": 6,
+      "rpd": 20,
+      "status": {
+        "ok": true,
+        "now": 1791769891026,
+        "selection": "route:gemini_3_7_flash_primary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_7_flash_primary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 20,
+            "rpd_used": 0,
+            "rpd_remaining": 20,
+            "rpd_resets_at": 1791788453526
+          }
+        }
+      }
+    },
+    {
+      "route_id": "gemini_3_7_flash_secondary",
+      "local_used": 7,
+      "rpd": 20,
+      "status": {
+        "ok": true,
+        "now": 1791769891082,
+        "selection": "route:gemini_3_7_flash_secondary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_7_flash_secondary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 20,
+            "rpd_used": 0,
+            "rpd_remaining": 20,
+            "rpd_resets_at": 1791788453582
+          }
+        }
+      }
+    },
+    {
+      "route_id": "gemini_3_8_flash_primary",
+      "local_used": 7,
+      "rpd": 20,
+      "status": {
+        "ok": true,
+        "now": 1791769891134,
+        "selection": "route:gemini_3_8_flash_primary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_8_flash_primary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 20,
+            "rpd_used": 0,
+            "rpd_remaining": 20,
+            "rpd_resets_at": 1791788453634
+          }
+        }
+      }
+    },
+    {
+      "route_id": "gemini_3_8_flash_secondary",
+      "local_used": 7,
+      "rpd": 20,
+      "status": {
+        "ok": true,
+        "now": 1791769891182,
+        "selection": "route:gemini_3_8_flash_secondary",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "gemini_3_8_flash_secondary": {
+            "provider": "gemini",
+            "in_flight": 0,
+            "rpd_limit": 20,
+            "rpd_used": 0,
+            "rpd_remaining": 20,
+            "rpd_resets_at": 1791788453682
+          }
+        }
+      }
+    },
+    {
+      "route_id": "nvidia_kimi_k3_free",
+      "local_used": 0,
+      "rpd": null,
+      "status": {
+        "ok": true,
+        "now": 1791769891237,
+        "selection": "route:nvidia_kimi_k3_free",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "nvidia_kimi_k3_free": {
+            "provider": "nvidia",
+            "in_flight": 0,
+            "rpd_limit": null,
+            "rpd_used": 3,
+            "rpd_remaining": null,
+            "rpd_resets_at": 1791849653737
+          }
+        }
+      }
+    },
+    {
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "local_used": 0,
+      "rpd": 800,
+      "status": {
+        "ok": true,
+        "now": 1791769891271,
+        "selection": "route:orcarouter_zai_glm_5_3_flash_free",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "orcarouter_zai_glm_5_3_flash_free": {
+            "provider": "orcarouter",
+            "in_flight": 0,
+            "rpd_limit": 800,
+            "rpd_used": 0,
+            "rpd_remaining": 800,
+            "rpd_resets_at": 1791849653771
+          }
+        }
+      }
+    },
+    {
+      "route_id": "beatapi_gpt_6_astra_free",
+      "local_used": 0,
+      "rpd": 1000,
+      "status": {
+        "ok": true,
+        "now": 1791769891322,
+        "selection": "route:beatapi_gpt_6_astra_free",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "beatapi_gpt_6_astra_free": {
+            "provider": "beatapi",
+            "in_flight": 0,
+            "rpd_limit": 1000,
+            "rpd_used": 0,
+            "rpd_remaining": 1000,
+            "rpd_resets_at": 1791849653822
+          }
+        }
+      }
+    },
+    {
+      "route_id": "beatapi_gpt_6_1_sol_free",
+      "local_used": 0,
+      "rpd": 1000,
+      "status": {
+        "ok": true,
+        "now": 1791769891375,
+        "selection": "route:beatapi_gpt_6_1_sol_free",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "beatapi_gpt_6_1_sol_free": {
+            "provider": "beatapi",
+            "in_flight": 0,
+            "rpd_limit": 1000,
+            "rpd_used": 0,
+            "rpd_remaining": 1000,
+            "rpd_resets_at": 1791849653875
+          }
+        }
+      }
+    },
+    {
+      "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "local_used": 0,
+      "rpd": 1000,
+      "status": {
+        "ok": true,
+        "now": 1791769891408,
+        "selection": "route:beatapi_deepseek_v4_1_flash_free",
+        "in_flight": 0,
+        "pauses": [],
+        "routes": {
+          "beatapi_deepseek_v4_1_flash_free": {
+            "provider": "beatapi",
+            "in_flight": 0,
+            "rpd_limit": 1000,
+            "rpd_used": 0,
+            "rpd_remaining": 1000,
+            "rpd_resets_at": 1791849653908
+          }
+        }
+      }
+    }
+  ]
+}

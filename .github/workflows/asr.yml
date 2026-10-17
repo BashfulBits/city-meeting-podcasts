@@ -26,6 +26,7 @@ permissions:
 jobs:
   asr:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     # Rebuild the discovery index + reap dead workers once before any internal pull worker claims.
     needs: reconcile
     strategy:
@@ -45,18 +46,18 @@ jobs:
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           # Pinned to match constraints/asr.txt's compile target (scripts/compile_constraints.sh
           # resolves inside python:3.12-slim-bookworm), not the fleet-wide "3.14" Renovate bumped
           # every setup-python step to in #1353. whisperx==3.8.6 (asr-align) has no distribution
           # that satisfies the 3.14 resolver, so the align lane failed ResolutionImpossible on
           # every run since that merge while the transcribe lane (no whisperx) stayed green.
-          python-version: "3.12"
+          python-version-file: .github/python/asr/.python-version
           cache: pip
 
       - name: Install
@@ -68,7 +69,7 @@ jobs:
           fi
 
       - name: Cache static ffmpeg
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FFMPEG_DIR }}
           key: ffmpeg-static-linux64-7.1.5-v2
@@ -95,7 +96,7 @@ jobs:
       # cache the WhisperX CTC aligner model for the align lane.
       - name: Cache large-v3-turbo transcription model
         if: matrix.lane == 'transcribe'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/faster-whisper-large-v3-turbo
           key: whisper-large-v3-turbo-v2
@@ -116,7 +117,7 @@ jobs:
 
       - name: Cache aligner model
         if: matrix.lane == 'align'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cache/torch/hub/checkpoints
@@ -126,6 +127,10 @@ jobs:
       # Each worker claims from the shared transcript queue until the start cutoff or a newer run
       # is queued behind it. Completion persists per-item; the next run resumes from storage.
       - name: ${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled". A STEP-level timeout below the job's fails the
+        # step, so the run goes red and post-steps still execute.
+        timeout-minutes: 330
         id: asr
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
@@ -163,15 +168,16 @@ jobs:
   # No Whisper model / ffmpeg: it only reads/writes JSON state.
   reconcile:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           # Matches constraints/prod.txt's compile target (see the asr job above).
-          python-version: "3.12"
+          python-version-file: .github/python/asr/.python-version
           cache: pip
 
       - name: Install
@@ -180,6 +186,10 @@ jobs:
       # Only this step touches storage; scope the secrets here instead of job-level
       # (CR2-GH-16/MR-GH-02) so checkout/setup-python/install remain credential-free.
       - name: Rebuild work index + reconcile dispatch leases + free-tier budget
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled". A STEP-level timeout below the job's fails the
+        # step, so the run goes red and post-steps still execute.
+        timeout-minutes: 50
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}

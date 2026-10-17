@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
-from citypods.bodies import source_body_filter, source_body_inclusions
+from citypods.archive_visibility import load_archive_index, parse_archive_only
+from citypods.bodies import body_key, source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -18,6 +20,8 @@ from citypods.models import (
 )
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
+from citypods.publication_selection import parse_publication_selection
+from citypods.records import source_key
 from citypods.security import validate_city_sources, validate_source_url
 
 # Keys that must be present AND non-empty.
@@ -50,6 +54,105 @@ _RETENTION_POLICY_KEYS = frozenset(
         "max_archive_items",
     }
 )
+
+
+_REMEDY_FAMILIES = {
+    "tif",
+    "pid",
+    "bond",
+    "charter",
+    "redistricting",
+    "public_input",
+    "public_briefings",
+}
+
+
+def _policy_slug(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", value):
+        raise ValueError("invalid policy slug")
+
+
+def _policy_approval(value):
+    if not isinstance(value, str):
+        raise ValueError("approval_ref must be a string")
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "github.com"
+        or not re.fullmatch(r"/[^/]+/[^/]+/(issues|pull)/[0-9]+", parsed.path)
+        or parsed.query
+        or (
+            parsed.fragment
+            and not re.fullmatch(
+                r"(issuecomment|discussion_r|pullrequestreview)-[0-9]+", parsed.fragment
+            )
+        )
+    ):
+        raise ValueError("approval_ref must be an HTTPS GitHub issue/PR/comment URL")
+
+
+def _policy_strings(value, *, nonempty=True, distinct=True):
+    if (
+        not isinstance(value, list)
+        or (nonempty and not value)
+        or any(not isinstance(item, str) or not item.strip() for item in value)
+        or (distinct and len(value) != len(set(value)))
+    ):
+        raise ValueError("expected distinct nonempty strings")
+
+
+def validate_declaration(value, context="feed"):
+    try:
+        if not isinstance(value, dict) or set(value) - {
+            "aggregate_family",
+            "member_names",
+            "identity_names",
+            "policy_id",
+            "version",
+            "positive_case_ids",
+            "negative_case_ids",
+            "approval_ref",
+            "template_id",
+            "template_version",
+        }:
+            raise ValueError("unknown policy declaration keys")
+        family = value.get("aggregate_family")
+        if "aggregate_family" in value and (
+            not isinstance(family, str) or family not in _REMEDY_FAMILIES
+        ):
+            raise ValueError("unknown aggregate family")
+        if not family and not value.get("identity_names"):
+            raise ValueError("identity-only policy requires identity_names")
+        for key in ("member_names", "identity_names", "positive_case_ids", "negative_case_ids"):
+            if key in value:
+                _policy_strings(
+                    value[key],
+                    nonempty=key.endswith("case_ids") or (key == "identity_names" and not family),
+                    distinct=key.endswith("case_ids"),
+                )
+                if key.endswith("names") and any(not body_key(n) for n in value[key]):
+                    raise ValueError("empty normalized official name")
+        if any(c in name for name in value.get("identity_names", []) for c in "*?"):
+            raise ValueError("identity_names cannot contain wildcards")
+        for keys in (("policy_id", "version", "approval_ref"), ("template_id", "template_version")):
+            present = [key in value for key in keys]
+            if any(present) and not all(present):
+                raise ValueError("incomplete provenance tuple")
+        for key in ("policy_id", "template_id"):
+            if key in value:
+                _policy_slug(value[key])
+        for key in ("version", "template_version"):
+            if key in value and (type(value[key]) is not int or value[key] < 1):
+                raise ValueError("version must be a strict positive integer")
+        if "approval_ref" in value:
+            _policy_approval(value["approval_ref"])
+        if "template_id" in value and "policy_id" not in value:
+            raise ValueError("template reference requires reviewed provenance")
+        if set(value.get("positive_case_ids", [])) & set(value.get("negative_case_ids", [])):
+            raise ValueError("positive and negative cases overlap")
+        return value
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{context}: invalid remedy_policy: {exc}") from exc
 
 
 def _require_retention_int(value: object, *, key: str, source_file: Path) -> int:
@@ -134,6 +237,36 @@ def _parse_uid_overrides(raw: object, *, source_file: Path) -> dict[str, str]:
         overrides[guid] = uid
         targets[uid] = guid
     return overrides
+
+
+def _parse_publication_notes(raw: object, *, source_file: Path) -> list[dict[str, str]]:
+    """Validate exact-identity, feed-local presentation notes."""
+    if not isinstance(raw, list):
+        raise ValueError(f"{source_file.name}: publication_notes must be a list")
+    required = {"uid", "provider_guid", "note", "approval_ref"}
+    seen_uids: set[str] = set()
+    parsed: list[dict[str, str]] = []
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict) or set(entry) != required:
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}] must contain exactly "
+                "uid, provider_guid, note, and approval_ref"
+            )
+        if any(not isinstance(entry[key], str) or not entry[key] for key in required):
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}] values must be non-empty strings"
+            )
+        uid = entry["uid"]
+        if not _EPISODE_UID_RE.fullmatch(uid):
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}].uid must be a 16-character "
+                "lowercase hexadecimal stable UID"
+            )
+        if uid in seen_uids:
+            raise ValueError(f"{source_file.name}: duplicate publication note UID {uid!r}")
+        seen_uids.add(uid)
+        parsed.append({key: entry[key] for key in ("uid", "provider_guid", "note", "approval_ref")})
+    return parsed
 
 
 def _parse_lifecycle(raw: object, *, source_file: Path) -> FeedLifecycle:
@@ -250,11 +383,18 @@ def _build_city(
     if missing:
         raise ValueError(f"{source_file.name}: missing required keys: {', '.join(missing)}")
 
+    if "remedy_policy" in raw:
+        validate_declaration(raw["remedy_policy"], source_file.name)
+
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:
         _validate_slug_format(str(alias), source_file=source_file, kind="alias")
     source_id = _parse_source_id(raw.get("source_id"), source_file=source_file)
     uid_overrides = _parse_uid_overrides(raw.get("uid_overrides"), source_file=source_file)
+    publication_notes = _parse_publication_notes(
+        raw["publication_notes"] if "publication_notes" in raw else [],
+        source_file=source_file,
+    )
     lifecycle = _parse_lifecycle(raw.get("lifecycle"), source_file=source_file)
 
     # Merge entity fields (city_website, meetings_url, state, colors) as base layer; explicit
@@ -311,6 +451,7 @@ def _build_city(
             "city",
             "source_id",
             "uid_overrides",
+            "publication_notes",
             "lifecycle",
             "aux_provider",
             "aux_source",
@@ -359,7 +500,7 @@ def _build_city(
             "<= metadata_retention_episodes"
         )
 
-    return City(
+    city = City(
         slug=raw["slug"],
         provider=raw["provider"],
         source=raw["source"],
@@ -369,6 +510,7 @@ def _build_city(
         podcast_description=raw["podcast_description"],
         source_id=source_id,
         uid_overrides=uid_overrides,
+        publication_notes=publication_notes,
         lifecycle=lifecycle,
         aux_provider=aux_provider_name,
         aux_source=dict(aux_source) if isinstance(aux_source, dict) else None,
@@ -409,6 +551,20 @@ def _build_city(
         ),
     )
 
+    if "archive_only" in raw:
+        try:
+            parse_archive_only(raw["archive_only"])
+        except ValueError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
+    if "publication_selection" in raw:
+        try:
+            parse_publication_selection(
+                raw["publication_selection"], source_key=source_key(city), feed_slug=city.slug
+            )
+        except ValueError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
+    return city
+
 
 # Top-level files/dirs the build owns directly; a feed slug/alias landing on one of these
 # would write into (or be pruned alongside) the build's own reserved tree. Shared with
@@ -448,7 +604,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             identity_source = {
                 k: v
                 for k, v in city.source.items()
-                if k not in {"body", "body_any", "body_includes"}
+                if k not in {"body", "body_any", "body_exact", "body_includes"}
             }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)
@@ -482,6 +638,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
                     f"{files[city.slug]}: alias {alias!r} already used by {seen_aliases[alias]!r}"
                 )
             seen_aliases[alias] = city.slug
+    load_archive_index(cities)
     return cities
 
 

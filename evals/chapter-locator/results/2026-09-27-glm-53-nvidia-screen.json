@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "title": "GLM 5.3 NVIDIA latency and admission screen",
+  "date": "2026-09-27",
+  "model": "z-ai/glm-5.3",
+  "provider": "NVIDIA NIM",
+  "route_configured": false,
+  "dataset": "dataset-v3",
+  "split": "first six packets of the same 16-meeting human-adjudicated test set",
+  "protocol": {
+    "same_full_transcript_packet_and_locator_prompt": true,
+    "reasoning_effort": "provider default",
+    "chat_template_kwargs": {
+      "clear_thinking": true
+    },
+    "response_format": null,
+    "max_tokens": 8192,
+    "client_read_timeout_seconds": 1200,
+    "serial_requests": true
+  },
+  "screen_status": "stopped after six completed packets to release NVIDIA shared provider capacity",
+  "quality": {
+    "valid_packets": 0,
+    "completed_packets": 6,
+    "total_packets": 16,
+    "human_crosswalk_score": null,
+    "reason": "no valid locator outputs in the six-packet screen; this is not a full quality evaluation"
+  },
+  "admission_and_latency": {
+    "completed_provider_attempts": 7,
+    "http_200_attempts": 3,
+    "http_504_attempts": 4,
+    "largest_reported_prompt_tokens": 134149,
+    "http_504_elapsed_seconds": [
+      302.183,
+      302.214,
+      302.248,
+      302.285
+    ],
+    "client_timeout_explanation": "504 responses arrived at about 302 seconds, below the 1200-second client read timeout; they are remote gateway timeouts, not the harness timeout.",
+    "input_cap_explanation": "No input-size rejection was observed. A 90,900-token builder estimate was admitted at 134,149 provider prompt tokens, then stopped at the 8,192-token completion cap (all completion tokens were reasoning; output content was empty). The 188,693 estimate received HTTP 504 with no usage, so admission is unknown."
+  },
+  "attempts": [
+    {
+      "packet_uid": "1e33fee06ae9d526",
+      "estimated_input_tokens": 8056,
+      "http_status": 200,
+      "elapsed_seconds": 59.6,
+      "provider_prompt_tokens": 10817,
+      "provider_completion_tokens": 2054,
+      "reasoning_tokens": 1964,
+      "finish_reason": "stop",
+      "content_chars": 310,
+      "error": null
+    },
+    {
+      "packet_uid": "1e33fee06ae9d526",
+      "estimated_input_tokens": 8158,
+      "http_status": 200,
+      "elapsed_seconds": 114.239,
+      "provider_prompt_tokens": 10910,
+      "provider_completion_tokens": 1597,
+      "reasoning_tokens": 1430,
+      "finish_reason": "stop",
+      "content_chars": 736,
+      "error": null
+    },
+    {
+      "packet_uid": "a7cafa96abee9fd4",
+      "estimated_input_tokens": 24215,
+      "http_status": 504,
+      "elapsed_seconds": 302.183,
+      "provider_prompt_tokens": null,
+      "provider_completion_tokens": null,
+      "reasoning_tokens": null,
+      "finish_reason": null,
+      "content_chars": null,
+      "error": "HTTP 504 from provider gateway"
+    },
+    {
+      "packet_uid": "68e93c804b716ddc",
+      "estimated_input_tokens": 17259,
+      "http_status": 504,
+      "elapsed_seconds": 302.214,
+      "provider_prompt_tokens": null,
+      "provider_completion_tokens": null,
+      "reasoning_tokens": null,
+      "finish_reason": null,
+      "content_chars": null,
+      "error": "HTTP 504 from provider gateway"
+    },
+    {
+      "packet_uid": "5661e9f07650d353",
+      "estimated_input_tokens": 63162,
+      "http_status": 504,
+      "elapsed_seconds": 302.248,
+      "provider_prompt_tokens": null,
+      "provider_completion_tokens": null,
+      "reasoning_tokens": null,
+      "finish_reason": null,
+      "content_chars": null,
+      "error": "HTTP 504 from provider gateway"
+    },
+    {
+      "packet_uid": "c6ed635dfa5776fd",
+      "estimated_input_tokens": 90900,
+      "http_status": 200,
+      "elapsed_seconds": 291.091,
+      "provider_prompt_tokens": 134149,
+      "provider_completion_tokens": 8192,
+      "reasoning_tokens": 8192,
+      "finish_reason": "length",
+      "content_chars": 0,
+      "error": null
+    },
+    {
+      "packet_uid": "e65b938bd028c6b5",
+      "estimated_input_tokens": 188693,
+      "http_status": 504,
+      "elapsed_seconds": 302.285,
+      "provider_prompt_tokens": null,
+      "provider_completion_tokens": null,
+      "reasoning_tokens": null,
+      "finish_reason": null,
+      "content_chars": null,
+      "error": "HTTP 504 from provider gateway"
+    }
+  ],
+  "raw_telemetry_dir": "/private/tmp/chapter-locator-telemetry/glm-5-3-nvidia-human-crosswalk-20260927T141413Z"
+}

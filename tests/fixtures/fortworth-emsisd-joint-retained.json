@@ -1,0 +1,644 @@
+[
+  {
+    "agenda_backup": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T11:48:18.979844+00:00",
+      "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8"
+    },
+    "agenda_text": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T11:48:18.979881+00:00",
+      "quality": {
+        "assessment_attempts": 1,
+        "document_hash": "00ce3778d10ee7bc3ccaea61a0f90bb78aa6118a18b500af8d1af639f3d77414",
+        "eligibility": "agenda",
+        "first_seen": "2026-08-17T11:48:18.979844+00:00",
+        "last_seen": "2026-08-17T11:48:18.979844+00:00",
+        "method": "native",
+        "native_chars": 1622,
+        "native_ocr_similarity": null,
+        "ocr_chars": 0,
+        "ocr_mean_confidence": null,
+        "page_count": 0,
+        "pipeline_version": "3",
+        "reason": "native-quality-pass",
+        "source_url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=2491",
+        "status": "accepted",
+        "truncated": false
+      },
+      "url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=2491"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": 100288916,
+      "duration_served": 8099.151,
+      "encode_time": "2026-07-19T13:37:16.685648+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/6540eef2dc2e/497b3aa05255bfb9-b5bda5fa12eb.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "b5bda5fa12eb",
+      "url": "https://audio.citymeetings.fyi/granicus/6540eef2dc2e/497b3aa05255bfb9-b5bda5fa12eb.m4a",
+      "verification": null
+    },
+    "body": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-c648a4cc4ba0",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-9029bd09a1a2",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-5aef905a8750",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-961d41099bf5",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-53a5f499f6d7",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-26905dab61d2",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-cdee8b93aef5",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-9a85a94f9c7a",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-f51a66cf8da4",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-380196b88dd8",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-e51fd46e267c",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-de71c62b55ea",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-e549e534883a",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-1d58380b0ad7",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-b268cececc6d",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-f4005a911e6a",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-d800ebc296f2",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-13e87187fbca",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-8506b7d4fa8c",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-55b6e8f009ce",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-d53cc6d8cf2a",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-caf8650c0542",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-0935abad6b73",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "start": 4.431312999999999,
+        "title": "A. CALL TO ORDER - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 20.431313,
+        "title": "B. WELCOME FROM BOARD PRESIDENT - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 67.431313,
+        "title": "C. WELCOME FROM MAYOR - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 166.431313,
+        "title": "D. OPENING CEREMONY - HOLLENSTEIN CAREER AND TECHNOLOGY CENTER - Presenter: Director of Career & Technology Dana Eldredge"
+      },
+      {
+        "start": 406.431313,
+        "title": "A. SPECIAL RECOGNITIONS"
+      },
+      {
+        "start": 445.431313,
+        "title": "A. INTRODUCTIONS, WELCOME, AND OVERVIEW - Presenters: Board President Dick Elkins; Mayor Betsy Price; Superintendent Jim Chadwell"
+      },
+      {
+        "start": 959.431313,
+        "title": "B. EMS ISD DEMOGRAPHIC REPORT - Presenter: Chief Operations Officer Clete Welch"
+      },
+      {
+        "start": 1940.431313,
+        "title": "C. HCTC VIDEO AND PRESENTATION"
+      },
+      {
+        "start": 2465.431313,
+        "title": "D. EMS ISD ECONOMIC DEVELOPMENT INITIATIVE"
+      },
+      {
+        "start": 3508.431313,
+        "title": "1. Educational Services"
+      },
+      {
+        "start": 3566.431313,
+        "title": "a. Aspire 2022"
+      },
+      {
+        "start": 4097.431313,
+        "title": "2. Operations"
+      },
+      {
+        "start": 4101.431313,
+        "title": "a. Dozier Elementary School"
+      },
+      {
+        "start": 4325.431313,
+        "title": "b. Infrastructure"
+      },
+      {
+        "start": 4848.431313,
+        "title": "3. Finance"
+      },
+      {
+        "start": 4960.431313,
+        "title": "a. Property Values"
+      },
+      {
+        "start": 5360.431313,
+        "title": "F. REPORT ON CAREER AND TECHNOLOGY INITIATIVES"
+      },
+      {
+        "start": 6178.431313,
+        "title": "IV. REPORTS OF THE CITY OF FORT WORTH"
+      },
+      {
+        "start": 6185.431313,
+        "title": "A. MAYOR'S REPORT ON EDUCATION - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 6689.431313,
+        "title": "B. City of Fort Worth Master Thoroughfare Plan - Presenter: Katherine Beck"
+      },
+      {
+        "start": 7784.431313,
+        "title": "V. BOARD PRESIDENT'S ANNOUNCEMENTS - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 7880.431313,
+        "title": "VI. MAYOR'S ANNOUNCEMENTS - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 8088.431313,
+        "title": "VII. ADJOURNMENT"
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": 8100,
+    "generated_agenda_candidates": {
+      "job_ref": "deferred-daily-cap-bd5fbbc0f8faa426531d54b20ea73d1d86896224a9c490e3dd5569c12ed2be5c",
+      "locator_status": "not_applicable",
+      "model": "mistral/mistral-medium-latest",
+      "provider_chapter_count": 23,
+      "reason": "provider_chapters",
+      "recipe": "bd5fbbc0f8faa426531d54b20ea73d1d86896224a9c490e3dd5569c12ed2be5c",
+      "source_hash": "adce6b49ee7e03df565393cc1f9dddd4de3b3c3dbacfaef9da8d4d08c94a51bf",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=2491",
+      "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8",
+      "agenda_backup_artifact_key": "documents/6540eef2dc2e/497b3aa05255bfb9/backup-e693b282466cb3d8",
+      "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225",
+      "agenda_text_artifact_key": "documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225",
+      "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+      "meetings": "https://www.fortworthtexas.gov/departments/communications/fwtv",
+      "minutes": "https://fortworthgov.granicus.com/MinutesViewer.php?view_id=9&clip_id=2491&doc_id=ad063da5-2d75-11e6-8170-f04da2064c47"
+    },
+    "llm_tag_candidates": [
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-48d4c0ba8f3f15b9",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+        "episode_uid": "497b3aa05255bfb9",
+        "evidence": [
+          {
+            "span": "operating budget",
+            "where": "agenda"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "budget-structural-balance",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "cd6f7bbe27d584e1",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "operating budget"
+            ],
+            "pattern": "operating budget",
+            "tag_id": "budget-structural-balance",
+            "where": "agenda"
+          }
+        ],
+        "rule_match_texts": [
+          "operating budget"
+        ],
+        "rule_pattern": "operating budget",
+        "rule_patterns": [
+          "operating budget"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      }
+    ],
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-19T13:37:16.682770+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "e6fa93baf5fbb972",
+      "state": "available"
+    },
+    "media_kind": "direct",
+    "minutes_roster": {
+      "members": [],
+      "status": null,
+      "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/minutes-roster-190e11735788a0cc"
+    },
+    "minutes_text": {
+      "attempts": 0,
+      "last_attempt": "2026-07-14T17:17:33.662407+00:00",
+      "url": "https://fortworthgov.granicus.com/MinutesViewer.php?view_id=9&clip_id=2491&doc_id=ad063da5-2d75-11e6-8170-f04da2064c47"
+    },
+    "minutes_votes": {
+      "items": [],
+      "url": "https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/minutes-votes-8c27c2c84785fe00"
+    },
+    "moments": null,
+    "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+    "provider_transcript": null,
+    "published": "2016-04-25T00:00:00+00:00",
+    "served_duration_seconds": 8099.151,
+    "source_chapters": [
+      {
+        "start": 8,
+        "title": "A. CALL TO ORDER - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 24,
+        "title": "B. WELCOME FROM BOARD PRESIDENT - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 71,
+        "title": "C. WELCOME FROM MAYOR - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 170,
+        "title": "D. OPENING CEREMONY - HOLLENSTEIN CAREER AND TECHNOLOGY CENTER - Presenter: Director of Career & Technology Dana Eldredge"
+      },
+      {
+        "start": 410,
+        "title": "A. SPECIAL RECOGNITIONS"
+      },
+      {
+        "start": 449,
+        "title": "A. INTRODUCTIONS, WELCOME, AND OVERVIEW - Presenters: Board President Dick Elkins; Mayor Betsy Price; Superintendent Jim Chadwell"
+      },
+      {
+        "start": 963,
+        "title": "B. EMS ISD DEMOGRAPHIC REPORT - Presenter: Chief Operations Officer Clete Welch"
+      },
+      {
+        "start": 1944,
+        "title": "C. HCTC VIDEO AND PRESENTATION"
+      },
+      {
+        "start": 2469,
+        "title": "D. EMS ISD ECONOMIC DEVELOPMENT INITIATIVE"
+      },
+      {
+        "start": 3512,
+        "title": "1. Educational Services"
+      },
+      {
+        "start": 3570,
+        "title": "a. Aspire 2022"
+      },
+      {
+        "start": 4101,
+        "title": "2. Operations"
+      },
+      {
+        "start": 4105,
+        "title": "a. Dozier Elementary School"
+      },
+      {
+        "start": 4329,
+        "title": "b. Infrastructure"
+      },
+      {
+        "start": 4852,
+        "title": "3. Finance"
+      },
+      {
+        "start": 4964,
+        "title": "a. Property Values"
+      },
+      {
+        "start": 5364,
+        "title": "F. REPORT ON CAREER AND TECHNOLOGY INITIATIVES"
+      },
+      {
+        "start": 6182,
+        "title": "IV. REPORTS OF THE CITY OF FORT WORTH"
+      },
+      {
+        "start": 6189,
+        "title": "A. MAYOR'S REPORT ON EDUCATION - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 6693,
+        "title": "B. City of Fort Worth Master Thoroughfare Plan - Presenter: Katherine Beck"
+      },
+      {
+        "start": 7788,
+        "title": "V. BOARD PRESIDENT'S ANNOUNCEMENTS - Presenter: Board President Dick Elkins"
+      },
+      {
+        "start": 7884,
+        "title": "VI. MAYOR'S ANNOUNCEMENTS - Presenter: Mayor Betsy Price"
+      },
+      {
+        "start": 8092,
+        "title": "VII. ADJOURNMENT"
+      }
+    ],
+    "source_duration_seconds": 8100.0,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 8102.72,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "direct",
+        "provider": "granicus",
+        "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=2491",
+        "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": null,
+      "audio": {
+        "input_fingerprint": "515552bb2af8be162ac4602e9a6174d4293d713688d4feaa6d26ee851242d583",
+        "output": "granicus/6540eef2dc2e/497b3aa05255bfb9-b5bda5fa12eb.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:50.288437+00:00",
+        "input_fingerprint": "342c1514ab89384984f2457a324345c27d2f778274f4eace6df516c03d239a48",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:43.464972+00:00",
+        "input_fingerprint": "7a8043f0a9817eb0f2ca2abc69b00927751e0fb68e68f71a68aa7825e0cae057",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "input_fingerprint": "54ce787879de408c07081a8163f78bbe86ad4f40711de6ebda6a4a801d3bd8d8",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "completed_at": "2026-08-17T13:23:48.014609+00:00",
+        "input_fingerprint": "c6376b512e85349b8dd30c1e6147424cad56838e81ac7724c7f90f70ae4d6387",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "completed_at": "2026-08-17T14:07:56.459720+00:00",
+        "input_fingerprint": "ba74dbc289808284b05bb00484db4d7bd976feaa0083ab72970e9f3675fa4a9e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T01:06:07.106571+00:00",
+        "input_fingerprint": "6807aaa0469bf9a35bd056672456e20ff9d4f84bab8625376d659062c14dcd39",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T01:06:07.106495+00:00",
+        "input_fingerprint": "74eb773e4b3522af78fcad2b7ba870a7ff7ffef596ba650148b8019af199563c",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:50:58.721369+00:00",
+        "input_fingerprint": "330c22438e5bc811a47e999cbf0e4e36d13db4e03285503e4d8fc701737d862b",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:41:36.059626+00:00",
+        "input_fingerprint": "a82eff08dcc0926bb815789710e194f0abf29e5b476af90c68d98d4dc98c6769",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "74717ffefa8af01021470cd748b471c672f384cbea6d10f37c588591b66b3be7",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "input_fingerprint": "69759553aef3eed1d6d8a1dc37f5f0f3b1abe366232b4a98c25ec458eef0442b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-24T20:16:32.401606+00:00",
+        "input_fingerprint": "1c70fb2b879e69528bb8cf4fd1381e0c5abb471445963238e5d1326530e61564",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": [
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-48d4c0ba8f3f15b9",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+        "episode_uid": "497b3aa05255bfb9",
+        "evidence": [
+          {
+            "span": "operating budget",
+            "where": "agenda"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "budget-structural-balance",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "cd6f7bbe27d584e1",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "operating budget"
+            ],
+            "pattern": "operating budget",
+            "tag_id": "budget-structural-balance",
+            "where": "agenda"
+          }
+        ],
+        "rule_match_texts": [
+          "operating budget"
+        ],
+        "rule_pattern": "operating budget",
+        "rule_patterns": [
+          "operating budget"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      }
+    ],
+    "tags_input_fingerprint": "1352f4b471842c10",
+    "tags_llm_call_attempts": [
+      {
+        "attempt_id": "tag-attempt-2bb6d04c24ca7e340b1a",
+        "attempted_at": "2026-09-05T02:45:56.877064+00:00",
+        "model": "rule:2",
+        "purpose": "topic-tags:rules",
+        "reason": "",
+        "recipe_hash": "cd6f7bbe27d584e1",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "operating budget"
+            ],
+            "pattern": "operating budget",
+            "tag_id": "budget-structural-balance",
+            "where": "agenda"
+          }
+        ],
+        "scope": "episode",
+        "status": "resolved"
+      }
+    ],
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "cd6f7bbe27d584e1",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8099.151313,
+          "served_start": 0.0,
+          "source_end": 8102.72,
+          "source_id": "s0",
+          "source_start": 3.568687
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL",
+    "transcript": null,
+    "uid": "497b3aa05255bfb9",
+    "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=2491"
+  }
+]

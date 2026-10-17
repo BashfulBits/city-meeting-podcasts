@@ -1,0 +1,17 @@
+{
+  "plan_commits": [
+    "c657290c",
+    "f9707f28",
+    "b70ca4f7"
+  ],
+  "files": {
+    "evaluate.py": "180c9a0dec0725f430859e33f02be221333c82313adc6fe1b5b7f81097ca0604",
+    "score.py": "4cb2c64905730dc8f4cfeda68fddde7af05cdc6f7ef1fd38269d0d43899eb2e7",
+    "README.md": "2e9133cc8bcc5454599ffb89a2d674661d7f1b43bee440f5a335e28c9fecbfd6"
+  },
+  "expected_cases_per_model": 20,
+  "request_timeout_seconds": 600,
+  "output_tokens": 16384,
+  "reasoning": "provider default; maximum unverified",
+  "production_activation": false
+}

@@ -38,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1891,7 +1892,92 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
+    ap.add_argument("--body-coverage-report", help="write retained/current body coverage only")
+    ap.add_argument("--decision-comparison-input", help="read a local reviewed-case/history bundle")
+    ap.add_argument(
+        "--decision-comparison-report", help="write remembered-decision comparison only"
+    )
     args = ap.parse_args(argv)
+    if args.decision_comparison_input or args.decision_comparison_report:
+        if not (args.decision_comparison_input and args.decision_comparison_report):
+            ap.error("decision comparison requires both input and report paths")
+        if (
+            args.body_coverage_report
+            or args.dry_run
+            or args.city
+            or args.enclosures
+            or args.meetings_urls
+            or args.timeline_diagnostics
+            or args.persist_timeline_integrity
+            or args.timeline_repair_min_delta is not None
+            or args.timeline_repair_cohort
+            or args.timeline_finding_min_delta != 1.0
+            or args.issue
+            or args.unexpected_body_evidence
+        ):
+            ap.error("decision comparison cannot combine with other audit/action modes")
+        from citypods.remedy_ledger import (
+            _unique_json_object,
+            compare_decisions,
+            fold_events,
+            parse_event,
+        )
+
+        input_path = Path(args.decision_comparison_input)
+        output_path = Path(args.decision_comparison_report)
+        if input_path.resolve() == output_path.resolve():
+            ap.error("decision report cannot overwrite its input")
+        bundle = json.loads(input_path.read_text(), object_pairs_hook=_unique_json_object)
+        if not isinstance(bundle, dict) or set(bundle) != {
+            "schema_version",
+            "coverage",
+            "events",
+            "evidence",
+            "config_hash",
+            "policy_hash",
+        }:
+            raise ValueError("comparison bundle: missing or unknown fields")
+        if type(bundle["schema_version"]) is not int or bundle["schema_version"] != 1:
+            raise ValueError("comparison bundle: unsupported schema")
+        if not isinstance(bundle["events"], list):
+            raise ValueError("comparison bundle: events must be a list")
+        groups = {}
+        for payload in bundle["events"]:
+            event = parse_event(payload)
+            groups.setdefault(event.decision_id, []).append(event)
+        decisions = {key: fold_events(events) for key, events in groups.items()}
+        rows = compare_decisions(
+            bundle["coverage"],
+            decisions,
+            evidence=bundle["evidence"],
+            config_hash=bundle["config_hash"],
+            policy_hash=bundle["policy_hash"],
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=output_path.parent, delete=False
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(
+                    json.dumps({"schema_version": 1, "rows": rows}, indent=2, sort_keys=True) + "\n"
+                )
+            os.replace(temporary_path, output_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+        print(f"decision comparison: wrote {len(rows)} case(s) to {output_path}")
+        return 0
+    if args.body_coverage_report and (
+        args.persist_timeline_integrity
+        or args.timeline_diagnostics
+        or args.issue
+        or args.unexpected_body_evidence
+        or args.enclosures
+        or args.meetings_urls
+    ):
+        ap.error("--body-coverage-report cannot combine with other audit/action modes")
     if args.persist_timeline_integrity and not args.timeline_diagnostics:
         ap.error("--persist-timeline-integrity requires --timeline-diagnostics")
     if args.persist_timeline_integrity and args.timeline_repair_min_delta is None:
@@ -1940,6 +2026,62 @@ def main(argv: list[str] | None = None) -> int:
     # pipeline's history and file a false-positive timeline-duration-mismatch/
     # timeline-short-coverage finding.
     output_dir = "docs"
+    if args.body_coverage_report:
+        from citypods.remedy_policy import material_evidence_hash
+        from citypods.state import resolve_state_dir
+
+        local_state = resolve_state_dir(site_config, Path(output_dir))
+        snapshot_notice = (
+            f"local-state-snapshot:{local_state}; canonical state was not synchronized; "
+            "locally available state may omit retained history; completeness remains unknown"
+        )
+        evidence = []
+        now = datetime.now(UTC)
+        audit_all(
+            cities,
+            site_config=site_config,
+            output_dir=output_dir,
+            now=now,
+            body_coverage_evidence=evidence,
+            body_coverage_only=True,
+        )
+        for source in evidence:
+            source["diagnostics"].append(snapshot_notice)
+        evidence.sort(key=lambda source: source["source_key"])
+        selectors = [
+            {"slug": city.slug, "source_key": source_key(city), "source": city.source}
+            for city in cities
+        ]
+        policies = [
+            {"slug": city.slug, "policy": city.extra.get("remedy_policy")} for city in cities
+        ]
+        catalog = [observation for source in evidence for observation in source["observations"]]
+        totals = {}
+        for source in evidence:
+            for name, value in source["totals"].items():
+                totals[name] = totals.get(name, 0) + value
+        payload = {
+            "schema_version": 1,
+            "observed_at": now.isoformat(),
+            "config_hash": material_evidence_hash(selectors),
+            "policy_hash": material_evidence_hash(policies),
+            "catalog_hash": material_evidence_hash(catalog),
+            "material_hash": material_evidence_hash(
+                {
+                    "selectors": selectors,
+                    "policies": policies,
+                    "catalog": catalog,
+                }
+            ),
+            "sources": evidence,
+            "totals": totals,
+        }
+        path = Path(args.body_coverage_report)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        print(f"body coverage: {snapshot_notice}")
+        print(f"body coverage: wrote {len(evidence)} source(s) to {path}")
+        return 0
     state_dir = pull_canonical_state(site_config, output_dir)
 
     unexpected_evidence_only = bool(args.unexpected_body_evidence and args.dry_run)

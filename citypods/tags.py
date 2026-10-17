@@ -1533,15 +1533,19 @@ class PrelabelerBatchLimits:
     max_raw_input_tokens: int
     max_reserved_tokens: int | None
     input_token_ratio: float
+    context_limit: int | None = None
+    output_limit: int | None = None
 
     def fits_reservation(self, raw_input_tokens: int, candidate_count: int) -> bool:
-        if self.max_reserved_tokens is None:
-            return True
         scaled = math.ceil(raw_input_tokens * self.input_token_ratio)
         output = (
             PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
         )
-        return scaled + output <= self.max_reserved_tokens
+        if self.output_limit is not None and output > self.output_limit:
+            return False
+        if self.context_limit is not None and scaled + output > self.context_limit:
+            return False
+        return self.max_reserved_tokens is None or scaled + output <= self.max_reserved_tokens
 
 
 def prelabeler_batch_limits(
@@ -1580,6 +1584,8 @@ def prelabeler_batch_limits(
         max_raw_input_tokens=max_raw_input_tokens,
         max_reserved_tokens=tpm,
         input_token_ratio=ratio,
+        context_limit=context,
+        output_limit=int(getattr(route, "output_context_limit", 1024)),
     )
 
 
@@ -1750,6 +1756,7 @@ def llm_prelabel_candidates(
         if (
             input_tokens_estimate > input_context_limit
             or output_token_budget < required_output_tokens
+            or not limits.fits_reservation(input_tokens_estimate, len(batch_context))
         ):
             pending = True
             payload_too_large = True

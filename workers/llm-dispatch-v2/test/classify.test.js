@@ -296,7 +296,7 @@ test("classifyProviderFailure matches groq-tpd", () => {
     headers: null,
     route: { provider: "groq", route_id: "groq/llama" },
   });
-  assert.equal(res.failure_class, "own_rpd");
+  assert.equal(res.failure_class, "own_tpd");
   assert.equal(res.rule_id, "groq-tpd");
 });
 
@@ -711,4 +711,100 @@ test("orcarouter free-tier rate limits with Retry-After map to own_rpm and own_r
   });
   assert.equal(resRpd.failure_class, "own_rpd");
   assert.equal(resRpd.rule_id, "orcarouter-daily-window");
+});
+
+
+test("Orca prompt caps use metadata regardless of localized text or Retry-After", () => {
+  for (const status of [400, 429]) {
+    const result = classifyProviderFailure({ status,
+      route: { provider: "orcarouter" }, headers: { "retry-after": "30" },
+      body: { error: { code: "free_rate_limited", message: "localized",
+        metadata: { reason: "err_free_prompt_cap", retryable: false } } } });
+    assert.equal(result.failure_class, "free_prompt_cap");
+    assert.equal(result.retry_after_seconds, null);
+  }
+});
+
+
+test("Groq TPD imports token usage from the observed quota error", () => {
+  const result = classifyProviderFailure({ status: 429, route: { provider: "groq" },
+    body: { error: { message: "tokens per day (TPD): Limit 200000, Used 199659, Requested 1089. " +
+      "Please try again in 5m23.135999999s." } } });
+  assert.equal(result.failure_class, "own_tpd");
+  assert.deepEqual(result.token_quota, { limit: 200000, used: 199659 });
+});
+
+test("HTTP 401 invalid credentials classifies as route_unavailable with account scope", () => {
+  const result = classifyProviderFailure({
+    status: 401,
+    route: { provider: "sambanova", route_id: "sambanova_gemma_4_31b_it_primary" },
+    body: {
+      error: {
+        message: "Incorrect API key provided: b04441*****f4e2.",
+        type: "authentication_error",
+        code: "invalid_api_key",
+      },
+    },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "http-401-invalid-credentials");
+  assert.equal(result.scope, "account");
+});
+
+test("HTTP 403 forbidden classifies as route_unavailable with account scope", () => {
+  const result = classifyProviderFailure({
+    status: 403,
+    route: { provider: "gemini", route_id: "gemini_flash" },
+    body: { error: { message: "Forbidden" } },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "http-403-forbidden");
+  assert.equal(result.scope, "account");
+});
+
+test("explicit authentication error body classifies as route_unavailable", () => {
+  const result = classifyProviderFailure({
+    status: 400,
+    route: { provider: "sambanova", route_id: "sambanova_gemma" },
+    body: { error: { code: "invalid_api_key", message: "Invalid API key" } },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "auth-credential-invalid");
+  assert.equal(result.scope, "account");
+});
+
+
+test("one request larger than the whole minute quota is a size rejection, not pacing", () => {
+  // Groq: no "Used" figure and Requested > Limit means no amount of waiting admits this request.
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large for model `x` on tokens per minute (TPM): " +
+      "Limit 8000, Requested 9500, please reduce your message size and try again." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "size-status-request-exceeds-tpm");
+});
+
+test("a request over the quota is a size rejection even when some of the bucket is used", () => {
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large on tokens per minute (TPM): " +
+      "Limit 8000, Used 1000, Requested 9500." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+});
+
+test("a minute bucket that is merely full stays own_tpm", () => {
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large on tokens per minute (TPM): " +
+      "Limit 8000, Used 7000, Requested 2000." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
 });

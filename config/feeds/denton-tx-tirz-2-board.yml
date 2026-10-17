@@ -1,0 +1,14 @@
+slug: denton-tx-tirz-2-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body_includes:
+    - provider_guid: "111521"
+      body: "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)"
+    - provider_guid: "14400"
+      body: "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM"
+podcast_title: "Denton: TIRZ No. 2 Board"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "Meetings of Denton TIRZ No. 2 Board."

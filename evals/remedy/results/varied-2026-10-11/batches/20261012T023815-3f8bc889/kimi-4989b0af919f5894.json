@@ -1,0 +1,90 @@
+{
+  "candidate": "kimi",
+  "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+  "mode": "claim_support",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "qualified": false,
+  "route_id": "nvidia_kimi_k3_free",
+  "reasoning": "max",
+  "request_timeout": 600,
+  "output_token_cap": 16384,
+  "provider_attempts": 1,
+  "observed_at": "2026-10-12T02:40:08.539988+00:00",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "case_input_hash": "868859b4802708a1cdac14d1e47ab7634f923e7e9632576c3f4d163640dd83c6",
+  "route_settings_hash": "e87d05c52bf23b6b2e07b74fb431b28555bc96c7b38762c8266469b1f8325912",
+  "capacity": {
+    "observed_usage": {
+      "nvidia_kimi_k3_free": 7
+    },
+    "provider_in_flight": 0
+  },
+  "raw_response": {
+    "id": "chatcmpl-bd9272cb-d6a8-4c8f-bd45-31b47507463d",
+    "created": 1791772820,
+    "model": "moonshotai/kimi-k3",
+    "object": "chat.completion",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"case_id\":\"untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target\",\"supported\":false,\"proposed_owner\":null,\"proposed_action\":\"abstain\",\"evidence_ref_ids\":[\"provider-player\"],\"missing_evidence\":[\"No agenda, minutes, or clerk metadata linking clip_id=585 to a Fort Worth City Council session\",\"No meeting title, caption content, or motion text identifying the convened body\",\"No date-correlated council schedule confirming a council meeting on 2009-08-23\"],\"rationale\":\"The claim asserts the frozen evidence suffices to assign this recording to fort-worth-tx-city-council, but the sole evidence (provider-player) preserves the immutable official title/body label 'City Page Update City Page Update' plus generic player chrome. Nothing identifies the convened body as the City Council. Hosting on fortworthgov.granicus.com and the shared token 'City' are venue/topic signals, which approved policy and the official-metadata rule say do not establish identity. No agenda_id, minutes, captions, or schedule evidence ties the clip to a council session. Per approved family policy, missing proof permits abstention, and an unassigned real body is not automatically a non-meeting. The unsupported claim is therefore rejected, no owner can be independently selected from the supplied evidence, and the correct action is to abstain.\"}",
+          "role": "assistant",
+          "tool_calls": null,
+          "function_call": null,
+          "reasoning_content": "Let me analyze this case carefully.\n\nThe claim is: \"The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.\"\n\nThe recording is titled \"City Page Update City Page Update\" (body_label: \"City Page Update City Page Update\"). The evidence is a Granicus media player page for Fort Worth with clip_id=585. The source span shows generic player chrome text (\"City Page Update Video Player and Subtitles City Page Update Navigation Index Documents Share Download Embed...\"). There's no agenda ID, no meeting content indicating this is a City Council meeting.\n\nThe title \"City Page Update\" doesn't match \"City Council\". The\u6ce8\u610f: There's an existing feed \"fort-worth-tx\" which is \"Fort Worth \u2014 All Meetings\" (video recordings of Fort Worth City Council meetings produced by FWTV). And \"fort-worth-tx-city-council\" is the City Council feed.\n\nPer the family policy: \"Use convened body, not venue, topic or common members.\" The system prompt says: \"Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing.\"\n\nThe recording's official title/body is \"City Page Update City Page Update\" \u2014 this does not identify the convened body as City Council. There is no agenda, no minutes, no evidence of the actual body. The evidence only shows the player page with a generic title. \"City Page Update\" might be a technical/placeholder title, not a meeting.\n\nThe claim says evidence is sufficient to place in fort-worth-tx-city-council. The evidence does not establish that. The only tokens are \"City\" \u2014 shared city/topic tokens do not establish identity. So the claim is unsupported.\n\nThe decision_type is \"unsupported-claim-rejection\" and there are \"Five owner-unknown programs test unsupported claim rejection only.\" So this is designed to test whether we reject unsupported claims.\n\nSo the answer: supported = false. Proposed owner: null (or perhaps abstain / no owner). Proposed action: abstain \u2014 reject the claim, do not assign to fort-worth-tx-city-council.\n\nShould I propose an alternative owner? The instructions say \"Select an owner independently and cite only supplied evidence-reference IDs.\" But if evidence is missing, abstain. Nothing in the evidence identifies any specific body. The title \"City Page Update\" might be an administrative/non-meeting item. Could it belong to \"fort-worth-tx\" (All Meetings)? That's an aggregate feed of all City Council meetings produced by FWTV \u2014 but the recording's body isn't identified. Existing feed \"fort-worth-tx\" is described as \"Video recordings of Fort Worth City Council meetings, produced by FWTV\" \u2014 an all-meetings aggregation feed. Hmm, but the claim is specifically about fort-worth-tx-city-council. Since there's no evidence tying it to City Council, and per policy an unassigned real body is not automatically a non-meeting but \"Missing proof permits abstention\" \u2014 we abstain.\n\nProposed owner: null. Proposed action: abstain / reject unsupported claim.\n\nEvidence ref IDs: \"provider-player\" (the only one). Missing evidence: agenda/minutes, meeting title identifying body, date-correlated council schedule, clerk metadata.\n\ncase_id: \"untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target\".\n\nRationale: The claim is unsupported. The sole evidence is the provider player page whose frozen title/body label is \"City Page Update City Page Update\" \u2014 immutable official metadata that does not identify the convened body as the City Council. Shared city tokens (\"City\") and hosting on fortworthgov.granicus.com do not establish identity per policy. No agenda, minutes, caption content, or schedule evidence links clip 585 to a council session. Under approved policy, missing proof permits abstention; the claim must be rejected. No owner can be independently selected; abstain.",
+          "provider_specific_fields": {
+            "refusal": null,
+            "reasoning_content": "Let me analyze this case carefully.\n\nThe claim is: \"The supplied evidence and approved project policy are sufficient to place this recording in fort-worth-tx-city-council.\"\n\nThe recording is titled \"City Page Update City Page Update\" (body_label: \"City Page Update City Page Update\"). The evidence is a Granicus media player page for Fort Worth with clip_id=585. The source span shows generic player chrome text (\"City Page Update Video Player and Subtitles City Page Update Navigation Index Documents Share Download Embed...\"). There's no agenda ID, no meeting content indicating this is a City Council meeting.\n\nThe title \"City Page Update\" doesn't match \"City Council\". The\u6ce8\u610f: There's an existing feed \"fort-worth-tx\" which is \"Fort Worth \u2014 All Meetings\" (video recordings of Fort Worth City Council meetings produced by FWTV). And \"fort-worth-tx-city-council\" is the City Council feed.\n\nPer the family policy: \"Use convened body, not venue, topic or common members.\" The system prompt says: \"Official metadata is immutable. Shared city/topic tokens do not establish identity. Abstain when evidence is missing.\"\n\nThe recording's official title/body is \"City Page Update City Page Update\" \u2014 this does not identify the convened body as City Council. There is no agenda, no minutes, no evidence of the actual body. The evidence only shows the player page with a generic title. \"City Page Update\" might be a technical/placeholder title, not a meeting.\n\nThe claim says evidence is sufficient to place in fort-worth-tx-city-council. The evidence does not establish that. The only tokens are \"City\" \u2014 shared city/topic tokens do not establish identity. So the claim is unsupported.\n\nThe decision_type is \"unsupported-claim-rejection\" and there are \"Five owner-unknown programs test unsupported claim rejection only.\" So this is designed to test whether we reject unsupported claims.\n\nSo the answer: supported = false. Proposed owner: null (or perhaps abstain / no owner). Proposed action: abstain \u2014 reject the claim, do not assign to fort-worth-tx-city-council.\n\nShould I propose an alternative owner? The instructions say \"Select an owner independently and cite only supplied evidence-reference IDs.\" But if evidence is missing, abstain. Nothing in the evidence identifies any specific body. The title \"City Page Update\" might be an administrative/non-meeting item. Could it belong to \"fort-worth-tx\" (All Meetings)? That's an aggregate feed of all City Council meetings produced by FWTV \u2014 but the recording's body isn't identified. Existing feed \"fort-worth-tx\" is described as \"Video recordings of Fort Worth City Council meetings, produced by FWTV\" \u2014 an all-meetings aggregation feed. Hmm, but the claim is specifically about fort-worth-tx-city-council. Since there's no evidence tying it to City Council, and per policy an unassigned real body is not automatically a non-meeting but \"Missing proof permits abstention\" \u2014 we abstain.\n\nProposed owner: null. Proposed action: abstain / reject unsupported claim.\n\nEvidence ref IDs: \"provider-player\" (the only one). Missing evidence: agenda/minutes, meeting title identifying body, date-correlated council schedule, clerk metadata.\n\ncase_id: \"untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target\".\n\nRationale: The claim is unsupported. The sole evidence is the provider player page whose frozen title/body label is \"City Page Update City Page Update\" \u2014 immutable official metadata that does not identify the convened body as the City Council. Shared city tokens (\"City\") and hosting on fortworthgov.granicus.com do not establish identity per policy. No agenda, minutes, caption content, or schedule evidence links clip 585 to a council session. Under approved policy, missing proof permits abstention; the claim must be rejected. No owner can be independently selected; abstain."
+          }
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "usage": {
+      "completion_tokens": 1105,
+      "prompt_tokens": 3396,
+      "total_tokens": 4501,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 816,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "service_tier": null
+  },
+  "upstream_model": "moonshotai/kimi-k3",
+  "identity_held": false,
+  "serving_family_held": false,
+  "status": "completed",
+  "answer": {
+    "case_id": "untracked-6540eef2dc2e-018c23a1b2493ae3-wrong-target",
+    "supported": false,
+    "proposed_owner": null,
+    "proposed_action": "abstain",
+    "evidence_ref_ids": [
+      "provider-player"
+    ],
+    "missing_evidence": [
+      "No agenda, minutes, or clerk metadata linking clip_id=585 to a Fort Worth City Council session",
+      "No meeting title, caption content, or motion text identifying the convened body",
+      "No date-correlated council schedule confirming a council meeting on 2009-08-23"
+    ],
+    "rationale": "The claim asserts the frozen evidence suffices to assign this recording to fort-worth-tx-city-council, but the sole evidence (provider-player) preserves the immutable official title/body label 'City Page Update City Page Update' plus generic player chrome. Nothing identifies the convened body as the City Council. Hosting on fortworthgov.granicus.com and the shared token 'City' are venue/topic signals, which approved policy and the official-metadata rule say do not establish identity. No agenda_id, minutes, captions, or schedule evidence ties the clip to a council session. Per approved family policy, missing proof permits abstention, and an unassigned real body is not automatically a non-meeting. The unsupported claim is therefore rejected, no owner can be independently selected from the supplied evidence, and the correct action is to abstain."
+  },
+  "end_to_end_seconds": 36.52303829183802,
+  "diagnostics": [
+    {
+      "duration_seconds": 34.920628832653165
+    }
+  ]
+}

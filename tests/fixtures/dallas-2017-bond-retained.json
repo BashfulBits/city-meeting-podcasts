@@ -1,0 +1,958 @@
+[
+  {
+    "agenda_backup": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:33.693170+00:00",
+      "url": "https://audio.citymeetings.fyi/documents/76869ed1994f/5e9fdb6ff9e8ef68/backup-9220bf2b5d643b5b"
+    },
+    "agenda_text": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:33.693239+00:00",
+      "quality": {
+        "assessment_attempts": 1,
+        "document_hash": "eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f",
+        "eligibility": "agenda",
+        "first_seen": "2026-08-17T15:56:33.693170+00:00",
+        "last_seen": "2026-08-17T15:56:33.693170+00:00",
+        "method": "ocr",
+        "native_chars": 1,
+        "native_ocr_similarity": 0.0,
+        "ocr_chars": 3825,
+        "ocr_mean_confidence": 86.03208540148698,
+        "page_count": 2,
+        "pipeline_version": "3",
+        "reason": "ocr-materially-better",
+        "source_url": "https://dallastx.new.swagit.com/videos/202453/agenda",
+        "status": "accepted",
+        "truncated": false
+      },
+      "url": "https://dallastx.new.swagit.com/videos/202453/agenda"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": 274242687,
+      "duration_served": 22033.344,
+      "encode_time": "2026-07-31T04:43:31.685033+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "7a982e6ad91d",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a",
+      "verification": null
+    },
+    "body": "Citizens Bond Task Force: Town Hall Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-0b8e814f6cf4",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-516e22797e76",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-860a33935abb",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-5078278919ad",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": 6427.754603174603,
+        "start": 0.0,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 2 of 4)"
+      },
+      {
+        "end": 11980.635192743764,
+        "start": 6427.754603174603,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 3 of 4)"
+      },
+      {
+        "end": 15146.464489795919,
+        "start": 11980.635192743764,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 4 of 4)"
+      },
+      {
+        "end": 22033.34448979592,
+        "start": 15146.464489795919,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 1 of 4)"
+      }
+    ],
+    "chapters_basis": "served",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "artifact_key": "state/generated_chapters/agenda/5e9fdb6ff9e8ef68-1d002e176d0e.json",
+      "artifact_url": "https://audio.citymeetings.fyi/state/generated_chapters/agenda/5e9fdb6ff9e8ef68-1d002e176d0e.json",
+      "diagnostics": {
+        "dropped_item_count": 0,
+        "dropped_item_reasons": [],
+        "duplicate_item_count": 0,
+        "recovered_item_count": 0,
+        "source_line_count": 2
+      },
+      "episode_uid": "5e9fdb6ff9e8ef68",
+      "error": "batch submission failed: LLM dispatch v2 rejected job 05389780-5c01-4d44-825e-ba437e332c03: purpose_write_budget_exceeded",
+      "items": [],
+      "job_ref": "0ff94bcd-3eca-4264-b002-c4c70cf99693",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "pipeline_version": "3",
+      "prompt_version": "agenda-flow",
+      "recipe": "1d002e176d0ef9fd151049b7312ea64a93353a889bcf5e05bc81190a60ba1997",
+      "source_hash": "9dd05a6117ba91f220ce0a8ad61e762692f49a5bfd5f4397cd07202c8e85c531",
+      "status": "completed",
+      "version": "1"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "agenda": "https://dallastx.new.swagit.com/videos/202453/agenda",
+      "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/5e9fdb6ff9e8ef68/backup-9220bf2b5d643b5b",
+      "agenda_backup_artifact_key": "documents/76869ed1994f/5e9fdb6ff9e8ef68/backup-9220bf2b5d643b5b",
+      "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/5e9fdb6ff9e8ef68/agenda-2d163d06bbce8b50",
+      "agenda_text_artifact_key": "documents/76869ed1994f/5e9fdb6ff9e8ef68/agenda-2d163d06bbce8b50",
+      "canonical_video": "https://dallastx.new.swagit.com/videos/202453",
+      "meetings": "https://dallascityhall.com//government/Pages/Live.aspx"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": null,
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "202453",
+    "provider_transcript": null,
+    "published": "2017-05-27T00:00:00+00:00",
+    "served_duration_seconds": 22033.344,
+    "source_chapters": null,
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 6427.754603174603,
+        "duration_basis": "stream-sample",
+        "id": "s0",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/27/05272017-504.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202453"
+      },
+      {
+        "backup_key": null,
+        "duration": 5552.880589569161,
+        "duration_basis": "stream-sample",
+        "id": "s1",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/27/05272017-505.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202453"
+      },
+      {
+        "backup_key": null,
+        "duration": 3165.8292970521543,
+        "duration_basis": "stream-sample",
+        "id": "s2",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/27/05272017-506.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202453"
+      },
+      {
+        "backup_key": null,
+        "duration": 6886.88,
+        "duration_basis": "stream-sample",
+        "id": "s3",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/29/05292017-502.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202453"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "audio": {
+        "completed_at": "2026-07-31T05:00:01.490752+00:00",
+        "input_fingerprint": "5049d3d1c056e7445e35ce7dd5b85d01f297551d6e8675ecdfb10af97cf4b588",
+        "output": "swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-30T14:36:43.915399+00:00",
+        "input_fingerprint": "c0e467b4ddfce7d9aa163be01af9da3e1073173b4ffe49913871f9782cef2cf0",
+        "output": "state/generated_chapters/agenda/5e9fdb6ff9e8ef68-1d002e176d0e.json",
+        "state": "complete-empty",
+        "version": "3"
+      },
+      "chapters": {
+        "completed_at": "2026-07-31T04:43:20.962053+00:00",
+        "input_fingerprint": "b1ded45834c257865b6084552dfd9152f26147b281924113bfd4ae8ed96fb230",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "completed_at": "2026-08-17T16:58:26.116055+00:00",
+        "input_fingerprint": "fc4d4a4df17e8d29fb47120ac7e97604003904a254769e31d5ccf3d8f181c2eb",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "completed_at": "2026-08-17T17:01:12.336186+00:00",
+        "input_fingerprint": "4940f721eea186ce889adc40f0f7837924040d468fb000e0ff916649b94f6625",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:58:05.320605+00:00",
+        "input_fingerprint": "3aa2ca201a81ecc8951dfe6336e21c0b6d32071284a0c8fc12e30da96041a050",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:58:05.320527+00:00",
+        "input_fingerprint": "fad3fe932ffdb6feda3415463f580bc166b0fe253baec314ca5e7a0f518b9c59",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:59.200490+00:00",
+        "input_fingerprint": "efe10b6b333e2c7314bc597d5124dc771ed95a8b1feb906804a067525b451c0f",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:38.088083+00:00",
+        "input_fingerprint": "94989d80bbcab6fad45b4567958d84656d38c089f895a0eef883f9cf981f94f3",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "b4e19dee94e7df3a110fe7a42a83dbb2ed81127ac5c0c601e2fe68f1809d9877",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-31T04:43:31.684361+00:00",
+        "input_fingerprint": "326e79f809dbbef37af80872370f5fe3f3b4d8f5010768ad069d78780be62eec",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:52.509505+00:00",
+        "input_fingerprint": "47a7c46223becfb4548d6a186429ecb8608e43095114a35a63ad8f0aa808f9d5",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "e78529a25d6ca8bf",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "0042edac1aaff30b",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6427.754603174603,
+          "served_start": 0.0,
+          "source_end": 6427.754603174603,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 11980.635192743764,
+          "served_start": 6427.754603174603,
+          "source_end": 5552.880589569161,
+          "source_id": "s1",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 15146.464489795919,
+          "served_start": 11980.635192743764,
+          "source_end": 3165.8292970521543,
+          "source_id": "s2",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 22033.34448979592,
+          "served_start": 15146.464489795919,
+          "source_end": 6886.88,
+          "source_id": "s3",
+          "source_start": 0.0
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "Citizens Bond Task Force: Town Hall Meeting \u2013 May 27, 2017",
+    "transcript": null,
+    "uid": "5e9fdb6ff9e8ef68",
+    "video_url": "https://dallastx.new.swagit.com/videos/202453/download"
+  },
+  {
+    "agenda_backup": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:37.703335+00:00",
+      "url": "https://audio.citymeetings.fyi/documents/76869ed1994f/eb1c279cc51a9b04/backup-8fc83415b8a74014"
+    },
+    "agenda_text": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:37.703378+00:00",
+      "quality": {
+        "assessment_attempts": 1,
+        "document_hash": "bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7",
+        "eligibility": "agenda",
+        "first_seen": "2026-08-17T15:56:37.703335+00:00",
+        "last_seen": "2026-08-17T15:56:37.703335+00:00",
+        "method": "ocr",
+        "native_chars": 0,
+        "native_ocr_similarity": 0.0,
+        "ocr_chars": 719,
+        "ocr_mean_confidence": 90.5956891965812,
+        "page_count": 1,
+        "pipeline_version": "3",
+        "reason": "ocr-materially-better",
+        "source_url": "https://dallastx.new.swagit.com/videos/202452/agenda",
+        "status": "accepted",
+        "truncated": false
+      },
+      "url": "https://dallastx.new.swagit.com/videos/202452/agenda"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": 158705959,
+      "duration_served": 12730.985,
+      "encode_time": "2026-07-31T04:43:59.527247+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/eb1c279cc51a9b04-0a46fb46c2eb.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "0a46fb46c2eb",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/eb1c279cc51a9b04-0a46fb46c2eb.m4a",
+      "verification": null
+    },
+    "body": "Citizens Bond Task Force: Town Hall Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-30ba3291c5da",
+        "tags": []
+      },
+      {
+        "chapter_id": "ch-9cfc0142be3a",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": 7545.77149659864,
+        "start": 0.0,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 1 of 2)"
+      },
+      {
+        "end": 12730.984807256236,
+        "start": 7545.77149659864,
+        "title": "Citizens Bond Task Force: Town Hall Meeting (Part 2 of 2)"
+      }
+    ],
+    "chapters_basis": "served",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "artifact_key": "state/generated_chapters/agenda/eb1c279cc51a9b04-2a1bf644c670.json",
+      "artifact_url": "https://audio.citymeetings.fyi/state/generated_chapters/agenda/eb1c279cc51a9b04-2a1bf644c670.json",
+      "diagnostics": {
+        "dropped_item_count": 0,
+        "dropped_item_reasons": [],
+        "duplicate_item_count": 0,
+        "recovered_item_count": 0,
+        "source_line_count": 1
+      },
+      "episode_uid": "eb1c279cc51a9b04",
+      "error": "batch submission failed: LLM dispatch v2 rejected job e2bb3290-f6df-4f78-8fbb-250642908124: purpose_write_budget_exceeded",
+      "items": [],
+      "job_ref": "5ff8768d-b01c-4f03-a80e-5559e6e739b0",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "pipeline_version": "3",
+      "prompt_version": "agenda-flow",
+      "recipe": "2a1bf644c670b5f58d79f07ec7fef14706c5d894b116ce8e4e8971f448031fe7",
+      "source_hash": "5772e0f18d88288fbcd9ad2c14a1db8cc234d552889812e8669a8ac70159fa19",
+      "status": "completed",
+      "version": "1"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "agenda": "https://dallastx.new.swagit.com/videos/202452/agenda",
+      "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/eb1c279cc51a9b04/backup-8fc83415b8a74014",
+      "agenda_backup_artifact_key": "documents/76869ed1994f/eb1c279cc51a9b04/backup-8fc83415b8a74014",
+      "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/eb1c279cc51a9b04/agenda-96e23c8ce244eb6a",
+      "agenda_text_artifact_key": "documents/76869ed1994f/eb1c279cc51a9b04/agenda-96e23c8ce244eb6a",
+      "canonical_video": "https://dallastx.new.swagit.com/videos/202452",
+      "meetings": "https://dallascityhall.com//government/Pages/Live.aspx"
+    },
+    "llm_tag_candidates": [
+      {
+        "admission": "shadow",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-e1a1c3d4c75ee811",
+        "candidate_state": "historical",
+        "confidence": 0.9,
+        "display": false,
+        "episode_title": "Citizens Bond Task Force: Town Hall Meeting \u2013 May 25, 2017",
+        "episode_uid": "eb1c279cc51a9b04",
+        "evidence": [
+          {
+            "document_url": "https://dallastx.new.swagit.com/videos/202452/agenda",
+            "quote": "Citizens Bond Task Force: Town Hall Meeting (Part 1 of 2)",
+            "where": "agenda"
+          }
+        ],
+        "explanation": "The agenda items explicitly focus on a Citizens Bond Task Force, which deals with public debt and bonds.",
+        "feature": "topic-tags",
+        "id": "debt-bonds-tif-subsidies",
+        "prompt_version": "2",
+        "provider_model": "litellm:gemini/gemini-3.5-flash-lite",
+        "recipe_hash": "7c046812ee2ad66c",
+        "scope": "episode",
+        "source": "llm",
+        "source_kind": "llm",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "shadow",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-7e95ce27d61d32b9",
+        "candidate_state": "historical",
+        "confidence": 0.9,
+        "display": false,
+        "episode_title": "Citizens Bond Task Force: Town Hall Meeting \u2013 May 25, 2017",
+        "episode_uid": "eb1c279cc51a9b04",
+        "evidence": [
+          {
+            "document_url": "https://dallastx.new.swagit.com/videos/202452/agenda",
+            "quote": "Citizens Bond Task Force: Town Hall Meeting (Part 1 of 2)",
+            "where": "agenda"
+          }
+        ],
+        "explanation": "The agenda mentions town hall meetings intended for resident and neighborhood input on the bond task force.",
+        "feature": "topic-tags",
+        "id": "neighborhood-engagement",
+        "prompt_version": "2",
+        "provider_model": "litellm:gemini/gemini-3.5-flash-lite",
+        "recipe_hash": "7c046812ee2ad66c",
+        "scope": "episode",
+        "source": "llm",
+        "source_kind": "llm",
+        "taxonomy_version": 2
+      }
+    ],
+    "media_availability": null,
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "202452",
+    "provider_transcript": null,
+    "published": "2017-05-25T00:00:00+00:00",
+    "served_duration_seconds": 12730.985,
+    "source_chapters": null,
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 7545.77149659864,
+        "duration_basis": "stream-sample",
+        "id": "s0",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/25/05252017-1267.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202452"
+      },
+      {
+        "backup_key": null,
+        "duration": 5185.213310657597,
+        "duration_basis": "stream-sample",
+        "id": "s1",
+        "media_kind": "direct",
+        "provider": "swagit",
+        "ref": "https://swagit-video.granicus.com/archive/2017/05/25/05252017-1268.360.mp4",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202452"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "audio": {
+        "completed_at": "2026-07-31T04:53:37.542034+00:00",
+        "input_fingerprint": "cc2c722fa6894f88ebd8becce053375a3e6678f64b47f0a725ccb373234e0f10",
+        "output": "swagit/76869ed1994f/eb1c279cc51a9b04-0a46fb46c2eb.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-10-01T16:55:46.172011+00:00",
+        "input_fingerprint": "eaebb92d0fd7db32a7de5f1fa2f2587f90736e22577f2c989b9b68c4e3479286",
+        "output": "state/generated_chapters/agenda/eb1c279cc51a9b04-2a1bf644c670.json",
+        "state": "complete-empty",
+        "version": "3"
+      },
+      "chapters": {
+        "completed_at": "2026-07-31T04:43:53.834417+00:00",
+        "input_fingerprint": "41ee51eca16391dd8e3d0dd67f55d44de14be771c902f6da67e0bd55ea23e378",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "completed_at": "2026-08-17T16:58:26.116065+00:00",
+        "input_fingerprint": "7c3787535cde5b2c7a6bb9873991061eac63a8648cc62e524bf58cec6dfacbd6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "completed_at": "2026-08-17T17:01:12.336197+00:00",
+        "input_fingerprint": "76ecdfbdd8f8c3475fa405386624c89abe8cc437ff758d91a97db9851f176e88",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:58:05.320830+00:00",
+        "input_fingerprint": "6a03730940d758e117639351edebfbce78a6c83d11172bfcdccb55f165faf10d",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:58:05.320766+00:00",
+        "input_fingerprint": "5d84e53cc69c2548248da276854f9a9c92c7a0b892eb51412093023e8359be96",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:59.200903+00:00",
+        "input_fingerprint": "e7f05330c447d77f5bb965fbe76bd69a6f9f7ef9fa8644d73905f2237cda5614",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:38.088248+00:00",
+        "input_fingerprint": "086c18701618c7d6749580e988c20f50b3bd6995ba423fbac2ab14c909062817",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-07-31T20:47:34.880854+00:00",
+        "input_fingerprint": "86aab899090015a3ddec662adae550449cedbdf840b6bb87e4011022c68f1644",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-31T04:43:59.526857+00:00",
+        "input_fingerprint": "df84b653171725e85106c827d5246719fec08ae82ea219fc65c9bc54e8e82a61",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:52.510977+00:00",
+        "input_fingerprint": "2a0a5f6f3d0e5a70364d984afbec3db1fbb1a312235a8baa71d7dd6156fe6258",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "82017e05bb96fe55",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "dce06dc7e575db93",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 7545.77149659864,
+          "served_start": 0.0,
+          "source_end": 7545.77149659864,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 12730.984807256236,
+          "served_start": 7545.77149659864,
+          "source_end": 5185.213310657597,
+          "source_id": "s1",
+          "source_start": 0.0
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "Citizens Bond Task Force: Town Hall Meeting \u2013 May 25, 2017",
+    "transcript": null,
+    "uid": "eb1c279cc51a9b04",
+    "video_url": "https://dallastx.new.swagit.com/videos/202452/download"
+  },
+  {
+    "agenda_backup": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:41.179675+00:00",
+      "url": "https://audio.citymeetings.fyi/documents/76869ed1994f/fc9ad3b1d9def142/backup-8fc83415b8a74014"
+    },
+    "agenda_text": {
+      "attempts": 0,
+      "last_attempt": "2026-08-17T15:56:41.179717+00:00",
+      "quality": {
+        "assessment_attempts": 1,
+        "document_hash": "bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7",
+        "eligibility": "agenda",
+        "first_seen": "2026-08-17T15:56:41.179675+00:00",
+        "last_seen": "2026-08-17T15:56:41.179675+00:00",
+        "method": "ocr",
+        "native_chars": 0,
+        "native_ocr_similarity": 0.0,
+        "ocr_chars": 719,
+        "ocr_mean_confidence": 90.5956891965812,
+        "page_count": 1,
+        "pipeline_version": "3",
+        "reason": "ocr-materially-better",
+        "source_url": "https://dallastx.new.swagit.com/videos/202451/agenda",
+        "status": "accepted",
+        "truncated": false
+      },
+      "url": "https://dallastx.new.swagit.com/videos/202451/agenda"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": 108358265,
+      "duration_served": 8699.718,
+      "encode_time": "2026-07-31T04:46:35.867831+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/fc9ad3b1d9def142-b27b1925c6b1.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "b27b1925c6b1",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/fc9ad3b1d9def142-b27b1925c6b1.m4a",
+      "verification": null
+    },
+    "body": "Citizens Bond Task Force: Town Hall Meeting",
+    "chapter_tags": null,
+    "chapters": [],
+    "chapters_basis": "source:s0",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "artifact_key": "state/generated_chapters/agenda/fc9ad3b1d9def142-243996adfe88.json",
+      "artifact_url": "https://audio.citymeetings.fyi/state/generated_chapters/agenda/fc9ad3b1d9def142-243996adfe88.json",
+      "diagnostics": {
+        "dropped_item_count": 0,
+        "dropped_item_reasons": [],
+        "duplicate_item_count": 0,
+        "recovered_item_count": 0,
+        "source_line_count": 1
+      },
+      "episode_uid": "fc9ad3b1d9def142",
+      "error": "batch submission failed: LLM dispatch v2 rejected job 570a3e79-95c7-401e-b7b0-dfdf8ea6cb05: purpose_write_budget_exceeded",
+      "items": [],
+      "job_ref": "08ca5f58-7529-42a2-acbb-9ec184cea5cb",
+      "model": "tencent/hy3",
+      "pipeline_version": "3",
+      "prompt_version": "agenda-flow",
+      "recipe": "243996adfe880eb2add7b71b94720bb10e2eafda694897048e7aa8e224a5fc61",
+      "source_hash": "5772e0f18d88288fbcd9ad2c14a1db8cc234d552889812e8669a8ac70159fa19",
+      "status": "completed",
+      "version": "1"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "agenda": "https://dallastx.new.swagit.com/videos/202451/agenda",
+      "agenda_backup_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/fc9ad3b1d9def142/backup-8fc83415b8a74014",
+      "agenda_backup_artifact_key": "documents/76869ed1994f/fc9ad3b1d9def142/backup-8fc83415b8a74014",
+      "agenda_text_artifact": "https://audio.citymeetings.fyi/documents/76869ed1994f/fc9ad3b1d9def142/agenda-96e23c8ce244eb6a",
+      "agenda_text_artifact_key": "documents/76869ed1994f/fc9ad3b1d9def142/agenda-96e23c8ce244eb6a",
+      "canonical_video": "https://dallastx.new.swagit.com/videos/202451",
+      "meetings": "https://dallascityhall.com//government/Pages/Live.aspx"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-31T04:46:35.864974+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "0bcbc92c830600e9",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "202451",
+    "provider_transcript": null,
+    "published": "2017-05-22T00:00:00+00:00",
+    "served_duration_seconds": 8699.718,
+    "source_chapters": null,
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 8834.33,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/202451/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/202451"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "audio": {
+        "completed_at": "2026-07-31T04:53:42.112535+00:00",
+        "input_fingerprint": "c2940edd23cd101e045a332b4f6f6ded588d111d80fe07f014d6e1034bf403ba",
+        "output": "swagit/76869ed1994f/fc9ad3b1d9def142-b27b1925c6b1.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-30T14:36:44.006226+00:00",
+        "input_fingerprint": "8233737fdc412f11c64a52e0ad4ffe2756b464ec6c5dda7e7d6c74580fcaba63",
+        "output": "state/generated_chapters/agenda/fc9ad3b1d9def142-243996adfe88.json",
+        "state": "complete-empty",
+        "version": "3"
+      },
+      "chapters": {
+        "completed_at": "2026-07-31T04:44:59.895732+00:00",
+        "input_fingerprint": "ea0778ffab7fb22b952b7fd48c428856463040f24cc2de225361e8a4a4d29e9e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "completed_at": "2026-08-17T16:58:26.116075+00:00",
+        "input_fingerprint": "b7bddac8d4819f15c65fbe13b13939aa29d2e2855a720de2a68b8139398d1c43",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "completed_at": "2026-08-17T17:01:12.336209+00:00",
+        "input_fingerprint": "7c598f730c94b232b40c1eca876468786bd5992118fd078ab77485b1090a0fc8",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:58:05.321021+00:00",
+        "input_fingerprint": "6f587f7d95d60bd24b0724ba3e3a977ab00ae6fead44e835fe6e104594c5a5f9",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:58:05.320962+00:00",
+        "input_fingerprint": "115519467030d1ff03264a3dbff73bb7849c14c70768fe757da7ada86cb80b4b",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:59.201121+00:00",
+        "input_fingerprint": "87500969205f9f17a2683ac9e14a9bee7a77074702c188aa953ec09053ddb701",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:38.088579+00:00",
+        "input_fingerprint": "66bfd44cad7abe9cb097ed6c5d1bd00804020e7a6ce19a1f79cf0dbbf57fd96b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-09-04T07:16:14.832564+00:00",
+        "input_fingerprint": "0b7d9188d02e9000f5eb5d7c15f6e7b60ceefda63877088c1c4946570d6678bb",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "timeline": {
+        "completed_at": "2026-07-31T04:46:35.867189+00:00",
+        "input_fingerprint": "b8dcc01f66993cd41bd5756fa7b704cf40d3548be5450f8adf55684ae0bb8dd3",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:52.512493+00:00",
+        "input_fingerprint": "18c6920d4481d180dba8cec92aa98680ad5606e3ed7c8bb441efe17c5a6b9b0e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "7bbc29a27e407ead",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": "69aebed620fb55d9",
+    "tags_spec_hash": "dd107733a2a3c0ea",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3125.150522,
+          "served_start": 0.0,
+          "source_end": 3125.150522,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4442.9006580000005,
+          "served_start": 3125.150522,
+          "source_end": 4468.817551,
+          "source_id": "s0",
+          "source_start": 3151.067415
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4442.904377000001,
+          "served_start": 4442.9006580000005,
+          "source_end": 4506.332313,
+          "source_id": "s0",
+          "source_start": 4506.328594
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4782.984219000001,
+          "served_start": 4442.904377000001,
+          "source_end": 4860.090091,
+          "source_id": "s0",
+          "source_start": 4520.010249
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5455.981543000001,
+          "served_start": 4782.984219000001,
+          "source_end": 5544.71907,
+          "source_id": "s0",
+          "source_start": 4871.721746
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5893.947257000001,
+          "served_start": 5455.981543000001,
+          "source_end": 5995.567846,
+          "source_id": "s0",
+          "source_start": 5557.602132
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6307.670976,
+          "served_start": 5893.947257000001,
+          "source_end": 6430.323061,
+          "source_id": "s0",
+          "source_start": 6016.599342
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8699.717983,
+          "served_start": 6307.670976,
+          "source_end": 8834.33,
+          "source_id": "s0",
+          "source_start": 6442.282993
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "Citizens Bond Task Force: Town Hall Meeting \u2013 May 22, 2017",
+    "transcript": null,
+    "uid": "fc9ad3b1d9def142",
+    "video_url": "https://dallastx.new.swagit.com/videos/202451/download"
+  }
+]

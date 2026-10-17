@@ -1,0 +1,2737 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "case_id": "addison-394156-01960ed1399198df",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "01960ed1399198df",
+      "provider_guid": "394156",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56025-02cedb500a3fdb57",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "02cedb500a3fdb57",
+      "provider_guid": "56025",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-364715-041b680eca8c01c1",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "041b680eca8c01c1",
+      "provider_guid": "364715",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-224232-06bbb874afec6cc0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "06bbb874afec6cc0",
+      "provider_guid": "224232",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55603-078e31754cb52b70",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "078e31754cb52b70",
+      "provider_guid": "55603",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55602-08f6e5fe62fe9730",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "08f6e5fe62fe9730",
+      "provider_guid": "55602",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-167693-0d0655a79a4e1e10",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0d0655a79a4e1e10",
+      "provider_guid": "167693",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55623-0d0f97d0a5e4234f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0d0f97d0a5e4234f",
+      "provider_guid": "55623",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-156697-0ee826769ea9f6f8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0ee826769ea9f6f8",
+      "provider_guid": "156697",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-317783-109ce44a66ecbb9f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "109ce44a66ecbb9f",
+      "provider_guid": "317783",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55621-1269a0f7dc0f5806",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1269a0f7dc0f5806",
+      "provider_guid": "55621",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55604-133a684fc4fdf68e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "133a684fc4fdf68e",
+      "provider_guid": "55604",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55610-14f89773e59f2fd8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "14f89773e59f2fd8",
+      "provider_guid": "55610",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-355667-1956d71b85fb8371",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1956d71b85fb8371",
+      "provider_guid": "355667",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55600-1e85dcff232fcba8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1e85dcff232fcba8",
+      "provider_guid": "55600",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-349764-1ed43638327380eb",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1ed43638327380eb",
+      "provider_guid": "349764",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-361917-1ef623b5f2bc909a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1ef623b5f2bc909a",
+      "provider_guid": "361917",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56023-1f50e2274a6dd26c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1f50e2274a6dd26c",
+      "provider_guid": "56023",
+      "question": "Council swearing-in ceremony included as Council meeting",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-320828-2095f0d63e326bf0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2095f0d63e326bf0",
+      "provider_guid": "320828",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56020-235c1c030568dac0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "235c1c030568dac0",
+      "provider_guid": "56020",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56021-24d5e7dc230eb900",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "24d5e7dc230eb900",
+      "provider_guid": "56021",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-205784-28b12e6b65220f00",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "28b12e6b65220f00",
+      "provider_guid": "205784",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55605-2929e7152647c257",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2929e7152647c257",
+      "provider_guid": "55605",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-312954-2b50ac2023534681",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2b50ac2023534681",
+      "provider_guid": "312954",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55618-2f9b5fd70b5514c5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2f9b5fd70b5514c5",
+      "provider_guid": "55618",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-359742-31b194e3b25f0bf8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "31b194e3b25f0bf8",
+      "provider_guid": "359742",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55864-35a78fa89c7c5c5c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "35a78fa89c7c5c5c",
+      "provider_guid": "55864",
+      "question": "Historical Economic Development Luncheon is uncovered",
+      "missing_evidence": "Recording-bound public briefing versus promotional event evidence",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-55634-383dfdfed6140400",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "383dfdfed6140400",
+      "provider_guid": "55634",
+      "question": "Verified 2016 Council/P&Z joint lacks Council subscription",
+      "missing_evidence": "No missing subscription evidence",
+      "next_action": "Preserve both subscriptions; participant search discovery remains #2018",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Deployed Council and P&Z RSS both carry UID383dfdfed6140400 and identical original audio; verified 2026-10-05 after PR2026."
+    },
+    {
+      "case_id": "addison-55613-3ba7b24d44e9da7f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3ba7b24d44e9da7f",
+      "provider_guid": "55613",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55607-3c114cb1e02ce2c4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3c114cb1e02ce2c4",
+      "provider_guid": "55607",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-346014-3c738579c7a5b935",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3c738579c7a5b935",
+      "provider_guid": "346014",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55615-3cfc07ccaaa89fef",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3cfc07ccaaa89fef",
+      "provider_guid": "55615",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-302919-3e5d9a3360600836",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3e5d9a3360600836",
+      "provider_guid": "302919",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55622-47fc5fa46cd0d106",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "47fc5fa46cd0d106",
+      "provider_guid": "55622",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55619-49a790f6c4d1277d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "49a790f6c4d1277d",
+      "provider_guid": "55619",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55614-4b0c1ed69fcbcdda",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4b0c1ed69fcbcdda",
+      "provider_guid": "55614",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-148373-4b69d73512792a44",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4b69d73512792a44",
+      "provider_guid": "148373",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-276855-4ef85ec6540cf95b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4ef85ec6540cf95b",
+      "provider_guid": "276855",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-222435-519328ed1d5a3ca7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "519328ed1d5a3ca7",
+      "provider_guid": "222435",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-153032-52ec3e810707f814",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "52ec3e810707f814",
+      "provider_guid": "153032",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-184783-564732c5642e0723",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "564732c5642e0723",
+      "provider_guid": "184783",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-337754-56af6e490a958190",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "56af6e490a958190",
+      "provider_guid": "337754",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-276796-57e8c5a0393e87fe",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "57e8c5a0393e87fe",
+      "provider_guid": "276796",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55620-5885503f6962565a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5885503f6962565a",
+      "provider_guid": "55620",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56060-58bbcd2c03cc82b8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "58bbcd2c03cc82b8",
+      "provider_guid": "56060",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-267232-5a5d09da1bd31bda",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5a5d09da1bd31bda",
+      "provider_guid": "267232",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-178980-5aa3c2d183ed4f52",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5aa3c2d183ed4f52",
+      "provider_guid": "178980",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55608-5c3910b54cff845e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5c3910b54cff845e",
+      "provider_guid": "55608",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55616-6232efb99cd6894d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6232efb99cd6894d",
+      "provider_guid": "55616",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56029-63b22f80ce9500ff",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "63b22f80ce9500ff",
+      "provider_guid": "56029",
+      "question": "Citizen Advisory historical compilation retained in Public Input",
+      "missing_evidence": "Exact historical program-to-recording binding remains unverified; this does not block the approved Public Input disposition. The eleven-item archive count is not an established eleven-part recording requirement.",
+      "next_action": "No further P0 action. Keep the single preserved UID in Public Input; reopen only if new source evidence shows the assignment is wrong or a retained record is missing.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer approved closing the P0 case on 2026-10-07: retain the single historical Citizen Advisory compilation in Public Input with its original UID/title/audio. Official FY2007–08 budget and Council packet evidence corroborate the advisory program and its recommendations; exact program-to-recording binding remains unknown. The provider archive listing count is not proof of a missing eleventh part. See addison-body-policy-audit-2026-10-04.md, Citizen Advisory 56029 evidence."
+    },
+    {
+      "case_id": "addison-382950-699939eb5a53e258",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "699939eb5a53e258",
+      "provider_guid": "382950",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-305960-6bafb2c16f76603b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6bafb2c16f76603b",
+      "provider_guid": "305960",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55612-6d954cb309211df9",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6d954cb309211df9",
+      "provider_guid": "55612",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-191239-709f0cf53c420a2c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "709f0cf53c420a2c",
+      "provider_guid": "191239",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-394474-757ab2a4aaf9bbca",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "757ab2a4aaf9bbca",
+      "provider_guid": "394474",
+      "question": "TIRZ board is assigned to Council instead of city TIF family",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-tif"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55601-78880dfd58cacebd",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "78880dfd58cacebd",
+      "provider_guid": "55601",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-375371-788daedde0f6d9a4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "788daedde0f6d9a4",
+      "provider_guid": "375371",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-271981-7d335b073b6a11d4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "7d335b073b6a11d4",
+      "provider_guid": "271981",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-315406-8447e1d9e60fd6a7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "8447e1d9e60fd6a7",
+      "provider_guid": "315406",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-175924-84c42f696f6dbef9",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "84c42f696f6dbef9",
+      "provider_guid": "175924",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-353043-854622aa2f150a57",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "854622aa2f150a57",
+      "provider_guid": "353043",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-281236-876e9334a9c3d72e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "876e9334a9c3d72e",
+      "provider_guid": "281236",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55627-87a3548cd62f20d6",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "87a3548cd62f20d6",
+      "provider_guid": "55627",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-358763-894926556b8a5f15",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "894926556b8a5f15",
+      "provider_guid": "358763",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-371625-902400566a6637b5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "902400566a6637b5",
+      "provider_guid": "371625",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55625-9cabf11f0dab1ad5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "9cabf11f0dab1ad5",
+      "provider_guid": "55625",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55609-a306e5a33a9245c7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a306e5a33a9245c7",
+      "provider_guid": "55609",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-245443-a4e00eac785ab695",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a4e00eac785ab695",
+      "provider_guid": "245443",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56026-a7ffa0a2ca5e1840",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a7ffa0a2ca5e1840",
+      "provider_guid": "56026",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-56027-a818b6f650cf4030",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a818b6f650cf4030",
+      "provider_guid": "56027",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-388458-ab76536c44140f06",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ab76536c44140f06",
+      "provider_guid": "388458",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-310398-acd22fa4f0f08c91",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "acd22fa4f0f08c91",
+      "provider_guid": "310398",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-208747-ad631855f512ba4f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ad631855f512ba4f",
+      "provider_guid": "208747",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-335172-bb056f86d6f26066",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "bb056f86d6f26066",
+      "provider_guid": "335172",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55611-c18e4590c589606f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c18e4590c589606f",
+      "provider_guid": "55611",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56028-c3e05def1b9a737b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c3e05def1b9a737b",
+      "provider_guid": "56028",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-205724-c87abe7fbf3e202d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c87abe7fbf3e202d",
+      "provider_guid": "205724",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-230288-c8d120c8bdae1a7b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c8d120c8bdae1a7b",
+      "provider_guid": "230288",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-310072-c95af66385f6cf31",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c95af66385f6cf31",
+      "provider_guid": "310072",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-comprehensive-plan-advisory-committee",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-372562-ca03473c2506f62f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ca03473c2506f62f",
+      "provider_guid": "372562",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-177382-ca62ec8b0c2dd613",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ca62ec8b0c2dd613",
+      "provider_guid": "177382",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-362796-cb34bf9c6001c32a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "cb34bf9c6001c32a",
+      "provider_guid": "362796",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56024-db2189f7ab620a65",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "db2189f7ab620a65",
+      "provider_guid": "56024",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55624-dcd12e177bb2d738",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "dcd12e177bb2d738",
+      "provider_guid": "55624",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55606-de282deb731a7361",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "de282deb731a7361",
+      "provider_guid": "55606",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-150744-e2e2e4d8c9b5330c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e2e2e4d8c9b5330c",
+      "provider_guid": "150744",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55628-e3725c3d1f32d8c5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e3725c3d1f32d8c5",
+      "provider_guid": "55628",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55599-e59549e833479e1d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e59549e833479e1d",
+      "provider_guid": "55599",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-269302-e5cbc38145f8131d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e5cbc38145f8131d",
+      "provider_guid": "269302",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-56022-ee80c45122c4f9f0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ee80c45122c4f9f0",
+      "provider_guid": "56022",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56059-efe3faf61b7b949a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "efe3faf61b7b949a",
+      "provider_guid": "56059",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
+    },
+    {
+      "case_id": "addison-308298-f72183a5e7102bf1",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f72183a5e7102bf1",
+      "provider_guid": "308298",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-55617-f86aabec5e474882",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f86aabec5e474882",
+      "provider_guid": "55617",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55626-f93e036b3ab247d2",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f93e036b3ab247d2",
+      "provider_guid": "55626",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-186775-f9f99cbaf58c7402",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f9f99cbaf58c7402",
+      "provider_guid": "186775",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-295839-fcc9bde16c7f47fe",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fcc9bde16c7f47fe",
+      "provider_guid": "295839",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-comprehensive-plan-advisory-committee",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-327186-fd1cfcfdff127609",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fd1cfcfdff127609",
+      "provider_guid": "327186",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-300264-fde86a41f004984a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fde86a41f004984a",
+      "provider_guid": "300264",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "addison-154641-ff8eac28f4881cd2",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ff8eac28f4881cd2",
+      "provider_guid": "154641",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "arlington-tx-1792515fdd51c6c2-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "1792515fdd51c6c2",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-237c28f30496e3e0-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "237c28f30496e3e0",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
+      ],
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
+    },
+    {
+      "case_id": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "25e9b8510b0a7a66",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-2d5dc451df2da130-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "2d5dc451df2da130",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-30b28efc23346a6d-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "30b28efc23346a6d",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
+      ],
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
+    },
+    {
+      "case_id": "arlington-tx-35b22fcc8d07967b-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "35b22fcc8d07967b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "4357f0c39d1ae58f",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
+      ],
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
+    },
+    {
+      "case_id": "arlington-tx-9b66e98b682a47f2-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "9b66e98b682a47f2",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3508",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-a683af6e13e2bd7a-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "a683af6e13e2bd7a",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3479",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "No ownership evidence gap; dated official agenda and deployed exact UID/audio proof retained",
+      "next_action": "No ownership correction pending; retain official and deployed proof",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official standalone ETF agenda; deployed dedicated RSS exact original UID/audio and Council exclusion verified after deploy37333553141 (5479ff68)."
+    },
+    {
+      "case_id": "arlington-tx-d8f3b672b482369b-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "d8f3b672b482369b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
+      ],
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
+    },
+    {
+      "case_id": "dallas-tx-baa19208405acb22-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "baa19208405acb22",
+      "provider_guid": "280220",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this ownership correction; broader source coverage remains separate.",
+      "next_action": "Reopen if subsequent replay or deployed ownership changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official dated body/recording proof retained in audit; deployed RSS verified after human merges #2063/#2066, exact retained audio and absence from current Council RSS. See CBTF deployment closure audit section."
+    },
+    {
+      "case_id": "dallas-tx-bd172b762dd20b63-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "bd172b762dd20b63",
+      "provider_guid": "203320",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-redistricting-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
+    },
+    {
+      "case_id": "denton-tx-04689e3929ac104e-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "04689e3929ac104e",
+      "provider_guid": "28865",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-special-citizens-bond-advisory-committee"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-1c91182b70afefb3-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "1c91182b70afefb3",
+      "provider_guid": "111521",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-2-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-2493e59c0844a4b4-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "2493e59c0844a4b4",
+      "provider_guid": "116732",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-280db52d91547dd6-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "280db52d91547dd6",
+      "provider_guid": "122398",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-2b458f3c556df459-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "2b458f3c556df459",
+      "provider_guid": "73923",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "5a2ce8afb18c6a82",
+      "provider_guid": "87440",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-69d3fee77a42058c-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "69d3fee77a42058c",
+      "provider_guid": "78064",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-70a6450a1deda017-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "70a6450a1deda017",
+      "provider_guid": "112601",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-7abd583b2ed8189a-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "7abd583b2ed8189a",
+      "provider_guid": "119886",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-a1aa4af8f26e120c-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "a1aa4af8f26e120c",
+      "provider_guid": "13509",
+      "question": "Verified Council/Library Board joint needs Library participation coverage",
+      "missing_evidence": "Ownership proven; existing confirmed_empty media verdict remains unchanged and is a separate availability obligation.",
+      "next_action": "Reopen ownership only if deployed routing changes; media availability re-evaluation requires separate evidence and authorization.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council",
+        "denton-tx-library-board"
+      ],
+      "status": "resolved",
+      "disposition": "Full source replay and deployed direct pages HTTP200 under exact expected owners verified 2026-10-05 15:00 UTC; live pages display confirmed_empty near-total silence, explaining intentional RSS withholding. Original UID/raw/audio retained; no availability override. See audit Denton withheld-media distinction."
+    },
+    {
+      "case_id": "denton-tx-a9089a57a1557991-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "a9089a57a1557991",
+      "provider_guid": "122084",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-1-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-b50c6a018b2c08e7-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "b50c6a018b2c08e7",
+      "provider_guid": "120859",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-library-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "c10f3f6cd97ac38f",
+      "provider_guid": "118306",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-library-board"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-c26f2f99a4bdaf8f-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "c26f2f99a4bdaf8f",
+      "provider_guid": "14400",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Ownership proven; existing confirmed_empty media verdict remains unchanged and is a separate availability obligation.",
+      "next_action": "Reopen ownership only if deployed routing changes; media availability re-evaluation requires separate evidence and authorization.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-tirz-2-board"
+      ],
+      "status": "resolved",
+      "disposition": "Full source replay and deployed direct pages HTTP200 under exact expected owners verified 2026-10-05 15:00 UTC; live pages display confirmed_empty near-total silence, explaining intentional RSS withholding. Original UID/raw/audio retained; no availability override. See audit Denton withheld-media distinction."
+    },
+    {
+      "case_id": "denton-tx-d419e8107262d0d0-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "d419e8107262d0d0",
+      "provider_guid": "120506",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "denton-tx-e7c1990b7a8e539e-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "e7c1990b7a8e539e",
+      "provider_guid": "120835",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "None for this exact ownership correction; broader historical coverage remains separate.",
+      "next_action": "Reopen if subsequent deployed proof changes UID/audio or ownership.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-health-building-standards-commission"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original audio URL and exact expected live feed membership on 2026-10-05 15:00 UTC after deployment 37321232154 main8a4adbeb; see committed Denton full-stack verification audit."
+    },
+    {
+      "case_id": "fort-worth-tx-081d2695d7d0136a-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "081d2695d7d0136a",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6334",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Original combined-recording segment binding remains unavailable; accepted no-recording disposition, not proof-complete ownership.",
+      "next_action": "Reopen only if independently bound original media or contradictory evidence appears; do not attach the current budget-only video to this listing.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-city-council-worksession",
+        "fort-worth-tx-community-development-committee",
+        "fort-worth-tx-property-management-and-environmental-services-committee"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: retained combined schedule listing without separately bound media. Separate budget and committee recordings exist; preserve all raw records and current four feed assignments. Exact original segment ownership is not proven. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "fort-worth-tx-0c66fc968402fabd-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "0c66fc968402fabd",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
+      "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
+    },
+    {
+      "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "0d5832dbd08e6dd8",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "fort-worth-tx-1cbf75c664b7c63e-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "1cbf75c664b7c63e",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1251",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-1d3f5b988918cba0-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "1d3f5b988918cba0",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2292",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-27254aa1a700569f-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "27254aa1a700569f",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "497b3aa05255bfb9",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Retain source records and both participant subscriptions; current Council RSS is bounded and omits this historical item",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Proven Council/EMSISD joint: new participant RSS and retained Council page verified original UID/audio after #2088 deployment"
+    },
+    {
+      "case_id": "fort-worth-tx-6a1dd0e9e8088440-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "6a1dd0e9e8088440",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=155",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-83d6abdb749bc76f-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "83d6abdb749bc76f",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2015",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-99152cb9e61fa091-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "99152cb9e61fa091",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
+      "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
+    },
+    {
+      "case_id": "fort-worth-tx-b7a9ee9eae6fafc6-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "b7a9ee9eae6fafc6",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=153",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-c57e1210d9282ab1-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "c57e1210d9282ab1",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1761",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-e0736bdd5835b1d4-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "e0736bdd5835b1d4",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2015",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "fort-worth-tx-ead427dae0bbb284-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "ead427dae0bbb284",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6334",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Original combined-recording segment binding remains unavailable; accepted no-recording disposition, not proof-complete ownership.",
+      "next_action": "Reopen only if independently bound original media or contradictory evidence appears; do not attach the current budget-only video to this listing.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-city-council-worksession",
+        "fort-worth-tx-community-development-committee",
+        "fort-worth-tx-property-management-and-environmental-services-committee"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: retained combined schedule listing without separately bound media. Separate budget and committee recordings exist; preserve all raw records and current four feed assignments. Exact original segment ownership is not proven. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "fort-worth-tx-f28ae055829705ec-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "f28ae055829705ec",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2292",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
+    },
+    {
+      "case_id": "dallas-tx-130a7ebded8e0e1d-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "130a7ebded8e0e1d",
+      "provider_guid": "269608",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this ownership correction; broader source coverage remains separate.",
+      "next_action": "Reopen if subsequent replay or deployed ownership changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official dated body/recording proof retained in audit; deployed RSS verified after human merges #2063/#2066, exact retained audio and absence from current Council RSS. See CBTF deployment closure audit section."
+    },
+    {
+      "case_id": "dallas-tx-5e9fdb6ff9e8ef68-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "5e9fdb6ff9e8ef68",
+      "provider_guid": "202453",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-citizens-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-6135249a278494c5-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "6135249a278494c5",
+      "provider_guid": "273327",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for the maintainer-directed placement; live feed verified. No separate official agenda was located.",
+      "next_action": "Reopen only if deployed ownership/audio changes or new official evidence contradicts this disposition.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-directed Dallas Bond Program only. Read-only live RSS check found the exact original UID/title/audio in Bond Program and absent from Public Info and the dedicated Task Force feed; see dallas-cbtf-live-rss-2026-10-07.md. The City archive page is dated; its machine transcript is unreviewed, and no separate official agenda was located."
+    },
+    {
+      "case_id": "dallas-tx-6a3caf1854bdd2cd-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "6a3caf1854bdd2cd",
+      "provider_guid": "277589",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "dallas-tx-78173acda7f7efea-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "78173acda7f7efea",
+      "provider_guid": "269613",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-8280ec97799c999e-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "8280ec97799c999e",
+      "provider_guid": "269612",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "No remaining bounded ownership evidence gap; official Aug15 minutes and retained source chapter binding recorded in the audit.",
+      "next_action": "Retain official/source and deployed RSS proof; preserve original records and audio.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-flood-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Dedicated Flood subscription deployed after human merge #2091; exact original UID and hosted audio URL verified in live RSS."
+    },
+    {
+      "case_id": "dallas-tx-84fcc0492e66906d-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "84fcc0492e66906d",
+      "provider_guid": "233037",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "dallas-tx-8969ad6d91ed23d2-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "8969ad6d91ed23d2",
+      "provider_guid": "269610",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-economic-development-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-96c10f4f75706719-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "96c10f4f75706719",
+      "provider_guid": "246971",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this ownership correction; broader source coverage remains separate.",
+      "next_action": "Reopen if subsequent replay or deployed ownership changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official dated body/recording proof retained in audit; deployed RSS verified after human merges #2063/#2066, exact retained audio and absence from current Council RSS. See CBTF deployment closure audit section."
+    },
+    {
+      "case_id": "dallas-tx-977d943cea00258e-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "977d943cea00258e",
+      "provider_guid": "269611",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-critical-facilities-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "dallas-tx-aa65e2aafc90711b-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "aa65e2aafc90711b",
+      "provider_guid": "272574",
+      "question": "Verify the maintainer-directed Dallas Bond Program-only routing after deployment",
+      "missing_evidence": "None for the approved feed placement; the original UID and enclosure are in Bond Program RSS and absent from Public Info and the dedicated Task Force RSS.",
+      "next_action": "Reopen only if a later selector or deployment changes this verified assignment.",
+      "last_researched": "2026-10-08",
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "After PRs #2164 and #2165, live Dallas Bond Program RSS contains this original UID and its original audio enclosure; Dallas Public Info and dedicated Task Force RSS do not. The enclosure endpoint returned HTTP 200 audio/mp4 to a one-byte range request. See review/evidence/p0-post-merge-check-2026-10-08.md."
+    },
+    {
+      "case_id": "dallas-tx-aaf0ad8eaabe68a5-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "aaf0ad8eaabe68a5",
+      "provider_guid": "269278",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this ownership correction; broader source coverage remains separate.",
+      "next_action": "Reopen if subsequent replay or deployed ownership changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official dated body/recording proof retained in audit; deployed RSS verified after human merges #2063/#2066, exact retained audio and absence from current Council RSS. See CBTF deployment closure audit section."
+    },
+    {
+      "case_id": "dallas-tx-cba1e023051d7c94-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "cba1e023051d7c94",
+      "provider_guid": "269916",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this ownership correction; broader source coverage remains separate.",
+      "next_action": "Reopen if subsequent replay or deployed ownership changes.",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official dated body/recording proof retained in audit; deployed RSS verified after human merges #2063/#2066, exact retained audio and absence from current Council RSS. See CBTF deployment closure audit section."
+    },
+    {
+      "case_id": "dallas-tx-deb5a67aa9b6e8d1-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "deb5a67aa9b6e8d1",
+      "provider_guid": "259822",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "dallas-tx-eb1c279cc51a9b04-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "eb1c279cc51a9b04",
+      "provider_guid": "202452",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-bond-public-town-halls"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-eeca5aeceda62d39-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "eeca5aeceda62d39",
+      "provider_guid": "272005",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
+    },
+    {
+      "case_id": "dallas-tx-fc9ad3b1d9def142-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "fc9ad3b1d9def142",
+      "provider_guid": "202451",
+      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-bond-public-town-halls"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-16300c982b358fe9-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "16300c982b358fe9",
+      "provider_guid": "270975",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, “Streets and Transportation Meeting #6,” which matches the retained provider record date/title. The page’s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "dallas-tx-2b172a76868ad86c-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "2b172a76868ad86c",
+      "provider_guid": "259821",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-2bc4c440c974dba8-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "2bc4c440c974dba8",
+      "provider_guid": "233032",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "No remaining bounded ownership gap; original dated source chapter and independent city Streets archive/minutes retained in audit.",
+      "next_action": "Retain original source and deployed ownership proof; preserve raw identity and audio.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original dated Streets source chapter; live dedicated RSS has exact original UID/audio and current standing Transportation RSS excludes it."
+    },
+    {
+      "case_id": "dallas-tx-2d2bc233efd9bf97-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "2d2bc233efd9bf97",
+      "provider_guid": "269407",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "The retained source record dates this episode August 10, 2023, but the official Dallas Streets and Transportation Subcommittee page currently lists August 15 as Meeting #5, not an August 10 meeting. No dated official August 10 agenda/minutes or exact official video link was located; the provider record alone is not independent proof.",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "dallas-tx-427b4f7de9ec3a32-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "427b4f7de9ec3a32",
+      "provider_guid": "269609",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-8578348e702caf35-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "8578348e702caf35",
+      "provider_guid": "277830",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 27 Streets meeting or bind provider GUID277830 / this UID to an official agenda or recording.",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "dallas-tx-ae8f0826293006f0-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "ae8f0826293006f0",
+      "provider_guid": "259823",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "No remaining bounded ownership gap; original dated source chapter and independent city Streets archive retained in audit.",
+      "next_action": "Retain original source and deployed ownership proof; preserve raw identity and audio.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Verified original dated Streets source chapter; live dedicated RSS has exact original UID/audio and current standing Transportation RSS excludes it."
+    },
+    {
+      "case_id": "dallas-tx-b0471f29622b8165-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "b0471f29622b8165",
+      "provider_guid": "277827",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 26 Streets meeting or bind provider GUID277827 / this UID to an official agenda or recording.",
+      "next_action": "Reopen if new or contradictory evidence changes this accepted publication disposition; no feed or record change is required.",
+      "last_researched": "2026-10-10",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-approved closeout in chat on 2026-10-09 Central: accepted publication with documented provenance limitation. Preserve original source/UID/audio in all three approved feeds. Independent exact-date agenda-to-recording binding remains unavailable. See historical-six-case-closeout-2026-10-10.md."
+    },
+    {
+      "case_id": "dallas-tx-fe0b7e556c694307-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "fe0b7e556c694307",
+      "provider_guid": "259827",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    },
+    {
+      "case_id": "dallas-tx-ffd212474f9b51ad-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "ffd212474f9b51ad",
+      "provider_guid": "232343",
+      "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
+    }
+  ]
+}

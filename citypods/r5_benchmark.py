@@ -19,8 +19,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from citypods.compute.llm import PerModelBatchingBackends
+from citypods.compute.llm import PerModelBatchingBackends, dispatch_v2_ingress_open
 from citypods.compute.llm_lanes import lane_for
+from citypods.compute.llm_work import LLMWorkTracker, tracked_producer, write_run_event
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import load_records, record_to_episode, source_key
 from citypods.state import resolve_state_dir
@@ -285,6 +286,7 @@ def _example_chapter(example: dict[str, Any]) -> dict[str, Any]:
     return dict(example["source"])
 
 
+@tracked_producer("r5-benchmark")
 def _run_taggers(
     *,
     run: dict[str, Any],
@@ -294,15 +296,22 @@ def _run_taggers(
     models: tuple[str, ...],
     allow_paid: bool,
     deadline_at: datetime,
+    tracker: LLMWorkTracker | None = None,
 ) -> None:
+    tracker = tracker or LLMWorkTracker()
+    tracker.activate("r5-benchmark:tag", producer="r5-benchmark")
     outputs = run.setdefault("taggers", {})
     for model in models:
         model_run = outputs.setdefault(model, {"model": model, "examples": {}})
         backend = backends.collecting(model)
         for example in dataset["examples"]:
             example_id = example["example_id"]
+            work = tracker.item(
+                "r5-benchmark:tag", f"tag:{model}:{example_id}", producer="r5-benchmark"
+            )
             prior = model_run["examples"].get(example_id) or {}
             if prior.get("status") == "resolved":
+                work.consumed(reused=True)
                 continue
             started = time.monotonic()
             recipe_hash = _digest(
@@ -318,7 +327,7 @@ def _run_taggers(
             try:
                 metadata: dict[str, Any] = {}
                 _episode_tags, chapter_tags, pending, resolved_model = llm_tag_suggestions(
-                    backend,
+                    work.backend(backend),
                     taxonomy=taxonomy,
                     agenda_item_titles="",
                     agenda_text="",
@@ -333,6 +342,7 @@ def _run_taggers(
                 )
                 elapsed_ms = round((time.monotonic() - started) * 1000, 1)
                 if pending:
+                    work.defer("queued")
                     model_run["examples"][example_id] = {
                         "status": "pending",
                         "provider_model": resolved_model or model,
@@ -359,7 +369,9 @@ def _run_taggers(
                     "tags": decorated,
                     "tag_ids": sorted({str(item["id"]) for item in decorated}),
                 }
+                work.consumed()
             except Exception as exc:  # noqa: BLE001 — one route/example must not lose the run
+                work.defer("errored")
                 model_run["examples"][example_id] = {
                     "status": "error",
                     "error": str(exc)[:500],
@@ -367,6 +379,7 @@ def _run_taggers(
                 }
 
 
+@tracked_producer("r5-benchmark")
 def _run_prelabeler(
     *,
     run: dict[str, Any],
@@ -377,7 +390,10 @@ def _run_prelabeler(
     llm_schema_version: str,
     allow_paid: bool,
     deadline_at: datetime,
+    tracker: LLMWorkTracker | None = None,
 ) -> None:
+    tracker = tracker or LLMWorkTracker()
+    tracker.activate("r5-benchmark:judge", producer="r5-benchmark")
     prelabel = run.setdefault(
         "prelabeler",
         {
@@ -394,8 +410,12 @@ def _run_prelabeler(
     taggers = run.get("taggers") or {}
     for example in dataset["examples"]:
         example_id = example["example_id"]
+        work = tracker.item(
+            "r5-benchmark:judge", f"prelabel:{model}:{example_id}", producer="r5-benchmark"
+        )
         prior = prelabel["examples"].get(example_id) or {}
         if prior.get("status") == "resolved":
+            work.consumed(reused=True)
             continue
         # Every tagger's candidates are part of this example's subject set, and a prelabel entry
         # that reaches "resolved" is never recomputed (the early return just above). Assessing an
@@ -409,6 +429,7 @@ def _run_prelabeler(
             if ((model_run.get("examples") or {}).get(example_id) or {}).get("status") != "resolved"
         ]
         if unresolved:
+            work.defer("blocked")
             prelabel["examples"][example_id] = {
                 "status": "awaiting-taggers",
                 "awaiting_models": sorted(unresolved),
@@ -438,6 +459,7 @@ def _run_prelabeler(
             result = (model_run.get("examples") or {}).get(example_id) or {}
             subjects.extend(result.get("tags") or [])
         if not subjects:
+            work.consumed(reused=True)
             prelabel["examples"][example_id] = {"status": "no-candidates", "assessments": {}}
             continue
         started = time.monotonic()
@@ -455,7 +477,7 @@ def _run_prelabeler(
         try:
             metadata: dict[str, Any] = {}
             assessments, pending, resolved_model = llm_prelabel_candidates(
-                backend,
+                work.backend(backend),
                 candidates=subjects,
                 taxonomy=taxonomy,
                 chapters=[_example_chapter(example)],
@@ -488,7 +510,14 @@ def _run_prelabeler(
                 "subject_count": len(subjects),
             }
             prelabel["examples"][example_id] = entry
+            if pending:
+                work.defer("queued")
+            elif all(str(item.get("candidate_id")) in assessments for item in subjects):
+                work.consumed()
+            else:
+                work.defer("errored")
         except Exception as exc:  # noqa: BLE001 — preserve the rest of the benchmark
+            work.defer("errored")
             prelabel["examples"][example_id] = {
                 "status": "error",
                 "error": str(exc)[:500],
@@ -497,6 +526,7 @@ def _run_prelabeler(
             }
 
 
+@tracked_producer("r5-benchmark")
 def _run_pairwise(
     *,
     run: dict[str, Any],
@@ -508,12 +538,15 @@ def _run_pairwise(
     sample_size: int,
     allow_paid: bool,
     deadline_at: datetime,
+    tracker: LLMWorkTracker | None = None,
 ) -> None:
     """Run an optional small blind/order-swapped judge sample.
 
     Pairwise judging is intentionally opt-in.  The judge must be outside the candidate model set,
     so independence cannot be lost silently when the benchmark model list changes.
     """
+    tracker = tracker or LLMWorkTracker()
+    tracker.activate("r5-benchmark:judge", producer="r5-benchmark")
     pairwise = run.setdefault(
         "pairwise", {"judge_model": judge_model, "sample_size": sample_size, "results": []}
     )
@@ -549,19 +582,27 @@ def _run_pairwise(
         for left, right in itertools.combinations(models, 2):
             left_result = (taggers.get(left, {}).get("examples") or {}).get(example_id) or {}
             right_result = (taggers.get(right, {}).get("examples") or {}).get(example_id) or {}
-            if left_result.get("status") != "resolved" or right_result.get("status") != "resolved":
-                continue
+            blocked = (
+                left_result.get("status") != "resolved" or right_result.get("status") != "resolved"
+            )
             left_tags = [blind_candidate(item) for item in left_result.get("tags") or []]
             right_tags = [blind_candidate(item) for item in right_result.get("tags") or []]
             for first, second in order_swapped_pairs(left, right):
                 comparison_id = _digest([run["run_id"], example_id, first, second, judge_model])
+                work = tracker.item(
+                    "r5-benchmark:judge", f"pair:{comparison_id}", producer="r5-benchmark"
+                )
+                if blocked:
+                    work.defer("blocked")
+                    continue
                 if comparison_id in resolved_ids:
+                    work.consumed(reused=True)
                     continue
                 first_tags = left_tags if first == left else right_tags
                 second_tags = right_tags if second == right else left_tags
                 try:
                     decision, pending = pairwise_judge(
-                        judge_backend,
+                        work.backend(judge_backend),
                         spec=PairwiseEvaluatorSpec(
                             task="tag",
                             purpose="r5-benchmark:judge",
@@ -590,9 +631,16 @@ def _run_pairwise(
                         "decision": decision,
                     }
                     store(entry)
+                    if pending:
+                        work.defer("queued")
+                    elif decision is not None:
+                        work.consumed()
+                    else:
+                        work.defer("errored")
                     if entry["status"] == "resolved":
                         resolved_ids.add(comparison_id)
                 except Exception as exc:  # noqa: BLE001 — preserve tagger metrics on judge failure
+                    work.defer("errored")
                     store(
                         {
                             "comparison_id": comparison_id,
@@ -1095,6 +1143,18 @@ def run(
         raise ValueError(
             "pairwise benchmark judging requires a judge_model outside the candidate models"
         )
+    purposes = ["r5-benchmark:tag"]
+    if pairwise_samples:
+        purposes.append("r5-benchmark:judge")
+    for purpose in purposes:
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"r5-benchmark: {purpose} ingress closed ({reasons}); skipping new benchmark work",
+                flush=True,
+            )
+            return 0
     site = load_site_config(site_config_path)
     prelabeler_llm_schema_version = str(
         ((site.get("tagging") or {}).get("prelabeler") or {}).get("llm_schema_version") or "1"
@@ -1159,6 +1219,7 @@ def run(
     # One run-scoped collector shared by all three phases: every queue-only job the tagger,
     # prelabeler, and pairwise-judge passes create is submitted in one bounded batch per model
     # below, instead of one Worker request per (model, example).
+    tracker = LLMWorkTracker()
     backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
     _run_taggers(
         run=run_state,
@@ -1168,6 +1229,7 @@ def run(
         models=models,
         allow_paid=allow_paid,
         deadline_at=deadline,
+        tracker=tracker,
     )
     _run_prelabeler(
         run=run_state,
@@ -1178,6 +1240,7 @@ def run(
         llm_schema_version=prelabeler_llm_schema_version,
         allow_paid=allow_paid,
         deadline_at=deadline,
+        tracker=tracker,
     )
     if pairwise_samples:
         _run_pairwise(
@@ -1190,6 +1253,7 @@ def run(
             sample_size=pairwise_samples,
             allow_paid=allow_paid,
             deadline_at=deadline,
+            tracker=tracker,
         )
     # One bounded ingress batch per model for everything the three phases collected. Newly
     # submitted work resolves on a later run from its durable record, exactly as a pending job
@@ -1211,7 +1275,8 @@ def run(
         run_state["completed_at"] = _utc_now()
     compute_metrics(state, taxonomy)
     save_benchmark_state(state_path, state)
-    push_state(storage, state_dir, only_paths=[STATE_NAME])
+    event = write_run_event(tracker, state_dir, "r5-benchmark")
+    push_state(storage, state_dir, only_paths=[STATE_NAME, event])
     print(
         f"r5-benchmark: dataset={dataset['actual_size']} taggers={len(models)} "
         f"prelabeler={prelabeler_model} state={STATE_NAME}"

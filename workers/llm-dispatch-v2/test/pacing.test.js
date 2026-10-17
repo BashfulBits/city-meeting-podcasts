@@ -374,3 +374,83 @@ test("effectiveBufferSeconds ignores absent or nonsensical buffers", () => {
   assert.equal(effectiveBufferSeconds({ buffer_seconds: 0, buffer_updated_at: now }, now), 0);
   assert.equal(effectiveBufferSeconds({ buffer_seconds: -5, buffer_updated_at: now }, now), 0);
 });
+
+
+test("TPD refills continuously: the reported 748-token deficit takes 323.136 seconds", () => {
+  const route = freshRoute({ tpd: 200000, tpd_used: 199659, tpd_updated_at: NOW });
+  const request = { input_token_estimate: 1000, max_output_token_estimate: 89 };
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 323136);
+  assert.equal(earliestSafeStart(route, request, NOW + 86400000, NOW + 86400000).notBeforeAt,
+    NOW + 86400000);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 200001, max_output_token_estimate: 0 }, NOW, NOW), null);
+});
+
+test("learned free prompt cap preserves small requests and rejects larger ones", () => {
+  const route = freshRoute({ prompt_cap_estimate: 1000 });
+  assert.notEqual(earliestSafeStart(route,
+    { input_token_estimate: 1000, max_output_token_estimate: 0 }, NOW, NOW), null);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 1001, max_output_token_estimate: 0 }, NOW, NOW), null);
+});
+
+test("Google uses input-only quota and trailing-minute starts despite idle credit", () => {
+  const route = freshRoute({ provider: "gemini", tpm: 10000,
+    input_window_json: JSON.stringify([{ at: NOW - 1000, tokens: 9000 }]),
+    full_token_budget: 1000000 });
+  const request = { input_token_estimate: 2000, max_output_token_estimate: 8192 };
+  assert.equal(reservationFor(request, { route }), 2000);
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 59000);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 1000, max_output_token_estimate: 8192 }, NOW, NOW).notBeforeAt, NOW);
+});
+
+
+test("Google releases trailing-window credit chronologically across overlapping claims", () => {
+  const route = freshRoute({ provider: "gemini", tpm: 10000, full_token_budget: 1000000,
+    input_window_json: JSON.stringify([
+      { at: NOW - 10000, tokens: 8000 }, { at: NOW - 50000, tokens: 4000 },
+    ]) });
+  const request = { input_token_estimate: 1000, max_output_token_estimate: 8192 };
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 10000);
+});
+
+test("a learned refusal skips the route, the drain pass re-tests it, and a learned success lifts the ceiling", () => {
+  const now = Date.now();
+  const base = { rpm: 30, tpm: 100000, hard_input_ceiling: 10000, input_token_ratio: 1 };
+  const at = (route, raw, options = {}) =>
+    earliestSafeStart(route, { input_token_estimate: raw }, now, now, options);
+  // Configured ceiling: 9,000 fits, 12,000 does not.
+  assert.notEqual(at(base, 9000), null);
+  assert.equal(at(base, 12000), null);
+  // The route has actually accepted 13,000 provider tokens: the conservative ceiling no longer
+  // rejects 12,000.
+  const accepted = { ...base, input_accepted_max: 13000, input_accepted_at: now - 1000 };
+  assert.notEqual(at(accepted, 12000), null);
+  // ...but 14,000 is still above both.
+  assert.equal(at(accepted, 14000), null);
+  // The route refused 8,000: 8,000 and larger are skipped without calling it, smaller ones go.
+  const refused = { ...base, input_rejected_min: 8000, input_rejected_at: now - 1000 };
+  assert.equal(at(refused, 8000), null);
+  assert.equal(at(refused, 9000), null);
+  assert.notEqual(at(refused, 7000), null);
+  // The claim's drain pass (ceilingTolerance) re-tests it so a refusal cannot strand a job.
+  assert.notEqual(at(refused, 8500, { ceilingTolerance: true }), null);
+  // A refusal older than the TTL is forgotten.
+  const old = { ...base, input_rejected_min: 8000, input_rejected_at: now - 8 * 24 * 3600 * 1000 };
+  assert.notEqual(at(old, 9000), null);
+});
+
+test("the size gates use the admission ratio while the reservation keeps the conservative one", () => {
+  const now = Date.now();
+  const route = { provider: "gemini", rpm: 30, tpm: 14400, hard_input_ceiling: 14400, input_token_ratio: 1.4 };
+  const job = { input_token_estimate: 11_000, max_output_token_estimate: 500 };
+  // Conservatively 11,000 x 1.4 = 15,400 > 14,400: refused by the ceiling.
+  assert.equal(earliestSafeStart(route, job, now, now, { inputRatio: 1.4 }), null);
+  // At the admission ratio 1.15 it is 12,650: admitted, but still reserved at the conservative ratio.
+  const start = earliestSafeStart(route, job, now, now, { inputRatio: 1.4, admitRatio: 1.15 });
+  assert.notEqual(start, null);
+  assert.equal(start.reservation, 15_400);
+  // The admission ratio can never exceed the conservative one.
+  assert.equal(earliestSafeStart(route, job, now, now, { inputRatio: 1.4, admitRatio: 2.0 }), null);
+});

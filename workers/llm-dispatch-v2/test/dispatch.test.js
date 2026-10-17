@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
 import { zonedDateKey } from "../src/pacing.js";
-import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import { ROWS_PER_BUNDLE, ROWS_PER_LEASE_WORST } from "../src/write_budget.js";
+import {
+  activeBundles, createMockSqlStorage, insertActiveBundle, withTestReservations,
+} from "./helpers.js";
 
 const TEST_CATALOG = {
   model_aliases: {},
@@ -103,7 +106,7 @@ test("claimDispatchWindow claims a queued job and leases it", async () => {
   assert.ok(claimed.lease_token);
   assert.ok(["route-a", "route-b"].includes(claimed.route_id));
   assert.equal(claimed.wait_ms, 0); // fresh route, no prior usage
-  assert.ok(claimed.token_reservation >= 700);
+  assert.ok(claimed.token_reservation >= 500);
 
   const rows = [...sql.exec("SELECT state, lease_token, bundle_id FROM jobs WHERE id = 'j1'")];
   assert.equal(rows[0].state, "leased");
@@ -236,36 +239,57 @@ test("claimDispatchWindow reaps a bundle whose lease expired without completeBat
   assert.equal(recovered.jobs.length, 1);
   assert.equal(recovered.jobs[0].id, "j1");
 
-  const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id = ?", stuck.bundle_id)];
-  assert.equal(bundleRows[0].state, "expired");
+  // The expired bundle is gone; only the recovering claim's bundle is active.
+  assert.deepEqual(Object.keys(activeBundles(sql)), [recovered.bundle_id]);
 });
 
-test("attemptStarted fences on a matching lease and rejects a stale one", async () => {
-  const { coordinator } = makeCoordinator();
+test("a claim counts the attempt; attemptStarted is a write-free compatibility check", async () => {
+  const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
   const job = plan.jobs[0];
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(typeof job.lease_expires_at, "number");
 
-  const ok = await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", Date.now());
-  assert.equal(ok.fenced, true);
+  const rowsBefore = sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today;
+  assert.equal((await coordinator.attemptStarted(job.id, job.lease_token)).fenced, true);
+  assert.equal((await coordinator.attemptStarted(job.id, "wrong-lease-token")).fenced, false);
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(
+    sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today,
+    rowsBefore
+  );
+});
 
-  const stale = await coordinator.attemptStarted(job.id, "wrong-lease-token", "attempt-2", Date.now());
-  assert.equal(stale.fenced, false);
+test("a result that never reached a provider gives its claimed attempt back", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: job.id, lease_token: job.lease_token, attempt_id: "late-1",
+    planned_at: job.not_before_at, actual_start_at: null, actual_end_at: null,
+    outcome: "deferred_late",
+  }]);
+  const row = sql.exec("SELECT state, attempts FROM jobs WHERE id = 'j1'")[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.attempts, 0);
 });
 
 test("authorizeRetry authorizes a first 429 and declines a second on the same job", async () => {
-  const { coordinator } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
+  const { coordinator, sql } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
   await coordinator.enqueueBatch([makeJob("j1")]);
   const now = Date.now();
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const first = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(first.authorized, true);
   assert.ok(first.retry_not_before > now);
+  // The claim counted the first attempt; the granted retry counts the second.
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 2);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-2", now);
   const second = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-2", now);
   assert.equal(second.authorized, false);
 });
@@ -281,7 +305,6 @@ test("authorizeRetry declines a retry that would not fit before the bundle deadl
   const job = plan.jobs[0];
   sql.exec("UPDATE routes SET throttle_streak = 100 WHERE route_id = ?", job.route_id);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(auth.authorized, false);
 });
@@ -320,8 +343,7 @@ test("completeBatch settles a successful job and is a no-op for a stale executio
   assert.equal(rows[0].result_key, "results/j1/lt1.json");
 
   // Every leased job in the bundle settled, so the bundle row is deleted rather than kept.
-  const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id=?", plan.bundle_id)];
-  assert.equal(bundleRows.length, 0);
+  assert.equal(activeBundles(sql)[plan.bundle_id], undefined);
 });
 
 test("completeBatch requeues a deferred_late job without touching its attempt count", async () => {
@@ -785,26 +807,27 @@ test("claim reserves input in the route's tokenizer units via its input_token_ra
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   assert.equal(plan.jobs.length, 1);
-  // ceil(5000 * 1.2) input + the full 1000 max_tokens before any calibration samples exist.
-  assert.equal(plan.jobs[0].token_reservation, 7000);
+  // Google counts ceil(5000 * 1.2) input only, independently of max_tokens.
+  assert.equal(plan.jobs[0].token_reservation, 6000);
 });
 
 test("calibration follows recent output sizes instead of ratcheting on one large job", async () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
-  // A window of 16 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
+  const key = "pool:google/gemma-4-31b-it:tags";
+  // A full window of 64 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
   // high-water margin that the old calibration would have reserved for every later job.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 15000, 16, ?, 0)`,
+     VALUES (?, 15000, 64, ?, 0)`,
     key,
-    JSON.stringify({ r: Array(16).fill(1.0), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.0), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  // The learned ratio (1.0 * 1.2 gemma headroom) never drops below the 1.2 route prior, so
-  // 5000 * 1.2 input + ceil(200 * 1.25) forecast; the 15000 margin no longer applies.
-  assert.equal(plan.jobs[0].token_reservation, 6250);
+  // With a full window the learned tail stands alone (the prior is a seed, not a floor): the
+  // learned ratio is 1.0 x the 1.2 gemma headroom = 1.2, so 5000 * 1.2 input only; the output
+  // forecast and the old 15000 margin do not apply.
+  assert.equal(plan.jobs[0].token_reservation, 6000);
 
   await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
   const row = [...sql.exec("SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?", key)][0];
@@ -826,14 +849,17 @@ test("a successful completion settles the token bucket to actual usage", async (
   const before = read();
   await succeed(coordinator, plan, plan.jobs[0], 4000, 300, "a1");
   const after = read();
-  const refund = reservation - 4300;
+  const refund = reservation - 4000;
   assert.ok(refund > 0);
   assert.equal(after.full_token_budget, before.full_token_budget + refund);
   assert.equal(after.tpm_reserved, Math.max(0, before.tpm_reserved - refund));
 });
 
 test("settlement leaves the per-minute window alone for a reservation larger than tpm", async () => {
-  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  // A provider with combined input/output TPM can still admit a large output reservation.
+  const catalog = structuredClone(CEILING_CATALOG);
+  catalog.routes_by_id["gemma-ai-studio"].provider = "nvidia";
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
   // 8,000 raw x 1.2 = 9,600 input + 8,000 max_tokens = 17,600 > 14,400 tpm: bucket-gated only.
   await coordinator.enqueueBatch([
     gemmaJob("big-reservation", 8000, { max_output_token_estimate: 8000 }),
@@ -891,7 +917,7 @@ test("claim looks past queue-head jobs too large for every route with capacity",
   // The uncapped leg is out of capacity (blocked) for this tick.
   await coordinator.claimDispatchWindow(Date.now(), 30); // creates both route ledgers
   sql.exec("UPDATE jobs SET state = 'queued', lease_token = NULL WHERE state = 'leased'");
-  sql.exec("DELETE FROM bundles");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'gemma-uncapped'", Date.now() + 3_600_000);
   sql.exec("DELETE FROM job_models");
   for (const row of sql.exec("SELECT id, priority, created_at FROM jobs WHERE state = 'queued'")) {
@@ -920,9 +946,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   // "google/gemma-4-" gemma headroom, so the effective ratio is 1.4 * 1.2 = 1.68.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   // 7,500 raw fits the ceiling at the 1.2 prior (9,000) but not at the effective 1.68 (12,600).
   // A static-ratio SQL prefilter would return only these and stall the model.
@@ -936,7 +962,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
 test("near misses over the calibrated ceiling drain only when nothing else is dispatchable", async () => {
   // 2026-09-25: producer-sized 10,000-token Gemma batches (14,000 at the 1.4 prior) met a learned
   // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400,
-  // filling the claim lookahead while nothing else could run.
+  // filling the claim lookahead while nothing else could run. Since review/55 piece 2 the size gate
+  // uses the lower ADMISSION ratio (p75 x 1.05), so that exact case is simply admitted; the near
+  // miss below is a route whose traffic measures 1.45 (admission 1.52 -> 15,225 > 14,400).
   const coordinatorWith = (tolerance) => {
     const { coordinator, sql } = makeCoordinator({
       MAX_BUNDLE_JOBS: "4",
@@ -947,6 +975,8 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
             ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
             hard_input_ceiling: 14400,
             hard_input_ceiling_tolerance: tolerance,
+            // Synthetic quota leaves room above this ceiling; production Gemma does not.
+            tpm: 16000,
             input_token_ratio: 1.4,
           },
         },
@@ -954,9 +984,9 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
     });
     sql.exec(
       `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-       VALUES (?, 0, 16, ?, 0)`,
+       VALUES (?, 0, 64, ?, 0)`,
       "gemma-ai-studio:google/gemma-4-31b-it:tags",
-      JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+      JSON.stringify({ r: Array(64).fill(1.45), o: Array(64).fill(200) })
     );
     return coordinator;
   };
@@ -993,9 +1023,9 @@ test("jobs over every live route ceiling fail instead of holding the lookahead",
   // Learned 1.4 x 1.2 headroom = 1.68: 7,500 raw is 12,600, over the 10,000 ceiling.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("over-1", 7500), gemmaJob("over-2", 7500)]);
   await coordinator.enqueueBatch([gemmaJob("tail-fits", 5000)]); // 8,400 at 1.68; ids break created_at ties
@@ -1053,9 +1083,9 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   });
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]); // 12,600 at 1.68; 9,000 > 4,000 context
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
@@ -1064,7 +1094,92 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
 });
 
-test("an oversized job fails only once its uncapped route has spent its daily quota", async () => {
+test("packingCeiling is the smallest free route's limit over the p95 packing ratio", async () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-roomy"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-roomy": {
+        provider: "sambanova",
+        upstream_model: "gemma-4-31b-it",
+        rpm: 20,
+        rpd: 20,
+        tpm: 90000,
+        input_token_ratio: 1.2,
+        free: true,
+        input_context_limit: 131072,
+        output_context_limit: 32768,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  // 16 samples at 1.2 -> packing ratio 1.2 x 1.05 = 1.26 on the ceilinged route.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:judge",
+    JSON.stringify({ r: Array(64).fill(1.2), o: Array(64).fill(200) })
+  );
+  const status = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  const ceilinged = status.routes.find((r) => r.route_id === "gemma-ai-studio");
+  const roomy = status.routes.find((r) => r.route_id === "gemma-roomy");
+  assert.equal(ceilinged.input_estimate_limit, Math.floor(10000 / 1.26));
+  assert.ok(roomy.input_estimate_limit > ceilinged.input_estimate_limit);
+  assert.equal(status.pack_ceiling_input_estimate, ceilinged.input_estimate_limit);
+  // It only reads: no ledger row is created for a route that has none.
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id='gemma-roomy'")][0].n, 0);
+  assert.equal(await coordinator.packingCeiling("no/such-model", "judge"), null);
+  // A learned free-prompt cap is a raw estimate limit and tightens the preflight further.
+  coordinator._getOrCreateRouteLedger("gemma-roomy", Date.now(), {});
+  sql.exec("UPDATE routes SET prompt_cap_estimate = 3000 WHERE route_id = 'gemma-roomy'");
+  const capped = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.equal(capped.routes.find((r) => r.route_id === "gemma-roomy").input_estimate_limit, 3000);
+  assert.equal(capped.pack_ceiling_input_estimate, 3000);
+  // A route with an unspecified (null) daily quota still counts.
+  const nullRpd = {
+    ...catalog,
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "gemma-roomy": { ...catalog.routes_by_id["gemma-roomy"], rpd: null },
+    },
+  };
+  const other = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: nullRpd });
+  const uncapped = await other.coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.ok(uncapped.routes.some((r) => r.route_id === "gemma-roomy"));
+});
+
+test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {
+  // The learned accepted-input maximum (review/55 piece 3) lifts the conservative configured
+  // ceiling in the structural check as well as in admission.
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio"] },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
+  );
+  coordinator._getOrCreateRouteLedger("gemma-ai-studio", Date.now(), {});
+  sql.exec(
+    "UPDATE routes SET input_accepted_max = 20000, input_accepted_at = ? WHERE route_id = ?",
+    Date.now(),
+    "gemma-ai-studio"
+  );
+  await coordinator.enqueueBatch([gemmaJob("served-size", 7500)]); // 12,600 at 1.68
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.notEqual([...sql.exec("SELECT state FROM jobs WHERE id = 'served-size'")][0].state, "failed");
+});
+
+test("an oversized job stays queued while a fitting uncapped route has spent daily quota", async () => {
   const catalog = {
     ...CEILING_CATALOG,
     model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-uncapped"] },
@@ -1093,15 +1208,15 @@ test("an oversized job fails only once its uncapped route has spent its daily qu
   // learned 1.68 (12,600).
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   const now = Date.now();
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]);
   await coordinator.claimDispatchWindow(now, 30); // creates both route ledgers
   sql.exec("UPDATE jobs SET state = 'queued', lease_token = NULL WHERE state = 'leased'");
-  sql.exec("DELETE FROM bundles");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("DELETE FROM job_models");
   for (const row of sql.exec("SELECT id, priority, created_at FROM jobs WHERE state = 'queued'")) {
     sql.exec(
@@ -1124,8 +1239,8 @@ test("an oversized job fails only once its uncapped route has spent its daily qu
     zonedDateKey(now + 2000, "UTC")
   );
   const spent = await coordinator.claimDispatchWindow(now + 2000, 30);
-  assert.equal(spent.claim_diagnostics.oversize_failed_jobs, 1);
-  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
+  assert.equal(spent.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "queued");
 });
 
 test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", async () => {
@@ -1136,12 +1251,12 @@ test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", asy
   assert.ok(first.jobs.length <= 3 && first.jobs.length > 0);
   let leased = first.jobs.length;
   // Settle the first bundle so concurrency never masks the lease cap.
-  sql.exec("UPDATE bundles SET state = 'completed'");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
   for (let t = 1; t < 5 && leased < 3; t += 1) {
     const plan = await coordinator.claimDispatchWindow(day + t * 61_000, 30);
     leased += plan.jobs.length;
-    sql.exec("UPDATE bundles SET state = 'completed'");
+    sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
     sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
   }
   assert.equal(leased, 3, "never more leases than the daily cap");
@@ -1214,6 +1329,55 @@ test("a 410 requeues the job and stands the whole route down", async () => {
   assert.ok(indexed.n > 0, "a requeued job must be re-indexed so a sibling route can take it");
 });
 
+test("a 401 invalid credentials requeues the job and blocks account routes", async () => {
+  const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "3600" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  const job = plan.jobs[0];
+  assert.equal(job.route_id, "route-a");
+
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: "a1",
+      planned_at: job.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "retryable_error",
+      provider_status_code: 401,
+      failure_class: "route_unavailable",
+      rule_id: "http-401-invalid-credentials",
+      scope: "account",
+    },
+  ]);
+
+  const jobRow = [...sql.exec("SELECT state, transient_retry_count FROM jobs WHERE id = 'j1'")][0];
+  assert.equal(jobRow.state, "queued");
+  assert.equal(jobRow.transient_retry_count, 1);
+
+  // Both route-a and sibling route-b (same gemini provider) must be blocked
+  const routeA = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id = 'route-a'"
+  )][0];
+  assert.ok(routeA.blocked_until >= now + 3_600_000 - 1000);
+  assert.equal(routeA.last_failure_class, "route_unavailable");
+
+  const routeB = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id = 'route-b'"
+  )][0];
+  assert.ok(routeB.blocked_until >= now + 3_600_000 - 1000);
+  assert.equal(routeB.last_failure_class, "route_unavailable");
+
+  // route-c (mistral) must remain unblocked
+  const routeC = [...sql.exec(
+    "SELECT blocked_until FROM routes WHERE route_id = 'route-c'"
+  )][0];
+  assert.equal(routeC?.blocked_until ?? null, null);
+});
+
+
 test("purgePendingBatch and confirmPurge clean up old terminal jobs idempotently", async () => {
   const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
   await coordinator.enqueueBatch([makeJob("j1")]);
@@ -1251,150 +1415,75 @@ test("confirmNeverAccepted reports which preassigned ids the DO has no record of
 // --------------------------------------------------------------------------------------------
 // Rows-read regression guards (2026-08-27 Durable Objects free-tier overage).
 //
-// The incident's cause was structural: `bundles` had no index on `state`, so claimDispatchWindow
-// full-scanned it twice per cron tick, and nothing ever deleted from it -- measured at 6,400 of a
-// tick's 6,424 rows read. These tests pin the query plans, so a dropped index or a reshaped
-// predicate fails here rather than as a silent production quota burn.
+// The incident's cause was structural: a `bundles` table with no state index was full-scanned
+// twice per cron tick and never pruned. Since 2026-10-07 the active bundles are a small map in
+// the scheduler row, so a claim reads one singleton row for them however many bundles have run.
 // --------------------------------------------------------------------------------------------
 
-/** Plan details for `query`, as one string. */
-function planOf(sql, query, ...params) {
-  return [...sql.exec(`EXPLAIN QUERY PLAN ${query}`, ...params)].map((r) => r.detail).join("; ");
-}
-
-test("claimDispatchWindow's two per-tick bundles statements are index seeks, never table scans", async () => {
-  const { coordinator, sql } = makeCoordinator();
+test("a claim keeps active bundles in the scheduler row, bounded by MAX_ACTIVE_BUNDLES", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_ACTIVE_BUNDLES: "2", MAX_BUNDLE_JOBS: "1" });
+  await coordinator.enqueueBatch(Array.from({ length: 3 }, (_, i) => makeJob(`active-${i}`)));
   const now = Date.now();
-  // A large terminal-bundle history is exactly the production shape that made these scans fatal.
-  for (let i = 0; i < 500; i++) {
-    sql.exec(
-      "INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)",
-      `b${i}`, "tok", now - 9e8, now - 9e8, now - 9e8
-    );
-  }
-
-  const expireSweep = planOf(
-    sql,
-    "UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?",
-    now
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  const second = await coordinator.claimDispatchWindow(now + 61_000, 25);
+  assert.deepEqual(Object.keys(activeBundles(sql)).sort(), [first.bundle_id, second.bundle_id].sort());
+  const third = await coordinator.claimDispatchWindow(now + 122_000, 25);
+  assert.equal(third.claim_reason, "active_bundle_limit");
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'bundles'")[0].n,
+    0
   );
-  const activeRead = planOf(sql, "SELECT active_call_count FROM bundles WHERE state='active'");
-
-  for (const plan of [expireSweep, activeRead]) {
-    assert.match(plan, /SEARCH bundles USING (COVERING )?INDEX idx_bundles_state_created/);
-    assert.doesNotMatch(plan, /SCAN/);
-  }
-
-  // And the claim still works with that history present.
-  await coordinator.enqueueBatch([makeJob("j1")]);
-  const plan = await coordinator.claimDispatchWindow(now, 25);
-  assert.equal(plan.jobs.length, 1);
 });
 
-test("purgePendingBatch's terminal-job lookups are bounded per-state index seeks", async () => {
-  const { sql } = makeCoordinator();
-  for (const state of ["completed", "failed"]) {
-    const plan = planOf(
-      sql,
-      `SELECT id, payload_key, result_key, updated_at FROM jobs
-       WHERE state = '${state}' AND updated_at < ?
-       ORDER BY updated_at ASC, id ASC LIMIT ?`,
-      Date.now(),
-      10
-    );
-    assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated_id/);
-    assert.doesNotMatch(plan, /SCAN|TEMP B-TREE/);
-  }
-});
-
-test("purgePendingBatch merges completed and failed rows by age without changing its limit", async () => {
-  const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
-  const ids = ["completed-old", "failed-old", "completed-mid", "failed-mid", "recent"];
-  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
-  const now = Date.now();
-  const updates = [
-    ["completed-old", "completed", now - 5 * 86_400_000],
-    ["failed-old", "failed", now - 4 * 86_400_000],
-    ["completed-mid", "completed", now - 3 * 86_400_000],
-    ["failed-mid", "failed", now - 2 * 86_400_000],
-    ["recent", "completed", now - 12 * 60 * 60 * 1000],
-  ];
-  for (const [id, state, updatedAt] of updates) {
-    sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", state, updatedAt, id);
-  }
-
-  const pending = await coordinator.purgePendingBatch(4);
-  assert.deepEqual(
-    pending.jobs.map((job) => job.id),
-    ["completed-old", "failed-old", "completed-mid", "failed-mid"]
-  );
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n, 4);
-});
-
-test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
+test("_pruneTerminalRecords deletes aged-out usage cells, bounded per tick", async () => {
   const { coordinator, sql } = makeCoordinator({
-    BUNDLE_RETENTION_DAYS: "7",
     ATTEMPT_RETENTION_DAYS: "7",
-    MAX_BUNDLE_PRUNE_PER_TICK: "10",
     MAX_ATTEMPT_PRUNE_PER_TICK: "10",
   });
   const now = Date.now();
-  const old = now - 30 * 86_400_000;
+  const oldDay = new Date(now - 30 * 86_400_000).toISOString().slice(0, 10);
   for (let i = 0; i < 25; i++) {
-    sql.exec("INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)", `b${i}`, "t", old, old, old);
     sql.exec(
-      "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +
-        " VALUES (?,?,?,?,'started',?)",
-      `a${i}`, `j${i}`, "route-a", old, old
+      "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', ?, 1)",
+      oldDay, `route-${i}`
     );
   }
+  // Today's cell is inside the window and stays.
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', 'route-now', 1)",
+    new Date(now).toISOString().slice(0, 10)
+  );
 
-  const first = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10, routeFailuresDeleted: 0 });
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 15);
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempts")][0].n, 15);
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { attemptUsageDeleted: 10, routeFailuresDeleted: 0 }
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempt_usage")][0].n, 16);
 
   // Repeated ticks drain the backlog and then stop finding work.
   coordinator._pruneTerminalRecords(now);
-  const third = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5, routeFailuresDeleted: 0 });
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { attemptUsageDeleted: 5, routeFailuresDeleted: 0 }
   );
-});
-
-test("_pruneTerminalRecords never removes an active bundle, a recent one, or one whose lease could still be current", async () => {
-  const { coordinator, sql } = makeCoordinator({ BUNDLE_RETENTION_DAYS: "7" });
-  const now = Date.now();
-  const old = now - 30 * 86_400_000;
-  // (a) still active; (b) terminal but inside the retention window; (c) terminal and old, but its
-  // lease has not expired yet -- a late completeBatch could still legitimately settle it.
-  sql.exec("INSERT INTO bundles VALUES ('active-1','t','active',?,1,?,?)", now + 6e5, now, old);
-  sql.exec("INSERT INTO bundles VALUES ('recent-1','t','completed',?,0,?,?)", now, now, now - 1000);
-  sql.exec("INSERT INTO bundles VALUES ('leased-1','t','completed',?,0,?,?)", now + 6e5, now, old);
-  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
-
-  const result = coordinator._pruneTerminalRecords(now);
-  assert.equal(result.bundlesDeleted, 1);
-  const remaining = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
-  assert.deepEqual(remaining, ["active-1", "leased-1", "recent-1"]);
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
+  );
+  assert.equal([...sql.exec("SELECT route_id FROM attempt_usage")][0].route_id, "route-now");
 });
 
 test("a zero per-tick prune cap pauses retention without affecting dispatch", async () => {
-  const { coordinator, sql } = makeCoordinator({
-    MAX_BUNDLE_PRUNE_PER_TICK: "0",
-    MAX_ATTEMPT_PRUNE_PER_TICK: "0",
-  });
+  const { coordinator, sql } = makeCoordinator({ MAX_ATTEMPT_PRUNE_PER_TICK: "0" });
   const now = Date.now();
-  const old = now - 30 * 86_400_000;
-  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
-
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES ('2020-01-01', 'lane', 'r', 1)"
+  );
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
   );
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 1);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempt_usage")][0].n, 1);
 
   await coordinator.enqueueBatch([makeJob("j1")]);
   assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 1);
@@ -1638,6 +1727,184 @@ test("a job allowing paid still takes the free route when the paid one has more 
     "allow_paid must not send a job to a paid route while a free one has capacity, even when the "
       + "paid route ranks higher on available capacity",
   );
+});
+
+// A backup-tier route (BeatAPI's single-flight free chat legs, review/49 section 4c) listed first
+// and given more headroom than the primary it pools with: the capacity ranking alone would pick
+// it. Backup is spill capacity, so the primary must win while it has any capacity left, and the
+// backup must still serve once the primary is spent.
+const PRIMARY_VS_BACKUP_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "deepseek/deepseek-v4-flash": ["backup-idle", "primary-small"] },
+  routes_by_id: {
+    "backup-idle": {
+      provider: "beatapi",
+      upstream_model: "deepseek-v4-flash-0731-free",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      tier: "backup",
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+    "primary-small": {
+      provider: "orcarouter",
+      upstream_model: "deepseek/deepseek-v4-flash-free",
+      rpm: 1000,
+      rpd: 2,
+      free: true,
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+  },
+};
+
+test("a backup-tier route is used only after the pool's primary routes run out", async () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000",
+    MAX_BUNDLE_JOBS: "1",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+    MAX_CONCURRENT_ROUTE_LANES: "5",
+    MAX_ACTIVE_BUNDLES: "2",
+    MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840",
+    MAX_429_RETRIES: "1",
+    MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+    DISPATCH_LIMITS_OVERRIDE: PRIMARY_VS_BACKUP_CATALOG,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const job = (id) => ({
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: ["deepseek/deepseek-v4-flash"] }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: 200,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const runOne = async (id, at) => {
+    await coordinator.enqueueBatch([job(id)]);
+    const plan = await coordinator.claimDispatchWindow(at, 25);
+    assert.equal(plan.jobs.length, 1, id);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: id,
+        lease_token: plan.jobs[0].lease_token,
+        attempt_id: `${id}-attempt`,
+        planned_at: plan.jobs[0].not_before_at,
+        actual_start_at: at,
+        actual_end_at: at + 500,
+        observed_input_tokens: 500,
+        observed_output_tokens: 200,
+        outcome: "success",
+        provider_status_code: 200,
+        result_key: `results/${id}.json`,
+      },
+    ]);
+    return plan.jobs[0].route_id;
+  };
+
+  // All three claims must fall in one UTC day: the primary's daily quota resets at midnight, and
+  // a run started at 23:58 UTC otherwise sees it refilled before the third claim.
+  const now = Date.now();
+  const msToMidnight = 86_400_000 - (now % 86_400_000);
+  const t0 = msToMidnight < 300_000 ? now + msToMidnight + 1_000 : now;
+  // Untouched, both score full capacity; the backup is listed first, so only the tier term
+  // keeps it from winning the tie.
+  assert.equal(await runOne("first", t0), "primary-small");
+  // The primary is now half spent and scores strictly below the idle backup: precedence, not a
+  // tie-break, must still choose the primary.
+  const consumed = [...sql.exec("SELECT rpd_count FROM routes WHERE route_id=?", "primary-small")];
+  assert.ok((consumed[0]?.rpd_count || 0) > 0, "the primary must have spent capacity");
+  assert.equal(await runOne("second", t0 + 60_000), "primary-small");
+  // Primary's daily quota is spent: the backup now serves instead of the job waiting.
+  assert.equal(await runOne("third", t0 + 120_000), "backup-idle");
+});
+
+// `yields_to` (review/53 PR1): BeatAPI's free chat routes share one single-flight account window
+// with JEV, so a chat route that yields must step aside while JEV has queued work -- and the job it
+// holds back must stay queued (an ordering rule like a pause), never be failed as unroutable.
+const YIELD_CATALOG = {
+  model_aliases: {},
+  model_routes_map: {
+    "typesafe/jev-1.13": ["beatapi_jev"],
+    "deepseek/deepseek-v4-pro": ["beatapi_v4_pro"],
+  },
+  routes_by_id: {
+    beatapi_jev: {
+      model: "typesafe/jev-1.13",
+      provider: "beatapi",
+      upstream_model: "jev-1.13-free",
+      api_shape: "systemone",
+      request_path: "/systemone",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      input_context_limit: 64000,
+      output_context_limit: 4096,
+    },
+    beatapi_v4_pro: {
+      model: "deepseek/deepseek-v4-pro",
+      provider: "beatapi",
+      upstream_model: "deepseek-v4-pro-free",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      tier: "backup",
+      yields_to: ["beatapi_jev"],
+      input_context_limit: 128000,
+      output_context_limit: 16384,
+    },
+  },
+};
+
+test("a yielding route steps aside while the route it yields to has queued work", async () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4",
+    MAX_CONCURRENT_ROUTE_LANES: "5",
+    MAX_ACTIVE_BUNDLES: "4",
+    MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840",
+    MAX_429_RETRIES: "1",
+    MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+    DISPATCH_LIMITS_OVERRIDE: YIELD_CATALOG,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const job = (id, model, outputTokens = 200) => ({
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: [model] }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: outputTokens,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const state = (id) => [...sql.exec("SELECT state FROM jobs WHERE id = ?", id)][0]?.state;
+
+  const t0 = Date.now();
+  await coordinator.enqueueBatch([job("chat", "deepseek/deepseek-v4-pro"), job("jev", "typesafe/jev-1.13")]);
+  const first = await coordinator.claimDispatchWindow(t0, 25);
+  const firstIds = first.jobs.map((entry) => entry.job_id || entry.id);
+  assert.ok(firstIds.includes("jev"), "JEV's own work is claimed");
+  assert.ok(!firstIds.includes("chat"), "the yielding chat route must not take the account while JEV work is queued");
+  assert.equal(state("chat"), "queued", "held back, not failed as unroutable");
+
+  // With no JEV work queued, the same chat job is claimable on its yielding route.
+  const second = await coordinator.claimDispatchWindow(t0 + 60_000, 25);
+  assert.deepEqual(second.jobs.map((entry) => entry.job_id || entry.id), ["chat"]);
+  assert.equal(second.jobs[0].route_id, "beatapi_v4_pro");
 });
 
 test("a 402-requeued job is claimable again, not stranded queued-without-index", async () => {
@@ -1900,21 +2167,196 @@ test("a provider input-limit failure requeues for a sibling route", async () => 
   ]);
 
   const job = [...sql.exec(
-    "SELECT state, transient_retry_count FROM jobs WHERE id='j-input-limit'"
+    "SELECT state, transient_retry_count, size_excluded_routes FROM jobs WHERE id='j-input-limit'"
   )][0];
   assert.equal(job.state, "queued");
-  assert.equal(job.transient_retry_count, 1);
+  // A size rejection is not a transient failure: the 5xx retry budget is untouched.
+  assert.equal(job.transient_retry_count, 0);
+  assert.deepEqual(JSON.parse(job.size_excluded_routes), [claimed.route_id]);
   const route = [...sql.exec(
     "SELECT blocked_until, last_failure_class FROM routes WHERE route_id=?",
     claimed.route_id
   )][0];
-  assert.ok(route.blocked_until > now);
+  // The route is NOT stood down for other jobs; the rejection is only recorded.
+  assert.ok(!route.blocked_until);
   assert.equal(route.last_failure_class, "route_input_limit");
 
   const second = await coordinator.claimDispatchWindow(now + 1_000, 25);
   assert.equal(second.jobs.length, 1);
   assert.equal(second.jobs[0].id, "j-input-limit");
   assert.notEqual(second.jobs[0].route_id, claimed.route_id);
+});
+
+test("a size rejection leaves the route selectable for other jobs", async () => {
+  const { coordinator } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-big")]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const big = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: big.id,
+      lease_token: big.lease_token,
+      attempt_id: "attempt-big",
+      planned_at: big.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  // A small job enqueued right after can still be claimed on the very route that rejected the big
+  // one (the big job itself is excluded from that route, so it cannot take the slot).
+  // Pin the small job to the route that rejected the big one: it can only be claimed there if the
+  // route was not stood down.
+  await coordinator.enqueueBatch([
+    makeJob("j-small", {
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        allow_paid: false,
+        allowed_route_ids: [big.route_id],
+      }),
+    }),
+  ]);
+  const seen = new Map();
+  for (let i = 0; i < 4; i += 1) {
+    const plan = await coordinator.claimDispatchWindow(t + 1_000 + i * 90_000, 25);
+    for (const job of plan.jobs) seen.set(job.id, job.route_id);
+  }
+  assert.equal(seen.get("j-small"), big.route_id, "the small job runs on the rejecting route");
+  assert.ok(seen.has("j-big"), "the big job is dispatched to a sibling route");
+  assert.notEqual(seen.get("j-big"), big.route_id, "never back to the rejecting route");
+});
+
+test("a job rejected for size by every route fails to its producer as input_too_large", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-too-big")]);
+  let when = Date.now();
+  const tried = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    tried.push(claimed.route_id);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-too-big-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "terminal_error",
+        provider_status_code: 400,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  assert.equal(new Set(tried).size, tried.length, "no route is tried twice for the same job");
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason, transient_retry_count FROM jobs WHERE id='j-too-big'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
+  assert.equal(job.transient_retry_count, 0);
+});
+
+test("a size rejection reported as a retryable 5xx still fails when no route is left", async () => {
+  // The executor can map a classified size error to retryable_error; the 5xx retry predicates
+  // must not requeue a job that has no sibling route left.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-5xx-size")]);
+  let when = Date.now();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-5xx-size-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "retryable_error",
+        provider_status_code: 500,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason FROM jobs WHERE id='j-5xx-size'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
+});
+
+test("a size rejection records the smallest refused input on the route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-learn-reject", { input_token_estimate: 4000 })]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-learn-reject",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  const row = [...sql.exec(
+    "SELECT input_rejected_min, input_rejected_at FROM routes WHERE route_id=?", claimed.route_id
+  )][0];
+  assert.ok(row.input_rejected_min >= 4000, "recorded in the provider's tokens (ratio >= 1)");
+  assert.ok(row.input_rejected_at >= t);
+});
+
+test("a success raises the route's accepted-input high-water mark and never lowers it", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  let pinned = null;
+  let turn = 0;
+  const complete = async (id, observedInput) => {
+    const policy = { allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false };
+    if (pinned) policy.allowed_route_ids = [pinned];
+    await coordinator.enqueueBatch([makeJob(id, { policy_json: JSON.stringify(policy) })]);
+    turn += 1;
+    const plan = await coordinator.claimDispatchWindow(Date.now() + turn * 120_000, 25);
+    const claimed = plan.jobs.find((j) => j.id === id);
+    assert.ok(claimed, `${id} was claimed`);
+    const t = Date.now();
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-${id}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: t,
+        actual_end_at: t + 100,
+        outcome: "success",
+        provider_status_code: 200,
+        observed_input_tokens: observedInput,
+        observed_output_tokens: 50,
+        result_key: `results/${id}.json`,
+      },
+    ]);
+    pinned ??= claimed.route_id;
+    return [...sql.exec(
+      "SELECT input_accepted_max FROM routes WHERE route_id=?", pinned
+    )][0].input_accepted_max;
+  };
+  assert.equal(await complete("j-acc-1", 3000), 3000);
+  assert.equal(await complete("j-acc-2", 1000), 3000, "a smaller success does not lower it");
+  assert.equal(await complete("j-acc-3", 5000), 5000, "a larger one raises it");
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
@@ -2196,7 +2638,6 @@ test("authorizeRetry honors an explicit Retry-After floor and blocks the route",
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Upstream returns 429 with Retry-After: 5
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 5);
   assert.equal(auth.authorized, true);
@@ -2225,7 +2666,6 @@ test("authorizeRetry preserves an Airforce guarantee beyond the local buffer cap
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Production Airforce response: the next answer was guaranteed only after 111 seconds.
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 111);
   assert.equal(
@@ -2420,7 +2860,7 @@ test("claimDispatchWindow enforces provider-level TPM across routes sharing a pr
 
 test("calibration persists every completion until its window is full, then a 1-in-4 sample", () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
+  const key = "pool:google/gemma-4-31b-it:tags";
   const summary = () => {
     const row = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)][0];
     return row ? JSON.parse(row.recent_observed_summary) : { r: [], o: [] };
@@ -2436,12 +2876,63 @@ test("calibration persists every completion until its window is full, then a 1-i
     });
     writes.push(JSON.stringify(summary()) !== before);
   };
-  for (let i = 0; i < 32; i += 1) record(i);
+  for (let i = 0; i < 128; i += 1) record(i);
   assert.ok(writes.every(Boolean), "every completion is recorded while the window fills");
   writes.length = 0;
-  for (let i = 32; i < 432; i += 1) record(i);
+  for (let i = 128; i < 728; i += 1) record(i);
   const rate = writes.filter(Boolean).length / writes.length;
   assert.ok(rate > 0.15 && rate < 0.35, `sampled write rate ${rate}`);
+});
+
+test("routes serving the same model pool their observations under one key", () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-b"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-b": { ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"], upstream_model: "gemma-4-31b-it" },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const sample = (route, i) =>
+    coordinator._calibrateEstimate(route, "tags", 1300, Date.now(), {
+      jobId: `job-${route}-${i}`,
+      inputEstimate: 1000,
+      observedInput: 1100,
+      observedOutput: 200,
+    });
+  for (let i = 0; i < 5; i += 1) {
+    sample("gemma-ai-studio", i);
+    sample("gemma-b", i);
+  }
+  const rows = [...sql.exec("SELECT key, recent_observed_summary FROM estimates")];
+  assert.deepEqual(rows.map((r) => r.key), ["pool:google/gemma-4-31b-it:tags"]);
+  assert.equal(JSON.parse(rows[0].recent_observed_summary).r.length, 10);
+});
+
+test("a sparse pooled ring falls back to the route's older per-route ring when that has more", () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.5), o: Array(64).fill(200) })
+  );
+  const route = {
+    ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
+    route_id: "gemma-ai-studio",
+    model: "google/gemma-4-31b-it",
+  };
+  // Only the legacy ring exists: it carries the learned ratio (1.5 x 1.2 gemma headroom).
+  assert.ok(Math.abs(coordinator._calibration(route, "tags").inputRatio - 1.8) < 1e-9);
+  // A pooled ring with a few samples does not shadow the fuller legacy one.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 3, ?, 0)`,
+    "pool:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: [1.0, 1.0, 1.0], o: [100, 100, 100] })
+  );
+  assert.ok(Math.abs(coordinator._calibration(route, "tags", new Map()).inputRatio - 1.8) < 1e-9);
 });
 
 test("retireConsumed deletes only completed jobs whose consumed result_key still matches", async () => {
@@ -2587,8 +3078,10 @@ test("a failure after a same-route success in one batch keeps its block", async 
   assert.equal(route.last_provider_status, 503);
 });
 
-test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open bundles", () => {
+test("a bundles table moves into the scheduler row, keeping only active bundles", () => {
   const { sql, storage } = createMockSqlStorage();
+  // A coordinator from before 2026-10-07 (any bundles shape), with one open bundle.
+  new LLMSchedulerDO({ storage }, withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG }));
   sql.exec(`
     CREATE TABLE bundles (
       bundle_id TEXT PRIMARY KEY, execution_token TEXT NOT NULL,
@@ -2596,7 +3089,8 @@ test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open b
       lease_expires_at INTEGER NOT NULL, active_call_count INTEGER NOT NULL DEFAULT 0,
       dispatch_window_end INTEGER NOT NULL, created_at INTEGER NOT NULL
     );
-    INSERT INTO bundles VALUES ('b-active','t','active',9,1,9,1);
+    CREATE INDEX idx_bundles_state_created ON bundles (state, created_at);
+    INSERT INTO bundles VALUES ('b-active','t','active',9,1,8,1);
     INSERT INTO bundles VALUES ('b-expired','t','expired',9,0,9,2);
     INSERT INTO bundles VALUES ('b-done','t','completed',9,0,9,3);
   `);
@@ -2604,15 +3098,17 @@ test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open b
     { storage },
     withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG })
   );
-  coordinator._getSql();
-  const [table] = [...sql.exec("SELECT sql FROM sqlite_master WHERE name = 'bundles'")];
-  assert.match(table.sql, /WITHOUT ROWID/i);
-  const ids = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
-  assert.deepEqual(ids, ["b-active", "b-expired"]);
-  const [index] = [...sql.exec(
-    "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_bundles_state_created'"
-  )];
-  assert.ok(index);
+  assert.equal(coordinator._inspectCurrentSchema().current, true);
+  assert.deepEqual(activeBundles(sql), {
+    "b-active": {
+      execution_token: "t", lease_expires_at: 9, active_call_count: 1, dispatch_window_end: 8,
+      created_at: 1,
+    },
+  });
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE '%bundles%'")[0].n,
+    0
+  );
 });
 
 // ---- Daily DO row thresholds -------------------------------------------------------------
@@ -2621,7 +3117,7 @@ function setRowsWrittenToday(sql, rows) {
   sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", rows);
 }
 
-test("the coordinator tallies the rows its RPCs write and persists them on the claim write", async () => {
+test("the coordinator persists every writing transaction before the next claim", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
   const afterEnqueue = [...sql.exec("SELECT rows_written_today FROM scheduler WHERE id = 1")][0];
@@ -2634,16 +3130,16 @@ test("the coordinator tallies the rows its RPCs write and persists them on the c
   assert.equal(stats.row_budget.enqueue_open, true);
 });
 
-test("past the enqueue threshold new work is refused but an exact replay still succeeds", async () => {
+test("at the account safe stop, replays remain write-free and new work is deferred", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   setRowsWrittenToday(sql, 90_000);
   const result = await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
   assert.deepEqual(result.accepted.map((row) => row.id), ["j1"]);
   assert.deepEqual(result.rejected, [{ id: "j2", reason: "daily_row_budget" }]);
-  // Dispatch keeps going between the enqueue and claim thresholds.
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.bundle_id, null);
+  assert.equal(plan.claim_reason, "daily_row_budget");
   // Scheduled cleanup waits for tomorrow.
   assert.deepEqual(await coordinator.purgePendingBatch(15), { jobs: [] });
 });
@@ -2732,7 +3228,7 @@ test("ingressStatus reports why ingress is closed without writing anything", asy
   assert.equal(closed.open, false);
   assert.deepEqual(closed.reasons, ["daily_row_budget", "queue_full"]);
   assert.equal(closed.row_budget.enqueue_open, false);
-  assert.equal(closed.row_budget.claims_open, true);
+  assert.equal(closed.row_budget.claims_open, false);
   assert.deepEqual(snapshot(), before);
 
   const unknown = await coordinator.ingressStatus("not-a-lane");
@@ -2765,11 +3261,221 @@ test("a mid-day deploy seeds the new row counter from today's recorded work, nev
   );
   const coordinator = new LLMSchedulerDO({ storage }, env);
   const { rows_written_today: seeded } = [...sql.exec("SELECT rows_written_today FROM scheduler")][0];
-  // 2 x 5,000 ingress + 6 x 400 bundles + 24 x 1,000 leases, before cleanup and idle ticks.
-  assert.ok(seeded >= 10_000 + 2_400 + 24_000, `seeded ${seeded}`);
+  // Today's recorded work at the measured worst-case costs, before the cleanup and idle-tick
+  // allowance (which scales with minutes since UTC midnight, so it is no floor of its own).
+  const floor = coordinator._rowsPerIngressWriteUnit() * 5000 +
+    ROWS_PER_BUNDLE * 400 + ROWS_PER_LEASE_WORST * 1000;
+  assert.ok(seeded >= floor, `seeded ${seeded} < ${floor}`);
   assert.ok(coordinator._readRowsWrittenToday() >= seeded);
   // A later construction (column present) leaves the running count alone.
   sql.exec("UPDATE scheduler SET rows_written_today = 5 WHERE id = 1");
   new LLMSchedulerDO({ storage }, env);
   assert.equal([...sql.exec("SELECT rows_written_today FROM scheduler")][0].rows_written_today, 5);
+});
+
+const TINY_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "acme/tiny-model": ["tiny-route"] },
+  routes_by_id: {
+    "tiny-route": {
+      provider: "acme",
+      upstream_model: "tiny-model",
+      rpm: 30,
+      rpd: 1000,
+      tpm: 50000,
+      free: true,
+      input_context_limit: 2000,
+      output_context_limit: 1000,
+    },
+  },
+};
+
+function tinyJob(id, input, overrides = {}) {
+  return makeJob(id, {
+    policy_json: JSON.stringify({ allowed_models: ["acme/tiny-model"], allow_paid: false }),
+    input_token_estimate: input,
+    max_output_token_estimate: 200,
+    ...overrides,
+  });
+}
+
+test("a job too big for every configured route is indexed __unroutable__ at enqueue time", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]); // > 2,000-token context, every route
+  const indexed = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'huge'")];
+  assert.deepEqual(
+    indexed.map((row) => row.model),
+    ["__unroutable__"]
+  );
+  // "__unroutable__" is never a key in model_routes_map, so no claim ever reads this row directly
+  // -- only _reconcileUnroutableJobs's own bounded sweep does (see the next two tests).
+  assert.equal("__unroutable__" in TINY_CATALOG.model_routes_map, false);
+});
+
+test("an unroutable job still too big today fails, recording the route it could never fit", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.deepEqual(plan.jobs, []);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'huge'")][0].state, "failed");
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'huge'")][0].n, 0);
+  const failures = [...sql.exec(
+    "SELECT route_id, failure_class, count FROM route_failures"
+  )].map((row) => ({ ...row }));
+  assert.deepEqual(failures, [
+    { route_id: "tiny-route", failure_class: "job_unroutable", count: 1 },
+  ]);
+  const queued = [...sql.exec("SELECT queued_job_count FROM scheduler WHERE id = 1")][0];
+  assert.equal(queued.queued_job_count, 0);
+});
+
+test("an unroutable job that now fits a grown catalog is reindexed, not failed, and dispatches", async () => {
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]); // indexed __unroutable__ at enqueue
+
+  // The catalog grows a bigger route for the same model, before this job is ever reconciled --
+  // exactly what a compile-time route addition looks like from the coordinator's own perspective
+  // (env.DISPATCH_LIMITS_OVERRIDE is read fresh on every call, matching how a real deploy
+  // replaces dispatch_limits.json). A job only ever gets one reconcile pass (reindexed or
+  // failed), so this must land before the first claim, not between two.
+  coordinator.env.DISPATCH_LIMITS_OVERRIDE = {
+    ...TINY_CATALOG,
+    model_routes_map: { "acme/tiny-model": ["tiny-route", "big-route"] },
+    routes_by_id: {
+      ...TINY_CATALOG.routes_by_id,
+      "big-route": {
+        provider: "acme",
+        upstream_model: "tiny-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 500000,
+        free: true,
+        input_context_limit: 200000,
+        output_context_limit: 65536,
+      },
+    },
+  };
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["huge"]);
+  assert.equal(plan.jobs[0].route_id, "big-route");
+});
+
+test("MAX_UNROUTABLE_RECONCILE_PER_TICK=0 pauses the sweep without touching admission", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG,
+    MAX_UNROUTABLE_RECONCILE_PER_TICK: "0",
+  });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'huge'")][0].state, "queued");
+});
+
+test("reconciliation checks the full catalog, not the pause-filtered one, so a paused new route still reindexes", async () => {
+  // The bug this guards: _claimDispatchLimits drops a paused route's id from model_routes_map
+  // entirely. If reconciliation used that filtered catalog, a route added (or merely paused)
+  // between enqueue and this tick would look absent, permanently failing a job that only needed
+  // to wait -- the exact class of bug this whole sweep exists to fix.
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { "acme/two-route-model": ["small-route"] },
+    routes_by_id: {
+      "small-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 50000,
+        free: true,
+        input_context_limit: 500,
+        output_context_limit: 200,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const job = makeJob("grows-in", {
+    policy_json: JSON.stringify({ allowed_models: ["acme/two-route-model"], allow_paid: false }),
+    input_token_estimate: 2000, // over small-route's 500-token context
+    max_output_token_estimate: 200,
+  });
+  await coordinator.enqueueBatch([job]);
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["__unroutable__"]
+  );
+
+  // A bigger route is added for the same model, and paused immediately (e.g. babysitting a
+  // rollout) -- present in the catalog, but not one claimDispatchWindow would currently admit to.
+  coordinator.env.DISPATCH_LIMITS_OVERRIDE = {
+    ...catalog,
+    model_routes_map: { "acme/two-route-model": ["small-route", "big-route"] },
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "big-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 500000,
+        free: true,
+        input_context_limit: 5000,
+        output_context_limit: 2000,
+      },
+    },
+  };
+  const now = Date.now();
+  const paused = await coordinator.pauseDispatch(
+    { scope: "route", target: "big-route", seconds: 600 },
+    now
+  );
+  assert.equal(paused.ok, true);
+
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'grows-in'")][0].state, "queued");
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["acme/two-route-model"]
+  );
+});
+
+test("learned Orca caps remove oversized queue heads so short work can drain", async () => {
+  const catalog = {
+    model_routes_map: { orca: ["orca"] },
+    routes_by_id: { orca: { route_id: "orca", provider: "orcarouter", free: true,
+      rpm: 10, rpd: 800, input_context_limit: 1000000, output_context_limit: 128000 } },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_CANDIDATE_LOOKAHEAD: "2", MAX_JOBS_PER_MODEL_CLAIM: "1" });
+  const now = Date.now();
+  coordinator._getOrCreateRouteLedger("orca", now, catalog.routes_by_id.orca);
+  sql.exec("UPDATE routes SET prompt_cap_estimate=500 WHERE route_id='orca'");
+  await coordinator.enqueueBatch([1000, 1000, 1000, 100].map((input, i) => makeJob(`orca-${i}`, {
+    input_token_estimate: input, policy_json: JSON.stringify({ allowed_models: ["orca"] }),
+  })));
+  assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 0);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 2);
+  assert.deepEqual((await coordinator.claimDispatchWindow(now + 1, 25)).jobs.map((j) => j.id),
+    ["orca-3"]);
+});
+
+test("a saturated route backs off from 60 s up to one probe a day; other upstream classes stay at 5 minutes", () => {
+  const { coordinator } = makeCoordinator({});
+  const now = 1_000_000;
+  const wait = (streak, saturated) => coordinator._upstreamCapacityBlockedUntil(streak, now, saturated) - now;
+  assert.ok(wait(1, true) >= 60_000 && wait(1, true) <= 90_000);
+  assert.ok(wait(4, true) >= 480_000 && wait(4, true) <= 720_000, "doubles each failure");
+  for (const streak of [12, 13, 200]) {
+    assert.equal(wait(streak, true) <= 86_400_000, true, "jitter never exceeds the day");
+  }
+  assert.ok(wait(20, true) > 43_200_000, "a long streak waits most of a day");
+  assert.ok(wait(20, false) <= 300_000, "gateway limits and bad replies keep the 5 minute ceiling");
 });

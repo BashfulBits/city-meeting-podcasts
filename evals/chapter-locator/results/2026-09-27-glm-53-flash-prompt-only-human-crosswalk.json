@@ -1,0 +1,254 @@
+{
+  "provider": "orcarouter",
+  "model": "zai/glm-5.3-flash",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_configured": true,
+  "test_split": "human-adjudicated 16-meeting route matrix",
+  "protocol": "same full locator packet and Z.AI JSON-only compatibility instruction; no response_format; local schema validation; one repair attempt allowed",
+  "pause": {
+    "scope": "provider:orcarouter",
+    "drained": true,
+    "in_flight_at_start": 2,
+    "drain_seconds": 341.6,
+    "contended": false
+  },
+  "quality": {
+    "valid_packets": 9,
+    "total_packets": 16,
+    "anchors": 57,
+    "timing_hits": 48,
+    "provider_starts": 100,
+    "timing_recall_all_starts": 0.48,
+    "timing_precision_all_anchors": 0.8421052631578947,
+    "mean_boundary_error_seconds_on_timing_hits": 4.705943812783472,
+    "p95_boundary_error_seconds_on_timing_hits": 19.537830000000007,
+    "human_item_identity_hits": 49,
+    "eligible_human_targets": 86,
+    "human_item_identity_recall": 0.5697674418604651,
+    "human_item_and_boundary_hits": 47,
+    "human_item_and_boundary_recall": 0.5465116279069767,
+    "human_item_boundary_cluster_bootstrap_95": [
+      0.27058823529411763,
+      0.8115984654731454
+    ],
+    "correct_item_given_eligible_timing_pair_hits": 45,
+    "eligible_timing_pairs": 48,
+    "correct_item_given_eligible_timing_pair": 0.9375
+  },
+  "context_and_operations": {
+    "requests": 29,
+    "packets_with_any_provider_response": 13,
+    "packets_without_provider_response": 3,
+    "explicit_prompt_or_context_size_rejections": 3,
+    "packet_builder_estimate_range": [
+      1154,
+      188657
+    ],
+    "largest_accepted_packet_builder_estimate": 63127,
+    "largest_reported_prompt_tokens": 84128,
+    "total_usage": {
+      "prompt_tokens": 1239550,
+      "completion_tokens": 107950,
+      "total_tokens": 1347500
+    },
+    "latency_seconds_by_attempt": [
+      44.421,
+      34.611,
+      89.018,
+      76.405,
+      63.635,
+      38.116,
+      159.852,
+      179.18,
+      16.368,
+      16.573,
+      179.689,
+      160.568,
+      54.8,
+      42.515,
+      34.052,
+      26.759,
+      11.751,
+      12.948,
+      187.215,
+      46.02,
+      16.128,
+      64.651,
+      47.472,
+      167.908,
+      116.533,
+      175.363,
+      177.145,
+      29.187,
+      20.796
+    ],
+    "capacity_config": "800 RPD, 10 RPM, per-model concurrency 2; 1M configured context; practical ceiling not configured, free-tier size cap previously observed around ~94.5k provider tokens"
+  },
+  "per_meeting": [
+    {
+      "uid": "1e33fee06ae9d526",
+      "eligible_targets": 3,
+      "human_item_boundary_hits": 3,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 8020,
+      "input_tokens_reported_by_runner": 8158,
+      "error": null
+    },
+    {
+      "uid": "a7cafa96abee9fd4",
+      "eligible_targets": 3,
+      "human_item_boundary_hits": 2,
+      "valid_packet": true,
+      "anchor_count": 4,
+      "packet_builder_estimate_tokens": 24179,
+      "input_tokens_reported_by_runner": 24317,
+      "error": null
+    },
+    {
+      "uid": "68e93c804b716ddc",
+      "eligible_targets": 10,
+      "human_item_boundary_hits": 6,
+      "valid_packet": true,
+      "anchor_count": 7,
+      "packet_builder_estimate_tokens": 17223,
+      "input_tokens_reported_by_runner": 17361,
+      "error": null
+    },
+    {
+      "uid": "5661e9f07650d353",
+      "eligible_targets": 7,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 63127,
+      "input_tokens_reported_by_runner": null,
+      "error": "invalid_json_after_repair"
+    },
+    {
+      "uid": "c6ed635dfa5776fd",
+      "eligible_targets": 11,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 90865,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "e65b938bd028c6b5",
+      "eligible_targets": 0,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 188657,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "f64bd49647621bd0",
+      "eligible_targets": 8,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 51747,
+      "input_tokens_reported_by_runner": null,
+      "error": "invalid_json_after_repair"
+    },
+    {
+      "uid": "13a7ccd6cec16a73",
+      "eligible_targets": 8,
+      "human_item_boundary_hits": 8,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 61593,
+      "input_tokens_reported_by_runner": 61731,
+      "error": null
+    },
+    {
+      "uid": "b5bd376feea8e8ef",
+      "eligible_targets": 4,
+      "human_item_boundary_hits": 3,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 40596,
+      "input_tokens_reported_by_runner": 40734,
+      "error": null
+    },
+    {
+      "uid": "77558a2ffde222ff",
+      "eligible_targets": 1,
+      "human_item_boundary_hits": 1,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 1154,
+      "input_tokens_reported_by_runner": 1292,
+      "error": null
+    },
+    {
+      "uid": "4bdafbfb40214fff",
+      "eligible_targets": 2,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 49470,
+      "input_tokens_reported_by_runner": null,
+      "error": "schema_validation_after_repair"
+    },
+    {
+      "uid": "a6bfcf669eb1ef77",
+      "eligible_targets": 5,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 120826,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "72250b5020c1c375",
+      "eligible_targets": 4,
+      "human_item_boundary_hits": 4,
+      "valid_packet": true,
+      "anchor_count": 6,
+      "packet_builder_estimate_tokens": 42318,
+      "input_tokens_reported_by_runner": 42456,
+      "error": null
+    },
+    {
+      "uid": "0004794481ddee5e",
+      "eligible_targets": 14,
+      "human_item_boundary_hits": 14,
+      "valid_packet": true,
+      "anchor_count": 15,
+      "packet_builder_estimate_tokens": 37275,
+      "input_tokens_reported_by_runner": 37413,
+      "error": null
+    },
+    {
+      "uid": "36415bafff30348d",
+      "eligible_targets": 0,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 46200,
+      "input_tokens_reported_by_runner": null,
+      "error": "invalid_json_after_repair"
+    },
+    {
+      "uid": "e01edf2cbaf994c5",
+      "eligible_targets": 6,
+      "human_item_boundary_hits": 6,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 28989,
+      "input_tokens_reported_by_runner": 29127,
+      "error": null
+    }
+  ],
+  "run_artifact": "/private/tmp/chapter-locator-telemetry/glm-5-3-orcarouter-human-crosswalk-20260927T141240Z/run.json",
+  "date": "2026-09-27",
+  "run_variant": "prompt_only",
+  "raw_telemetry_dir": "/private/tmp/chapter-locator-telemetry/glm-5-3-orcarouter-human-crosswalk-20260927T141240Z"
+}

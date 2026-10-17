@@ -19,9 +19,14 @@ from citypods.audit import UnexpectedBodyEvidence, collect_unexpected_bodies
 from citypods.audit_remedy import (
     DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
+    P3_INITIAL_ROUTES,
     REMEDY_CONTRACT,
+    BodyDecision,
     BodyDecisions,
     BodyProposal,
+    P3Adjudication,
+    P3ReviewDecision,
+    P3Vote,
     RejectedProposal,
     RemedyOutput,
     RemedyPlan,
@@ -30,10 +35,12 @@ from citypods.audit_remedy import (
     _new_feed_lifecycle,
     _resolve_decisions,
     apply_remedy_plan,
+    build_p3_review_decision,
     classify_unexpected_bodies,
     ensure_remedy_contract,
     evidence_recipe_hash,
     feed_paths_by_slug,
+    format_p3_manual_issue,
     format_remedy_markdown,
     gather_unexpected_body_evidence,
     remedy_batches,
@@ -43,10 +50,14 @@ from citypods.audit_remedy import (
     verify_remedy_mutations,
     write_evidence_file,
 )
+from citypods.audit_remedy_report import P3ReportInput, build_p3_report
 from citypods.compute.base import JobResult
 from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
+from citypods.remedy_p3_publication import validated_p3_plan
+from citypods.remedy_p3_runner import P3_ROUTES
+from citypods.remedy_policy import canonical_hash
 
 
 def make_city(slug, body, **source_extra):
@@ -150,6 +161,104 @@ def proposal(**overrides):
         "rationale": "Recurring council session",
     }
     return BodyProposal(**{**base, **overrides})
+
+
+def p3_vote(route, *, target_feeds=None, action="union", response_hash="a" * 64):
+    return P3Vote(
+        route_id=route,
+        upstream_model=f"upstream/{route}",
+        reasoning_level=None,
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash=response_hash,
+        decision=BodyDecision(
+            finding_id="finding-1",
+            action=action,
+            target_feeds=target_feeds or ["test-city-council"],
+            episode_ids=["guid-101"],
+            rationale="Assignment based on evidence.",
+        ),
+    )
+
+
+def p3_votes(*, glm_feeds=None):
+    return [
+        p3_vote("beatapi_gpt_6_1_sol_free"),
+        p3_vote("orcarouter_zai_glm_5_3_flash_free", target_feeds=glm_feeds),
+    ]
+
+
+def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
+    source = {**evidence, "unexpected_findings": [evidence["unexpected_findings"][0]]}
+    finding_id = "finding-1"
+    evidence_hash = canonical_hash(source)
+    policy_hash = "b" * 64
+    votes = [
+        P3Vote(
+            route_id=route,
+            upstream_model="test/upstream",
+            reasoning_level="high",
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            response_hash="c" * 64,
+            decision=BodyDecision(
+                finding_id=finding_id,
+                action="union",
+                target_feeds=["test-city-council"],
+                rationale="Recurring council meetings match the configured feed.",
+            ),
+        )
+        for route in P3_INITIAL_ROUTES
+    ]
+    record = P3ReportInput(
+        schema_version=1,
+        finding_id=finding_id,
+        evidence_hash=evidence_hash,
+        policy_hash=policy_hash,
+        evidence_summary="Recurring council meetings.",
+        feeds=[
+            {"slug": row["slug"], "title": row["podcast_title"]} for row in source["existing_feeds"]
+        ],
+        initial_votes=votes,
+        initial_validators={route: True for route in P3_INITIAL_ROUTES},
+    )
+    report = build_p3_report(record, admitted_routes=set(P3_ROUTES.values()))
+
+    plan, paths = validated_p3_plan(
+        report,
+        source,
+        repo_root=repo,
+        admitted_routes=set(P3_ROUTES.values()),
+    )
+
+    assert report["decision"]["disposition"] == "pr_candidate"
+    assert len(plan.accepted) == 1
+    assert not plan.rejected
+    assert set(paths) >= {"test-city-council", "test-city-library-board"}
+
+    # A feed can disappear or be renamed after the report was built. Revalidation must use
+    # the current repository catalog, even when the report and original evidence are unchanged.
+    paths["test-city-council"].unlink()
+    with pytest.raises(ValueError, match="have no file under config/feeds"):
+        validated_p3_plan(
+            report,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
+
+    forged = {**report, "proposal_candidate": dict(report["proposal_candidate"])}
+    forged["proposal_candidate"]["assignment"] = {
+        **forged["proposal_candidate"]["assignment"],
+        "target_feeds": ["test-city-library-board"],
+    }
+    with pytest.raises(ValueError, match="differs from the agreed route-bound assignment"):
+        validated_p3_plan(
+            forged,
+            source,
+            repo_root=repo,
+            admitted_routes=set(P3_ROUTES.values()),
+        )
 
 
 # --- evidence -----------------------------------------------------------------------------
@@ -843,6 +952,7 @@ def test_write_evidence_file_writes_bundle_and_returns_count(repo):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert len(payload["sources"]) == 1
     assert payload["sources"][0]["source_key"] == "test-source"
     assert len(payload["digest"]) == 64
@@ -873,6 +983,7 @@ def test_write_evidence_file_empty_list(tmp_path):
     assert target_path.exists()
     payload = json.loads(target_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
+    datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     assert payload["sources"] == []
     assert isinstance(payload["digest"], str)
     assert len(payload["digest"]) == 64
@@ -934,3 +1045,487 @@ def test_verify_remedy_mutations_timeout_or_oserror(repo, monkeypatch):
 
     assert success is False
     assert "Ruff lint could not finish (TimeoutExpired)" in message
+
+
+def test_tif_aggregate_policy_is_in_compact_evidence(repo):
+    city = make_city("test-city-council", "Council")
+    city.extra["remedy_policy"] = {"aggregate_family": "tif"}
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert _compact_evidence(evidence)["existing_feeds"][0]["remedy_policy"] == {
+        "aggregate_family": "tif"
+    }
+
+
+@pytest.mark.parametrize(
+    "label,action,target,title,accepted,reason",
+    [
+        ("New District TIF Board", "new_feed", [], "New District", False, "forbids district"),
+        ("Downtown Connection Board", "new_feed", [], "Downtown", False, "forbids district"),
+        ("New District TIF Board", "union", ["council"], "", False, "requires the owning"),
+        ("New District TIF Board", "union", ["tif"], "", True, ""),
+        ("Multifamily Housing Board", "new_feed", [], "Housing", True, ""),
+        ("Public Improvement District", "union", ["tif"], "", False, "manual identity"),
+        ("Downtown Connection Board", "union", ["tif"], "", False, "manual identity"),
+        ("New District TIF Board", "union", ["tif", "council"], "", False, "requires"),
+        ("New District TIF Board", "single_uid_inclusion", ["council"], "", False, "requires"),
+        ("Unknown Board", "new_feed", [], "Dallas TIF District Board", False, "forbids"),
+    ],
+)
+def test_tif_policy_holds_wrong_owners_and_district_recreation(
+    tmp_path, label, action, target, title, accepted, reason
+):
+    aggregate = tmp_path / "tif.yml"
+    aggregate.write_text(
+        "source:\n  body: 'TIF *'\nremedy_policy:\n  aggregate_family: tif\n"
+        "  member_names: [Downtown Connection]\n"
+    )
+    council = tmp_path / "council.yml"
+    council.write_text("source:\n  body: Council\n")
+    count = 1 if action == "single_uid_inclusion" else 3
+    evidence = {
+        "source_key": "test-source",
+        "existing_feeds": [{"slug": "tif"}, {"slug": "council"}],
+        "unexpected_findings": [
+            {
+                "unexpected_body": label,
+                "count": count,
+                "episodes": [{"provider_guid": "observed"}],
+            }
+        ],
+    }
+    proposal = BodyProposal(
+        source_key="test-source",
+        unexpected_body=label,
+        action=action,
+        target_feeds=target,
+        provider_guids=["observed"],
+        new_feed_slug="new-board",
+        new_feed_title=title,
+        new_feed_description="Public board recordings",
+        rationale="Proposed from observed evidence",
+    )
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal]), evidence, {"tif": aggregate, "council": council}
+    )
+    assert bool(plan.accepted) is accepted
+    if not accepted:
+        assert reason in plan.rejected[0].reason
+
+
+@pytest.mark.parametrize(
+    "family,label,identity,accepted",
+    [
+        ("pid", "PID 7 Board", "PID 7 Board", True),
+        ("pid", "PID 8 Board", "PID 7 Board", False),
+        ("pid", "Rapid Planning Board", "PID 7 Board", False),
+        ("bond", "2027 Bond Committee", "2024 Bond Committee", False),
+        ("bond", "Council Bond Briefing", "Bond Committee", False),
+        ("charter", "2024 Charter Review Committee", "2024 Charter Review Committee", True),
+        ("charter", "Charter School Promotion", "Charter Review Committee", False),
+        ("redistricting", "Redistricting Committee", "Redistricting Committee", True),
+        ("redistricting", "Council Redistricting Hearing", "Redistricting Committee", False),
+        ("public_input", "Neighborhood Public Meeting", "Neighborhood Public Meeting", True),
+        ("public_input", "Neighborhood Project", "Neighborhood Public Meeting", False),
+        ("public_input", "Town Hall Staff Training", "Town Hall", False),
+        ("public_briefings", "News Conference", "News Conference", True),
+        ("public_briefings", "Press Conference Announcement", "Press Conference", False),
+        ("public_briefings", "Municipal TV Show", "News Conference", False),
+        ("tif", "Council Briefing on TIF", "TIF Board", False),
+        ("tif", "TIF Staff Training", "TIF Board", False),
+        ("tif", "TIF Press Conference", "TIF Board", False),
+        ("tif", "Tax Incremental Housing Board", "TIF Board", False),
+        ("tif", "Reinvestment Zoneless Board", "TIF Board", False),
+        ("tif", "Joint City Center Board", "Joint City Center Board", True),
+        (None, "Housing Finance Corporation", "Housing Finance Corporation", True),
+        (
+            None,
+            "Housing Finance Corporation Housing Finance Corporation",
+            "Housing Finance Corporation",
+            True,
+        ),
+        (None, "Council Housing Finance Briefing", "Housing Finance Corporation", False),
+        (None, "Capital Improvements Transportation", "Capital Improvements Water", False),
+    ],
+)
+def test_policy_ownership_requires_reviewed_identity(tmp_path, family, label, identity, accepted):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    policy = {"identity_names": [identity], "member_names": [identity]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="union",
+        target_feeds=["owner"],
+        rationale="Evidence-backed identity",
+    )
+    assert _target_feed_is_compatible(label, path) is accepted
+    assert bool(_aggregate_policy_reason(proposal, {"owner"}, {"owner": path})) is not accepted
+
+
+@pytest.mark.parametrize(
+    "family,label",
+    [
+        ("pid", "New PID 20 Board"),
+        ("bond", "2030 Bond Committee"),
+        ("charter", "2030 Charter Review Commission"),
+        ("redistricting", "2030 Redistricting Commission"),
+        ("public_input", "Bridge Project Town Hall"),
+        ("public_input", "Bridge Project Public Hearing"),
+        ("public_briefings", "Municipal News Conference"),
+        ("public_briefings", "Municipal Public Briefing"),
+        (None, "Housing Finance Corporation"),
+    ],
+)
+def test_family_and_named_body_policy_holds_recreation_and_wrong_owner(tmp_path, family, label):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    policy = {"identity_names": ["Housing Finance Corporation"]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-feed",
+        new_feed_title=label,
+        rationale="Evidence-backed identity",
+    )
+    paths = {"owner": path}
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    proposal.action = "union"
+    proposal.target_feeds = ["council"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    # A policy on another source cannot establish ownership or suppress a distinct feed.
+    assert not _aggregate_policy_reason(proposal, {"council"}, paths)
+
+
+def test_policy_topic_and_member_clues_cannot_approve_unknown_owner(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    path = tmp_path / "owner.yml"
+    path.write_text(
+        "remedy_policy:\n  aggregate_family: public_input\n"
+        "  identity_names: [Public Input Meeting]\n  member_names: [Bridge Project]\n"
+    )
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="Bridge Project",
+        action="union",
+        target_feeds=["owner"],
+        rationale="Topic is not identity evidence",
+    )
+    assert "manual identity" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+
+
+def test_exact_identity_can_hold_extended_label_without_approving_it(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    path = tmp_path / "owner.yml"
+    path.write_text("remedy_policy:\n  identity_names: [Housing Finance Corporation]\n")
+    label = "2026 Housing Finance Corporation Special Meeting"
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-corporation",
+        new_feed_title=label,
+        rationale="An extended label needs identity evidence",
+    )
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+    assert not _target_feed_is_compatible(label, path)
+
+
+def test_exact_body_selectors_remain_in_remedy_evidence_without_transport_inheritance(repo):
+    city = make_city("test-city-council", None, body_exact=["UDC Advisory Committee"])
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert evidence["existing_feeds"][0]["body_exact"] == ["UDC Advisory Committee"]
+    assert _compact_evidence(evidence)["existing_feeds"][0]["body_exact"] == [
+        "UDC Advisory Committee"
+    ]
+    # Typed selector objects never enter JSON model evidence.
+    json.dumps(_compact_evidence(evidence))
+    assert SourceContext.from_city(city).transport == {"feed_url": "https://test.example/feed"}
+
+
+def test_redundant_exact_label_union_does_not_broaden_the_feed(repo):
+    path = repo / "config/feeds/test-city-council.yml"
+    before = (
+        "slug: test-city-council\nsource:\n  feed_url: https://test.example/feed\n"
+        "  body_exact:\n    - UDC Advisory Committee\n"
+    )
+    path.write_text(before)
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="udc advisory committee",
+        action="union",
+        target_feeds=["test-city-council"],
+        rationale="Already covered exact identity",
+    )
+    plan = RemedyPlan(accepted=[proposal])
+    assert (
+        apply_remedy_plan(
+            plan,
+            feed_paths={"test-city-council": path},
+            source_context=SourceContext.from_city(make_city("test-city-council", None)),
+            repo_root=repo,
+        )
+        == []
+    )
+    assert path.read_text() == before
+
+
+def test_unexpected_body_audit_distinguishes_exact_committee_and_open_house():
+    city = make_city("test-city-udc", None, body_exact=["UDC Advisory Committee"])
+    committee = make_episode("committee", "UDC Advisory Committee", "UDC Advisory Committee", 1)
+    public_input = make_episode(
+        "open-house", "UDC Advisory Committee Open House", "UDC Advisory Committee Open House", 2
+    )
+    unexpected = collect_unexpected_bodies([committee, public_input], {}, related_cities=[city])
+    assert {ep.guid for row in unexpected.values() for ep in row["episodes"]} == {"open-house"}
+
+
+@pytest.fixture
+def overlapping_policy_paths(tmp_path):
+    policies = {
+        "udc": {"identity_names": ["UDC Advisory Committee"]},
+        "public-input": {
+            "aggregate_family": "public_input",
+            "identity_names": ["UDC Advisory Committee Open House"],
+        },
+    }
+    paths = {}
+    for slug, policy in policies.items():
+        path = tmp_path / f"{slug}.yml"
+        path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+        paths[slug] = path
+    return paths
+
+
+@pytest.mark.parametrize("action", ["union", "single_uid_inclusion"])
+def test_exact_reviewed_owner_overrides_other_policy_holding_clue(overlapping_policy_paths, action):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House",
+        action=action,
+        target_feeds=["public-input"],
+        provider_guids=["open-house"],
+        rationale="Reviewed public-input proceeding identity",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc", "public-input"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_overlapping_holding_clues_still_hold_unknown_identity_and_duplicate_feed(
+    overlapping_policy_paths,
+):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House 2027",
+        action="union",
+        target_feeds=["public-input"],
+        rationale="Unreviewed suffix remains evidence-first",
+    )
+    assert _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.action = "new_feed"
+    proposal.unexpected_body = "UDC Advisory Committee Open House"
+    proposal.new_feed_slug = "duplicate-open-house"
+    proposal.new_feed_title = proposal.unexpected_body
+    assert "forbids" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_joint_exact_owners_require_all_reviewed_subscriptions(overlapping_policy_paths):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    joint = "Joint Council and Planning Commission Meeting"
+    for path in paths.values():
+        path.write_text(yaml.safe_dump({"remedy_policy": {"identity_names": [joint]}}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=joint,
+        action="union",
+        target_feeds=list(paths),
+        rationale="Both subscriptions were explicitly reviewed for this joint label",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_p3_initial_agreement_yields_pr_candidate_only_after_validation():
+    votes = p3_votes()
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+        admitted_routes={vote.route_id for vote in votes},
+    )
+    result = build_p3_review_decision(**common)
+    assert result.disposition == "pr_candidate"
+    assert result.validator_passed is True
+    assert result.adjudication is None
+
+    failed = build_p3_review_decision(
+        **{**common, "initial_validators": {votes[0].route_id: True, votes[1].route_id: False}}
+    )
+    assert failed.disposition == "issue_candidate"
+    assert failed.validator_passed is False
+
+
+def test_p3_initial_disagreement_holds_without_adjudication_then_uses_exact_agreement():
+    votes = p3_votes(glm_feeds=["test-city-library-board"])
+    admitted = {vote.route_id for vote in votes} | {
+        "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_jev_1_13_free",
+    }
+    validators = {vote.route_id: True for vote in votes}
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators=validators,
+        admitted_routes=admitted,
+    )
+    held = build_p3_review_decision(**common)
+    assert held.disposition == "policy_hold"
+
+    adjudication = P3Adjudication(
+        deepseek=p3_vote(
+            "beatapi_deepseek_v4_1_flash_free", target_feeds=["test-city-library-board"]
+        ),
+        jev_route_id="beatapi_jev_1_13_free",
+        jev_upstream_model="jev-1.13-free",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash="b" * 64,
+        choice="B",
+        supported_a=0.2,
+        supported_b=0.9,
+    )
+    result = build_p3_review_decision(
+        **common,
+        adjudication=adjudication,
+        adjudication_validator_passed=True,
+    )
+    assert result.disposition == "pr_candidate"
+    assert result.validator_passed is True
+
+
+def test_p3_adjudication_mismatch_or_abstention_becomes_manual_issue():
+    votes = p3_votes(glm_feeds=["test-city-library-board"])
+    admitted = {vote.route_id for vote in votes} | {
+        "beatapi_deepseek_v4_1_flash_free",
+        "beatapi_jev_1_13_free",
+    }
+    common = dict(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+        admitted_routes=admitted,
+    )
+    abstain = P3Adjudication(
+        deepseek=None,
+        jev_route_id="beatapi_jev_1_13_free",
+        jev_upstream_model="jev-1.13-free",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        response_hash="b" * 64,
+        choice="C",
+        supported_a=0.1,
+        supported_b=0.1,
+    )
+    result = build_p3_review_decision(
+        **common, adjudication=abstain, adjudication_validator_passed=False
+    )
+    assert result.disposition == "issue_candidate"
+
+    mismatch = P3Adjudication(
+        **{
+            **abstain.model_dump(),
+            "deepseek": p3_vote("beatapi_deepseek_v4_1_flash_free"),
+            "choice": "B",
+        }
+    )
+    result = build_p3_review_decision(
+        **common, adjudication=mismatch, adjudication_validator_passed=True
+    )
+    assert result.disposition == "issue_candidate"
+
+
+def test_p3_route_admission_and_hash_mismatches_fail_closed():
+    votes = p3_votes()
+    result = build_p3_review_decision(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=votes,
+        initial_validators={vote.route_id: True for vote in votes},
+    )
+    assert result.disposition == "policy_hold"
+    assert result.validator_passed is False
+
+    votes[0].response_hash = "bad"
+    with pytest.raises(ValueError, match="response hash"):
+        build_p3_review_decision(
+            finding_id="finding-1",
+            evidence_hash="e" * 64,
+            policy_hash="f" * 64,
+            initial_votes=votes,
+            initial_validators={vote.route_id: True for vote in votes},
+            admitted_routes={vote.route_id for vote in votes},
+        )
+
+
+def test_p3_manual_issue_contains_per_feed_and_overall_checkboxes():
+    decision = P3ReviewDecision(
+        finding_id="finding-1",
+        evidence_hash="e" * 64,
+        policy_hash="f" * 64,
+        initial_votes=p3_votes(),
+        validator_passed=False,
+        disposition="issue_candidate",
+        reason="The adjudicators disagree.",
+    )
+    body = format_p3_manual_issue(
+        decision,
+        candidate_feeds=[
+            ("test-city-council", "Test City Council"),
+            ("test-city-library-board", "<b>Library</b>"),
+            ("test-city-council", "Duplicate is removed"),
+        ],
+        evidence_markdown='## Evidence\n\nQuoted "text" & <markup>.',
+    )
+    assert body.count("Include `") == 2
+    assert body.count("Exclude `") == 2
+    assert "Possible / hold" not in body
+    assert "No feed assignment" in body
+    assert "Hold for future evidence" in body
+    assert "&lt;b&gt;Library&lt;/b&gt;" in body
+    assert '<pre>## Evidence\n\nQuoted "text" &amp; &lt;markup&gt;.</pre>' in body
+
+    with pytest.raises(ValueError, match="invalid candidate feed slug"):
+        format_p3_manual_issue(
+            decision,
+            candidate_feeds=[("../unsafe", "bad")],
+            evidence_markdown="Evidence",
+        )

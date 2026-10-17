@@ -25,10 +25,11 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager as _contextmanager
 from contextlib import nullcontext as _nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.archive_visibility import archive_policy_hash, is_archive_only, load_archive_index
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
@@ -96,6 +97,11 @@ from citypods.progress import PROGRESS, format_snapshot
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError, is_transient_provider_error
+from citypods.publication_selection import (
+    SelectionIndex,
+    load_selection_index,
+    select_feed_publication,
+)
 from citypods.records import (
     RESET_GUARDED_AGENDA_LINK_KEYS,
     assign_uids,
@@ -157,9 +163,11 @@ from citypods.stages import (
     _materialize_set,
     default_stages,
     enrich_stages,
+    judge_stages,
     r6_stages,
     r7_stages,
     render_stages,
+    run_judge_across_sources,
     run_stages,
     stage_is_dirty,
 )
@@ -186,8 +194,16 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 # DEFAULT_METADATA_RETENTION_EPISODES (imported above from citypods.models, the single source of
 # truth) remain a code fallback only for lightweight direct-call tests and orchestration doubles.
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
-_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
+# Stages that run once per source over its whole retained episode list instead of once per episode.
+# The judge stage (review/53) is here so its packets can span a source's episodes and its run caps
+# are spent once per run, not re-created for every episode.
+_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text", "judge"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
+# The judge lane's wall-clock budget when `defaults.judge_run_time_budget_minutes` is unset: its
+# 2-hour cron interval, so the window (this x `budget_safety`) plus setup and the persistence tail
+# ends before the next scheduled pass. The run-history record uses the same value.
+JUDGE_RUN_TIME_BUDGET_MINUTES = 120
+
 _RECORD_BACKED_LANES = frozenset(
     {
         "transcribe",
@@ -199,6 +215,7 @@ _RECORD_BACKED_LANES = frozenset(
         "chapter-agenda",
         "chapter-locator",
         "chapter",
+        "judge",
     }
 )
 
@@ -416,6 +433,7 @@ class SourcePipeline:
                     evaluation_config=(
                         self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
                     ),
+                    judging_config=self.ctx.judging_config,
                 ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
@@ -1084,6 +1102,8 @@ def _process_city(
     fingerprint: str,
     render: bool = True,
     no_refresh: bool = False,
+    *,
+    selection_index: SelectionIndex | None = None,
 ) -> tuple[CityResult, dict | None]:
     """Enrich the city (runs the pipeline's stages) and, when ``render`` is set, write its feeds/
     pages. In the enrich phase ``render`` is False: the expensive stages still run and persist via
@@ -1114,6 +1134,12 @@ def _process_city(
             # treat as a per-city error so one bad submission can't fail the whole build.
             return CityResult(city.slug, "error", detail=str(exc)), None
 
+    if render:
+        try:
+            _validate_publication_note_identities(city, episodes)
+        except ValueError as exc:
+            return CityResult(city.slug, "error", detail=str(exc)), None
+
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
@@ -1124,11 +1150,69 @@ def _process_city(
         key=lambda e: e.published,
         reverse=True,
     )
+    raw_retained_eps = retained_eps
+    selection_hash = None
+    visibility_hash = None
+    hidden_recording_guids = set()
+    if render:
+        selection_index = selection_index or load_selection_index([city])
+        if any(group.feed_slug == city.slug for group in selection_index.groups):
+            plan = select_feed_publication(
+                selection_index,
+                city,
+                retained_eps,
+                load_records(pipeline.state_dir, source_key(city)),
+            )
+            if plan.held:
+                detail = "; ".join(str(diagnostic) for diagnostic in plan.diagnostics)
+                print(f"publication selection held {city.slug}: {detail}", flush=True)
+                previous_dir = output_dir / city.slug
+                return (
+                    CityResult(
+                        city.slug,
+                        "held",
+                        detail=detail,
+                        has_audio=(previous_dir / "audio_feed.xml").is_file(),
+                        has_video=(previous_dir / "video_feed.xml").is_file(),
+                    ),
+                    None,
+                )
+            retained_eps = list(plan.public_items)
+            selection_hash = plan.policy_hash
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    [fingerprint, selection_hash, plan.selected_uids], separators=(",", ":")
+                ).encode()
+            ).hexdigest()
+        archive_index = load_archive_index(list(selection_index.owners.values()))
+        visibility_hash = archive_policy_hash(archive_index, source_key(city))
+        try:
+            hidden_recording_guids = {
+                ep.guid for ep in episodes if is_archive_only(archive_index, source_key(city), ep)
+            }
+            retained_eps = [
+                ep
+                for ep in retained_eps
+                if not is_archive_only(archive_index, source_key(city), ep)
+            ]
+        except ValueError as exc:
+            return CityResult(city.slug, "error", detail=str(exc)), None
+        if visibility_hash is not None:
+            fingerprint = hashlib.sha256(
+                json.dumps([fingerprint, visibility_hash], separators=(",", ":")).encode()
+            ).hexdigest()
     calendar_records = sorted(
         filter_by_body(pipeline.calendar_records(city), body_filter, body_inclusions),
         key=lambda record: record.published,
         reverse=True,
     )
+    calendar_records = [
+        record
+        for record in calendar_records
+        if not record.video_guid or record.video_guid not in hidden_recording_guids
+    ]
+    raw_retained_eps = _project_publication_notes(city, raw_retained_eps)
+    retained_eps = _project_publication_notes(city, retained_eps)
     feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
@@ -1186,7 +1270,7 @@ def _process_city(
             rendered_page_cache = _write_meeting_pages(
                 city_dir,
                 city,
-                retained_eps,
+                raw_retained_eps,
                 base_url,
                 site_config,
                 page_cache,
@@ -1211,7 +1295,14 @@ def _process_city(
                         import shutil
 
                         shutil.rmtree(child)
-            archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
+            archive_hash = _city_archive_hash(
+                city,
+                retained_eps,
+                calendar_records,
+                base_url,
+                selection_hash=selection_hash,
+                archive_hash=visibility_hash,
+            )
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
                 meeting_outputs_changed = True
@@ -1242,11 +1333,14 @@ def _process_city(
         _write_chapter_sidecars(
             city_dir,
             city,
-            feed_eps,
+            raw_retained_eps
+            if selection_hash is not None or visibility_hash is not None
+            else feed_eps,
             base_url,
             include_generated_chapters=include_generated_chapters,
         )
-        if has_audio:
+        # A valid selection must replace stale alternate items even without playable audio.
+        if has_audio or selection_hash is not None or visibility_hash is not None:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
                     city,
@@ -1311,6 +1405,34 @@ def _process_city(
         ),
         new_entry,
     )
+
+
+def _validate_publication_note_identities(city: City, episodes: list[Episode]) -> None:
+    """Fail closed if a configured note UID is present with a different provider identity."""
+    if not city.publication_notes:
+        return
+    configured = {entry["uid"]: entry["provider_guid"] for entry in city.publication_notes}
+    for episode in episodes:
+        expected = configured.get(episode.uid or "")
+        if expected is not None and episode.guid != expected:
+            raise ValueError(
+                f"publication note identity mismatch for UID {episode.uid}: "
+                f"expected provider GUID {expected!r}, got {episode.guid!r}"
+            )
+
+
+def _project_publication_notes(city: City, episodes: list[Episode]) -> list[Episode]:
+    """Return feed-local shallow copies carrying approved presentation-only notes."""
+    if not city.publication_notes:
+        return episodes
+    by_uid = {entry["uid"]: entry["note"] for entry in city.publication_notes}
+    guid_by_uid = {entry["uid"]: entry["provider_guid"] for entry in city.publication_notes}
+    return [
+        replace(episode, publication_note=by_uid[episode.uid])
+        if episode.uid in by_uid and episode.guid == guid_by_uid[episode.uid]
+        else episode
+        for episode in episodes
+    ]
 
 
 def _try_preload_asr_model(defaults: dict, *, lane: str | None = None) -> None:
@@ -1959,6 +2081,15 @@ def _run_enrich_global_queue(
                 for ep in state["candidate_episodes"]
                 if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
             ]
+    # Census retained work before queue filters, admission caps or stop gates can hide it.
+    for stage in pipeline.stages:
+        if (allowed is None or stage.name in allowed) and ctx.llm_work.is_producer(stage.name):
+            if not callable(getattr(stage, "census", None)):
+                raise ValueError(
+                    f"Registered LLM stage {stage.name} requires an eligibility census"
+                )
+            for state in prepared.values():
+                stage.census(state["city"], state["retained_episodes"], ctx)
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). TagsStage
     # (works purely off agenda/transcript text) does not read it. Gating this on
@@ -2046,17 +2177,18 @@ def _run_enrich_global_queue(
     # Links/documents are source-scoped rather than materialization-scoped.  In addition to
     # avoiding repeated document downloads for shared source views, this provides AgendaTextStage
     # the complete source archive it needs for conservative prior-meeting minutes inheritance.
-    if source_stages:
-        for st in prepared.values():
-            stats = run_stages(
-                st["provider"],
-                st["city"],
-                st["retained_episodes"],
-                source_stages,
-                ctx,
-                quiet=True,
-            )
-            pipeline.accumulate_stats(stats)
+    judge_batcher = None
+    original_judge_backend = ctx.judge_backend
+    # Set up before the source-stage pass below, which is where the judge stage runs.
+    if any(stage.name == "judge" for stage in source_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.judge_backend, LiteLLMBackend)
+            and ctx.judge_backend.config.dispatch_v2_url
+        ):
+            judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
+            ctx.judge_backend = judge_batcher
 
     # 3) Passes. Submission order = global priority order; the native_work_gate still serializes
     #    the actual encodes. Audio uses a rolling submission window rather than eager whole-list
@@ -2123,6 +2255,17 @@ def _run_enrich_global_queue(
         pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
         completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
         failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
+        from citypods.events import emit_event
+
+        emit_event(
+            "tag_batch_flush",
+            outcome="completed" if not failed else "errors",
+            lane="tag",
+            jobs=len(batch_outcomes),
+            pending=pending,
+            completed=completed,
+            errors=failed,
+        )
         print(
             f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
             f"completed={completed} errors={failed}",
@@ -2130,6 +2273,26 @@ def _run_enrich_global_queue(
         )
         if failed:
             llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
+
+    def _flush_judge_batch() -> None:
+        """Durably submit the judge jobs accumulated since the prior checkpoint."""
+        if judge_batcher is None:
+            return
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = judge_batcher.flush()
+        if not batch_outcomes:
+            return
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
+        print(
+            f"[enrich] judge LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"judge: {failed} job(s) failed to submit")
 
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
@@ -2141,6 +2304,7 @@ def _run_enrich_global_queue(
         # the checkpoint records a real Worker handle (or the submission error) for retry.
         checkpoint_start = time.monotonic()
         _flush_tag_batch()
+        _flush_judge_batch()
         persist_start = time.monotonic()
         _persist_all()
         push_start = time.monotonic()
@@ -2207,6 +2371,34 @@ def _run_enrich_global_queue(
         if isinstance(ctx.tag_backend, LiteLLMBackend) and ctx.tag_backend.config.dispatch_v2_url:
             tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
             ctx.tag_backend = tag_batcher
+
+    # Source-scoped stages. Run once the checkpoint helpers and batchers exist. Document stages
+    # run per source (each needs its source's whole archive); the judge stage runs once across
+    # every source, so its run caps go to the newest dirty episodes anywhere rather than to
+    # whichever sources sort first (the capped PR4 dry run gave one zoning board every sibling
+    # packet), then checkpoints.
+    document_stages = [s for s in source_stages if s.name != "judge"]
+    judge_stage = next((s for s in source_stages if s.name == "judge"), None)
+    if document_stages:
+        for st in prepared.values():
+            stats = run_stages(
+                st["provider"],
+                st["city"],
+                st["retained_episodes"],
+                document_stages,
+                ctx,
+                quiet=True,
+            )
+            pipeline.accumulate_stats(stats)
+            _checkpoint_if_due()
+    if judge_stage is not None:
+        stat = run_judge_across_sources(
+            judge_stage,
+            [(st["city"], st["retained_episodes"]) for st in prepared.values()],
+            ctx,
+        )
+        pipeline.accumulate_stats([stat])
+        _checkpoint_if_due()
 
     # Chapter lanes use the same per-episode global queue as audio, but their stages already
     # know how to build/finalize a durable job independently.  Interpose the same collector used
@@ -2290,6 +2482,14 @@ def _run_enrich_global_queue(
                 ctx.chapter_llm_backend = chapter_batcher
             ctx.chapter_llm_backend = original_chapter_backend
         elif audio_stages:
+            from citypods.events import emit_event
+
+            emit_event(
+                "audio_pass_start",
+                outcome="start",
+                lane="audio",
+                source_count=len(candidates),
+            )
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 _run_bounded(
@@ -2298,6 +2498,12 @@ def _run_enrich_global_queue(
                     candidates,
                     max_pending=max_workers + ctx.audio_queue_lookahead,
                 )
+            emit_event(
+                "audio_pass_end",
+                outcome="completed",
+                lane="audio",
+                source_count=len(candidates),
+            )
             print("[enrich] audio pass done", flush=True)
             # Persist audio-pass results now, before the decoupled transcript pass — shrinks the
             # window in which a mid-run kill (SIGTERM/OOM/lost-comms) would lose every record update
@@ -2311,6 +2517,14 @@ def _run_enrich_global_queue(
                 owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset())
             )
             tx = [item for item in candidates if item[1].hosted_audio_url and owned(item)]
+            from citypods.events import emit_event
+
+            emit_event(
+                "transcript_pass_start",
+                outcome="start",
+                lane="transcript",
+                source_count=len(tx),
+            )
             print(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
@@ -2323,6 +2537,12 @@ def _run_enrich_global_queue(
                     on_progress=_checkpoint_if_due,
                     stop=ctx.stop,
                 )
+            emit_event(
+                "transcript_pass_end",
+                outcome="completed",
+                lane="transcript",
+                source_count=len(tx),
+            )
             print("[enrich] transcript pass done", flush=True)
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
@@ -2373,6 +2593,10 @@ def _run_enrich_global_queue(
         if failed:
             llm_submission_failures.append(f"moments: {failed} job(s) failed to submit")
         ctx.moment_backend = original_moment_backend
+
+    if judge_batcher is not None:
+        _flush_judge_batch()
+        ctx.judge_backend = original_judge_backend
 
     if r7_ledger_stages:
         print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
@@ -2592,6 +2816,8 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    skip_search: bool = False,
+    search_context_output: str | Path | None = None,
     maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
@@ -2625,20 +2851,13 @@ def _build_impl(
     cache) without depending on live provider availability (which only timed out the preview, never
     added value — URL/contract validation lives in ``contracts.yml``). An empty store renders an
     empty feed, not an error."""
+    if (skip_search or search_context_output is not None) and phase != "render":
+        raise ValueError("search handoff options require render phase")
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
-    if lane is not None and lane not in (
-        "audio",
-        "transcribe",
-        "align",
-        "tag",
-        "moments",
-        "diarize",
-        "speaker-identity",
-        "chapter-agenda",
-        "chapter-locator",
-        "chapter",
-    ):
+    # LANE_STAGES is the one lane registry: a second hand-kept allowlist here rejected `tag` and
+    # later `judge` (review/53 PR4 dry run) after both were fully wired everywhere else.
+    if lane is not None and lane not in LANE_STAGES:
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
         raise ValueError("shard_plan_path requires shard=(K, N)")
@@ -2650,6 +2869,7 @@ def _build_impl(
     # sharded burst that triggered the Granicus 403 / truncated-fetch storm.
     HOST_LIMITER.configure(site_config.get("provider_rate_limits", {}))
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    selection_index = load_selection_index(cities)
     if only_slug:
         cities = filter_city_configs(cities, only_slug)
         if not cities:
@@ -2678,6 +2898,7 @@ def _build_impl(
             "chapter-agenda",
             "chapter-locator",
             "chapter",
+            "judge",
         }
     )
     if source:
@@ -2767,31 +2988,48 @@ def _build_impl(
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
-    tag_prelabeler_shadow_max_dispatches = lane_for(
-        "topic-tags:prelabeler-shadow"
-    ).max_dispatches_per_run
+    shadow_enabled = bool((tagging_config.get("prelabeler") or {}).get("shadow_enabled", False))
+    tag_prelabeler_shadow_max_dispatches = (
+        lane_for("topic-tags:prelabeler-shadow").max_dispatches_per_run if shadow_enabled else 0
+    )
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
-    moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
+    # Extraction and candidate/panel judging share the stage counter. Both lane allowances
+    # must contribute: using only extraction slots starves the larger judge fan-out.
+    moment_max_dispatches = (
+        lane_for("r6-moments").max_dispatches_per_run + lane_for("r6-judge").max_dispatches_per_run
+    )
     # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
     # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
     # skip building its prompts instead of doing the work only to have every job rejected. The
     # run itself still goes ahead: the same stages apply already-completed deferred results to
     # episodes, and a closed lane (a full queue can stay closed for days) must not stall that.
-    # Fails open; enqueue still enforces every limit. Same URL precedence as
+    # A failed preflight closes only the affected dispatch lanes; render, enrichment, and polling
+    # of already-completed results continue. Same URL precedence as
     # LLMBackendConfig.from_env().
     v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
+    judge_closed_caps: dict[str, int] = {}
+    judging_config_enabled = bool((site_config.get("judging") or {}).get("enabled"))
     if not dry_run and phase != "render" and v2_url:
         closed = _closed_llm_lanes(
             {
                 "topic-tags:tagger": tagging_config.get("enabled"),
                 "topic-tags:prelabeler": tagging_config.get("enabled"),
-                "topic-tags:prelabeler-shadow": tagging_config.get("enabled"),
+                "topic-tags:prelabeler-shadow": tagging_config.get("enabled") and shadow_enabled,
                 "chapter-agenda": True,
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
+                "r6-judge": moments_config.get("enabled"),
+                # The judge lanes are preflighted only for the judge lane's own run: a Worker that
+                # is down or refusing ingress would otherwise cost a full planning pass (about 50
+                # minutes) and end in a red run (2026-10-13: HTTP 500 on every enqueue).
+                "judge:anchor": lane == "judge" and judging_config_enabled,
+                "judge:sibling": lane == "judge" and judging_config_enabled,
             }
         )
+        for judge_purpose in ("judge:anchor", "judge:sibling"):
+            if judge_purpose in closed:
+                judge_closed_caps[judge_purpose] = 0
         if "topic-tags:tagger" in closed:
             tag_max_dispatches = 0
         if "topic-tags:prelabeler" in closed:
@@ -2802,7 +3040,7 @@ def _build_impl(
             chapter_agenda_max_dispatches = 0
         if "chapter-locator" in closed:
             chapter_locator_max_dispatches = 0
-        if "r6-moments" in closed:
+        if {"r6-moments", "r6-judge"} & closed:
             moment_max_dispatches = 0
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
@@ -2873,6 +3111,27 @@ def _build_impl(
             )
         except ValueError as exc:
             print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
+    judge_backend = None
+    judging_config = site_config.get("judging") or {}
+    # review/53: the judge lane dispatches only through the Worker (JEV is api_shape systemone and
+    # has no direct transport); nothing is built unless judging is enabled for this lane.
+    if lane == "judge" and judging_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            judge_backend = LiteLLMBackend(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
+                    model=lane_for("judge:anchor").primary_model,
+                    additional_models=(),
+                    mode="dispatch",
+                ),
+                storage=storage,
+            )
+        except ValueError as exc:
+            print(f"judge: LLM backend unavailable ({exc}); judging deferred", file=sys.stderr)
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -2887,8 +3146,19 @@ def _build_impl(
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
     if not dry_run and not state_snapshot_restored:
-        restored = pull_state(storage, state_dir)
+        if shard is not None or source:
+            owned_sources = owned if shard is not None else {source}
+            from citypods.statesync import shard_pull_prefixes
+
+            restored = pull_state(
+                storage, state_dir, only_prefixes=shard_pull_prefixes(owned_sources)
+            )
+        else:
+            restored = pull_state(storage, state_dir)
         if restored:
+            from citypods.events import emit_event
+
+            emit_event("state_restore", outcome="completed", source_count=restored)
             print(f"state: restored {restored} file(s) from durable storage")
     elif state_snapshot_restored:
         print("state: using canonical pre-matrix snapshot; durable restore already completed")
@@ -2923,7 +3193,9 @@ def _build_impl(
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
-    if lane == "chapter-agenda":
+    if lane == "judge":
+        stages = judge_stages()
+    elif lane == "chapter-agenda":
         stages = [AgendaChapterCandidatesStage()]
     elif lane == "chapter-locator":
         stages = [ChapterBoundaryLocatorStage()]
@@ -3014,6 +3286,20 @@ def _build_impl(
                     f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
                     "(+ yield if quota exhausted or superseded)"
                 )
+            tag_llm_deadline = None
+        elif lane == "judge":
+            # The judge lane reads persisted candidates and enqueues queue-only v2 packets; its run
+            # caps bound the work, and this window bounds a pass over a large backlog.
+            judge_window_min = float(
+                defaults.get("judge_run_time_budget_minutes", JUDGE_RUN_TIME_BUDGET_MINUTES)
+            )
+            judge_deadline_secs = judge_window_min * 60 * safety
+            remaining_secs = max(0.0, judge_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if judge_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: {lane} window {judge_window_min:.0f}m x {safety} (+ yield if superseded)"
+            )
             tag_llm_deadline = None
         elif lane == "moments":
             # Moments lane only prepares queue-only v2 requests and is count-bounded.
@@ -3186,6 +3472,10 @@ def _build_impl(
         compute_backend=compute_backend,
         tag_backend=tag_backend,
         moment_backend=moment_backend,
+        judge_backend=judge_backend,
+        judging_config=judging_config,
+        # A judge lane the Worker reports closed starts with no packets to send this run.
+        judge_run_caps=judge_closed_caps,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
@@ -3198,7 +3488,11 @@ def _build_impl(
             "prelabeler": {
                 **(tagging_config.get("prelabeler") or {}),
                 "model": lane_for("topic-tags:prelabeler").primary_model,
-                "shadow_model": lane_for("topic-tags:prelabeler-shadow").primary_model,
+                "shadow_model": (
+                    lane_for("topic-tags:prelabeler-shadow").primary_model
+                    if (tagging_config.get("prelabeler") or {}).get("shadow_enabled", False)
+                    else None
+                ),
             },
         },
         moment_evaluation_state_path=state_dir
@@ -3353,14 +3647,14 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag", "moments")
+                and lane not in ("audio", "tag", "moments", "judge")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
-                # mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, `speaker-identity`, `judge`) have no
+                # free mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -3451,7 +3745,7 @@ def _build_impl(
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
                         _lane_checkpoint_push
-                        if lane in {"tag", "diarize", "speaker-identity"}
+                        if lane in {"tag", "diarize", "speaker-identity", "judge"}
                         and persist_records
                         and not dry_run
                         and storage is not None
@@ -3503,6 +3797,7 @@ def _build_impl(
                                     fingerprint,
                                     do_render,
                                     no_refresh,
+                                    selection_index=selection_index,
                                 )
                                 for c in city_group
                             ]
@@ -3542,6 +3837,7 @@ def _build_impl(
                                     fingerprint,
                                     True,
                                     True,
+                                    selection_index=selection_index,
                                 )
                                 for c in canonical_cities
                             ]
@@ -3705,9 +4001,10 @@ def _build_impl(
                 r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
             }
             search_enabled = bool(site_config.get("defaults", {}).get("search", True))
-            _write_aliases(output_dir, base_url, all_cities, feed_info)
+            held_slugs = {result.slug for result in results if result.status == "held"}
+            _write_aliases(output_dir, base_url, all_cities, feed_info, held_slugs=held_slugs)
             _write_cname(output_dir, site_config)
-            _prune_stale_dirs(output_dir, all_cities)
+            _prune_stale_dirs(output_dir, all_cities, held_slugs=held_slugs)
             request_config = site_config.get("city_request_form") or {}
             request_form_enabled = bool(
                 request_config.get("formspark_action") and request_config.get("turnstile_site_key")
@@ -3722,7 +4019,17 @@ def _build_impl(
                 shutil.rmtree(request_dir, ignore_errors=True)
             search_manifest = {"shards": []}
             search_available = False
-            if search_enabled:
+            if search_context_output is not None:
+                context_path = Path(search_context_output)
+                context_path.parent.mkdir(parents=True, exist_ok=True)
+                context_path.write_text(json.dumps({"feed_info": feed_info, "base_url": base_url}))
+            if skip_search:
+                manifest_path = output_dir / "data" / "search" / "manifest.json"
+                page_path = output_dir / "search" / "index.html"
+                if search_enabled and manifest_path.is_file() and page_path.is_file():
+                    search_manifest = json.loads(manifest_path.read_text())
+                    search_available = True
+            elif search_enabled:
                 search_cache = cache.setdefault("_static_search", {})
                 search_stop = stop
                 if search_stop is None:
@@ -3797,13 +4104,22 @@ def _build_impl(
             if lane in {"transcribe", "align"}:
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
-            elif lane in {"tag", "moments"}:
+            elif lane in {"tag", "moments", "judge"}:
                 budget_key = f"{lane}_run_time_budget_minutes"
-                _history_window_min = float(defaults.get(budget_key, 240))
+                _history_window_min = float(
+                    defaults.get(
+                        budget_key, JUDGE_RUN_TIME_BUDGET_MINUTES if lane == "judge" else 240
+                    )
+                )
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
             print("finalize: recording run history", flush=True)
+            if not interrupt_requested():
+                pipeline.ctx.llm_work.finish()
+            if provider_errors or any(result.status == "error" for result in results):
+                for registered in pipeline.ctx.llm_work.lanes.values():
+                    pipeline.ctx.llm_work.partial(registered.telemetry_producer)
             run_event_path = _record_run_history(
                 state_dir,
                 results,
@@ -3829,9 +4145,11 @@ def _build_impl(
                     "lane": lane,
                     "shard": f"{shard[0]}/{shard[1]}" if shard is not None else None,
                     "source": source,
+                    "city": only_slug,
                     "scoped": scoped,
                 },
                 interrupted=interrupt_requested(),
+                llm_work=pipeline.ctx.llm_work.snapshot(),
             )
             # Persist the derived work manifest (H5) for the status surface + as the H6b lease
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
@@ -4018,6 +4336,8 @@ def build(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    skip_search: bool = False,
+    search_context_output: str | Path | None = None,
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
@@ -4062,6 +4382,8 @@ def build(
             no_refresh=no_refresh,
             shard_plan_path=shard_plan_path,
             state_snapshot_restored=state_snapshot_restored,
+            skip_search=skip_search,
+            search_context_output=search_context_output,
             maintenance_lease=maintenance_lease,
             _compute_backend_holder=compute_backend_holder,
         )
@@ -4074,7 +4396,9 @@ def build(
                 close_compute()
 
 
-def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
+def _prune_stale_dirs(
+    output_dir: Path, cities: list[City], *, held_slugs: set[str] | None = None
+) -> None:
     """Remove ``docs/<slug>`` directories left over from a deleted city or a renamed slug.
     ``docs/`` is restored from actions/cache between runs, so without this a removed feed (or
     the old slug after a rename) would keep serving forever. Only directories that look like a
@@ -4082,7 +4406,7 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
     files are left alone."""
     import shutil
 
-    live = {c.slug for c in cities}
+    live = {c.slug for c in cities} | (held_slugs or set())
     for c in cities:
         live.update(c.aliases)
     for child in output_dir.iterdir():
@@ -4093,7 +4417,14 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
             shutil.rmtree(child)
 
 
-def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_info: dict) -> None:
+def _write_aliases(
+    output_dir: Path,
+    base_url: str,
+    cities: list[City],
+    feed_info: dict,
+    *,
+    held_slugs: set[str] | None = None,
+) -> None:
     """For every former slug (``aliases``), emit a permanent redirect: an itunes:new-feed-url
     stub feed (so podcast clients migrate the subscription) and an HTML redirect page. Also
     write ``redirects.json`` — a from->to map a CDN (Cloudflare) can turn into real 301s,
@@ -4101,8 +4432,25 @@ def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_inf
     net so subscribers never have to manually re-subscribe when they do."""
     site = base_url.rstrip("/")
     redirects: list[dict] = []
+    held_aliases = {
+        alias for city in cities if city.slug in (held_slugs or set()) for alias in city.aliases
+    }
+    prior_redirects = output_dir / "redirects.json"
+    if held_aliases and prior_redirects.exists():
+        try:
+            prior = json.loads(prior_redirects.read_text())
+        except ValueError:
+            prior = []
+        redirects.extend(
+            row
+            for row in (prior if isinstance(prior, list) else [])
+            if isinstance(row, dict)
+            and isinstance(row.get("from"), str)
+            and row["from"].startswith("/")
+            and row["from"].split("/")[1] in held_aliases
+        )
     for city in cities:
-        if not city.aliases:
+        if not city.aliases or city.slug in (held_slugs or set()):
             continue
         info = feed_info.get(city.slug, {})
         new_page = f"{site}/{city.slug}/"
@@ -4151,7 +4499,13 @@ def _write_chapter_sidecars(
 
 
 def _city_archive_hash(
-    city: City, episodes: list[Episode], calendar_records: list[AgendaRecord], base_url: str
+    city: City,
+    episodes: list[Episode],
+    calendar_records: list[AgendaRecord],
+    base_url: str,
+    *,
+    selection_hash: str | None = None,
+    archive_hash: str | None = None,
 ) -> str:
     """Hash the city archive page's render inputs for incremental publication."""
     payload = [
@@ -4186,6 +4540,10 @@ def _city_archive_hash(
         ],
         base_url.rstrip("/"),
     ]
+    if selection_hash is not None:
+        payload.append([selection_hash, [ep.uid for ep in episodes]])
+    if archive_hash is not None:
+        payload.append(archive_hash)
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 
@@ -4337,6 +4695,7 @@ def _record_run_history(
     h16_availability: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
+    llm_work: dict | None = None,
 ) -> str | None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -4397,6 +4756,7 @@ def _record_run_history(
         "lane": scope.get("lane"),
         "shard": scope.get("shard"),
         "source": scope.get("source"),
+        "city": scope.get("city"),
         "scoped": bool(scope.get("scoped", False)),
         # GH#377: was this run cut short by a termination signal (SIGTERM/cancel)? Lets the
         # projection/audit tell a deliberately-completed run from one that was killed mid-queue
@@ -4414,6 +4774,7 @@ def _record_run_history(
         "materialize_encoded": audio.get("encoded", 0),
         "materialize_seconds": audio.get("seconds", 0.0),
         "stages": stages,
+        "llm_work": llm_work or {"schema_version": 1, "purposes": {}},
         "github_run_id": github_run_id,
         "github_run_url": github_run_url,
         "logical_run_id": logical_run_id,
@@ -4678,16 +5039,18 @@ def _newer_run_queued() -> str | None:
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:
     import os
+    from urllib.parse import urlsplit
 
-    if base_url:
-        return base_url
-    env = os.environ.get("PAGES_BASE_URL")
-    if env:
-        return env
+    url = base_url or os.environ.get("PAGES_BASE_URL")
+    if not url:
+        domain = site_config.get("custom_domain")
+        return f"https://{domain}" if domain else "http://localhost:8000"
+
+    parsed = urlsplit(url)
     domain = site_config.get("custom_domain")
-    if domain:
-        return f"https://{domain}"
-    return "http://localhost:8000"
+    if parsed.scheme == "http" and domain and parsed.hostname in {domain, f"www.{domain}"}:
+        return f"https://{parsed.netloc}{parsed.path}"
+    return url
 
 
 def _write_cname(output_dir: Path, site_config: dict) -> None:

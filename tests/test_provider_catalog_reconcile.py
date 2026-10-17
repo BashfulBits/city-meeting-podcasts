@@ -1,0 +1,2156 @@
+"""Planner, issue and quality behavior for provider-catalog reconciliation (review/48 Slice 1).
+
+Offline: fake catalogs, fake canaries and a fake Worker pause control drive the real planner.
+"""
+
+from __future__ import annotations
+
+import json
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import date
+
+import pytest
+
+from citypods.compute.llm_lanes import LaneConfig, parse_lanes
+from citypods.provider_catalog.decisions import Decisions
+from citypods.provider_catalog.evidence import digest
+from citypods.provider_catalog.issue import (
+    MARKER,
+    decision_choices,
+    decode_state,
+    render_body,
+    sync_issue,
+)
+from citypods.provider_catalog.quality import QualityIndex
+from citypods.provider_catalog.reconcile import (
+    Anomaly,
+    Report,
+    confirm_retirement_candidates,
+    reconcile,
+)
+from citypods.provider_catalog.rules import Response
+
+TODAY = date(2026, 9, 24)
+OK = Response(status=200, body='data: {"choices":[{"delta":{"content":"ok"}}]}\n\n')
+GONE = Response(status=404, body='{"error":{"message":"The model does not exist"}}')
+
+
+class FakeResponse:
+    def __init__(self, payload, status=200):
+        self._payload, self.status_code = payload, status
+
+    @property
+    def ok(self):
+        return self.status_code < 400
+
+    def json(self):
+        return self._payload
+
+
+class FakeSession:
+    def __init__(self, catalogs):
+        self.catalogs = catalogs
+
+    def get(self, url, headers=None, params=None, timeout=None):
+        for base, payload in self.catalogs.items():
+            if url.startswith(base):
+                return FakeResponse(payload)
+        return FakeResponse({}, 404)
+
+
+@dataclass
+class FakeOutcome:
+    contended: bool = False
+    renewals: int = 0
+
+    def renew(self):
+        self.renewals += 1
+
+
+class FakeControl:
+    def __init__(self, quota=None, contended=False, expire_after_yield=False):
+        self.quota, self.contended = (
+            ({"or_scarce": {"rpd_remaining": 20}} if quota is None else quota),
+            contended,
+        )
+        self.expire_after_yield = expire_after_yield
+        self.paused_providers, self.reserved = [], []
+
+    @contextmanager
+    def paused(self, provider):
+        self.paused_providers.append(provider)
+        outcome = FakeOutcome(contended=self.contended)
+        yield outcome
+        if self.expire_after_yield:
+            outcome.contended = True
+
+    def route_quota(self, provider):
+        return self.quota
+
+    def reserve(self, route_id):
+        self.reserved.append(route_id)
+
+
+LIMITS = {
+    "providers": {
+        "groq": {"api_base": "https://groq.test/v1", "accounts": [{"id": "p", "api_key_env": "K"}]},
+        "openrouter": {
+            "api_base": "https://or.test/v1",
+            "accounts": [{"id": "p", "api_key_env": "K"}],
+        },
+        "zai": {"api_base": "https://zai.test/v4", "accounts": [{"id": "p", "api_key_env": "K"}]},
+    },
+    "routes": [
+        {
+            "route_id": "groq_keep",
+            "provider": "groq",
+            "model": "meta/llama-keep",
+            "upstream_model": "meta-llama/llama-keep",
+            "account_id": "p",
+        },
+        {
+            "route_id": "groq_gone",
+            "provider": "groq",
+            "model": "qwen/qwen-gone",
+            "upstream_model": "qwen/qwen-gone",
+            "account_id": "p",
+        },
+        {
+            "route_id": "or_scarce",
+            "provider": "openrouter",
+            "model": "google/gem-scarce",
+            "upstream_model": "google/gem-scarce:free",
+            "account_id": "p",
+            "rpd": 20,
+        },
+        {
+            "route_id": "zai_flash",
+            "provider": "zai",
+            "model": "zai/glm-flash",
+            "upstream_model": "glm-flash",
+            "account_id": "p",
+        },
+    ],
+}
+CATALOGS = {
+    "https://groq.test": {
+        "data": [
+            {"id": "meta-llama/llama-keep"},
+            {"id": "meta-llama/llama-new"},
+            {"id": "whisper-large-v3"},
+        ]
+    },
+    "https://or.test": {
+        "data": [
+            {"id": "google/gem-scarce:free", "pricing": {"prompt": "0", "completion": "0"}},
+            {
+                "id": "kimi/k9:free",
+                "pricing": {"prompt": "0", "completion": "0"},
+                "context_length": 131072,
+            },
+            {"id": "kimi/k9", "pricing": {"prompt": "0.000001", "completion": "0.000002"}},
+        ]
+    },
+    "https://zai.test": {"data": [{"id": "glm-paid"}]},
+}
+LANES = parse_lanes(
+    {
+        "tagger": {
+            "models": ["meta/llama-keep"],
+            "max_dispatches_per_run": 1,
+            "daily_write_units": 100,
+            "telemetry": {
+                "producer": "test",
+                "unit": "episode",
+                "completion": "consumed",
+                "scope": "retained_catalog",
+            },
+        },
+        "fixed": {
+            "models": ["meta/llama-keep"],
+            "max_dispatches_per_run": 1,
+            "daily_write_units": 100,
+            "telemetry": {
+                "producer": "test",
+                "unit": "episode",
+                "completion": "consumed",
+                "scope": "retained_catalog",
+            },
+            "catalog_backup_candidates": False,
+        },
+    }
+)
+QUALITY = QualityIndex(
+    scores={
+        ("meta", "llama-keep"): 40.0,
+        ("meta", "llama-new"): 55.0,
+        ("kimi", "k9"): 30.0,
+        ("openai", "gpt-oss-120b"): 33.0,
+        ("nvidia", "nvidia-nemotron-3-super-120b-a12b"): 36.0,
+    }
+)
+
+
+NO_DECISIONS = Decisions()
+
+
+def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, control=None, **kw):
+    monkeypatch.setenv("K", "test-key")
+    canaries = {"qwen/qwen-gone": GONE, **(canaries or {})}
+    sent = []
+
+    def canary_fn(rules, cfg, model, key, session):
+        sent.append(model)
+        return canaries.get(model, OK)
+
+    control = control or FakeControl()
+    report = reconcile(
+        LIMITS,
+        LANES,
+        decisions,
+        QUALITY,
+        state or {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary_fn,
+        **kw,
+    )
+    return report, sent, control
+
+
+def test_a_proven_free_model_becomes_a_candidate_with_score_links_and_lane_suggestions(monkeypatch):
+    report, sent, control = _run(monkeypatch)
+    keys = {c.key: c for c in report.candidates}
+    new = keys["groq/meta-llama/llama-new"]
+    assert new.score == 55.0 and new.below_floor is False
+    assert new.lanes == ("tagger",)  # 55 >= the lane's 40; the opted-out lane is never offered
+    assert any("huggingface" in url for _, url in new.links)
+    k9 = keys["openrouter/kimi/k9:free"]
+    assert k9.below_floor is True and k9.lanes == () and k9.context_limit == 131072
+    assert "kimi/k9" not in sent  # the paid variant has no free evidence
+    assert "whisper-large-v3" not in sent  # non-chat entries are never canaried
+    assert set(control.paused_providers) == {"groq", "openrouter", "zai"}
+
+
+def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounded(
+    monkeypatch,
+):
+    import citypods.provider_catalog.discovery as discovery_module
+    import citypods.provider_catalog.reconcile as module
+    from citypods.provider_catalog.discovery import MAX_RUN_SESSIONS
+
+    calls = []
+    selected_axes = []
+
+    def discover(candidate, *_args, **kwargs):
+        calls.append((candidate.key, kwargs["receipt_id"]))
+        selected_axes.append(kwargs.get("selected_axes"))
+        return {
+            "summary": {
+                "retryable": False,
+                "reason": "unsupported_endpoint_axis",
+                "reachability": "verified",
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "axes": [],
+            },
+            "artifact": {
+                "session": {"provider": candidate.provider},
+                "attempts": [],
+                "reason": "unsupported_endpoint_axis",
+            },
+        }
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="test-run",
+    )
+    candidate_keys = {candidate.key for candidate in report.candidates}
+    assert calls
+    assert {key for key, _ in calls} <= candidate_keys
+    assert len(calls) <= MAX_RUN_SESSIONS
+    assert selected_axes and all(axes is None for axes in selected_axes)
+    assert len({key.split("/", 1)[0] for key, _ in calls}) == len(calls)
+    configured = {f"{route['provider']}/{route['upstream_model']}" for route in LIMITS["routes"]}
+    assert all(key not in configured for key, _ in calls)
+
+    calls.clear()
+    selected_axes.clear()
+    automatic = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-run",
+    )
+    assert calls and all(axes == ("input",) for axes in selected_axes)
+    assert all(
+        candidate.score is not None and candidate.score > 33.0
+        for candidate in automatic.candidates
+        if candidate.discovery
+        and candidate.discovery.get("reason") != "below_automatic_quality_floor"
+    )
+    assert any(
+        candidate.discovery and candidate.discovery.get("reason") == "below_automatic_quality_floor"
+        for candidate in automatic.candidates
+    )
+
+    receipt_key = calls[0][0]
+    calls.clear()
+    selected_axes.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_receipt_ids={receipt_key: "reviewed-receipt"},
+        discovery_run_id="automatic-retry-run",
+    )
+    assert calls and all(
+        axes is None if key == receipt_key else axes == ("input",)
+        for (key, _receipt), axes in zip(calls, selected_axes, strict=True)
+    )
+
+    monkeypatch.setattr(discovery_module, "MAX_RUN_SESSIONS", 0)
+    calls.clear()
+    deferred = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-deferred-run",
+    )
+    pending = [
+        key for key, memory in deferred.state["canaries"].items() if memory.get("discovery_pending")
+    ]
+    assert pending
+    assert any(
+        candidate.key in pending
+        and candidate.discovery
+        and candidate.discovery.get("reason") == "automatic_discovery_deferred_run_budget"
+        for candidate in deferred.candidates
+    )
+
+    monkeypatch.setattr(discovery_module, "MAX_RUN_SESSIONS", 3)
+    calls.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        deferred.state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        discovery_run_id="automatic-next-week-run",
+    )
+    assert any(key in pending for key, _receipt in calls)
+
+    calls.clear()
+    selected = "groq/meta-llama/llama-new"
+    control = FakeControl()
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="selected-run",
+        discovery_axis="output",
+        candidate_keys={selected},
+    )
+    assert {candidate.key for candidate in report.candidates} == {selected}
+    assert [key for key, _ in calls] == [selected]
+    assert control.paused_providers == ["groq"]
+    assert selected_axes[-1] == ("output",)
+
+    calls.clear()
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(contended=True),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="contended-run",
+    )
+    assert not calls
+
+
+def test_observation_only_provider_is_health_checked_but_never_proposes(monkeypatch):
+    report, sent, _ = _run(monkeypatch)
+    assert "glm-paid" not in sent and "glm-flash" in sent
+    assert not any(c.provider == "zai" for c in report.candidates)
+    # z.ai's list omits its free models, so glm-flash's absence is not reported as drift.
+    assert not any("zai_flash" in o and "absent" in o for o in report.observations)
+
+
+def test_a_retired_configured_route_is_a_new_anomaly_then_a_known_one(monkeypatch):
+    report, _, _ = _run(monkeypatch)
+    [gone] = [a for a in report.anomalies if a.route_id == "groq_gone"]
+    assert gone.verdict == "retired" and gone.absent_from_catalog and gone.new
+    again, _, _ = _run(monkeypatch, state=report.state)
+    assert [a.new for a in again.anomalies if a.route_id == "groq_gone"] == [False]
+
+
+def test_an_acknowledged_state_moves_to_observations(monkeypatch):
+    decisions = Decisions(
+        acknowledged=(
+            {
+                "provider": "groq",
+                "model_glob": "qwen/*",
+                "verdict": "retired",
+                "reason": "known",
+                "decided_on": "2026-09-24",
+            },
+        )
+    )
+    report, _, _ = _run(monkeypatch, decisions=decisions)
+    assert not report.anomalies
+    assert any("acknowledged: known" in o for o in report.observations)
+
+
+def test_ignored_candidates_are_not_canaried(monkeypatch):
+    decisions = Decisions(
+        ignored=(
+            {
+                "provider": "groq",
+                "model": "meta-llama/llama-new",
+                "reason": "no",
+                "decided_on": "2026-09-01",
+            },
+        )
+    )
+    _, sent, _ = _run(monkeypatch, decisions=decisions)
+    assert "meta-llama/llama-new" not in sent
+
+
+def test_a_failed_candidate_is_not_retried_for_28_days_and_cannot_starve_others(monkeypatch):
+    report, sent, _ = _run(monkeypatch, canaries={"kimi/k9:free": GONE})
+    assert "kimi/k9:free" in sent and not any(c.model == "kimi/k9:free" for c in report.candidates)
+    _, sent_again, _ = _run(monkeypatch, state=report.state)
+    assert "kimi/k9:free" not in sent_again
+    later = {
+        **report.state,
+        "canaries": {"openrouter/kimi/k9:free": {"verdict": "retired", "on": "2026-08-01"}},
+    }
+    _, sent_later, _ = _run(monkeypatch, state=later)
+    assert "kimi/k9:free" in sent_later
+
+
+def test_proven_candidates_stay_listed_without_being_re_canaried(monkeypatch):
+    first, _, _ = _run(monkeypatch)
+    second, sent, _ = _run(monkeypatch, state=first.state)
+    assert "meta-llama/llama-new" not in sent
+    assert "groq/meta-llama/llama-new" in {c.key for c in second.candidates}
+
+
+def test_a_scarce_route_waits_for_its_cadence_and_its_quota(monkeypatch):
+    # Out of quota: deferred to the reset, never canaried, never judged.
+    control = FakeControl(quota={"or_scarce": {"rpd_remaining": 0, "rpd_resets_at": 123}})
+    report, sent, _ = _run(monkeypatch, control=control)
+    assert "google/gem-scarce:free" not in sent and report.state["deferred"] == {"or_scarce": "123"}
+    # Quota left: checked and charged to the Worker's ledger.
+    control = FakeControl(quota={"or_scarce": {"rpd_remaining": 5}})
+    report, sent, control = _run(monkeypatch, control=control)
+    assert "google/gem-scarce:free" in sent and "or_scarce" in control.reserved
+    # Checked recently: skipped until the 28-day cadence comes round.
+    _, sent, _ = _run(monkeypatch, state=report.state)
+    assert "google/gem-scarce:free" not in sent
+
+
+def test_due_only_runs_just_the_deferred_checks_and_keeps_the_last_full_report(monkeypatch):
+    full, _, _ = _run(monkeypatch, control=FakeControl(quota={"or_scarce": {"rpd_remaining": 0}}))
+    due, sent, _ = _run(
+        monkeypatch,
+        state=full.state,
+        due_only=True,
+        control=FakeControl(quota={"or_scarce": {"rpd_remaining": 3}}),
+    )
+    assert sent == ["google/gem-scarce:free"]
+    assert {c.key for c in due.candidates} == {c.key for c in full.candidates}
+    assert {a.route_id for a in due.anomalies} == {a.route_id for a in full.anomalies}
+    assert due.state["deferred"] == {}
+
+
+def test_unpaused_probes_are_reported_as_contended(monkeypatch):
+    report, _, _ = _run(monkeypatch, control=FakeControl(contended=True))
+    assert any("without a drained dispatch pause" in o for o in report.observations)
+
+
+def test_a_new_lane_is_offered_with_no_code_change(monkeypatch):
+    global LANES
+    original = LANES
+    try:
+        LANES = parse_lanes(
+            {
+                **{
+                    p: {
+                        "models": list(lane.models),
+                        "max_dispatches_per_run": 1,
+                        "daily_write_units": 100,
+                        "telemetry": {
+                            "producer": "test",
+                            "unit": "episode",
+                            "completion": "consumed",
+                            "scope": "retained_catalog",
+                        },
+                    }
+                    for p, lane in original.items()
+                },
+                "brand-new-lane": {
+                    "models": ["meta/llama-keep"],
+                    "max_dispatches_per_run": 1,
+                    "daily_write_units": 100,
+                    "telemetry": {
+                        "producer": "test",
+                        "unit": "episode",
+                        "completion": "consumed",
+                        "scope": "retained_catalog",
+                    },
+                },
+            }
+        )
+        report, _, _ = _run(monkeypatch)
+    finally:
+        LANES = original
+    new = next(c for c in report.candidates if c.model == "meta-llama/llama-new")
+    assert "brand-new-lane" in new.lanes
+    assert "`groq/meta-llama/llama-new`: add as backup to `brand-new-lane`" in decision_choices(
+        report
+    )
+
+
+def test_quality_matching_rules():
+    q = QualityIndex(
+        scores={
+            ("google", "gemma-4-31b"): 40.0,
+            ("nvidia", "nvidia-nemo-3"): 36.0,
+            ("alibaba", "qwen3-8b"): 20.0,
+        }
+    )
+    assert q.score("gemma-4-31b-it", creator="google") == 40.0  # instruct suffix is optional
+    assert q.score("nvidia/nemo-3:free", free_suffix=":free") == 36.0  # AA creator prefix
+    assert q.score("qwen/qwen3-8b") == 20.0  # publisher alias
+    assert q.score("google/gemma-4-26b") is None  # never a nearby model's score
+    assert QualityIndex().floor is None
+
+
+# ---- issue --------------------------------------------------------------------------------------
+
+
+def test_issue_body_round_trips_state_and_keeps_ticked_boxes(monkeypatch):
+    report, _, _ = _run(monkeypatch)
+    body = render_body(report, run_date="2026-09-24")
+    assert MARKER in body
+    assert decode_state(body) == json.loads(json.dumps(report.state))  # tuples become lists
+    choice = "`groq/meta-llama/llama-new`: add as backup to `tagger`"
+    ticked = body.replace(f"- [ ] {choice}", f"- [x] {choice}")
+    rerendered = render_body(report, run_date="2026-10-01", previous_body=ticked)
+    assert f"- [x] {choice}" in rerendered
+    assert "<details><summary>Observations" in rerendered
+
+
+class FakeGh:
+    def __init__(self, issues):
+        self.issues, self.calls = issues, []
+
+    def __call__(self, args):
+        self.calls.append(list(args))
+        if args[:2] == ["issue", "list"]:
+            return json.dumps(self.issues)
+        return "https://github.test/issues/9" if args[:2] == ["issue", "create"] else ""
+
+
+@pytest.mark.parametrize(
+    ("issues", "actionable", "expected"),
+    [
+        ([], True, "created"),
+        ([], False, "no issue"),
+        ([{"number": 7, "state": "OPEN", "body": MARKER}], True, "updated #7"),
+        ([{"number": 7, "state": "OPEN", "body": MARKER}], False, "closed #7"),
+        ([{"number": 7, "state": "CLOSED", "body": MARKER}], True, "reopened #7"),
+        ([{"number": 3, "state": "OPEN", "body": "unrelated"}], True, "created"),
+    ],
+)
+def test_one_rolling_issue_is_created_updated_closed_or_reopened(
+    monkeypatch, issues, actionable, expected
+):
+    report, _, _ = _run(monkeypatch)
+    if not actionable:
+        report.candidates, report.anomalies = [], []
+    gh = FakeGh(issues)
+    assert sync_issue(report, run_date="2026-09-24", run=gh).startswith(expected)
+
+
+# ---- refinements from the 2026-09-24 dry run and discovery backtest ------------------------------
+
+from citypods.provider_catalog.reconcile import (  # noqa: E402
+    backtest_discovery,
+    backtest_summary,
+    other_lanes,
+    suggest_lanes,
+)
+
+
+def _with(limits_routes=(), catalogs=None):
+    limits = {**LIMITS, "routes": [*LIMITS["routes"], *limits_routes]}
+    return limits, {**CATALOGS, **(catalogs or {})}
+
+
+def _run_with(monkeypatch, limits, catalogs, state=None):
+    monkeypatch.setenv("K", "test-key")
+    sent, sleeps = [], []
+
+    def canary_fn(rules, cfg, model, key, session):
+        sent.append(model)
+        return GONE if model == "qwen/qwen-gone" else OK
+
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state or {},
+        session=FakeSession(catalogs),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary_fn,
+        sleep=sleeps.append,
+    )
+    return report, sent, sleeps
+
+
+def test_an_alias_of_a_configured_model_is_not_proposed(monkeypatch):
+    # Dry run: gemini-3.1-flash-lite-preview was proposed although gemini-3.1-flash-lite is live.
+    catalogs = {
+        "https://groq.test": {
+            "data": [
+                {"id": "meta-llama/llama-keep"},
+                {"id": "meta-llama/llama-keep-preview"},
+            ]
+        }
+    }
+    _, sent, _ = _run_with(monkeypatch, *_with(catalogs=catalogs))
+    assert "meta-llama/llama-keep-preview" not in sent
+
+
+def test_a_model_smaller_than_any_configured_free_route_is_not_proposed(monkeypatch):
+    # Dry run: allam-2-7b (4k context) was proposed. The floor comes from config, not a constant.
+    small = {
+        "route_id": "groq_ctx",
+        "provider": "groq",
+        "model": "x/ctx",
+        "free": True,
+        "upstream_model": "meta-llama/llama-keep",
+        "input_context_limit": 32768,
+    }
+    catalogs = {
+        "https://groq.test": {
+            "data": [
+                {"id": "meta-llama/llama-keep"},
+                {"id": "tiny/model-4k", "context_window": 4096},
+                {"id": "big/model-128k", "context_window": 131072},
+            ]
+        }
+    }
+    _, sent, _ = _run_with(monkeypatch, *_with([small], catalogs))
+    assert "tiny/model-4k" not in sent and "big/model-128k" in sent
+
+
+def test_inconclusive_candidates_are_retried_but_after_fresh_ones(monkeypatch):
+    # Dry run: Airforce canaries hit its 1 rps limit (quota_exhausted); remembering that for 28
+    # days would have hidden three free models for a month.
+    state = {
+        "canaries": {"openrouter/kimi/k9:free": {"verdict": "quota_exhausted", "on": "2026-09-20"}}
+    }
+    report, sent, _ = _run(monkeypatch, state=state)
+    assert "kimi/k9:free" in sent
+    assert "openrouter/kimi/k9:free" in {c.key for c in report.candidates}
+
+
+def test_provider_canary_spacing_is_honoured(monkeypatch):
+    route = {
+        "route_id": "af_1",
+        "provider": "airforce",
+        "model": "af/one",
+        "upstream_model": "one",
+        "account_id": "p",
+    }
+    limits = {
+        "providers": {
+            **LIMITS["providers"],
+            "airforce": {
+                "api_base": "https://af.test/v1",
+                "accounts": [{"id": "p", "api_key_env": "K"}],
+            },
+        },
+        "routes": [*LIMITS["routes"], route],
+    }
+    catalogs = {
+        **CATALOGS,
+        "https://af.test": {
+            "data": [{"id": "one"}, {"id": "two", "tier": "free"}, {"id": "three", "tier": "free"}]
+        },
+    }
+    _, sent, sleeps = _run_with(monkeypatch, limits, catalogs)
+    assert {"one", "two", "three"} <= set(sent)
+    assert sleeps.count(1.5) == 3  # two probe gaps, then cooldown before resuming dispatch
+
+
+def test_lane_offer_uses_the_weakest_member_and_lists_the_rest():
+    incumbents = {"locator": [43.6, 39.5], "tagger": [15.6], "empty": []}
+    assert suggest_lanes(20.0, incumbents) == ("empty", "tagger")
+    assert other_lanes(20.0, incumbents) == (("locator", 19.5),)
+    # Backtest: a model's own score is excluded from the lanes it already sits in.
+    assert suggest_lanes(39.5, {"locator": [43.6, 39.5]}, exclude=39.5) == ()
+    assert suggest_lanes(None, incumbents) == ()
+
+
+def test_quality_variant_suffixes_are_optional_but_never_guess_between_two():
+    q = QualityIndex(
+        scores={
+            ("google", "gemini-3-1-flash-lite-preview"): 15.6,
+            ("nvidia", "nemotron-3-nano-omni-30b-a3b"): 10.3,
+            ("google", "gemini-3-flash"): 17.9,
+            ("google", "gemini-3-flash-reasoning"): 26.3,
+        }
+    )
+    assert q.score("gemini-3.1-flash-lite", creator="google") == 15.6
+    assert q.score("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning") == 10.3
+    assert q.score("gemini-3-flash", creator="google") == 17.9  # exact match wins
+    assert q.score("gemini-3-flash-preview", creator="google") is None  # two normalize equal
+    # A bare ID with no creator: unique slug across all creators only.
+    assert q.score("gemma-4-31B-it") is None  # not in this index
+    assert QualityIndex(scores={("google", "gemma-4-31b"): 19.0}).score("gemma-4-31B-it") == 19.0
+    shared = QualityIndex(scores={("a", "same-model"): 1.0, ("b", "same-model"): 2.0})
+    assert shared.score("same-model") is None
+
+
+def test_backtest_reports_the_first_gate_that_drops_each_configured_model(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    rows = backtest_discovery(LIMITS, LANES, QUALITY, session=FakeSession(CATALOGS))
+    gates = {r.route_id: r.gate for r in rows}
+    assert gates == {
+        "groq_keep": "discoverable",
+        "groq_gone": "not in catalog",
+        "or_scarce": "discoverable",
+        "zai_flash": "observation-only provider",
+    }
+    summary = backtest_summary(rows)
+    assert (
+        summary.startswith("discovery self-check: 2/4")
+        and "qwen/qwen-gone (not in catalog)" in summary
+    )
+
+
+def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch):
+    # Maintainer decision 2026-09-24: never auto-remove; offer remove / keep-as-paid, and show
+    # which lanes use the route and what else still serves them.
+    monkeypatch.setenv("K", "test-key")
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    lanes = parse_lanes(
+        {
+            "moments": {
+                "models": ["google/gem-scarce", "meta/llama-keep"],
+                "max_dispatches_per_run": 1,
+                "daily_write_units": 100,
+                "telemetry": {
+                    "producer": "test",
+                    "unit": "episode",
+                    "completion": "consumed",
+                    "scope": "retained_catalog",
+                },
+            },
+            "solo": {
+                "models": ["google/gem-scarce"],
+                "max_dispatches_per_run": 1,
+                "daily_write_units": 100,
+                "telemetry": {
+                    "producer": "test",
+                    "unit": "episode",
+                    "completion": "consumed",
+                    "scope": "retained_catalog",
+                },
+            },
+        }
+    )
+    report = reconcile(
+        LIMITS,
+        lanes,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(quota={"or_scarce": {"rpd_remaining": 5}}),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda rules, cfg, model, key, session: (
+            paid
+            if model == "google/gem-scarce:free"
+            else (GONE if model == "qwen/qwen-gone" else OK)
+        ),
+    )
+    [anomaly] = [a for a in report.anomalies if a.route_id == "or_scarce"]
+    assert anomaly.verdict == "not_entitled"
+    assert anomaly.lane_usage == (("moments", ("meta/llama-keep",)), ("solo", ()))
+    choices = decision_choices(report)
+    assert "`or_scarce`: remove route" in choices
+    assert "`or_scarce`: keep as a paid route" in choices
+    body = render_body(report, run_date="2026-09-24")
+    assert "used by `moments`; still served by: `meta/llama-keep`" in body
+    assert "used by `solo`; still served by: **nothing else -- the lane stalls**" in body
+    assert body.index("## Decisions") > body.index("## Configured-route anomalies")
+
+
+def test_a_due_only_run_calls_only_providers_with_deferred_checks(monkeypatch):
+    full, _, _ = _run(monkeypatch, control=FakeControl(quota={"or_scarce": {"rpd_remaining": 0}}))
+    requested = []
+
+    class RecordingSession(FakeSession):
+        def get(self, url, headers=None, params=None, timeout=None):
+            requested.append(url)
+            return super().get(url, headers=headers, params=params, timeout=timeout)
+
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        full.state,
+        session=RecordingSession(CATALOGS),
+        control=FakeControl(quota={"or_scarce": {"rpd_remaining": 3}}),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+    )
+    from urllib.parse import urlsplit
+
+    assert requested and {urlsplit(url).hostname for url in requested} == {"or.test"}
+
+
+@pytest.mark.parametrize("payload", ["oops", 7, {"data": "oops"}])
+def test_a_malformed_catalog_is_that_providers_error_not_a_crash(monkeypatch, payload):
+    from citypods.provider_catalog.probe import fetch_catalog
+    from citypods.provider_catalog.registry import all_rules
+
+    monkeypatch.setenv("K", "test-key")
+    catalog = fetch_catalog(
+        all_rules()["groq"],
+        LIMITS["providers"]["groq"],
+        FakeSession({"https://groq.test": payload}),
+    )
+    assert catalog.error == "catalog malformed response"
+
+
+def test_the_decision_block_survives_a_truncated_body(monkeypatch):
+    import citypods.provider_catalog.issue as issue
+
+    report, _, _ = _run(monkeypatch)
+    choice = "`groq/meta-llama/llama-new`: add as backup to `tagger`"
+    ticked = render_body(report, run_date="2026-09-24").replace(
+        f"- [ ] {choice}", f"- [x] {choice}"
+    )
+    report.observations.extend(f"observation {i} " + "x" * 200 for i in range(200))
+    monkeypatch.setattr(issue, "_HUMAN_BODY_LIMIT", 2_500)
+    body = render_body(report, run_date="2026-10-01", previous_body=ticked)
+    assert "Truncated" in body or "Omitted" in body
+    assert f"- [x] {choice}" in body  # the tick survives, so the next update keeps it
+    assert set(decision_choices(report)) <= {
+        line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
+    }
+    assert decode_state(body) == json.loads(json.dumps(report.state))
+
+
+def test_beatapi_spacing_covers_health_and_every_schema_attempt(monkeypatch):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    events = []
+    route = {
+        "route_id": "beat_flash",
+        "provider": "beatapi",
+        "account_id": "p",
+        "model": "deepseek/deepseek-v4.1-flash",
+        "upstream_model": "deepseek-v4.1-flash-free",
+    }
+    limits = {
+        "providers": {
+            "beatapi": {
+                "api_base": "https://beat.test/v1",
+                "accounts": [{"id": "p", "api_key_env": "K"}],
+            }
+        },
+        "routes": [route],
+    }
+    catalog = {
+        "https://beat.test": {
+            "data": [
+                {"id": "deepseek-v4.1-flash-free"},
+                {"id": "new-chat-free"},
+                {"id": "jev-1.13-free", "owned_by": "task plugin"},
+                {"id": "paid-chat"},
+            ]
+        }
+    }
+
+    class Control(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            class Pause:
+                contended = False
+
+                def renew(self):
+                    events.append("renew")
+
+            yield Pause()
+
+        def reserve(self, rid):
+            events.append("reserve")
+            super().reserve(rid)
+
+    def ping(rules, cfg, model, key, session):
+        events.append(model)
+        return OK  # first event may be reasoning-only; schema verification is still required
+
+    def verify(*args, before_attempt, **kwargs):
+        result = {}
+        for method in STRUCTURED_METHODS:
+            assert before_attempt()
+            events.append(method)
+            result[method] = {"outcome": "valid" if method == "prompt_only" else "empty"}
+        return result
+
+    control = Control()
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(catalog),
+        control=control,
+        today=TODAY,
+        canary_fn=ping,
+        structured_canary_fn=verify,
+        sleep=lambda seconds: events.append(seconds),
+        rate_run_id="42",
+    )
+    assert not report.rate_observations  # unknown headers cannot split chat/JEV capacity
+    assert events.count(65.0) == 10  # nine probe gaps plus cooldown before resuming dispatch
+    assert control.reserved == ["beat_flash"] * 5
+    assert "jev-1.13-free" not in events and "paid-chat" not in events
+    [candidate] = report.candidates
+    assert candidate.model == "new-chat-free"
+    assert candidate.structured_output_method == "prompt_only"
+    assert candidate.structured_output_verified_on == TODAY.isoformat()
+    assert events[-2:] == [65.0, "renew"]
+    for index, event in enumerate(events):
+        if event == 65.0:
+            assert events[index + 1] == "renew"
+
+
+def test_unverified_json_candidate_is_not_proven_or_remembered(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "empty"}},
+    )
+    assert not report.candidates
+    assert report.state["canaries"]["groq/meta-llama/llama-new"]["verdict"] == "inconclusive"
+
+
+def test_scarce_schema_attempts_cannot_exceed_remaining_quota(monkeypatch):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    attempted = []
+
+    def verify(rules, cfg, model, key, session, *, before_attempt, **kwargs):
+        result = {}
+        for method in STRUCTURED_METHODS:
+            if not before_attempt():
+                break
+            attempted.append((model, method))
+            result[method] = {"outcome": "valid"}
+        return result
+
+    control = FakeControl(quota={"or_scarce": {"rpd_remaining": 2, "rpd_resets_at": "tomorrow"}})
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=verify,
+    )
+    assert [m for model, m in attempted if model == "google/gem-scarce:free"] == ["json_schema"]
+    assert control.reserved.count("or_scarce") == 2
+    assert report.state["deferred"]["or_scarce"] == "tomorrow"
+
+
+def test_structured_failure_reports_the_pooled_route_that_still_serves_lane(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    routes = [
+        {
+            "route_id": "nv_flash",
+            "provider": "nvidia",
+            "model": "meta/llama-keep",
+            "upstream_model": "deepseek-ai/deepseek-v4.1-flash",
+            "account_id": "p",
+            "structured_output_method": "json_schema",
+        },
+        {
+            "route_id": "beat_flash",
+            "provider": "beatapi",
+            "model_key": "meta/llama-keep",
+            "upstream_model": "deepseek-v4.1-flash-free",
+            "account_id": "p",
+            "structured_output_method": "json_schema",
+        },
+    ]
+    cfg = {"api_base": "https://catalog.test/v1", "accounts": [{"id": "p", "api_key_env": "K"}]}
+    report = reconcile(
+        {"providers": {"nvidia": cfg, "beatapi": cfg}, "routes": routes},
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession({}),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {
+            "json_schema": {"outcome": "empty"},
+            "prompt_only": {"outcome": "valid"},
+        },
+        providers={"beatapi"},
+        sleep=lambda seconds: None,
+    )
+    [anomaly] = [a for a in report.anomalies if "structured_output_invalid" in a.reason]
+    assert anomaly.route_id == "beat_flash"
+    assert anomaly.lane_usage == (
+        ("fixed", ("meta/llama-keep (its other routes)",)),
+        ("tagger", ("meta/llama-keep (its other routes)",)),
+    )
+
+
+def test_due_only_clears_a_recovered_method_anomaly_and_discards_legacy_candidate_proofs(
+    monkeypatch,
+):
+    first, _, _ = _run(monkeypatch)
+    state = first.state
+    for candidate in state["last_full"]["candidates"]:
+        candidate.pop("structured_output_method")
+    state["last_full"]["anomalies"] = [
+        {
+            "provider": "openrouter",
+            "route_id": "or_scarce",
+            "model": "google/gem-scarce:free",
+            "verdict": "structured_output_invalid",
+            "reason": "empty",
+            "absent_from_catalog": False,
+        }
+    ]
+    state["deferred"] = {"or_scarce": "reset"}
+    report, sent, _ = _run(monkeypatch, state=state, due_only=True)
+    assert "google/gem-scarce:free" in sent
+    assert not report.anomalies and not report.candidates
+
+
+def test_legacy_proven_memory_without_a_json_method_is_rechecked(monkeypatch):
+    first, _, _ = _run(monkeypatch)
+    state = first.state
+    for memory in state["canaries"].values():
+        memory.pop("method")
+    report, sent, _ = _run(monkeypatch, state=state)
+    assert "meta-llama/llama-new" in sent
+    assert all(c.structured_output_method == "json_schema" for c in report.candidates)
+
+
+def test_failed_worker_ledger_charge_aborts_instead_of_continuing_to_probe():
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from scripts.reconcile_provider_routes import WorkerDispatchControl
+
+    class Client:
+        def reserve(self, route_id, requests_made):
+            raise DispatchPauseError("ledger unavailable")
+
+    with pytest.raises(DispatchPauseError, match="could not reserve scarce"):
+        WorkerDispatchControl(Client()).reserve("scarce")
+
+
+def test_state_decoder_accepts_legacy_json_and_rejects_corrupt_compressed_markers():
+    import base64
+
+    state = {"version": 1, "canaries": {"provider/model": {"verdict": "proven"}}}
+    raw = base64.b64encode(json.dumps(state).encode()).decode()
+    assert decode_state(f"<!-- citypods:provider-catalog-state {raw} -->") == state
+    raw = base64.b64encode(b"corrupt compressed data").decode()
+    assert decode_state(f"<!-- citypods:provider-catalog-state {raw} -->") == {}
+
+
+def test_issue_round_trips_full_method_evidence_within_github_body_limit():
+    from citypods.provider_catalog.reconcile import Report
+
+    checks = {
+        f"route_{i}": {
+            "on": "2026-10-08",
+            "method": "json_schema",
+            "results": {
+                method: {
+                    "outcome": "valid",
+                    "status": 200,
+                    "first_byte_seconds": i / 10,
+                    "completion_seconds": i / 5,
+                }
+                for method in ("json_schema", "json_schema_relaxed", "json_object", "prompt_only")
+            },
+        }
+        for i in range(100)
+    }
+    report = Report(
+        observations=[f"route_{i}: {evidence}" for i, evidence in enumerate(checks.values())],
+        state={"version": 2, "structured_checks": checks},
+    )
+    body = render_body(report, run_date="2026-10-08")
+    assert len(body.encode()) < 65_536
+    assert decode_state(body) == report.state
+
+
+@pytest.mark.parametrize(
+    ("remaining", "outcome", "expected_method"),
+    [
+        (1, "inconclusive", "prompt_only"),
+        (2, "inconclusive", "prompt_only"),
+        (2, "valid", "json_schema"),
+    ],
+)
+def test_deferred_schema_checks_preserve_prior_method_and_unchecked_evidence(
+    monkeypatch, remaining, outcome, expected_method
+):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    previous = {
+        "on": "2026-08-01",
+        "method": "prompt_only",
+        "results": {
+            "json_object": {"outcome": "empty", "completion_seconds": 10},
+            "prompt_only": {"outcome": "valid", "first_byte_seconds": 2, "completion_seconds": 15},
+        },
+    }
+
+    def verify(*args, before_attempt, **kwargs):
+        evidence = {}
+        for method in STRUCTURED_METHODS:
+            if not before_attempt():
+                break
+            evidence[method] = {"outcome": outcome, "completion_seconds": 3}
+        return evidence
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {"structured_checks": {"or_scarce": previous}},
+        session=FakeSession(CATALOGS),
+        providers={"openrouter"},
+        today=TODAY,
+        control=FakeControl(
+            quota={"or_scarce": {"rpd_remaining": remaining, "rpd_resets_at": "tomorrow"}}
+        ),
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=verify,
+    )
+    stored = report.state["structured_checks"]["or_scarce"]
+    assert stored["method"] == expected_method
+    assert report.state["deferred"]["or_scarce"] == "tomorrow"
+    assert previous["on"] == "2026-08-01"  # the input state is not mutated
+    if remaining == 1:
+        assert stored == previous
+    else:
+        assert stored["on"] == TODAY.isoformat()
+        assert stored["results"] == {
+            **previous["results"],
+            "json_schema": {"outcome": outcome, "completion_seconds": 3},
+        }
+
+
+def test_apply_selection_uses_fresh_specific_canaries_and_carries_safe_provenance(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import namespaced_identity
+
+    monkeypatch.setenv("K", "sensitive-test-token")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], model_identity=namespaced_identity(":free"))
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    catalog = {
+        "data": [
+            {
+                "id": name,
+                "context_length": 1000000,
+                "top_provider": {"max_completion_tokens": 32000},
+                "pricing": {"prompt": "0", "completion": "0"},
+            }
+            for name in ("creator/selected:free", "creator/other:free")
+        ]
+    }
+    calls = []
+
+    def ping(_rules, _cfg, model, _key, _session):
+        calls.append(model)
+        return OK
+
+    def methods(*_args, **kwargs):
+        assert kwargs["before_attempt"]()
+        return {"prompt_only": {"outcome": "valid", "completion_seconds": 1}}
+
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {},
+        session=FakeSession({"https://or.test": catalog}),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        candidate_keys={"openrouter/creator/selected:free"},
+        canary_fn=ping,
+        structured_canary_fn=methods,
+    )
+    assert calls == ["creator/selected:free"]
+    assert report.state["version"] == 3
+    candidate = report.candidates[0]
+    assert candidate.evidence["catalog_complete"] is True
+    assert candidate.evidence["output_context_limit"] == 32000
+    assert candidate.evidence["model_key"] == "creator/selected"
+    assert candidate.evidence_digest
+    assert "sensitive-test-token" not in json.dumps(candidate.evidence)
+
+
+def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+
+    monkeypatch.setenv("K", "key")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], free_evidence=lambda *_: None)
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {
+            "canaries": {
+                "openrouter/creator/remembered:free": {
+                    "verdict": "proven",
+                    "on": TODAY.isoformat(),
+                    "method": "prompt_only",
+                    "structured_results": {"prompt_only": {"outcome": "valid"}},
+                }
+            }
+        },
+        session=FakeSession(
+            {
+                "https://or.test": {
+                    "data": [{"id": "creator/remembered:free", "context_length": 1000000}]
+                }
+            }
+        ),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        canary_fn=lambda *_: OK,
+        structured_canary_fn=lambda *_a, **_k: {},
+    )
+    candidate = next(c for c in report.candidates if c.model == "creator/remembered:free")
+    assert candidate.structured_output_method == "prompt_only"
+    assert candidate.evidence["free"] is False and candidate.evidence["contended"] is True
+
+
+def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfilled():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices
+    from citypods.provider_catalog.reconcile import Candidate, Report
+    from citypods.review_issues import checked_decisions
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        30,
+        False,
+        100000,
+        (),
+        ("lane",),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add as backup to `lane`",
+        "- [x] `host/creator/new`: add as backup to `lane`",
+    )
+    limits = {
+        "routes": [
+            {
+                "provider": "host",
+                "upstream_model": "creator/new",
+                "model": "creator/new",
+                "free": True,
+            }
+        ]
+    }
+    lanes = {"lane": LaneConfig("lane", ("primary",), 1, 1, 10)}
+    fulfilled = fulfilled_choices(prior, limits, lanes, Decisions(), TODAY)
+    choice = "`host/creator/new`: add as backup to `lane`"
+    assert choice not in fulfilled
+    new = render_body(Report(), run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
+    assert checked_decisions(new, (choice,)) == (choice,)
+    assert decode_state(new)["last_full"]["candidates"][0]["model"] == candidate.model
+    assert "Pending prior selections" in new
+    # Another weekly run still retains the choice and its advisory provenance.
+    again = render_body(Report(), run_date="2026-10-10", previous_body=new, fulfilled=fulfilled)
+    assert checked_decisions(again, (choice,)) == (choice,)
+    from dataclasses import replace
+
+    lanes["lane"] = replace(lanes["lane"], backup_models=("creator/new",))
+    fulfilled = fulfilled_choices(again, limits, lanes, Decisions(), TODAY)
+    final = render_body(Report(), run_date="2026-10-11", previous_body=again, fulfilled=fulfilled)
+    assert not checked_decisions(final, (choice,))
+    assert not decode_state(final).get("last_full", {}).get("candidates")
+
+
+def test_pending_selected_choice_keeps_the_rolling_issue_open():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        None,
+        None,
+        10000,
+        (),
+        (),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add route only", "- [x] `host/creator/new`: add route only"
+    )
+    calls = []
+
+    def runner(args):
+        calls.append(args)
+        if args[:2] == ["issue", "list"]:
+            return json.dumps([{"number": 1, "state": "OPEN", "body": prior}])
+        return ""
+
+    assert sync_issue(Report(), run_date="2026-10-09", run=runner) == "updated #1"
+    assert not any(args[:2] == ["issue", "close"] for args in calls)
+
+
+def test_selected_paid_health_is_fresh_scoped_and_not_suppressed_by_ack(monkeypatch):
+    from citypods.provider_catalog.evidence import digest
+
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    decisions = Decisions(
+        acknowledged=(
+            {
+                "provider": "openrouter",
+                "model_glob": "*",
+                "verdict": "not_entitled",
+                "reason": "old",
+            },
+        )
+    )
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    report = reconcile(
+        LIMITS,
+        {},
+        decisions,
+        QUALITY,
+        {"route_checks": {"or_scarce": TODAY.isoformat()}},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={"or_scarce"},
+        canary_fn=lambda rules, cfg, model, key, session: sent.append(model) or paid,
+    )
+    assert sent == ["google/gem-scarce:free"]
+    [proof] = report.anomalies
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "or_scarce")
+    assert proof.observed_on == TODAY.isoformat() and proof.config_digest == digest(route)
+    assert not proof.contended and not report.candidates
+
+
+@pytest.mark.parametrize(
+    "quota,contended",
+    [
+        ({}, False),
+        ({"or_scarce": {"rpd_remaining": 0}}, False),
+        ({"or_scarce": {"rpd_remaining": 2}}, True),
+    ],
+)
+def test_paid_health_cannot_claim_uncontended_proof_without_quota_or_pause(
+    monkeypatch, quota, contended
+):
+    monkeypatch.setenv("K", "test-key")
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    report = reconcile(
+        LIMITS,
+        {},
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(quota=quota, contended=contended),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={"or_scarce"},
+        canary_fn=lambda *args: paid,
+    )
+    assert all(a.contended for a in report.anomalies)
+
+
+def test_pending_paid_selection_survives_outage_until_main_fulfills_it():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices
+    from citypods.provider_catalog.reconcile import Anomaly, Report
+
+    anomaly = Anomaly("host", "route", "creator/old", "not_entitled", "paid", False)
+    report = Report(anomalies=[anomaly], state={"last_full": {"anomalies": [asdict(anomaly)]}})
+    body = render_body(report, run_date=TODAY.isoformat()).replace(
+        "- [ ] `route`: keep as a paid route", "- [x] `route`: keep as a paid route"
+    )
+    rewritten = render_body(Report(), run_date=TODAY.isoformat(), previous_body=body)
+    assert "- [x] `route`: keep as a paid route" in rewritten
+    assert decode_state(rewritten)["last_full"]["anomalies"][0]["route_id"] == "route"
+    route = {
+        "route_id": "route",
+        "provider": "host",
+        "upstream_model": "creator/old",
+        "free": False,
+    }
+    acks = Decisions(
+        acknowledged=(
+            {
+                "provider": "host",
+                "model_glob": "creator/old",
+                "verdict": "not_entitled",
+                "reason": "kept",
+            },
+        )
+    )
+    fulfilled = fulfilled_choices(rewritten, {"routes": [route]}, {}, acks, TODAY)
+    assert fulfilled == {"`route`: keep as a paid route"}
+    assert not fulfilled_choices(rewritten, {"routes": [route]}, {}, NO_DECISIONS, TODAY)
+    final = render_body(
+        Report(), run_date=TODAY.isoformat(), previous_body=rewritten, fulfilled=fulfilled
+    )
+    assert "- [x] `route`: keep as a paid route" not in final
+
+
+@pytest.mark.parametrize("value,expected", [("1000", 1000), ("0", 0), ("-1", None), ("1.5", None)])
+def test_groq_rate_header_units_and_nonpositive_evidence(value, expected):
+    from citypods.provider_catalog.providers.groq import RULES
+
+    response = Response(
+        200, {"X-RateLimit-Limit-Requests": value, "x-ratelimit-limit-tokens": "500"}
+    )
+    observed = RULES.limit_observations(response)
+    assert ("tpm", 500, "route") in observed
+    assert not any(metric == "rpm" for metric, _, _ in observed)
+    assert [v for metric, v, _ in observed if metric == "rpd"] == (
+        [expected] if expected is not None else []
+    )
+    assert not RULES.limit_observations(Response(429, response.headers))
+
+
+@pytest.mark.parametrize("contended", [False, True])
+def test_maintenance_captures_scoped_headers_only_under_exclusive_pause(monkeypatch, contended):
+    response = Response(200, {"x-ratelimit-limit-requests": "1000"})
+    control = FakeControl(contended=contended)
+    report, _, _ = _run(
+        monkeypatch, canaries={"meta-llama/llama-keep": response}, control=control, rate_run_id="42"
+    )
+    assert bool(report.rate_observations) is (not contended)
+    if report.rate_observations:
+        assert {o.route_id for o in report.rate_observations} == {"groq_keep"}
+        assert {o.run_id for o in report.rate_observations} == {"42"}
+
+
+def test_worker_reservation_outage_prevents_health_provider_call(monkeypatch):
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+
+    class Outage(FakeControl):
+        def reserve(self, route_id):
+            raise DispatchPauseError("writes exceeded")
+
+    def forbidden(*args):
+        pytest.fail("provider was called before its reservation")
+
+    monkeypatch.setenv("K", "fake")
+    with pytest.raises(DispatchPauseError):
+        reconcile(
+            LIMITS,
+            LANES,
+            NO_DECISIONS,
+            QUALITY,
+            {},
+            session=FakeSession(CATALOGS),
+            control=Outage(),
+            today=TODAY,
+            canary_fn=forbidden,
+        )
+
+
+def test_expired_pause_discards_rate_evidence_after_exit(monkeypatch):
+    class Expiring(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            outcome = FakeOutcome()
+            yield outcome
+            outcome.contended = True
+
+    report, _, _ = _run(
+        monkeypatch,
+        control=Expiring(),
+        rate_run_id="42",
+        canaries={"meta-llama/llama-keep": Response(200, {"x-ratelimit-limit-requests": "1000"})},
+    )
+    assert not report.rate_observations
+
+
+@pytest.mark.parametrize("method_calls,drain,extra", [(0, 0, 2), (2, 0, 0), (0, 880, 0)])
+def test_optional_rate_samples_share_request_and_drain_cooldown_budget(
+    monkeypatch, method_calls, drain, extra
+):
+    import citypods.provider_catalog.reconcile as engine
+
+    clock, calls, reservations = [0.0], [], []
+    monkeypatch.setenv("K", "fake")
+    monkeypatch.setattr(engine.time, "monotonic", lambda: clock[0])
+    route = {**LIMITS["routes"][0], "rpm": 60}
+    limits = {"providers": {"groq": LIMITS["providers"]["groq"]}, "routes": [route]}
+    monkeypatch.setattr(
+        engine,
+        "load_route_catalog",
+        lambda: [{**route, "api_key_env": "K", "api_base": "https://groq.test/v1"}],
+    )
+    headers = {"x-ratelimit-limit-tokens": "5000"}
+
+    class Session(FakeSession):
+        def post(self, *args, **kwargs):
+            assert reservations  # every direct request was charged first
+            calls.append(clock[0])
+            from unittest.mock import MagicMock
+
+            response = MagicMock()
+            response.status_code, response.headers = 200, headers
+            response.json.return_value = {"choices": [{"message": {"content": "pong"}}]}
+            return response
+
+    class Control(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            clock[0] += drain
+            yield FakeOutcome()
+
+        def reserve(self, rid):
+            reservations.append(rid)
+
+    def methods(*args, before_attempt, **kwargs):
+        for _ in range(method_calls):
+            assert before_attempt()
+        return {"prompt_only": {"outcome": "valid"}}
+
+    report = reconcile(
+        limits,
+        {},
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=Session(CATALOGS),
+        control=Control(),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={route["route_id"]},
+        canary_fn=lambda *args: Response(200, headers),
+        structured_canary_fn=methods,
+        sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        rate_run_id="42",
+    )
+    assert len(calls) == extra
+    assert len(reservations) == 1 + method_calls + extra <= 3
+    assert report.rate_observations
+    if extra:
+        assert calls == [60, 120] and clock[0] == 180  # final cooldown before dispatch resumes
+    if drain:
+        assert any("sampling deferred" in o for o in report.observations)
+
+
+def test_due_only_early_check_runs_provider_without_deferred_routes(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        due_only=True,
+        early_rate_checks={"zai_flash"},
+        canary_fn=lambda rules, cfg, model, *args: sent.append(model) or OK,
+        structured_canary_fn=lambda *args, **kwargs: {},
+    )
+    assert sent == ["glm-flash"]
+    assert report.rate_attempted_routes == {"zai_flash"}
+
+
+@pytest.mark.parametrize("ready", ["disabled", "wrong_scope", "paid", "paused", "ready"])
+def test_context_only_pauses_providers_with_eligible_exact_scope(monkeypatch, ready):
+    from copy import deepcopy
+
+    from citypods.provider_catalog import reconcile as module
+
+    monkeypatch.setenv("K", "test-key")
+    limits = deepcopy(LIMITS)
+    route = limits["routes"][0]
+    route.update(free=ready != "paid", rpd=0 if ready == "paused" else 100)
+    measured = []
+    monkeypatch.setattr(module, "_measure_context_routes", lambda *args, **kw: measured.append(1))
+    context = {
+        "history": (),
+        "readiness": {
+            route["route_id"]: {
+                "enabled": ready != "disabled",
+                "quota_scope": "wrong"
+                if ready == "wrong_scope"
+                else "groq:p:meta-llama/llama-keep",
+            }
+        },
+    }
+    control = FakeControl()
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        candidate_keys=set(),
+        context_run=context,
+    )
+    assert control.paused_providers == (["groq"] if ready == "ready" else [])
+    assert measured == ([1] if ready == "ready" else [])
+
+
+def test_a_non_chat_configured_route_is_never_health_canaried(monkeypatch):
+    # review/53 PR2: JEV's systemone route cannot answer a chat canary, and on BeatAPI the attempt
+    # would spend the account's single request window.
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    jev = {
+        "route_id": "beatapi_jev",
+        "provider": "beatapi",
+        "account_id": "p",
+        "model": "typesafe/jev-1.13",
+        "upstream_model": "jev-1.13-free",
+        "api_shape": "systemone",
+        "request_path": "/systemone",
+        "free": True,
+        "rpd": 1400,
+    }
+    limits = {
+        "providers": {
+            "beatapi": {
+                "api_base": "https://beat.test/v1",
+                "accounts": [{"id": "p", "api_key_env": "K"}],
+            }
+        },
+        "routes": [jev],
+    }
+    catalog = {"https://beat.test": {"data": [{"id": "jev-1.13-free", "owned_by": "task plugin"}]}}
+
+    def ping(rules, cfg, model, key, session):
+        sent.append(model)
+        return OK
+
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(catalog),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=ping,
+        sleep=lambda seconds: None,
+    )
+    assert sent == []
+
+
+def test_retirement_confirmation_is_a_second_same_route_call(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    report = Report(
+        anomalies=[
+            Anomaly(
+                "groq",
+                route["route_id"],
+                route["upstream_model"],
+                "retired",
+                "provider says model does not exist",
+                True,
+                observed_on=TODAY.isoformat(),
+                config_digest=digest(route),
+                contended=False,
+            )
+        ],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+
+    def ping(rules, provider_cfg, model, api_key, session):
+        sent.append((rules.name, provider_cfg, model, api_key))
+        return Response(
+            status=404,
+            body='{"error":{"message":"The model does not exist"}}',
+        )
+
+    control = FakeControl()
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=control,
+        today=TODAY,
+        canary_fn=ping,
+        sleep=lambda seconds: None,
+    )
+
+    assert len(sent) == 1
+    assert sent[0][0] == "groq" and sent[0][2:] == (route["upstream_model"], "test-key")
+    assert control.reserved == [route["route_id"]]
+    confirmation = report.anomalies[0].retirement_confirmation
+    assert confirmation is not None
+    assert {key: value for key, value in confirmation.items() if key != "checked_at"} == {
+        "provider": "groq",
+        "account_id": route["account_id"],
+        "route_id": route["route_id"],
+        "model": route["upstream_model"],
+        "config_digest": digest(route),
+        "verdict": "retired",
+        "status": 404,
+        "contended": False,
+    }
+    assert confirmation["checked_at"].endswith("+00:00")
+
+
+def test_retirement_confirmation_is_rejected_if_pause_expires_during_probe(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    anomaly = Anomaly(
+        "groq",
+        route["route_id"],
+        route["upstream_model"],
+        "retired",
+        "provider says model does not exist",
+        True,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    report = Report(
+        anomalies=[anomaly],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+    control = FakeControl(expire_after_yield=True)
+
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: GONE,
+        sleep=lambda seconds: None,
+    )
+
+    assert anomaly.retirement_confirmation is None
+    assert any("pause expired before completion" in message for message in report.observations)
+
+
+def test_reachable_confirmation_cancels_retirement_evidence(monkeypatch):
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "groq_gone")
+    anomaly = Anomaly(
+        "groq",
+        route["route_id"],
+        route["upstream_model"],
+        "not_served",
+        "provider says model does not exist",
+        True,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    report = Report(
+        anomalies=[anomaly],
+        state={
+            "catalogs": {
+                "groq": {
+                    "provider": "groq",
+                    "observed_at": TODAY.isoformat(),
+                    "complete": True,
+                    "models": [],
+                }
+            }
+        },
+    )
+    monkeypatch.setenv("K", "test-key")
+
+    confirm_retirement_candidates(
+        report,
+        {"providers": LIMITS["providers"], "routes": [route]},
+        session=FakeSession({}),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        sleep=lambda seconds: None,
+    )
+
+    assert anomaly.retirement_confirmation is None
+    assert any("observed proven" in message for message in report.observations)
+
+
+def test_explicit_absent_candidate_retains_terminal_evidence_without_provider_calls(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    selected = "groq/missing-small-model"
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        discovery_enabled=True,
+        discovery_run_id="manual-selected",
+        candidate_keys={selected},
+        canary_fn=lambda *a, **k: pytest.fail("no provider submission for absent model"),
+    )
+    assert len(report.discovery_sessions) == 1
+    row = report.discovery_sessions[0]
+    assert row["reason"] == "route_absent_from_current_catalog"
+    assert row["session"]["upstream_model"] == "missing-small-model"
+    assert row["attempts"] == []
+
+
+def test_reachability_logs_exception_chain_without_secret_text(caplog):
+    import requests
+
+    from citypods.provider_catalog.probe import canary
+    from citypods.provider_catalog.rules import ProviderRules
+
+    class BrokenSession:
+        def post(self, *args, **kwargs):
+            raise requests.ConnectionError(
+                requests.exceptions.ChunkedEncodingError(ConnectionResetError("secret URL/token"))
+            )
+
+    result = canary(
+        ProviderRules(name="generic"),
+        {"api_base": "https://example.test"},
+        "new/model",
+        "secret-key",
+        BrokenSession(),
+    )
+    assert result.transport_error == "ConnectionError"
+    assert "awaiting_headers" in caplog.text and "ConnectionResetError" in caplog.text
+    assert "secret" not in caplog.text and "https://" not in caplog.text
+
+
+def test_litellm_hints_match_exact_provider_and_never_legacy_or_other_hosts(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    monkeypatch.setattr(
+        module,
+        "_litellm_discovery_catalog",
+        lambda: (
+            {
+                "groq/new/model": {
+                    "litellm_provider": "groq",
+                    "max_input_tokens": 131072,
+                    "max_output_tokens": 32768,
+                    "max_tokens": 9,
+                },
+                "nvidia_nim/new/model": {"litellm_provider": "nvidia_nim", "max_tokens": 9999},
+                "openrouter/wrong/model": {"litellm_provider": "groq", "max_input_tokens": 123},
+            },
+            "test-version",
+        ),
+    )
+    hints = module._litellm_discovery_limits("groq", "new/model")
+    assert hints["input"] == 131072 and hints["output"] == 32768
+    assert hints["version"] == "test-version"
+    missing = module._litellm_discovery_limits("openrouter", "new/model")
+    assert missing["input"] is None and missing["output"] is None
+    legacy = module._litellm_discovery_limits("nvidia", "new/model")
+    assert legacy["key"] == "nvidia_nim/new/model"
+    assert legacy["input"] is None and legacy["output"] is None
+    assert module._litellm_discovery_limits("openrouter", "wrong/model")["input"] is None
+
+
+def test_discovery_hints_seed_but_do_not_claim_bounds_and_respect_ceilings():
+    from citypods.provider_catalog.reconcile import _discovery_starting_points
+
+    assert _discovery_starting_points({}, {}) == {}
+    hints = {"input": 131072, "output": 32768}
+    seeds = _discovery_starting_points({}, hints)
+    assert seeds == {
+        "input": 131072,
+        "output": 32768,
+        "total_input_heavy": 147456,
+        "total_output_heavy": 34816,
+    }
+    catalog = {"max_input_tokens": 8000, "max_output_tokens": 8192, "context_length": 65536}
+    seeds = _discovery_starting_points(catalog, hints)
+    assert seeds["input"] == 8000 and seeds["output"] == 8192
+    assert seeds["total_input_heavy"] == seeds["total_output_heavy"] == 65536
+    huge = _discovery_starting_points({"context_length": 10**9}, {"input": 10**9, "output": 10**9})
+    assert huge == {
+        "input": 1000000,
+        "output": 131072,
+        "total_input_heavy": 1016384,
+        "total_output_heavy": 133120,
+    }
+
+
+def test_issue_lists_litellm_separately_from_measured_bounds(monkeypatch):
+    report, _, _ = _run(monkeypatch)
+    report.candidates[0].discovery = {
+        "axes": [{"axis": "input", "admitted": 1234, "refused": None}],
+        "litellm": {"key": "groq/new/model", "version": "1.test", "input": 131072, "output": 32768},
+    }
+    body = render_body(report, run_date=TODAY.isoformat())
+    assert "LiteLLM 1.test exact route `groq/new/model`" in body
+    assert "input 131,072, output 32,768" in body
+    assert "not measured bounds" in body
+    assert "1,234" in body
+
+
+def test_litellm_discovery_reads_installed_metadata_without_sdk_import(tmp_path, monkeypatch):
+    from importlib import metadata
+    from types import SimpleNamespace
+
+    import citypods.provider_catalog.reconcile as module
+
+    path = tmp_path / "cost-map.json"
+    path.write_text('{"provider/model":{"max_input_tokens":8192}}')
+    package = SimpleNamespace(version="pinned-version", locate_file=lambda name: path)
+    monkeypatch.setattr(metadata, "distribution", lambda name: package)
+    module._litellm_discovery_catalog.cache_clear()
+    try:
+        catalog, version = module._litellm_discovery_catalog()
+        assert catalog["provider/model"]["max_input_tokens"] == 8192
+        assert version == "pinned-version"
+        module._litellm_discovery_catalog.cache_clear()
+        path.write_text("not JSON")
+        assert module._litellm_discovery_catalog() == ({}, "unavailable")
+    finally:
+        module._litellm_discovery_catalog.cache_clear()
+
+
+def test_input_characterization_keeps_rejection_estimates_out_of_verified_bounds():
+    from dataclasses import asdict, replace
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.discovery import DiscoveryObservation, DiscoveryRequest
+    from citypods.provider_catalog.reconcile import _discovery_input_characterization
+
+    req = DiscoveryRequest("s", "a", "physical", "input", 10000, 11000, 2048, "input:v2", "parser")
+    stamp = datetime.now(UTC).isoformat()
+    passed = DiscoveryObservation(
+        req,
+        stamp,
+        outcome="admitted",
+        coordinate=10000,
+        count_basis="input",
+        verified=True,
+        reported_input=10000,
+        reported_output=234,
+        usage_state="valid",
+    )
+    rejected_req = replace(req, attempt_id="b", target=11000, input_tokens=12100)
+    rejected = DiscoveryObservation(
+        rejected_req, stamp, diagnostic="computed_input_budget_exhausted"
+    )
+    foreign = replace(rejected, request=replace(rejected_req, identity="other", input_tokens=11500))
+    other_control = replace(
+        rejected, request=replace(rejected_req, control="input:v2:opposite=100")
+    )
+    unknown = replace(rejected, diagnostic="unknown")
+    wrong_parser = replace(rejected, request=replace(rejected_req, parser_version="other"))
+    wrong_fixture = replace(rejected, request=replace(rejected_req, fixture_version="other"))
+    result = _discovery_input_characterization(
+        [{"axis": "input", "admitted": 10000, "refused": None, "control": "input:v2"}],
+        [
+            passed,
+            {"request": asdict(rejected_req), "observation": asdict(rejected)},
+            foreign,
+            other_control,
+            unknown,
+            wrong_parser,
+            wrong_fixture,
+        ],
+        identity="physical",
+        parser_version="parser",
+    )
+    assert result["admitted_input"] == 10000
+    assert result["admitted_local_estimate"] == 11000
+    assert result["requested_output"] == 2048 and result["generated_output"] == 234
+    assert result["count_basis"] == "input"
+    assert result["control"] == "input:v2"
+    assert result["identity"] == "physical"
+    assert result["parser_version"] == "parser"
+    assert result["fixture_version"] == "discovery-v1"
+    assert len(result["evidence_digest"]) == 64
+    assert len(result["rejected_estimates"]) == 1
+    assert result["rejected_estimates"][0]["local_input_estimate"] == 12100
+    assert result["rejected_estimates"][0]["provider_scale_estimate"] == 11000
+    assert "refused" not in result
+
+    from citypods.provider_catalog.evidence import digest
+
+    passing_digest = digest({"request": asdict(passed.request), "observation": asdict(passed)})
+    characterization_args = (
+        [{"axis": "input", "admitted": 10000, "refused": None, "control": "input:v2"}],
+        [passed],
+    )
+    assert not _discovery_input_characterization(
+        *characterization_args,
+        identity="physical",
+        parser_version="parser",
+        successful_evidence=set(),
+    )
+    assert (
+        _discovery_input_characterization(
+            *characterization_args,
+            identity="physical",
+            parser_version="parser",
+            successful_evidence={passing_digest},
+        )["admitted_input"]
+        == 10000
+    )

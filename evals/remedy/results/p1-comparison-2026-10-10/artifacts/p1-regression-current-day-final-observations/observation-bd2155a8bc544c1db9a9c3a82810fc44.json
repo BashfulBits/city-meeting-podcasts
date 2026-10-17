@@ -1,0 +1,29 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 0,
+  "observed_at": "2026-10-10T11:41:22.281342+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-beautiful",
+      "configuration_id": "388148d4c5ac3b12e9be7237d1191d5940cfea44802bf3f3e7ba28a475e6e3d1",
+      "error_class": "LLMBackendError",
+      "latency_seconds": 92.31766054173931,
+      "prompt_case_id": "tif-beautiful",
+      "provider_attempts": 2,
+      "request_timeout_seconds": 120,
+      "status": "failed"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

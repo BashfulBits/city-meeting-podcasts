@@ -87,7 +87,6 @@ class Episode:
     media_kind: Literal["direct", "hls"] = "direct"
     hosted_audio_url: str | None = None  # set by the materialization pipeline
     body: str | None = None  # committee/meeting body, e.g. "City Council" (for per-body feeds)
-
     # --- stable identity + persisted derived artifacts (the EpisodeRecord, see records.py) ---
     # uid is a provider-independent identity (author+body+date) used as the RSS <guid> so that
     # provider migrations (Granicus<->Swagit) don't re-download a subscriber's back catalog.
@@ -144,6 +143,10 @@ class Episode:
     moment_summary_candidates: list[dict] = field(default_factory=list)
     moment_pullquote_candidates: list[dict] = field(default_factory=list)
     moment_decision_candidates: list[dict] = field(default_factory=list)
+    # review/53: the judge stack's own artifact block, owned only by the `judge` lane. Keyed by the
+    # judged subject's id ({"subjects": {id: {"judgments": [...], "pending": [...]}}}), never
+    # written into the tag/moment candidate dicts that other lanes own and rebuild.
+    judging: dict = field(default_factory=dict)
     moments_llm_recipe_hash: str | None = None
     moments_llm_call_attempts: list[dict] = field(default_factory=list)
     # The selected admitted quote and rendered social-video artifact are projections of the
@@ -225,7 +228,6 @@ class Episode:
     transcript_media_error: str | None = None
     transcript_media_error_last_attempt: str | None = None
     transcript_media_error_audio_identity: str | None = None
-
     # City/provider supplied transcript document registry (PR1 schema).  Shape is intentionally
     # record-compatible and implementation-neutral until the follow-up stages consume it:
     # {
@@ -307,6 +309,8 @@ class Episode:
     # metadata stages continue (review/12 PR3, review/13). None = never classified (e.g. direct
     # enclosures we don't re-host, or pre-PR3 records). See citypods/availability.py.
     media_availability: MediaAvailability | None = None
+    # Feed-local presentation annotation. Never persisted in EpisodeRecord or used for audio.
+    publication_note: str | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url
@@ -412,3 +416,5 @@ class City:
     # Temporarily disabled in production while Phase H moves alignment into its own
     # resource lane; untimed provider transcripts remain notes-only when false.
     asr_alignment_enabled: bool = False
+    # Exact stable-UID/provider-GUID presentation annotations, scoped to this feed.
+    publication_notes: list[dict[str, str]] = field(default_factory=list)

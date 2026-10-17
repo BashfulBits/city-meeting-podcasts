@@ -1,0 +1,225 @@
+{
+  "agenda_backup": null,
+  "agenda_text": null,
+  "audio": {
+    "attempts": 0,
+    "bytes": 83539839,
+    "duration_served": 6799.523,
+    "encode_time": "2026-07-27T20:24:23.631994+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/76869ed1994f/977d943cea00258e-a1ac62b8f46e.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "a1ac62b8f46e",
+    "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/977d943cea00258e-a1ac62b8f46e.m4a",
+    "verification": null
+  },
+  "body": "2024 Bond Task Force Critical Facilities Subcommittee Meeting",
+  "chapter_tags": [
+    {
+      "chapter_id": "ch-a1c8be2d49df",
+      "tags": []
+    }
+  ],
+  "chapters": [
+    {
+      "end": 6798.703515,
+      "start": 1068.703515,
+      "title": "2024 Bond Task Force Critical Facilities Subcommittee Meeting on August 15, 2023."
+    }
+  ],
+  "chapters_basis": "served:silence:3+swagit-concat:1",
+  "duration": null,
+  "generated_agenda_candidates": {
+    "locator_status": "not_applicable",
+    "provider_chapter_count": 1,
+    "reason": "provider_chapters",
+    "status": "not_applicable"
+  },
+  "generated_chapters": null,
+  "generated_chapters_spec_hash": "",
+  "integrity": null,
+  "links": {
+    "canonical_video": "https://dallastx.new.swagit.com/videos/269611"
+  },
+  "llm_tag_candidates": null,
+  "media_availability": {
+    "detector_version": "1",
+    "evidence_ref": null,
+    "last_check": "2026-07-27T20:24:23.629681+00:00",
+    "operator_override": null,
+    "operator_reason": "",
+    "partial_confirmations": 0,
+    "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+    "reason": "playable audio",
+    "recovered_at": null,
+    "silent_confirmations": 0,
+    "source_fingerprint": "0de0217d928c3726",
+    "state": "available"
+  },
+  "media_kind": "hls",
+  "minutes_roster": null,
+  "minutes_text": null,
+  "minutes_votes": null,
+  "moments": null,
+  "provider_guid": "269611",
+  "provider_transcript": null,
+  "published": "2023-08-15T00:00:00+00:00",
+  "served_duration_seconds": 6799.523,
+  "source_chapters": [
+    {
+      "end": 7070,
+      "start": 1340,
+      "title": "2024 Bond Task Force Critical Facilities Subcommittee Meeting on August 15, 2023."
+    }
+  ],
+  "source_duration_seconds": null,
+  "sources": [
+    {
+      "backup_key": null,
+      "duration": 7070.82,
+      "duration_basis": "decoded",
+      "id": "s0",
+      "media_kind": "hls",
+      "provider": "swagit",
+      "ref": "https://dallastx.new.swagit.com/videos/269611/download",
+      "watch_url": "https://dallastx.new.swagit.com/videos/269611"
+    }
+  ],
+  "speakers": null,
+  "stage_completion": {
+    "agenda_text": {
+      "input_fingerprint": "fc02ca16278294c1ec11a82cb3cbdfd060c9ef42c54d6009848ffff45328c4a6",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "audio": {
+      "completed_at": "2026-07-27T20:27:27.590631+00:00",
+      "input_fingerprint": "ddebe0d6df0607d5a84e5ee1691220f8ee5f78f1cf6647d9c3932faf7d9822b0",
+      "output": "swagit/76869ed1994f/977d943cea00258e-a1ac62b8f46e.m4a",
+      "state": "complete",
+      "version": "1"
+    },
+    "chapter_agenda": {
+      "completed_at": "2026-09-02T19:17:20.239258+00:00",
+      "input_fingerprint": "fb36117b2f75fd8a5874ba97787f4e0c15b564770471dbadce9ae9ce2c3ba94c",
+      "output": "not_applicable",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapter_locator": {
+      "completed_at": "2026-09-02T19:42:42.982043+00:00",
+      "input_fingerprint": "1995685aed3468bb422d4713daaf12d4f1ef14aaa32394f4b942c12d6aaf07e6",
+      "output": "",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "chapters": {
+      "completed_at": "2026-07-27T20:18:01.598516+00:00",
+      "input_fingerprint": "95dddb9457d1d0e52278840400d32263fd4abb6579a089e72eb169ee8dc09050",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "links": {
+      "input_fingerprint": "c17545f8dbaec785ffa3266532845987c555a3e0fb69af3b16ae5e98ce5f5962",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "minutes_text": {
+      "input_fingerprint": "6c81978f07dc034c660ecf1cee084db61030d3bc6ab83d5f9189b1c90037fca9",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-admission": {
+      "completed_at": "2026-10-04T00:58:18.602475+00:00",
+      "input_fingerprint": "52dbe3cdd7fa4fca0c86dd9317b8dc30c334c7bb6f501ceef72e59217f01cc24",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moment-judge": {
+      "completed_at": "2026-10-04T00:58:18.602378+00:00",
+      "input_fingerprint": "2e5f2e7df02b85a8e62a0af6d4b77f930b041e97c22de5834a42efcf1aea230a",
+      "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "moments": {
+      "completed_at": "2026-09-25T05:43:13.185773+00:00",
+      "input_fingerprint": "80eabd05a0f5031201ba082b971c7916c88554a9bbce15d15e3ff1c8aeb9e3f8",
+      "output": [],
+      "state": "complete-empty",
+      "version": "2"
+    },
+    "remap": {
+      "completed_at": "2026-08-10T21:40:37.972948+00:00",
+      "input_fingerprint": "e9d089b0f5015d9345daaed312fa6103d8b048d3067e61582b44675fc903abfc",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "tags": {
+      "input_fingerprint": "8d9907759af39bf8332e56f824b41bb4e3210ee7d9f6777e7282c4322ffbb1be",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "timeline": {
+      "completed_at": "2026-07-27T20:24:23.631523+00:00",
+      "input_fingerprint": "953caf7648eb44e5f978031143d568663aa99665e1497e4d235853e1720b2d03",
+      "output": null,
+      "state": "complete-empty",
+      "version": "1"
+    },
+    "video-clips": {
+      "completed_at": "2026-08-23T20:09:40.647960+00:00",
+      "input_fingerprint": "8aa9abb5328905262f28d22d0bcdab12cfd502e8704ddf7d47bcd2a149e9ab52",
+      "output": null,
+      "state": "complete-empty",
+      "version": "2"
+    }
+  },
+  "summary": "",
+  "tags": null,
+  "tags_input_fingerprint": "013b09192acabffd",
+  "tags_llm_call_attempts": null,
+  "tags_llm_recipe_hash": null,
+  "tags_spec_hash": "9752377610022379",
+  "timeline": {
+    "basis": "served",
+    "segments": [
+      {
+        "asset_id": null,
+        "asset_version": null,
+        "insert": null,
+        "kind": "source",
+        "served_end": 12.389592000000007,
+        "served_start": 0.0,
+        "source_end": 86.159433,
+        "source_id": "s0",
+        "source_start": 73.769841
+      },
+      {
+        "asset_id": null,
+        "asset_version": null,
+        "insert": null,
+        "kind": "source",
+        "served_end": 6799.523515,
+        "served_start": 12.389592000000007,
+        "source_end": 7070.82,
+        "source_id": "s0",
+        "source_start": 283.686077
+      }
+    ],
+    "version": "silence:3+swagit-concat:1"
+  },
+  "title": "2024 Bond Task Force Critical Facilities Subcommittee Meeting \u2013 Aug 15, 2023",
+  "transcript": null,
+  "uid": "977d943cea00258e",
+  "video_url": "https://dallastx.new.swagit.com/videos/269611/download"
+}

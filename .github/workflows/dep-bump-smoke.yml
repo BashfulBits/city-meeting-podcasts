@@ -34,13 +34,13 @@ jobs:
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.14"
+          python-version-file: .python-version
 
       - name: Install pinned ffmpeg
         # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
@@ -63,7 +63,7 @@ jobs:
           export PATH="${FFMPEG_DIR}/bin:${PATH}"
           python scripts/dep_bump_smoke.py
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dep-bump-smoke
           path: smoke-table.md

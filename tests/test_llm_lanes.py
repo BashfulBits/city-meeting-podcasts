@@ -26,7 +26,9 @@ from citypods.compute.llm_lanes import (
     UnregisteredLaneError,
     clear_cache,
     lane_for,
+    load_families,
     load_lanes,
+    parse_families,
     parse_lanes,
 )
 
@@ -52,17 +54,66 @@ DISPATCHING_PURPOSES = frozenset(
         "tournament:tag-judge",
         "r5-benchmark:tag",
         "r5-benchmark:judge",
+        # review/53: registered in PR2; anchor and sibling dispatched by the judge stage since PR4,
+        # the adjudicator from PR5 -- see PENDING_DISPATCH_PURPOSES below.
+        "judge:anchor",
+        "judge:sibling",
+        "judge:adjudicator",
+        "remedy:p3",
     }
 )
+# Purposes whose producer is not enabled yet. A reservation is subtracted from every other lane's
+# headroom, so a lane nothing dispatches to must reserve zero; PR4 moves these out and sets the
+# review/53 reservations in the same change that turns judging on.
+PENDING_DISPATCH_PURPOSES = frozenset(
+    {"judge:adjudicator", "remedy:p3"}
+)  # P3 stays closed until all exact route admissions exist
 
 
 def _lane(**overrides):
-    entry = {"models": ["m1"], "max_dispatches_per_run": 10, "daily_write_units": 100}
+    entry = {
+        "models": ["m1"],
+        "max_dispatches_per_run": 10,
+        "daily_write_units": 100,
+        "telemetry": {
+            "producer": "test",
+            "unit": "episode",
+            "completion": "consumed",
+            "scope": "retained_catalog",
+        },
+    }
     entry.update(overrides)
     return {"a-purpose": entry}
 
 
 class TestParsing:
+    @pytest.mark.parametrize(
+        "change",
+        [
+            None,
+            {"extra": True},
+            {"producer": " "},
+            {"unit": " "},
+            {"scope": "unknown"},
+            {"completion": "queued"},
+        ],
+    )
+    def test_rejects_invalid_telemetry_contracts(self, change):
+        config = _lane()
+        if change is None:
+            config["a-purpose"].pop("telemetry")
+        else:
+            config["a-purpose"]["telemetry"].update(change)
+        with pytest.raises(ValueError, match="telemetry"):
+            parse_lanes(config)
+
+    def test_normalizes_telemetry_identity_fields(self):
+        config = _lane()
+        config["a-purpose"]["telemetry"].update(producer=" test ", unit=" episode ")
+        lane = parse_lanes(config)["a-purpose"]
+        assert lane.telemetry_producer == "test"
+        assert lane.telemetry_unit == "episode"
+
     def test_accepts_a_well_formed_lane(self):
         lanes = parse_lanes(_lane())
         assert lanes["a-purpose"] == LaneConfig(
@@ -72,6 +123,7 @@ class TestParsing:
             reserved_write_units=0,
             daily_write_units=100,
             dispatch_shape="pooled",
+            telemetry_producer="test",
         )
 
     @pytest.mark.parametrize("block", [None, {}, [], "nope"])
@@ -275,6 +327,11 @@ class TestRepositoryConfig:
         # headroom. This is the assertion that would have caught the original bug.
         assert set(load_lanes()) <= DISPATCHING_PURPOSES
 
+    def test_lanes_without_an_enabled_producer_reserve_nothing(self):
+        lanes = load_lanes()
+        for purpose in PENDING_DISPATCH_PURPOSES:
+            assert lanes[purpose].reserved_write_units == 0, purpose
+
     def test_reservations_fit_the_workers_global_ingress_budget(self):
         compiled = json.loads(COMPILED_RESERVATIONS.read_text())
         assert compiled["reserved_total"] <= compiled["global_write_budget"]
@@ -318,7 +375,7 @@ class TestRecipeAffectingModelPins:
         ("purpose", "expected"),
         [
             ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
-            ("chapter-locator", "gemini/gemini-3.5-flash-lite"),
+            ("chapter-locator", "deepseek/deepseek-v4-flash"),
             ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
             ("topic-tags:prelabeler", "google/gemma-4-31b-it"),
         ],
@@ -445,3 +502,112 @@ def test_every_lane_model_has_a_live_worker_route(purpose, model):
     # its queued jobs exactly like a missing one.
     live = [r for r in routes if catalog["routes_by_id"][r].get("rpd") != 0]
     assert live, f"{purpose}: every route for {model} is paused (rpd: 0): {routes}"
+
+
+def test_catalog_backup_candidates_defaults_on_and_excludes_per_model_lanes():
+    lanes = load_lanes()
+    assert all(
+        lane.accepts_catalog_backups == (lane.dispatch_shape == "pooled") for lane in lanes.values()
+    )
+    base = {**_lane()["a-purpose"], "models": ["a/b"], "max_dispatches_per_run": 1}
+    assert (
+        parse_lanes({"x": {**base, "catalog_backup_candidates": False}})[
+            "x"
+        ].accepts_catalog_backups
+        is False
+    )
+    with pytest.raises(ValueError, match="catalog_backup_candidates"):
+        parse_lanes({"x": {**base, "catalog_backup_candidates": "yes"}})
+
+
+def _entry(**overrides):
+    return _lane(**overrides)["a-purpose"]
+
+
+class TestJudgePools:
+    def test_eligible_models_and_slots_are_validated(self):
+        lanes = parse_lanes(
+            {
+                "judge:sibling": _entry(
+                    models=["g1", "g2", "n1"],
+                    eligible_models=["q1"],
+                    slots={"google": ["g1", "g2"], "non_google": ["n1", "q1"]},
+                    dispatch_shape="per_model",
+                )
+            }
+        )
+        lane = lanes["judge:sibling"]
+        assert lane.eligible_models == ("q1",)
+        assert lane.slot_models == {"google": ("g1", "g2"), "non_google": ("n1", "q1")}
+        # Eligible models are not dispatched: they cost nothing at ingress.
+        assert lane.ingress_write_units_per_job == 4
+
+    def test_eligible_models_never_repeat_active_ones(self):
+        with pytest.raises(ValueError, match="must not repeat active"):
+            parse_lanes({"x": _entry(models=["m1"], eligible_models=["m1"])})
+
+    def test_every_model_needs_exactly_one_slot_and_each_slot_an_active_model(self):
+        with pytest.raises(ValueError, match="models without a slot"):
+            parse_lanes({"x": _entry(models=["m1", "m2"], slots={"a": ["m1"]})})
+        with pytest.raises(ValueError, match="is in slots"):
+            parse_lanes({"x": _entry(models=["m1"], slots={"a": ["m1"], "b": ["m1"]})})
+        with pytest.raises(ValueError, match="has no active model"):
+            parse_lanes(
+                {"x": _entry(models=["m1"], eligible_models=["q"], slots={"a": ["m1"], "b": ["q"]})}
+            )
+        with pytest.raises(ValueError, match="neither an active nor an eligible"):
+            parse_lanes({"x": _entry(models=["m1"], slots={"a": ["m1", "ghost"]})})
+
+    def test_families_must_cover_every_lane_model(self):
+        lanes = parse_lanes({"x": _entry(models=["m1"], eligible_models=["q1"])})
+        assert parse_families({"m1": "a", "q1": "b"}, lanes) == {"m1": "a", "q1": "b"}
+        with pytest.raises(ValueError, match=r"no family for lane model\(s\): \['q1'\]"):
+            parse_families({"m1": "a"}, lanes)
+
+    def test_repository_judge_lanes(self):
+        lanes = load_lanes()
+        assert lanes["judge:anchor"].models == ("typesafe/jev-1.13",)
+        sibling = lanes["judge:sibling"]
+        assert sibling.eligible_models == ("qwen/qwen3.8-27b",)
+        assert "qwen/qwen3.8-27b" in sibling.slot_models["non_google"]
+        assert set(lanes["judge:adjudicator"].models) == {
+            "zai/glm-5.3-flash",
+            "deepseek/deepseek-v4.1-flash",
+        }
+        for purpose in ("judge:anchor", "judge:sibling", "judge:adjudicator"):
+            # A judge's identity is part of every judgment: pinned, never a backup fallback.
+            assert lanes[purpose].dispatch_shape == "per_model"
+            assert lanes[purpose].backup_models == ()
+        families = load_families()
+        sibling_families = {families[m] for m in sibling.slot_models["non_google"]}
+        assert "google" not in sibling_families
+        assert {families[m] for m in sibling.slot_models["google"]} == {"google"}
+        adjudicators = {families[m] for m in lanes["judge:adjudicator"].models}
+        assert len(adjudicators) == 2 and not adjudicators & {
+            families[m] for m in (*sibling.models, *sibling.eligible_models)
+        }
+
+
+def test_load_families_parses_the_site_config_once_per_path(monkeypatch):
+    import yaml
+
+    clear_cache()
+    parsed = []
+    real = yaml.safe_load
+
+    def counting(stream, *args, **kwargs):
+        parsed.append(1)
+        return real(stream, *args, **kwargs)
+
+    monkeypatch.setattr(yaml, "safe_load", counting)
+    first = load_families()
+    after_first = len(parsed)
+    for _ in range(50):
+        again = load_families()
+    assert len(parsed) == after_first  # 50 more calls, no more parsing
+    assert again == first
+    again["acme/x"] = "mutated"  # callers get their own copy
+    assert "acme/x" not in load_families()
+    clear_cache()
+    load_families()
+    assert len(parsed) > after_first

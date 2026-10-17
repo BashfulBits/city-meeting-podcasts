@@ -1,0 +1,136 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player",
+          "native-source-chapters"
+        ],
+        "name": "Downtown Denton Tax Increment Financing Zone No. 1 Board"
+      }
+    ],
+    "case_id": "recording-cc51e5260201801d13396511",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "denton-tx-tirz-1-board"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda (retained-agenda) shows the Downtown Denton Tax Increment Financing Zone No. 1 Board, styled in the convening clause as the 'Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas,' convening a Regular Meeting on Wednesday, July 22, 2020 at 12:00 PM in the Council Work Session Room at City Hall. The provider player (provider-player) and chapter data (native-source-chapters) corroborate the same recording (Swagit 73923) with agenda items TIF20-004A through TIF20-009E matching the agenda. This convened body matches the existing configured feed 'denton-tx-tirz-1-board' (Denton: TIRZ No. 1 Board), per the policy on TIF family feeds. TIRZ No. 2 is a distinct numbered board and is not implicated. The Downtown Economic Development Committee appears only as an outside body that recommended a grant; it was not a convened participant of this meeting, so no additional body assignment is made. No joint meeting, archival-only content, or event exclusion applies."
+  },
+  "attempt_id": "d3f15c7654574234923b837bc7aade24",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-cc51e5260201801d13396511",
+  "case_input_hash": "3fde2da420915f05442ea1617408a4e02eb27d71584f510b9a1debf722e9e3ba",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 19.5074486659978
+    }
+  ],
+  "end_to_end_seconds": 21.24365441700138,
+  "finished_at": "2026-10-14T18:20:35.903133+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/original",
+  "observed_at": "2026-10-14T18:20:14.659303+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "3c6718a3b159bab7f8a3fac125f724dd2bb4ff65c1d81cfdf822797c064cbaf7",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1669,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 1279,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 5257,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 6926
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"bodies\": [\n    {\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n      \"name\": \"Downtown Denton Tax Increment Financing Zone No. 1 Board\"\n    }\n  ],\n  \"case_id\": \"recording-cc51e5260201801d13396511\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"],\n  \"feed_slugs\": [\"denton-tx-tirz-1-board\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained agenda (retained-agenda) shows the Downtown Denton Tax Increment Financing Zone No. 1 Board, styled in the convening clause as the 'Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas,' convening a Regular Meeting on Wednesday, July 22, 2020 at 12:00 PM in the Council Work Session Room at City Hall. The provider player (provider-player) and chapter data (native-source-chapters) corroborate the same recording (Swagit 73923) with agenda items TIF20-004A through TIF20-009E matching the agenda. This convened body matches the existing configured feed 'denton-tx-tirz-1-board' (Denton: TIRZ No. 1 Board), per the policy on TIF family feeds. TIRZ No. 2 is a distinct numbered board and is not implicated. The Downtown Economic Development Committee appears only as an outside body that recommended a grant; it was not a convened participant of this meeting, so no additional body assignment is made. No joint meeting, archival-only content, or event exclusion applies.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM\" in Denton, TX.\n\nEvidence:\n1. \"retained-agenda\" - The agenda clearly states: \"Downtown Denton Tax Increment Financing Zone No. 1 Board, City of Denton, Meeting Agenda\" and \"the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, July 22, 2020 at 12:00 p.m. in the Council Work Session Room at City Hall...\"\n2. \"provider-player\" - Swagit video player for the same meeting.\n3. \"native-source-chapters\" - Chapters of the video matching agenda items.\n\nExisting feeds include:\n- \"denton-tx-tirz-1-board\" - \"Denton: TIRZ No. 1 Board\" - \"Meetings of Denton TIRZ No. 1 Board.\"\n- \"denton-tx-tirz-2-board\" - \"Denton: TIRZ No. 2 Board\"\n\nThe body is the Downtown Denton Tax Increment Financing Zone No. 1 Board, also referred to as the \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" \u2014 this is TIRZ No. 1 (Tax Increment Reinvestment Zone Number One). The feed \"denton-tx-tirz-1-board\" matches.\n\nThe body name from evidence: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" (per the agenda's convening sentence) or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" (per the header). Both are fine; I'll use the full name with evidence refs.\n\nIs this a joint meeting? The agenda mentions the \"Downtown Economic Development Committee recommends a grant in the amount of $7,313 (8-0)\" \u2014 but that's just a recommendation noted in an agenda item, not a convened participant. There's no joint meeting here; only the TIF Board convened. So only one body.\n\nThe Downtown Economic Development Committee is mentioned only as having made a recommendation \u2014 it's not a proven participant of the meeting. Also, there's no feed for it in the existing feeds list anyway.\n\nPublication action: assign_existing. Feed slug: denton-tx-tirz-1-board.\n\nPolicy check:\n- identity: \"Use the convened body, not venue, topic or common members; numbered boards differ.\" \u2014 The convened body is TIRZ No. 1 Board. Numbered boards differ \u2014 TIRZ No. 1 vs No. 2. This is No. 1, so denton-tx-tirz-1-board only, not tirz-2.\n- families: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" \u2014 The TIF family feed exists: denton-tx-tirz-1-board.\n\nBodies array: [{\"name\": \"Downtown Denton Tax Increment Financing Zone No. 1 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}]\n\nShould I name the body exactly as in the agenda header or the convening sentence? The agenda says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" in the header, and \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" in the body text. I'll use the full convening name: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" \u2014 but the body_label uses \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Either is acceptable; I'll use the header version matching the body_label, and cite the agenda. Actually, to be precise about the entity, maybe include both names? The schema allows up to 10 bodies, but only one body exists. I'll use one name and mention the alias in rationale. Let me use \"Downtown Denton Tax Increment Financing Zone No. 1 Board (Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board)\"? maxLength is 300, that would fit. Hmm, but cleaner to use one canonical name. I'll use \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" and note in rationale that the agenda also calls it \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board,\" matching the TIRZ No. 1 feed.\n\nEvidence ref IDs: all three evidence refs support the recording identity. retained-agenda gives the body name and convening; provider-player and native-source-chapters confirm the same recording. I'll cite retained-agenda primarily, and include the others as corroboration.\n\nMissing evidence: none needed. Maybe note that the Downtown Economic Development Committee is not a proven participant (only referenced as recommending a grant), so it's not added. That's not \"missing evidence\" exactly, but I could mention in rationale.\n\nFeed slugs: [\"denton-tx-tirz-1-board\"]\n\nPublication action: \"assign_existing\"\n\nRationale: The retained agenda shows the Downtown Denton Tax Increment Financing Zone No. 1 Board (styled \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\") convening a Regular Meeting on 2020-07-22 at 12:00 PM; provider player and chapter data confirm the same recording (Swagit 73923). This matches the existing feed \"denton-tx-tirz-1-board\" (Denton: TIRZ No. 1 Board). TIRZ No. 2 is a different numbered board and is not implicated. The Downtown Economic Development Committee is only referenced as having recommended a grant; it is not a proven participant of this convened meeting, so no additional body is assigned.\n\nEcho case_id: \"recording-cc51e5260201801d13396511\"\n\nJSON output only.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM\" in Denton, TX.\n\nEvidence:\n1. \"retained-agenda\" - The agenda clearly states: \"Downtown Denton Tax Increment Financing Zone No. 1 Board, City of Denton, Meeting Agenda\" and \"the Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas, will convene in a Regular Meeting on Wednesday, July 22, 2020 at 12:00 p.m. in the Council Work Session Room at City Hall...\"\n2. \"provider-player\" - Swagit video player for the same meeting.\n3. \"native-source-chapters\" - Chapters of the video matching agenda items.\n\nExisting feeds include:\n- \"denton-tx-tirz-1-board\" - \"Denton: TIRZ No. 1 Board\" - \"Meetings of Denton TIRZ No. 1 Board.\"\n- \"denton-tx-tirz-2-board\" - \"Denton: TIRZ No. 2 Board\"\n\nThe body is the Downtown Denton Tax Increment Financing Zone No. 1 Board, also referred to as the \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" \u2014 this is TIRZ No. 1 (Tax Increment Reinvestment Zone Number One). The feed \"denton-tx-tirz-1-board\" matches.\n\nThe body name from evidence: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" (per the agenda's convening sentence) or \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" (per the header). Both are fine; I'll use the full name with evidence refs.\n\nIs this a joint meeting? The agenda mentions the \"Downtown Economic Development Committee recommends a grant in the amount of $7,313 (8-0)\" \u2014 but that's just a recommendation noted in an agenda item, not a convened participant. There's no joint meeting here; only the TIF Board convened. So only one body.\n\nThe Downtown Economic Development Committee is mentioned only as having made a recommendation \u2014 it's not a proven participant of the meeting. Also, there's no feed for it in the existing feeds list anyway.\n\nPublication action: assign_existing. Feed slug: denton-tx-tirz-1-board.\n\nPolicy check:\n- identity: \"Use the convened body, not venue, topic or common members; numbered boards differ.\" \u2014 The convened body is TIRZ No. 1 Board. Numbered boards differ \u2014 TIRZ No. 1 vs No. 2. This is No. 1, so denton-tx-tirz-1-board only, not tirz-2.\n- families: \"Use configured bond/TIF/public-information family feeds for their proven bodies.\" \u2014 The TIF family feed exists: denton-tx-tirz-1-board.\n\nBodies array: [{\"name\": \"Downtown Denton Tax Increment Financing Zone No. 1 Board\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\", \"native-source-chapters\"]}]\n\nShould I name the body exactly as in the agenda header or the convening sentence? The agenda says \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" in the header, and \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" in the body text. I'll use the full convening name: \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board\" \u2014 but the body_label uses \"Downtown Denton Tax Increment Financing Zone No. 1 Board\". Either is acceptable; I'll use the header version matching the body_label, and cite the agenda. Actually, to be precise about the entity, maybe include both names? The schema allows up to 10 bodies, but only one body exists. I'll use one name and mention the alias in rationale. Let me use \"Downtown Denton Tax Increment Financing Zone No. 1 Board (Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board)\"? maxLength is 300, that would fit. Hmm, but cleaner to use one canonical name. I'll use \"Downtown Denton Tax Increment Financing Zone No. 1 Board\" and note in rationale that the agenda also calls it \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board,\" matching the TIRZ No. 1 feed.\n\nEvidence ref IDs: all three evidence refs support the recording identity. retained-agenda gives the body name and convening; provider-player and native-source-chapters confirm the same recording. I'll cite retained-agenda primarily, and include the others as corroboration.\n\nMissing evidence: none needed. Maybe note that the Downtown Economic Development Committee is not a proven participant (only referenced as recommending a grant), so it's not added. That's not \"missing evidence\" exactly, but I could mention in rationale.\n\nFeed slugs: [\"denton-tx-tirz-1-board\"]\n\nPublication action: \"assign_existing\"\n\nRationale: The retained agenda shows the Downtown Denton Tax Increment Financing Zone No. 1 Board (styled \"Downtown Denton Tax Increment Financing Reinvestment Zone No. 1 Board of the City of Denton, Texas\") convening a Regular Meeting on 2020-07-22 at 12:00 PM; provider player and chapter data confirm the same recording (Swagit 73923). This matches the existing feed \"denton-tx-tirz-1-board\" (Denton: TIRZ No. 1 Board). TIRZ No. 2 is a different numbered board and is not implicated. The Downtown Economic Development Committee is only referenced as having recommended a grant; it is not a proven participant of this convened meeting, so no additional body is assigned.\n\nEcho case_id: \"recording-cc51e5260201801d13396511\"\n\nJSON output only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792001960,
+    "id": "5b4f8fff3e6ca50638c65a6121895254",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1669,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1279,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 5257,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 6926
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

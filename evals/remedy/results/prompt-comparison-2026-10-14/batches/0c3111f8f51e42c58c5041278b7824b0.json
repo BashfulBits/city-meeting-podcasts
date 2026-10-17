@@ -1,0 +1,177 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "native-source-chapters"
+        ],
+        "name": "Comprehensive Plan Advisory Committee"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Planning & Zoning Commission"
+      },
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Addison City Council"
+      }
+    ],
+    "case_id": "recording-461fd764c77be280ae5b37a2",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player",
+      "native-source-chapters"
+    ],
+    "feed_slugs": [
+      "addison-tx-comprehensive-plan-advisory-committee",
+      "addison-tx-planning-and-zoning-commission",
+      "addison-tx-city-council"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The recording-specific official agenda identifies Joint Meeting #2 of the Comprehensive Plan Advisory Committee, Planning & Zoning Commission, and City Council on July 11, 2024. Its call-to-order item explicitly names all three convening bodies and their presiding officers; the provider player and native chapters corroborate the joint meeting. Each participant has a dedicated configured feed, so all three feeds apply under the joint-meeting policy. Routine citizen comments and comprehensive-planning topics do not establish membership in any additional feed."
+  },
+  "attempt_id": "5e475eaa078d464baffcfe07e9a8588c",
+  "attempt_in_round": 1,
+  "candidate": "sol",
+  "case_id": "recording-461fd764c77be280ae5b37a2",
+  "case_input_hash": "19c5d7c43835941303b2a730df317609a11d9d2770481146541c2589143d092e",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 7.546305208001286
+    }
+  ],
+  "end_to_end_seconds": 57.47324637499696,
+  "finished_at": "2026-10-14T22:11:12.603163+00:00",
+  "groq_until_429": false,
+  "identity_held": false,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T22:10:15.129612+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "980434087ec086a5674cf578624a00086b9289e1d4ceb793dd04a143003ea38c",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "billing_usage": {
+      "claude_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 3868,
+        "output_tokens": 336
+      },
+      "semantic": "anthropic",
+      "source": "claude_messages"
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "completion_tokens": 336,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 0
+    },
+    "input_tokens": 3868,
+    "input_tokens_details": null,
+    "output_tokens": 0,
+    "prompt_tokens": 3868,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "total_tokens": 4204,
+    "usage_semantic": "openai",
+    "usage_source": "anthropic"
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\n  \"case_id\": \"recording-461fd764c77be280ae5b37a2\",\n  \"bodies\": [\n    {\n      \"name\": \"Comprehensive Plan Advisory Committee\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"native-source-chapters\"]\n    },\n    {\n      \"name\": \"Planning & Zoning Commission\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    },\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-comprehensive-plan-advisory-committee\",\n    \"addison-tx-planning-and-zoning-commission\",\n    \"addison-tx-city-council\"\n  ],\n  \"publication_action\": \"assign_existing\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\",\n    \"native-source-chapters\"\n  ],\n  \"missing_evidence\": [],\n  \"rationale\": \"The recording-specific official agenda identifies Joint Meeting #2 of the Comprehensive Plan Advisory Committee, Planning & Zoning Commission, and City Council on July 11, 2024. Its call-to-order item explicitly names all three convening bodies and their presiding officers; the provider player and native chapters corroborate the joint meeting. Each participant has a dedicated configured feed, so all three feeds apply under the joint-meeting policy. Routine citizen comments and comprehensive-planning topics do not establish membership in any additional feed.\"\n}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "refusal": null
+          },
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1792015871,
+    "id": "resp_0dbe0494495d996e016acffdfae06881989192178e321c48cf",
+    "model": "gpt-6.1-sol-free",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "billing_usage": {
+        "claude_usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0,
+          "claude_cache_creation_5_m_tokens": 0,
+          "input_tokens": 3868,
+          "output_tokens": 336
+        },
+        "semantic": "anthropic",
+        "source": "claude_messages"
+      },
+      "claude_cache_creation_1_h_tokens": 0,
+      "claude_cache_creation_5_m_tokens": 0,
+      "completion_tokens": 336,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": null,
+        "text_tokens": 0
+      },
+      "input_tokens": 3868,
+      "input_tokens_details": null,
+      "output_tokens": 0,
+      "prompt_tokens": 3868,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 4204,
+      "usage_semantic": "openai",
+      "usage_source": "anthropic"
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "beatapi_gpt_6_1_sol_free",
+  "route_settings_hash": "8c3d737e988a629c1885e698d2128374350e5d2850ace65d1c8fbce9a7069199",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": true,
+  "status": "completed",
+  "upstream_model": "gpt-6.1-sol-free",
+  "upstream_model_requested": "gpt-6.1-sol-free"
+}

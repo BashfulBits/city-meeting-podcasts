@@ -1,0 +1,48 @@
+name: Compile Changelog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "changelog.d/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: compile-changelog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: main
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+
+      - name: Compile changelog fragments into CHANGELOG.md
+        run: |
+          python3 scripts/compile_changelog.py
+
+      - name: Commit and push compiled changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(git status --porcelain -- CHANGELOG.md changelog.d/)" ]; then
+            echo "No changelog updates to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md changelog.d/
+          git commit -m "chore: compile changelog fragments into CHANGELOG.md [skip ci]"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" \
+            "HEAD:main"

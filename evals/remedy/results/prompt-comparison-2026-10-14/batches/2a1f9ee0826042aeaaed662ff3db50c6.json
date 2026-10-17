@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Animal Shelter Advisory Committee (City of Denton)"
+      }
+    ],
+    "case_id": "recording-5fae14c06e8ceb8379204fb7",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [],
+    "missing_evidence": [
+      "No supplied evidence identifies an existing feed slug for the Animal Shelter Advisory Committee; the supplied feed list contains no matching or family feed for this body."
+    ],
+    "publication_action": "unconfigured_body",
+    "rationale": "The retained agenda (retained-agenda) shows the 'Animal Shelter Advisory Committee, City of Denton' convening Thursday, July 23, 2020 at 2:00 PM in the Council Work Session Room at City Hall, 215 E. McKinney St., with meeting notice certified by the City Secretary, establishing a real City of Denton municipal body. The provider player (provider-player) confirms recording 73990 is this same committee meeting. Per the identity policy, the convened body is the Animal Shelter Advisory Committee itself; the 'Council Work Session Room' venue does not make this a City Council meeting, and no other body or joint participants are named in the evidence. The supplied feed list contains no Animal Shelter Advisory Committee feed, and inventing a slug is prohibited. Under the sparse policy, a real body without an existing feed is unconfigured, so publication_action is unconfigured_body with the body named and no feed slugs assigned."
+  },
+  "attempt_id": "bee9081091314e9c9ba1377a3548ae6a",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-5fae14c06e8ceb8379204fb7",
+  "case_input_hash": "1a3e56528580d8d82a226fbab045a1e5f4d69bc4a121fd8866a33c2b82fe0d35",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 18.44867087500097
+    }
+  ],
+  "end_to_end_seconds": 19.67001608300052,
+  "finished_at": "2026-10-14T13:38:46.913278+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/self_check",
+  "observed_at": "2026-10-14T13:38:27.243090+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "de237fa0c6d5f0ffef01ddf74a608485fd96201b7388b56dbaafbf51cba5c2d4",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 1221,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 890,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 3810,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5031
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"bodies\": [{\"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"], \"name\": \"Animal Shelter Advisory Committee (City of Denton)\"}], \"case_id\": \"recording-5fae14c06e8ceb8379204fb7\", \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"], \"feed_slugs\": [], \"missing_evidence\": [\"No supplied evidence identifies an existing feed slug for the Animal Shelter Advisory Committee; the supplied feed list contains no matching or family feed for this body.\"], \"publication_action\": \"unconfigured_body\", \"rationale\": \"The retained agenda (retained-agenda) shows the 'Animal Shelter Advisory Committee, City of Denton' convening Thursday, July 23, 2020 at 2:00 PM in the Council Work Session Room at City Hall, 215 E. McKinney St., with meeting notice certified by the City Secretary, establishing a real City of Denton municipal body. The provider player (provider-player) confirms recording 73990 is this same committee meeting. Per the identity policy, the convened body is the Animal Shelter Advisory Committee itself; the 'Council Work Session Room' venue does not make this a City Council meeting, and no other body or joint participants are named in the evidence. The supplied feed list contains no Animal Shelter Advisory Committee feed, and inventing a slug is prohibited. Under the sparse policy, a real body without an existing feed is unconfigured, so publication_action is unconfigured_body with the body named and no feed slugs assigned.\"}",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "The recording is labeled \"Animal Shelter Advisory Committee on 2020-07-23 2:00 PM\" for Denton, TX.\n\nEvidence: The retained agenda (retained-agenda) shows \"Animal Shelter Advisory Committee, City of Denton, Meeting Agenda, City Hall, 215 E. McKinney St., Denton, Texas 76201, Council Work Session Room, 2:00 PM, Thursday, July 23, 2020\". This proves the body is the Animal Shelter Advisory Committee of the City of Denton.\n\nThe provider-player evidence confirms the recording ID 73990 is the Animal Shelter Advisory Committee meeting on 2020-07-23.\n\nNow check existing feeds: there is no \"denton-tx-animal-shelter-advisory-committee\" feed in the list. Feeds include Agenda Committee, Airport Advisory Board, Board of Ethics, Bond Oversight Committee, Charter Review Committee, City Council, Civil Service Commission, Committee on Persons with Disabilities, Committee on the Environment, Community Partnership Committee, Development Code Review Committee, Economic Development Partnership Board, Gas Well Task Force, Health & Building Standards Commission, Historic Landmark Commission, Library Board, Mobility Committee, Parks/Recreation/Beautification Board, Planning and Zoning Commission, Public Art Committee, Public Info Meetings, Public Utilities Board, Special Citizens Bond Advisory Committee, Sustainability Framework Advisory Committee, TIRZ 1, TIRZ 2, Traffic Safety Commission, Use-Of-Force Ad Hoc Committee, Zoning Board of Adjustment.\n\nNo Animal Shelter Advisory Committee feed exists. Per the policy: \"sparse\": \"A real body without an existing feed is unconfigured, not automatically non-city.\" And \"Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it.\"\n\nThe body is a real municipal body (City of Denton Animal Shelter Advisory Committee \u2014 it's a City of Denton committee per the agenda, posted by the City Secretary, held in City Hall). So publication_action = \"unconfigured_body\", feed_slugs = [] (empty, since no existing feed matches and we must not invent one).\n\nCould this match any existing feed? No. Topic words like \"shelter\" don't match Health & Building Standards or Committee on the Environment. The body is distinct.\n\nCould it be a joint meeting? No evidence of joint participation; the agenda only mentions the Animal Shelter Advisory Committee members. The note mentions Chair Diana Leggett, Vice-Chair Ann Sullivan, and members participating via video/teleconference \u2014 those are ASAC members, not other bodies.\n\nBodies array: name \"Animal Shelter Advisory Committee\" with evidence refs [\"retained-agenda\", \"provider-player\"]. The evidence proves the body name and its City of Denton affiliation.\n\nMissing evidence: perhaps none needed, or note that no evidence links this body to any existing feed slug \u2014 that's more rationale than missing evidence. We could note that there's no provided charter/ordinance establishing the committee, but the agenda is sufficient proof of the convened body. The gap for unconfigured_body is just that no feed exists. I might include a missing_evidence item: \"No existing feed slug for the Animal Shelter Advisory Committee in the supplied feed list.\" Actually missing_evidence should describe genuine missing evidence. The main thing: no feed exists \u2014 that's an observation, not missing evidence per se. I could state: \"No supplied evidence identifies an existing feed for the Animal Shelter Advisory Committee; the feed list contains none.\" That's fine.\n\nPublication action: \"unconfigured_body\".\n\nRationale: cite retained-agenda proving the City of Denton Animal Shelter Advisory Committee convened on 2020-07-23 at 2:00 PM in City Hall; provider-player confirms recording 73990 matches. No existing feed matches this body; per sparse policy, return unconfigured_body without inventing a slug. Not City Council or any other feed despite venue \"Council Work Session Room\" (identity policy: use convened body, not venue).\n\nEvidence_ref_ids: [\"retained-agenda\", \"provider-player\"]. Maybe include native-source-chapters too, but it's just chapter titles; retained-agenda and provider-player suffice. Could include all three; native-source-chapters echoes agenda items. I'll include retained-agenda and provider-player.\n\nJSON output only.",
+            "refusal": null
+          },
+          "reasoning_content": "The recording is labeled \"Animal Shelter Advisory Committee on 2020-07-23 2:00 PM\" for Denton, TX.\n\nEvidence: The retained agenda (retained-agenda) shows \"Animal Shelter Advisory Committee, City of Denton, Meeting Agenda, City Hall, 215 E. McKinney St., Denton, Texas 76201, Council Work Session Room, 2:00 PM, Thursday, July 23, 2020\". This proves the body is the Animal Shelter Advisory Committee of the City of Denton.\n\nThe provider-player evidence confirms the recording ID 73990 is the Animal Shelter Advisory Committee meeting on 2020-07-23.\n\nNow check existing feeds: there is no \"denton-tx-animal-shelter-advisory-committee\" feed in the list. Feeds include Agenda Committee, Airport Advisory Board, Board of Ethics, Bond Oversight Committee, Charter Review Committee, City Council, Civil Service Commission, Committee on Persons with Disabilities, Committee on the Environment, Community Partnership Committee, Development Code Review Committee, Economic Development Partnership Board, Gas Well Task Force, Health & Building Standards Commission, Historic Landmark Commission, Library Board, Mobility Committee, Parks/Recreation/Beautification Board, Planning and Zoning Commission, Public Art Committee, Public Info Meetings, Public Utilities Board, Special Citizens Bond Advisory Committee, Sustainability Framework Advisory Committee, TIRZ 1, TIRZ 2, Traffic Safety Commission, Use-Of-Force Ad Hoc Committee, Zoning Board of Adjustment.\n\nNo Animal Shelter Advisory Committee feed exists. Per the policy: \"sparse\": \"A real body without an existing feed is unconfigured, not automatically non-city.\" And \"Do not invent a feed slug. If a real body has no existing feed, return unconfigured_body and name it.\"\n\nThe body is a real municipal body (City of Denton Animal Shelter Advisory Committee \u2014 it's a City of Denton committee per the agenda, posted by the City Secretary, held in City Hall). So publication_action = \"unconfigured_body\", feed_slugs = [] (empty, since no existing feed matches and we must not invent one).\n\nCould this match any existing feed? No. Topic words like \"shelter\" don't match Health & Building Standards or Committee on the Environment. The body is distinct.\n\nCould it be a joint meeting? No evidence of joint participation; the agenda only mentions the Animal Shelter Advisory Committee members. The note mentions Chair Diana Leggett, Vice-Chair Ann Sullivan, and members participating via video/teleconference \u2014 those are ASAC members, not other bodies.\n\nBodies array: name \"Animal Shelter Advisory Committee\" with evidence refs [\"retained-agenda\", \"provider-player\"]. The evidence proves the body name and its City of Denton affiliation.\n\nMissing evidence: perhaps none needed, or note that no evidence links this body to any existing feed slug \u2014 that's more rationale than missing evidence. We could note that there's no provided charter/ordinance establishing the committee, but the agenda is sufficient proof of the convened body. The gap for unconfigured_body is just that no feed exists. I might include a missing_evidence item: \"No existing feed slug for the Animal Shelter Advisory Committee in the supplied feed list.\" Actually missing_evidence should describe genuine missing evidence. The main thing: no feed exists \u2014 that's an observation, not missing evidence per se. I could state: \"No supplied evidence identifies an existing feed for the Animal Shelter Advisory Committee; the feed list contains none.\" That's fine.\n\nPublication action: \"unconfigured_body\".\n\nRationale: cite retained-agenda proving the City of Denton Animal Shelter Advisory Committee convened on 2020-07-23 at 2:00 PM in City Hall; provider-player confirms recording 73990 matches. No existing feed matches this body; per sparse policy, return unconfigured_body without inventing a slug. Not City Council or any other feed despite venue \"Council Work Session Room\" (identity policy: use convened body, not venue).\n\nEvidence_ref_ids: [\"retained-agenda\", \"provider-player\"]. Maybe include native-source-chapters too, but it's just chapter titles; retained-agenda and provider-player suffice. Could include all three; native-source-chapters echoes agenda items. I'll include retained-agenda and provider-player.\n\nJSON output only.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791985053,
+    "id": "e5f3768a787429f201c549412ed39d52",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.30.0-tp4-dp2-ep-a6329b11",
+    "usage": {
+      "completion_tokens": 1221,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 890,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 3810,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5031
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

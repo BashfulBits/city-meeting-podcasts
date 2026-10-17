@@ -1,0 +1,101 @@
+{
+  "source_key": "abbf5e25e078",
+  "records": {
+    "406d87fa54437613": {
+      "uid": "406d87fa54437613",
+      "provider_guid": "392446",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jun 29, 2026",
+      "published": "2026-06-29T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/392446/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": "swagit/abbf5e25e078/406d87fa54437613-9f7b2db1f4b9.m4a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/406d87fa54437613-9f7b2db1f4b9.m4a",
+        "bytes": 72427786,
+        "duration_served": 5766.114,
+        "spec_hash": "9f7b2db1f4b9"
+      }
+    },
+    "91efc2425e16e017": {
+      "uid": "91efc2425e16e017",
+      "provider_guid": "393215",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jul 09, 2026",
+      "published": "2026-07-09T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/393215/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": "swagit/abbf5e25e078/91efc2425e16e017-35ed6d9762b5.m4a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/91efc2425e16e017-35ed6d9762b5.m4a",
+        "bytes": 92520166,
+        "duration_served": 7387.305,
+        "spec_hash": "35ed6d9762b5"
+      }
+    },
+    "926cf5eb32e17f89": {
+      "uid": "926cf5eb32e17f89",
+      "provider_guid": "393859",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jul 16, 2026",
+      "published": "2026-07-16T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/393859/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": "swagit/abbf5e25e078/926cf5eb32e17f89-a183a8455847.m4a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/926cf5eb32e17f89-a183a8455847.m4a",
+        "bytes": 109774003,
+        "duration_served": 8748.57,
+        "spec_hash": "a183a8455847"
+      }
+    },
+    "c70591ce9d69600c": {
+      "uid": "c70591ce9d69600c",
+      "provider_guid": "393215",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jul 10, 2026",
+      "published": "2026-07-10T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/393215/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": null,
+        "url": null,
+        "bytes": null,
+        "duration_served": null,
+        "spec_hash": null
+      }
+    },
+    "d2a2a095572de394": {
+      "uid": "d2a2a095572de394",
+      "provider_guid": "347901",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jun 26, 2025",
+      "published": "2025-06-26T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/347901/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": "swagit/abbf5e25e078/d2a2a095572de394-6dec92a3bf66.m4a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/d2a2a095572de394-6dec92a3bf66.m4a",
+        "bytes": 60059634,
+        "duration_served": 4836.362,
+        "spec_hash": "6dec92a3bf66"
+      }
+    },
+    "e4683d84499ede30": {
+      "uid": "e4683d84499ede30",
+      "provider_guid": "349471",
+      "body": "Community Partnership Committee",
+      "title": "Community Partnership Committee \u2013 Jul 10, 2025",
+      "published": "2025-07-10T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/349471/download",
+      "media_kind": "hls",
+      "audio": {
+        "key": "swagit/abbf5e25e078/e4683d84499ede30-e6cb42a9731b.m4a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/e4683d84499ede30-e6cb42a9731b.m4a",
+        "bytes": 68620884,
+        "duration_served": 5550.855,
+        "spec_hash": "e6cb42a9731b"
+      }
+    }
+  }
+}

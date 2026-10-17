@@ -1,0 +1,355 @@
+{
+  "admission_eligible_cases": 0,
+  "candidates": {
+    "astra": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "deepseek": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "flashlite": {
+      "accepted_precision": 1.0,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 3,
+        "accepted_correct": 3,
+        "correct": 5,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 1,
+        "known_truth": 6,
+        "unattempted": 107,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": 4.04724902077578,
+        "provider_median": 1.2040202503558248
+      },
+      "latest_observation_statuses": {
+        "completed": 6,
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": 0.75,
+      "wrong_case_ids": [
+        "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure"
+      ]
+    },
+    "gemini37": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 1,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 112,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "failed": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "gemini38": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 1,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 112,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "failed": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "glm_flash": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "glm_full": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    },
+    "kimi": {
+      "accepted_precision": 1.0,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 5,
+        "accepted_correct": 5,
+        "correct": 7,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 1,
+        "known_truth": 8,
+        "unattempted": 105,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": 35.82152364589274,
+        "provider_median": 34.227023457875475
+      },
+      "latest_observation_statuses": {
+        "completed": 8
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": 0.8333333333333334,
+      "wrong_case_ids": [
+        "dallas-tx-16300c982b358fe9-ownership-member-dallas-tx-transportation-and-infrastructure"
+      ]
+    },
+    "sol": {
+      "accepted_precision": null,
+      "admission_eligible_cases": 0,
+      "counts": {
+        "abstained": 0,
+        "accepted": 0,
+        "accepted_correct": 0,
+        "correct": 0,
+        "critical_errors": 0,
+        "failed": 0,
+        "incorrect": 0,
+        "known_truth": 0,
+        "unattempted": 113,
+        "unknown_truth": 0
+      },
+      "identity_held_completed": 0,
+      "latency_seconds": {
+        "end_to_end_median": null,
+        "provider_median": null
+      },
+      "latest_observation_statuses": {
+        "deferred": 1
+      },
+      "serving_family_held_completed": 0,
+      "supported_claim_recall": null,
+      "wrong_case_ids": []
+    }
+  },
+  "cases_in_manifest": 113,
+  "gold_hash": "5da44c165605a88f3df478bd3c920ad7eb5a6b4597ff2694d214dcc83482c2e2",
+  "input_observations": [
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/astra-3abfd6130a75e742.json",
+      "sha256": "f00a1bbd950e16770993563890148c7e2e124f4ce056d1352d6aec51e986074a"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/deepseek-3abfd6130a75e742.json",
+      "sha256": "a3209e29143599183e1401a3b8849b1ca9cf8f267390670d5217caadfcc7b02e"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-3abfd6130a75e742.json",
+      "sha256": "c931939c216248de000289999e62aed61f1d2b0a7d851b7ae2a6bc9149642827"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4989b0af919f5894.json",
+      "sha256": "a3525b4efd604a5037af39c07db50fcb480cf1132f4f76e1941d55d70397ff80"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4b1e8741d6249041.json",
+      "sha256": "62080cfaef19fca6fa40bd43f051d16c9929bda56f9265522748e8284d048952"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-4fb9987e2003d70f.json",
+      "sha256": "6c885a242f04cdf1ce5b13cbcc814805394743f449eba2fbd954162dac6a2085"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-884b2a75e101f848.json",
+      "sha256": "05cc91c10aba759a9a7ed2a876897d8e4dba1a02bbb11ef247742a6bc6a5ffcd"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/flashlite-e239d45c6ff5b7e0.json",
+      "sha256": "a87fa5c7f817414446434b9fcf44b66ed14afc6d3f1ee4e21215bf86c3740688"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini37-3abfd6130a75e742.json",
+      "sha256": "d24893503e838dba64f951837b643cba8d65c3e6db34023fef59bc3ac26b5e97"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/gemini38-3abfd6130a75e742.json",
+      "sha256": "37179b053429c2b522c93d84a40ac6f5ab2d6fc77c8f35664ef83052eb1df17f"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_flash-3abfd6130a75e742.json",
+      "sha256": "6b8a5543f6a16f92bdaa51b438f35c51b5a8ea4be1bb42dbccdcde5996df3dfd"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/glm_full-3abfd6130a75e742.json",
+      "sha256": "8da11a242210585d08afafbb3fa7fcbd2153365528f749c2cfbccc95e0e080db"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/kimi-3abfd6130a75e742.json",
+      "sha256": "fb7f5fa19991ff138539178724e90eac21533db2b397bca76f252bb4e3b21428"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T022253-4ae5e3df/sol-3abfd6130a75e742.json",
+      "sha256": "c90650e3b4b86d050aea4d2ac4acfe79a0e958a4c9dcf13c926bd1daaa0b405e"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023254-16e370aa/flashlite-6e1ae3c2136a48d2.json",
+      "sha256": "ab41c0028fdb84d174bd824d230963c23e3d64e49fad96319f3628d92e6e4884"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-3abfd6130a75e742.json",
+      "sha256": "b116bce0e6c6326503f35b9cb5d2bb5bedd85ce942a697a02548b7cf11458981"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-4989b0af919f5894.json",
+      "sha256": "f84c364641a6b196232153aea7f1756881d51476fc80f9eeea8e4ab6b6f90e8b"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-4b1e8741d6249041.json",
+      "sha256": "04ea8480b2f611408cc0c75883cf7384cf6920f3b11d47ec8ece10318e759555"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-4fb9987e2003d70f.json",
+      "sha256": "e3cb849dadcddf2f33fb0e7d85c0bb824561b48528b6c529ca5c7f32f1720766"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-6e1ae3c2136a48d2.json",
+      "sha256": "c6a171dfadefd2d0f0a3e66d51f26d74fcadbd05a48f697c52ce630db0f4e86d"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-884b2a75e101f848.json",
+      "sha256": "e72796bdf2b5937ab9cacdf00d4d3bfd6d59b1528d2d9db2747c03d8276671cc"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-e239d45c6ff5b7e0.json",
+      "sha256": "fbfa9eeda83beb5ffc7f30cbf5137bfefa7e80071c0f43af931b2c6d04fdeb74"
+    },
+    {
+      "path": "evals/remedy/results/varied-2026-10-11/batches/20261012T023815-3f8bc889/kimi-e7b646fd7d389d42.json",
+      "sha256": "622df29bad7cfb277de47cf012db7e5901b410ce343fdd4b7af6b0a6ed55f883"
+    }
+  ],
+  "interpretation": "This is a regression challenge, not an independent admission holdout. It scores approved claim-support and publication-policy answers; it has no blind-owner truth, so these results cannot qualify production admissions.",
+  "manifest_hash": "986595203bc78d27bfd02994536a2dc70fa8b87618cbe0262530212168f49864",
+  "manifest_split": "regression",
+  "owner_truth_cases": 0,
+  "scored_at": "2026-10-12T02:44:03.532950+00:00",
+  "version": 1
+}

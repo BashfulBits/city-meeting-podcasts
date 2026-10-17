@@ -1,15 +1,124 @@
-# Added by automated unexpected-body remediation.
-# Rationale: Arlington Tomorrow Foundation - Board of Directors is a distinct foundation board with 3 observed meetings between March and April 2020, meeting the criteria for a new feed.
 slug: arlington-tx-arlington-tomorrow-foundation
 city: arlington-tx
 provider: granicus
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   body: Arlington Tomorrow Foundation - Board of Directors
+  body_exact:
+  - Arlington Tomorrow Foundation - Board of Directors
+  - Arlington Tomorrow Foundation Board Meeting
 lifecycle:
-  status: retired
-  reason: latest observed meeting was 2020-04-28 (2324 days ago)
+  status: active
 podcast_title: 'Arlington: Arlington Tomorrow Foundation - Board of Directors'
 podcast_author: City of Arlington, TX
 podcast_email: ''
 podcast_description: Meetings of the Arlington Tomorrow Foundation Board of Directors.
+remedy_policy:
+  identity_names:
+  - Arlington Tomorrow Foundation - Board of Directors
+  - Arlington Tomorrow Foundation Board Meeting
+publication_selection:
+  version: 1
+  groups:
+  - id: foundation-clip-3432
+    source_key: ecc3710ac47f
+    identity_kind: same_provider_guid
+    identity_key: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3432
+    members:
+    - uid: 52ea444ed933464a
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3432
+      record_fingerprint: 4df1354746f6ba6f7ac78af178ad908a4d6c4f7e05841a3f79f4a85f7d54fe57
+    - uid: a54b5fc602d9e5c7
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3432
+      record_fingerprint: 1b160393c8e7903ba60b1ab62872b26643c968c0bfc92acf0f2ccb80e664c81d
+    preferred_uid: 52ea444ed933464a
+    evidence_refs:
+    - &id001
+      url: https://www.arlingtontx.gov/Community-Calendar/Arlington-Tomorrow-Foundation/Arlington-Tomorrow-Foundation-Board-of-Directors-Meeting
+      retrieved_at: '2026-10-04T05:37:24.105135+00:00'
+      content_hash: 298ce90c4f2e90627c0dbf870414e073d23b3e5f8cea342c3ac9bb68f630c20b
+    - &id002
+      url: https://www.arlingtontx.gov/files/assets/city/v/21/arlington-tomorrow-foundation/documents/agendas/arlington-tomorrow-foundation-board-agenda.pdf
+      retrieved_at: '2026-10-04T05:37:24.348771+00:00'
+      content_hash: 81c473fc5da7c9fe5822cde66396434b6c4ceaf40bceb8cf49ac3e7aee33c77e
+    - url: https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3432
+      retrieved_at: '2026-10-04T04:04:41.408892+00:00'
+      content_hash: 37be745f54dad7cb8d7dcc9f4a442fe90f17761d77a2d00b40a147f9ac9404d7
+    approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/1986#issuecomment-5976979529
+    exposure:
+      status: both-published
+      artifacts: &id003
+      - url: https://www.citymeetings.fyi/arlington-tx-arlington-tomorrow-foundation/audio_feed.xml
+        retrieved_at: '2026-10-04T05:37:23.562237+00:00'
+        content_hash: b4ec26f0b13f4666cb2ea1eac5468fb92fe6d8718dac4aaa8e21d3f5b0a536aa
+      - url: https://www.citymeetings.fyi/arlington-tx-arlington-tomorrow-foundation/video_feed.xml
+        retrieved_at: '2026-10-04T05:37:23.675790+00:00'
+        content_hash: fb01ccd4b9a34e2b1919fc3be73c262ed3a79ddd8dc23d161fff47a0d08fad13
+      - url: https://www.citymeetings.fyi/arlington-tx/archive/
+        retrieved_at: '2026-10-04T05:37:34.202977+00:00'
+        content_hash: 00620088fa2686f310fa67e0ca7917b6b10ec8bd2e3b5d589888d534395462b5
+      - url: https://www.citymeetings.fyi/arlington-tx-arlington-tomorrow-foundation/archive/
+        retrieved_at: '2026-10-04T05:37:34.294355+00:00'
+        content_hash: 294611f50fcde795e64ac29186a942295f70c0c0fa01882ca97d01a76713536b
+      rationale: Dedicated Foundation audio/video RSS currently deliver the preferred UIDs; the combined
+        all-meetings public archive links both UIDs for each recording. Preserve all retained records
+        and historical pages. Complete historical subscriber delivery is unknown; retain the already-delivered
+        dedicated-feed winners.
+    search: true
+    date_resolution: null
+  - id: foundation-clip-3433
+    source_key: ecc3710ac47f
+    identity_kind: same_provider_guid
+    identity_key: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3433
+    members:
+    - uid: c73dbd3dab9b14cc
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3433
+      record_fingerprint: a12d07023602753cf9b470fc3d32841762d351e6b5ef30b07d084dd9ece44d62
+    - uid: 85e716fc0a89c65a
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3433
+      record_fingerprint: b2f2ed68986477695a25217432f71c3d2200919c859976005df123c28c31d2b3
+    preferred_uid: c73dbd3dab9b14cc
+    evidence_refs:
+    - *id001
+    - *id002
+    - url: https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3433
+      retrieved_at: '2026-10-04T04:04:42.648623+00:00'
+      content_hash: baab2ce31d18458b46a9f5c7b8b1ff7f0e500d55f7c07082c44ae16a4be42dc0
+    approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/1986#issuecomment-5976979529
+    exposure:
+      status: both-published
+      artifacts: *id003
+      rationale: Dedicated Foundation audio/video RSS currently deliver the preferred UIDs; the combined
+        all-meetings public archive links both UIDs for each recording. Preserve all retained records
+        and historical pages. Complete historical subscriber delivery is unknown; retain the already-delivered
+        dedicated-feed winners.
+    search: true
+    date_resolution: null
+  - id: foundation-clip-3455
+    source_key: ecc3710ac47f
+    identity_kind: same_provider_guid
+    identity_key: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3455
+    members:
+    - uid: ccee5be42508e88d
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3455
+      record_fingerprint: 76c300080a19b6013c3c7e7d86d35869a7d91302a6bfd2934cba339711bfe9cf
+    - uid: 7d87cd30071ce800
+      provider_guid: https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3455
+      record_fingerprint: deb3474b9ba8510e361426c5b44601e15378d0dabb4152133f2da163c0cdead3
+    preferred_uid: ccee5be42508e88d
+    evidence_refs:
+    - *id001
+    - *id002
+    - url: https://arlingtontx.granicus.com/AgendaViewer.php?view_id=2&clip_id=3455
+      retrieved_at: '2026-10-04T04:04:43.439039+00:00'
+      content_hash: 1bcc8d727dbaa89ace9efad7f89f39fdb222a9d205fe31f2bd6ea4a748909790
+    approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/1986#issuecomment-5976979529
+    exposure:
+      status: both-published
+      artifacts: *id003
+      rationale: Dedicated Foundation audio/video RSS currently deliver the preferred UIDs; the combined
+        all-meetings public archive links both UIDs for each recording. Preserve all retained records
+        and historical pages. Complete historical subscriber delivery is unknown; retain the already-delivered
+        dedicated-feed winners.
+    search: true
+    date_resolution: null

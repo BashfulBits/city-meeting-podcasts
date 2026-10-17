@@ -3388,3 +3388,36 @@ class TestTranscriptVersionAwareReuse:
         assert stats.reused == 1
         assert fake_asr.transcribe_calls == []
         assert ep.transcript_key == prov_key
+
+
+def test_download_audio_file_stops_at_wall_clock_deadline(tmp_path):
+    import itertools
+
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            return itertools.repeat(b"x")  # a server that never finishes
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(stages_mod.HostedAudioDownloadTimeout),
+    ):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", tmp_path / "audio.m4a", deadline_seconds=0.05
+        )

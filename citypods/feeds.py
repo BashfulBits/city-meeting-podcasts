@@ -124,7 +124,8 @@ def _partial_source_disclaimer_html(ep: Episode) -> str:
 def episode_notes_html(ep: Episode) -> str:
     """Rich show-notes HTML (summary/description + a resource-link list) for
     ``content:encoded``. Returns "" when there's nothing richer than the plain ``<description>``
-    (no summary, no links, and not a confirmed-partial disclaimer), so those feeds stay clean.
+    (no summary, links, publication note, or confirmed-partial disclaimer), so those feeds stay
+    clean.
 
     Body text: our own ``summary`` is plain text and is HTML-escaped; a provider ``description``
     is often already HTML (e.g. Granicus emits ``<p>...<a>``), so it's emitted raw. Everything
@@ -137,9 +138,11 @@ def episode_notes_html(ep: Episode) -> str:
         for row in ep.moment_pullquote_candidates
         if isinstance(row, dict) and row.get("admission") in {"admitted", "admitted_text_only"}
     ]
-    if not ep.summary and not pairs and not is_partial and not admitted:
+    if not ep.summary and not pairs and not is_partial and not admitted and not ep.publication_note:
         return ""
     parts: list[str] = []
+    if ep.publication_note:
+        parts.append(f"<p><strong>Publication note:</strong> {escape(ep.publication_note)}</p>")
     if is_partial:
         parts.append(_partial_source_disclaimer_html(ep))
     if ep.summary:

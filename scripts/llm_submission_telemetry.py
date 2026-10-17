@@ -31,6 +31,8 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
     bundles = bundles if isinstance(bundles, Mapping) else {}
     claim = body.get("claim")
     claim = claim if isinstance(claim, Mapping) else {}
+    rescue = body.get("catalog_rescue")
+    rescue = rescue if isinstance(rescue, Mapping) else {}
     return {
         "active_bundles": bundles.get("active"),
         "active_calls": bundles.get("active_call_count"),
@@ -40,6 +42,11 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
         "last_reason": claim.get("last_reason"),
         "empty_claims": claim.get("empty_count_today"),
         "reason_counts": claim.get("reason_counts_today"),
+        "catalog_rescue": {
+            "digest": rescue.get("digest"),
+            "cursor": rescue.get("cursor"),
+            "complete": rescue.get("complete"),
+        },
     }
 
 

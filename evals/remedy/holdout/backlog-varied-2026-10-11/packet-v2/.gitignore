@@ -1,0 +1,4 @@
+# Exact raw bytes are sealed once in raw-evidence.zip; leave working copies local.
+documents/*.bin
+documents/*.pdf
+documents/*-provider-player.txt

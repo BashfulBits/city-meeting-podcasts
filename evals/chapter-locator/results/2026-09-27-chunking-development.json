@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "purpose": "Development-only chronological transcript chunking screen for large chapter-locator packets",
+  "run_date": "2026-09-27",
+  "dataset": "dataset-v3 development packets with frozen Mistral Medium 2508 agenda inputs",
+  "holdout_used": false,
+  "model": "gemini/gemini-3.5-flash-lite",
+  "route_id": "gemini_3_5_flash_lite_primary",
+  "route_pause": {
+    "scope": "route-specific",
+    "drained_before_calls": true,
+    "resumed_after_calls": true
+  },
+  "protocol": {
+    "complete_agenda_repeated_in_each_call": true,
+    "chronological_units_preserved": true,
+    "overlap_seconds": 300,
+    "chunk_target_builder_estimate_tokens": 95000,
+    "per_call_minimum_spacing_seconds": 62,
+    "merge_rule_tested": "earliest returned start per agenda item; highest-confidence variant computed offline as a diagnostic",
+    "raw_requests_and_responses": "private under /private/tmp/chapter-locator-telemetry"
+  },
+  "results": [
+    {
+      "uid": "ab1cfb601c5c94f0",
+      "full_packet_builder_estimate_tokens": 167686,
+      "hidden_provider_start_targets": 2,
+      "four_window_run": {
+        "chunk_builder_estimates": [55000, 54997, 54995, 31689],
+        "provider_prompt_tokens": [115673, 126578, 126241, 70885],
+        "schema_valid_chunks": "4/4",
+        "merged_earliest_start_hits": "1/2",
+        "merged_candidate_hits": "1/2"
+      },
+      "two_window_run": {
+        "chunk_builder_estimates": [94985, 80616],
+        "provider_prompt_tokens": [208032, 183938],
+        "schema_valid_chunks": "2/2",
+        "merged_earliest_start_hits": "1/2",
+        "merged_candidate_hits": "1/2",
+        "merged_highest_confidence_diagnostic_hits": "2/2"
+      }
+    },
+    {
+      "uid": "b713de3cac686c35",
+      "full_packet_builder_estimate_tokens": 134988,
+      "hidden_provider_start_targets": 2,
+      "two_window_run": {
+        "chunk_builder_estimates": [94984, 42694],
+        "provider_prompt_tokens": [132381, 132501, 76671],
+        "provider_attempts": 3,
+        "schema_valid_chunks": "1/2",
+        "invalid_chunk_error": "duplicate locator unit",
+        "merged_earliest_start_hits": "0/2",
+        "merged_candidate_hits": "0/2"
+      }
+    }
+  ],
+  "conclusion": "Chunking avoided Gemini's 250000 input-token/minute rejection on the measured calls, but did not reliably recover starts on the two-packet development screen. Confidence-based merging recovered one extra target on one packet only; it is unvalidated. Do not use chunking for production routing without a larger development evaluation and a defined cross-window merge rule.",
+  "limitations": [
+    "Only two large packets and four total provider starts were scored.",
+    "The second packet had one invalid chunk after the locator's schema retry.",
+    "Chunked development prompts used Mistral-generated agendas; fresh holdout packets use the current Gemini 3.1 agenda path.",
+    "Provider-reported prompt tokens vary substantially relative to the builder estimate; chunk size must be admitted against measured provider tokens."
+  ]
+}

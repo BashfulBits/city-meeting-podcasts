@@ -1,0 +1,125 @@
+{
+  "provenance": "Synthetic P2a regression/transfer proof fixture, not independent model admission truth.",
+  "template": {
+    "id": "named-board",
+    "version": 1,
+    "approval_ref": "https://github.com/example/catalog/issues/1#issuecomment-2",
+    "scope": "cross_city",
+    "city_source": null,
+    "identity_type": "named_body",
+    "aggregate_family": null,
+    "permitted_transformations": [
+      "normalized_exact_label"
+    ],
+    "selector_forms": [
+      "body_exact"
+    ],
+    "official_proof_requirements": [
+      "complete_available_history",
+      "official_body_identity",
+      "recording_is_public_meeting",
+      "reviewed_positive_negative_cases",
+      "same_source_namespace"
+    ],
+    "exclusion_boundaries": [
+      "ceremony",
+      "municipal_tv_show",
+      "other_body",
+      "promotional",
+      "staff_training",
+      "topic_only"
+    ],
+    "migration_boundaries": [
+      "archived_records",
+      "audio_artifacts",
+      "official_metadata",
+      "source_namespace",
+      "uid"
+    ],
+    "positive_case_ids": [
+      "real-board"
+    ],
+    "negative_case_ids": [
+      "council-topic"
+    ],
+    "transfer_case_ids": [
+      "unseen-city-board"
+    ]
+  },
+  "official_evidence": {
+    "schema_version": 1,
+    "city": "example-tx",
+    "source_key": "pinned-source",
+    "approval_ref": "https://github.com/example/catalog/issues/1#issuecomment-2",
+    "policy_id": "example-board",
+    "policy_version": 1,
+    "template_id": "named-board",
+    "template_version": 1,
+    "identity_bindings": [
+      {
+        "identity_name": "Library Board",
+        "evidence_ref_ids": [
+          "agenda"
+        ],
+        "recording_guids": [
+          "clip-7"
+        ]
+      }
+    ],
+    "evidence_refs": [
+      {
+        "id": "agenda",
+        "url": "https://example.test/agenda",
+        "retrieved_at": "2026-10-09",
+        "source_span": "Library Board convenes a public meeting; archive lists its recording.",
+        "content_hash": "245b5df9e13a6140443f62195bfc89950f45850d457980dcc91c3dd254a323e4"
+      }
+    ],
+    "recordings": [
+      {
+        "uid": "saved-uid",
+        "provider_guid": "clip-7",
+        "body": "Library Board",
+        "title": "Library Board Meeting",
+        "date": "2026-10-01",
+        "canonical_url": "https://example.test/video/7"
+      }
+    ],
+    "completeness": {
+      "status": "complete_available",
+      "evidence_ref_ids": [
+        "agenda"
+      ],
+      "exception_refs": []
+    },
+    "positive_case_ids": [
+      "real-board"
+    ],
+    "negative_case_ids": [
+      "council-topic"
+    ],
+    "transfer_case_ids": [
+      "unseen-city-board"
+    ]
+  },
+  "regression_cases": [
+    {
+      "id": "real-board",
+      "input_kind": "synthetic",
+      "body_label": "Library Board",
+      "expected": "verified exact local owner from supplied official packet"
+    },
+    {
+      "id": "council-topic",
+      "input_kind": "synthetic",
+      "body_label": "Council Library Board discussion",
+      "expected": "unknown; topic does not establish ownership"
+    },
+    {
+      "id": "unseen-city-board",
+      "input_kind": "synthetic",
+      "body_label": "Library Board",
+      "expected": "same pure API; exact city/source proof required for each instance"
+    }
+  ]
+}

@@ -5,6 +5,7 @@
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
+import { withTuning } from "./tuning.js";
 import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
@@ -17,10 +18,14 @@ import {
   validateReserveRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
-import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
-import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
+import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
+import { apiShapeFor } from "./api_shapes.js";
 import { classifyProviderFailure } from "./classify.js";
-import { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } from "./write_budget.js";
+import {
+  DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
+  DO_ROWS_WRITTEN_PLATFORM_LIMIT,
+  ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX,
+} from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -112,13 +117,26 @@ export function validateConfig(env) {
   }
 
   // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day) is enforced at
-  // runtime against the rows the coordinator actually writes (coordinator.js _rowsWrittenToday):
-  // enqueues and cleanup stop at DO_ROWS_ENQUEUE_STOP, new leases at DO_ROWS_CLAIM_STOP, and
-  // acks/retires/cancels at DO_ROWS_OPTIONAL_STOP, leaving the rest for in-flight completions.
-  // The thresholds must rise in that order and stay under the platform limit.
+  // runtime against the rows the coordinator actually writes. Configured thresholds remain
+  // ordered upper bounds; the coordinator clamps them to the account reserve and also projects
+  // the remaining cost of active leases before admitting another bundle.
   const enqueueRowStop = Number(env.DO_ROWS_ENQUEUE_STOP ?? 90000);
   const claimRowStop = Number(env.DO_ROWS_CLAIM_STOP ?? 97000);
   const optionalRowStop = Number(env.DO_ROWS_OPTIONAL_STOP ?? 99000);
+  const accountReserveRows = Number(
+    env.DO_ROWS_ACCOUNT_RESERVE ?? DO_ROWS_ACCOUNT_RESERVE_DEFAULT
+  );
+  if (
+    !Number.isInteger(accountReserveRows) ||
+    accountReserveRows < 1 ||
+    accountReserveRows >= DO_ROWS_WRITTEN_PLATFORM_LIMIT
+  ) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ACCOUNT_RESERVE (${accountReserveRows}) must be a positive ` +
+      `integer below ${DO_ROWS_WRITTEN_PLATFORM_LIMIT}`
+    );
+  }
+  const accountSafeStop = DO_ROWS_WRITTEN_PLATFORM_LIMIT - accountReserveRows;
   if (
     ![enqueueRowStop, claimRowStop, optionalRowStop].every(Number.isInteger) ||
     !(enqueueRowStop > 0 && enqueueRowStop <= claimRowStop && claimRowStop <= optionalRowStop) ||
@@ -130,11 +148,19 @@ export function validateConfig(env) {
       `integers below the platform's ${DO_ROWS_WRITTEN_PLATFORM_LIMIT} rows/day`
     );
   }
-  // A full day of admitted ingress must fit under the enqueue threshold on its own.
-  if (ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits > enqueueRowStop) {
+  if (enqueueRowStop > accountSafeStop) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) must not exceed the account ` +
+      `safety stop (${accountSafeStop})`
+    );
+  }
+  // A full day of admitted ingress must fit under the enqueue threshold on its own. The schema is
+  // not visible here, so assume a coordinator still carrying the legacy job_id index.
+  const rowsPerUnit = ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX;
+  if (rowsPerUnit * maxIngressWriteUnits > enqueueRowStop) {
     throw new Error(
       `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) can write up ` +
-      `to ${ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
+      `to ${rowsPerUnit * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
       `(${enqueueRowStop})`
     );
   }
@@ -252,16 +278,15 @@ export function validateConfig(env) {
   }
 
   // Retention/cleanup bounds. A zero per-tick prune cap is a deliberate emergency pause, but a
-  // zero or negative retention window would delete records the moment they turn terminal --
-  // including a bundle a late completeBatch could still legitimately settle.
-  for (const name of ["BUNDLE_RETENTION_DAYS", "ATTEMPT_RETENTION_DAYS"]) {
+  // zero or negative retention window would delete today's telemetry cells as they are written.
+  for (const name of ["ATTEMPT_RETENTION_DAYS"]) {
     if (env[name] === undefined) continue;
     const days = Number(env[name]);
     if (!Number.isInteger(days) || days < 1) {
       throw new Error(`Invalid config: ${name} must be an integer of at least 1`);
     }
   }
-  for (const name of ["MAX_BUNDLE_PRUNE_PER_TICK", "MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
+  for (const name of ["MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
     if (env[name] === undefined) continue;
     const value = Number(env[name]);
     if (!Number.isInteger(value) || value < 0) {
@@ -375,6 +400,11 @@ export async function handleRequest(request, env) {
   if (request.method === "GET" && path === "/v2/stats") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
     const detailed = url.searchParams.get("detail") === "1";
+    const counterOnly = url.searchParams.get("rate_failures") === "1";
+    const routesOnly = url.searchParams.get("routes") === "1";
+    if (Number(counterOnly) + Number(detailed) + Number(routesOnly) > 1) {
+      return errorResponse(400, "invalid_request", "stats modes conflict");
+    }
     // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
     const failureClasses = (url.searchParams.get("failure_class") || "")
       .split(",")
@@ -382,14 +412,40 @@ export async function handleRequest(request, env) {
       .filter((name) => /^[a-z0-9_]{1,64}$/.test(name))
       .slice(0, 10);
     try {
-      const snapshot = detailed
-        ? await coordinator.detailedStats(Date.now(), limit, { failureClasses })
+      const snapshot = counterOnly
+        ? await coordinator.rateFailureStats(Date.now())
+        : routesOnly
+        ? await coordinator.routeInventoryStats(Date.now(), limit)
+        : detailed
+        ? await coordinator.detailedStatsGuarded(Date.now(), limit, { failureClasses })
         : await coordinator.stats(Date.now());
+      if (snapshot?.ok === false) {
+        return errorResponse(429, snapshot.error, snapshot.detail);
+      }
       return jsonResponse(snapshot, 200);
     } catch (err) {
       const detail = describeError(err);
       console.error(`stats failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Authenticated operator repair; the coordinator enforces same-day, monotone bounds.
+  if (request.method === "POST" && path === "/v2/row-budget:reconcile") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return errorResponse(400, "bad_request", "An observation object is required");
+    }
+    try {
+      const result = await coordinator.reconcileRowBudget(body, Date.now());
+      return result.ok ? jsonResponse(result) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      return errorResponse(500, "coordinator_error", describeError(err));
     }
   }
 
@@ -407,6 +463,23 @@ export async function handleRequest(request, env) {
   }
 
   // Producer preflight: the input ratio the claim applies to a route and prompt family.
+  if (request.method === "GET" && path === "/v2/calibration" && url.searchParams.has("model")) {
+    // Packing preflight: the largest input a packet may carry for the smallest route of a model.
+    const model = url.searchParams.get("model") || "";
+    const promptFamily = url.searchParams.get("prompt_family") || "";
+    if (!/^[A-Za-z0-9_.:\/-]{1,128}$/.test(model) || promptFamily.length > 128) {
+      return errorResponse(400, "bad_request", "model and prompt_family are required");
+    }
+    try {
+      const status = await coordinator.packingCeiling(model, promptFamily);
+      if (!status) return errorResponse(404, "unknown_model", `Unknown model ${model}`);
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`packing ceiling failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
   if (request.method === "GET" && path === "/v2/calibration") {
     const routeId = url.searchParams.get("route_id") || "";
     const promptFamily = url.searchParams.get("prompt_family") || "";
@@ -467,7 +540,13 @@ export async function handleRequest(request, env) {
       return errorResponse(400, validation.error, validation.detail);
     }
     try {
-      const status = await coordinator.dispatchPauseStatus(selection, Date.now());
+      const context = url.searchParams.get("context");
+      if (context !== null && context !== "1") {
+        return errorResponse(400, "bad_request", "context must be 1 when supplied");
+      }
+      const status = await coordinator.dispatchPauseStatus(
+        { ...selection, ...(context === "1" ? { context: true } : {}) }, Date.now()
+      );
       return status.ok ? jsonResponse(status, 200) : errorResponse(400, status.error, status.detail);
     } catch (err) {
       const detail = describeError(err);
@@ -743,10 +822,10 @@ function sleepUntil(targetTime) {
 
 /**
  * No route is currently confirmed to support a client-supplied provider-side idempotency key
- * (see review/44's "no binding shortcut" note and the executor's own doc comment below) -- every
- * job takes the attemptStarted-fencing path today. This function exists as the single place a
- * future per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled
- * into dispatch_limits.json's provider block), so nothing else in this file needs to change.
+ * (see review/44's "no binding shortcut" note). This function is the single place a future
+ * per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled into
+ * dispatch_limits.json's provider block); it only decides whether the job's provider
+ * idempotency key is sent.
  */
 function routeSupportsProviderIdempotency(route, dispatchLimits) {
   return Boolean(dispatchLimits.providers?.[route.provider]?.supports_idempotency_key);
@@ -792,16 +871,38 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
 }
 
 /**
- * One provider call for one job, already fenced and paced by the caller. Returns exactly one of:
- * `{ skip: true }` (lease no longer current -- the DO reaped it; caller must not report anything
- * for this attempt), `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller
- * decides whether/how to retry), or `{ result }` (a terminal AttemptResult ready for
- * completeBatch, covering success, transport failure, and every non-429 HTTP status).
+ * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
+ * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
+ * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
+ * ceiling inside the lease, so it fails only on a misconfigured override or a stalled invocation.
  */
-async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
-  if (!routeSupportsProviderIdempotency(route, dispatchLimits)) {
-    const fence = await coordinator.attemptStarted(job.id, job.lease_token, attemptId, Date.now());
-    if (!fence.fenced) return { skip: true };
+export function leaseCoversCall(job, now, maxResponseMs) {
+  const leaseExpiresAt = Number(job.lease_expires_at);
+  // No deadline means no fence: decline rather than risk a call the DO may already have reaped.
+  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs <= leaseExpiresAt;
+}
+
+/**
+ * The lease deadline for each claimed job. A coordinator deployed before 2026-10-07 returns no
+ * lease_expires_at; it set the lease to `claimNow` (the `now` this executor passed to the claim)
+ * plus LEASE_DURATION_SECONDS, so that exact value is reconstructed rather than left unfenced.
+ */
+export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
+  return jobs.map((job) => (Number.isFinite(Number(job.lease_expires_at))
+    ? job
+    : { ...job, lease_expires_at: claimNow + leaseDurationMs }));
+}
+
+/**
+ * One provider call for one job, already paced by the caller. Returns exactly one of:
+ * `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller decides whether/how to
+ * retry) or `{ result }` (a terminal AttemptResult ready for completeBatch, covering success,
+ * transport failure, every non-429 HTTP status, and `deferred_late` when the lease can no
+ * longer cover the call -- see leaseCoversCall).
+ */
+export async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
+  if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
+    return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
   const actualStartAt = Date.now();
@@ -848,10 +949,15 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       retryAfterSeconds: cls.retry_after_seconds ?? response.retryAfterSeconds,
       failureClass: cls.failure_class,
       ruleId: cls.rule_id,
+      tokenQuota: cls.token_quota ?? null,
     };
   }
 
-  if (upstreamEmptyCompletion(response.status, response.body)) {
+  // Every reply check below is the route's API shape's (chat today; JEV's systemone, review/53).
+  const shape = apiShapeFor(route);
+  const observedTokens = (body) => shape.observedTokens(body);
+
+  if (shape.emptyCompletion(response.status, response.body)) {
     // A 2xx carrying no completion. Never settle this as success: doing so stores a non-answer as
     // the job's durable result AND clears the route's backoff, so a provider serving nothing looks
     // healthy. Retryable, and classified as the provider's problem rather than the job's.
@@ -872,7 +978,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
     };
   }
 
-  if (response.ok && response.body?.choices?.[0]?.finish_reason === "length") {
+  if (response.ok && shape.lengthTruncated(response.body)) {
     // The reply stopped at its output-token limit: whatever it holds is cut off. Never stored as a
     // result; retried, and counted per route as output_budget_exhausted so the token-budget
     // monitor can tell a too-small lane budget from a model reasoning without end.
@@ -890,7 +996,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   }
 
   const structuredProblem =
-    response.ok && isStructuredPayload(job.payload) ? structuredReplyProblem(response.body) : null;
+    response.ok ? shape.replyProblem(job.payload, response.body) : null;
   if (structuredProblem) {
     // A 200 whose content is empty or not JSON, on a request that must return JSON (review/48
     // R10). Never settle it as success: that stores a non-answer and clears the route's backoff,
@@ -945,6 +1051,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
     body: response.body,
     headers: response.headers,
     route,
+    inputTokens: job.input_token_estimate,
   });
 
   return {
@@ -963,7 +1070,11 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // This Worker is the only layer that sees response bodies -- the DO holds job rows and
         // never a payload -- so the sniffing happens here and completeBatch keys off the pair
         // (retryable_error, 400) alone.
-        (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
+        // A 5xx is retryable unless classify read it as this job's own defect (JEV's oversize
+        // 503, which no retry can fix) or as a route input limit (handled by the coordinator).
+        (response.status >= 500 &&
+          cls.failure_class !== "route_input_limit" &&
+          cls.failure_class !== "request_defect") ||
         response.status === 402 ||
         // A 410 (model retired) or 404 (upstream fault) is the route's problem, not this job's;
         // the coordinator requeues it (classify.js rule 8).
@@ -977,6 +1088,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       gateway_correlation_id: response.correlationId,
       failure_class: cls.failure_class,
       rule_id: cls.rule_id,
+      scope: cls.scope,
     },
   };
 }
@@ -1029,7 +1141,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     const attemptId = crypto.randomUUID();
     const outcome = await attemptProviderCall({
       env,
-      coordinator,
       b2,
       route,
       dispatchLimits,
@@ -1038,11 +1149,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       idempotencyKey,
       maxResponseMs,
     });
-
-    if (outcome.skip) {
-      laneState.predecessorActualStart = Date.now();
-      return null; // lease reaped; nothing to report for this attempt
-    }
 
     if (outcome.result) {
       laneState.predecessorActualStart = outcome.result.actual_start_at;
@@ -1057,7 +1163,8 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       attemptId,
       Date.now(),
       outcome.retryAfterSeconds,
-      outcome.failureClass
+      outcome.failureClass,
+      outcome.tokenQuota
     );
     if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
       return {
@@ -1096,7 +1203,8 @@ async function runScheduledDispatch(env) {
   const dispatchLimits = env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
-  const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
+  const claimNow = Date.now();
+  const plan = await coordinator.claimDispatchWindow(claimNow, dispatchWindowSeconds);
   if (!plan.jobs || plan.jobs.length === 0) {
     // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
     // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
@@ -1113,7 +1221,8 @@ async function runScheduledDispatch(env) {
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
   const lanes = new Map();
-  for (const job of plan.jobs) {
+  const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
+  for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
     lanes.get(job.route_id).push(job);
   }
@@ -1227,7 +1336,8 @@ async function runScheduledCleanup(env, scheduledTime) {
 
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {
@@ -1236,7 +1346,8 @@ export default {
     return handleRequest(request, env, ctx);
   },
 
-  async scheduled(event, env, ctx) {
+  async scheduled(event, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {

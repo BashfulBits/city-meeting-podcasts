@@ -1,0 +1,3416 @@
+# review/48 — Provider catalog reconciliation
+
+**Maturity: Slices 1–4 and automatic new-route input discovery shipped (#2445); evidence-gated removal activation is this implementation; new-route cap projection into addition PRs remains tracked by #2271**
+
+**Current scope decision — 2026-10-11, amended 2026-10-15:** route discovery/addition/removal
+plus new-route input-cap search in §8.13. Prior shipped calibration remains historical/operational context;
+automatic runtime ceiling publication and broader recurring characterization are Deferred to
+[review/54](54-provider-limit-characterization.md). Existing dispatcher adaptations stay intact.
+The input-first profile reports provider-counted passing values separately from calibrated rejected
+size estimates. Its 0.5% tolerance is an estimate target, not a provider-verified refusal bracket.
+The resumable `test again` contract applies to new-route discovery under its L3 implementation.
+
+Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
+`scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
+`config/provider_catalog_decisions.yml`. Prerequisite shipped: the v2 dispatch pause (#1848).
+
+This supersedes the first design in PR #1841. Its free-evidence rules, Artificial Analysis matching
+and comment-preserving route edits were kept; its always-open issue, digest-branch PRs, unreachable
+auto-added routes, HTML scraper and hand-kept alias tables were not.
+
+## Implementation checkpoint — 2026-10-09
+
+PR C shipped in [#1854](https://github.com/BashfulBits/city-meeting-podcasts/pull/1854). The Worker
+and Python direct path already shape requests per route and reject empty structured responses. The
+remaining R10 gap was the catalog: its first-event availability ping could prove service without
+proving JSON support. The maintainer approved completing this verification before Slice 2 on
+2026-10-08. Catalog verification shipped in [#2169](https://github.com/BashfulBits/city-meeting-podcasts/pull/2169).
+This checkpoint does not mark Slices 2–4 shipped; their remaining contracts are proposed in §8.
+
+BeatAPI registration shipped in
+[#2167](https://github.com/BashfulBits/city-meeting-podcasts/pull/2167). Its DeepSeek routes pool
+with NVIDIA/OrcaRouter through `model_key`; the model's other routes must remain visible in anomaly
+lane-impact reporting. BeatAPI's five free chat routes share a successful request/minute account
+window with JEV. Its plugin excludes JEV's `owned_by: task plugin` catalog entry from chat
+discovery, and spaces probes by 65 seconds. The first reasoning event is only availability evidence,
+never structured-output evidence. Advertised GPT names do not verify the serving family; catalog
+JSON support does not establish judge-family independence (review/49).
+
+The catalog now follows a successful availability ping with four schema-bound streaming checks,
+using `structured_output_methods` and the same Python renderer as direct calls. Each asks for
+`{"answer":"ok"}`; strict vs relaxed checks exercise a string-length bound. Visible content must
+parse to that exact object after `finish_reason: stop`. Reasoning-only, malformed, extra-field,
+wrong-value and truncated replies do not qualify a candidate. A completed empty/invalid reply or
+HTTP 400 rejection of the resolved configured method is a `structured_output_invalid` anomaly;
+transport failures, timeouts and capacity/access errors remain inconclusive. Access/capacity errors
+stop the remaining method checks. A working alternative is reported without editing route config.
+
+Checks allow 4,096 total completion tokens, including reasoning, with a 720-second read timeout and
+elapsed-time checks against the Worker response ceiling, and cap streamed event data at 128 KiB. The
+parser now observes complete SSE event boundaries and joins multiple `data:` fields within each
+event before JSON decoding, as required by the SSE format. The old four-token ping remains a cheap
+availability check, but cannot establish method support. This
+means up to five requests per checked model, rather than one. Every request uses plugin spacing,
+with pause renewal after the wait and during long streams. Configured-route method checks are
+charged individually to the Worker ledger; a failed charge aborts further probing instead of
+continuing with an unrecorded spend. Scarce routes require reported quota; unknown or exhausted
+quota defers the check. Partial checks and a 429 are deferred until reset. A check with no method evidence leaves its
+previous record unchanged; partial results merge by method, retaining unchecked methods and
+latency. The prior preferred method is retained when the new attempt verifies no method. Candidate checks have no
+configured route ID to reserve and remain under the provider pause and spacing; their per-model
+allowance is bounded by the three-candidate run budget. The provider pause stays armed for one final
+plugin interval before resuming dispatch, so the last unregistered candidate cannot leave
+BeatAPI/JEV inside a spent account window.
+
+The issue shows a candidate's preferred method (first valid method in R10 order) and verification
+date. The version-2 state marker retains per-method outcomes and first-event/completion latency. Its
+base64 payload is compressed to keep that evidence within GitHub's issue-body limit; the decoder
+still accepts older uncompressed JSON markers, and rendering reserves the measured marker size
+before bounding human-readable observations. Version-1 candidate `proven` memories without a
+verified method are rechecked; retirement memories remain valid. Daily merges discard legacy
+candidate proofs without a method and clear recovered route anomalies using the set of routes
+actually rechecked. Configured methods are resolved using the same route/model/provider fallback as
+the compiler, with a contract test covering the actual configuration. `--evidence-report` uses the
+same planner, so it cannot bypass BeatAPI spacing or scarce quota handling. No production route,
+recipe, pipeline version or stored episode artifact changes; no catalog backfill or deployment is
+required for the offline tests. Live verification remains a separate maintainer-run step.
+
+Acceptance coverage: both shared shaping suites; reasoning-only and malformed/full-stream response
+cases; all four request shapes; scarce quota accounting and partial deferral; BeatAPI's 65-second
+spacing across health and method/candidate checks; JEV exclusion; and pooled-route lane rescue
+reporting. Slices 2–4 remain the next implementation work after this verification change.
+
+## 1. Why
+
+LLM routes churned heavily in Aug–Sep 2026: providers retired models (NVIDIA's gpt-oss-120b and
+deepseek-v4-pro went 410), plans changed (Airforce's kimi-k2.7-code became paid), new free
+models appeared (NVIDIA's GLM-5.3), and limits drifted. Checking all of that by hand is not
+sustainable. The goal is automation that *reduces* maintenance: it finds changes, proves them, and
+asks a human only for real decisions.
+
+## 2. Goals
+
+| | Goal |
+|---|---|
+| G1 | Keep LLM config current with providers: routes, context limits and rate limits. |
+| G2 | Automate discovery and retirement: read `/models`, prove each model with a canary, screen quality, check limits. |
+| G3 | Never strand jobs when a route is removed; affected jobs are reassigned automatically. |
+| G4 | Humans decide additions (issue checkboxes + `/apply` → curated PR); removals and proven conservative tightening are automatic PRs (material-change policy: §8.1). |
+| G5 | Extensible: providers and LLM lanes are added or removed without touching the reconciler core. |
+| G6 | Every structured request reaches its route in a form that route answers with JSON; a route that stops doing so fails loudly, never with silent empty replies. |
+
+Out of scope: task-specific output scoring and judge-based admission (a later design).
+
+## 3. Requirements
+
+**R1 Complete catalogs.** Every provider catalog is read completely (Gemini pages at 50 by default)
+with the provider's first account key.
+
+**R2 Providers are plugins.** Each provider's knowledge lives in one
+`citypods/provider_catalog/providers/<name>.py` exporting `RULES = ProviderRules(...)`:
+catalog endpoint and auth style, free evidence, chat filter, response `Signal`s, the free-variant
+suffix, the creator for bare model IDs, and research links. The registry discovers plugins
+automatically; `_template.py` is the starting point. Contract tests fail CI when a configured
+provider has no plugin, a plugin names a provider that is no longer configured, or the core
+branches on a provider name.
+
+**R3 Canaries are fair evidence.**
+- One 4-token streaming completion; success is decided by *parsing* the first SSE event (a 200
+  whose first event is an error is not a success; a normal chunk may carry `"error": null`).
+- Timeout matches the Worker's own 720 s response ceiling. A timeout or transport error is always
+  `inconclusive`; so is anything no provider signal recognizes.
+- Each provider's probes run inside a provider-scoped v2 dispatch pause, after its in-flight work
+  drains, with the pause renewed per probe. Without the Worker, probes still run and are reported
+  as possibly contended.
+- **Scarce daily quotas** (configured `rpd` ≤ 50, e.g. Gemini's 20/day) are checked every 4 weeks,
+  only when the Worker reports quota left (`pause-status.rpd_remaining`), and each probe is charged
+  to the Worker's ledger (`/v2/dispatch:reserve`). With no quota left the check is deferred to the
+  reset; a daily `--due-only` run picks it up. A spent quota is a deferral, never a verdict.
+
+**R4 Quality is informational.** The Artificial Analysis Intelligence Index is fetched once per
+run and shown next to each lane's incumbents. The floor (lower of GPT-OSS-120B and Nemotron-3
+Super) is a flag, not a gate. Matching is exact identity plus generic naming rules and a
+publisher-alias table — no per-model aliases: AA may prefix the creator; `-it`/`-instruct`/`-chat`/
+`-preview`/`-reasoning` are optional on either side; a bare ID from a multi-publisher host matches
+only a slug exactly one creator has. An exact slug always wins, and a normalized match is used only
+when it is unique, so ambiguity stays unscored. Unscored models get research links.
+
+**R5 Low noise.** One rolling issue lists only actionable items: proven candidates and
+unacknowledged anomalies on configured routes. Each anomaly shows the lanes that use the route and
+what else still serves each of them (or that the lane would stall). A free route that became paid
+(`not_entitled`) gets a **remove route / keep as a paid route** checkbox, never an automatic PR. Everything else is in a collapsed Observations
+block. The issue closes when nothing is actionable and reopens (same issue) when something is.
+
+**R6 Bounded, useful probing.** At most 3 candidate canaries per provider per run: never-tried
+first, then retries of inconclusive ones, best-scored first within each. Only definitive verdicts
+are remembered (28 days); an inconclusive or spent-quota result is retried, so a provider's rate
+limit cannot hide a model for a month. A plugin can space its canaries (Airforce: 1.5 s, for its
+global 1 req/s limit). Skipped before any canary: aliases of a configured model (same name without
+free/variant decorations) and models whose listed context is below the smallest configured free
+route's (a data-driven floor, not a constant).
+
+**R7 Decisions are durable.** `config/provider_catalog_decisions.yml` holds `ignored` candidates
+(optionally until `revisit_after`) and `acknowledged` known states of configured routes (e.g. the
+Mistral account-tier block), so a decision is made once.
+
+**R8 Lanes come from the registry.** Lane placement reads `load_lanes()` only. Eligible lanes
+are those whose `accepts_catalog_backups` is true (pooled, and `catalog_backup_candidates` not set
+false). A lane checkbox is
+offered when the candidate scores at least the lane's *weakest* scored member (backups add capacity
+and are usually weaker than the primary); every other eligible lane is listed with its score gap,
+because capacity backups are sometimes chosen below that bar. Promotion to a lane's primary model
+stays manual (it changes recipe hashes).
+
+**R9 Observe before acting.** Slice 1 changes no config; its only side effect is the issue.
+
+**R10 Structured output is shaped per route, from verified configuration (G6).** Producers
+(GitHub Actions, local runs, evals) send only the response *schema*; they never choose how to ask
+for JSON. The v2 Worker shapes the request for the route it actually dispatches to, because only it
+knows that route (a pooled job may be served by any route in the pool). A small, closed set of
+methods covers every route:
+
+| Method | Request shape |
+|---|---|
+| `json_schema` | `response_format: json_schema` with the full schema |
+| `json_schema_relaxed` | `response_format: json_schema`, schema with size/length/range bounds stripped |
+| `json_object` | `response_format: json_object`, schema appended to the prompt |
+| `prompt_only` | no `response_format`; schema appended to the prompt |
+
+- **Resolution:** a route's own *verified* method is authoritative (with its `verified_on` date).
+  Support is a property of the provider *serving* a model, not of either alone, so the
+  verification lives on the route. An unverified route (between being added and its first canary)
+  falls back to the method verified for the same model on another route, then the provider's
+  default, then `prompt_only` (the only method every chat endpoint accepts).
+- **Verification:** the catalog canary (Slice 1) sends a small schema-bound request with each
+  method to each configured route and to each candidate, and records which methods return valid
+  JSON. It proposes the method for a new route (Slice 2 writes it), and a configured method that
+  stops working is an anomaly on the rolling issue. Methods that work are preferred in table order
+  (strictest first).
+- **Loud failure:** the Worker treats a 200 with empty or unparseable content on a structured
+  request as a route failure (`structured_output_empty`/`structured_output_invalid` in
+  `route_failures`) and retries the job on another route; it never completes a job with it. Full
+  schema validation stays in Python (LLM output is untrusted; the Pydantic models live there).
+- **One definition:** local direct calls (tests, evals, research) use the same shaping. A shared
+  fixture of `method + schema -> expected request` is asserted by both the Python and the Worker
+  test suites, so the two implementations cannot drift.
+
+## 4. What a response means (evidence, 2026-09-24)
+
+Recorded under provider-scoped pauses and pinned in
+`tests/fixtures/provider_catalog/evidence_2026_09_24.json` and
+`tests/test_provider_catalog_signals.py`. Verdicts: `proven`, `retired`, `not_served`,
+`not_entitled`, `account_blocked`, `quota_exhausted`, `inconclusive`. Only `proven`, `retired` and
+`not_served` can ever change config.
+
+| Provider | Free evidence | Signals seen |
+|---|---|---|
+| NVIDIA | Build Catalog "Free Endpoint" label (NGC JSON) **and** a canary | 404 "Function … not found for account" = not served (all 8 sampled card-less listings); 410 = end of life. A 200 proves *served*, not cost: two unlabeled non-chat models also served, and NVIDIA returns no billing signal, so the label is required. First bytes took up to 300 s. |
+| Gemini | account-level (free-tier project) | 404 "no longer available" = retired; 429 with free-tier quota violations **without** a value = not in the free tier (models production never uses); 429 **with** a value (e.g. 20/day) = spent quota, defer |
+| Mistral | chat-capable entries (account-level) | 429 + `x-ratelimit-limit-req-minute: 0` = account-blocked (all 3 keys); 403 `tier_not_allowed` = not entitled; 403 Labs = preference toggle |
+| Groq | account-level (all-free account) | 404 "does not exist" = retired; headers carry per-day requests and per-minute tokens |
+| OpenRouter, Kilo | `:free` + zero prompt/completion price | 403 "agentic harness" = not entitled; 429 upstream = inconclusive |
+| OrcaRouter | `-free` + "(Free)" + zero request price | — |
+| Airforce | record's own `tier: free` | 402 subscription = not entitled; 429 global 1 rps = spent quota |
+| z.ai | none (observation-only) | `/models` omits its free flash models (absence is not evidence); code 1113 = paid; 1305 = overloaded |
+| SambaNova | account-level (documented Free tier; routes are `free: true`) | 429 "high demand" = inconclusive |
+| SiliconFlow, DeepSeek | none (observation-only) | — |
+
+**Structured output (2026-09-24).** NVIDIA's `deepseek-ai/deepseek-v4.1-flash` returned a 200 with
+**empty content** (`finish_reason: stop`, reasoning only) to *both* `response_format: json_schema`
+and `json_object`, and valid JSON only with no `response_format`. NVIDIA's earlier
+`deepseek-v4-pro` answered the default `json_schema` fine, and OrcaRouter's `deepseek-v4-flash`
+answers both formats (5–14 s). No config recorded that difference, and the Worker forwarded the
+job's format unchanged, so the failure was silent: an agenda benchmark spent hours retrying empty
+replies before it was traced. Until PR C lands, v4.1 is out of the r6-moments and council-moments
+pools (OrcaRouter v4 serves that overflow instead).
+
+Follow-up (same day): with `prompt_only` (PR C, #1854) v4.1 returns valid JSON, but NVIDIA serves
+it at roughly 11 output tokens/s with long reasoning -- 151 s for a 465-character agenda, and no
+full-size agenda finished within two hours of a benchmark run. That is far past the Worker's 720 s
+response ceiling, so v4.1 stays out of every production pool regardless of method. Lesson for the
+canary (Slice 1): a method check proves the *shape* of an answer, not that a route is usable;
+record first-byte and completion latency with each canary and flag routes whose typical task would
+exceed the Worker ceiling.
+
+## 5. Discovery backtest (2026-09-24)
+
+`--backtest` replays the candidate gates for every configured model as if it were not configured
+(catalog reads only). Every weekly run adds the one-line result to the issue's Observations, so a
+plugin gate that drifts from how routes are actually chosen shows up without anyone looking.
+
+- **Recall 34/39.** Misses: three retired or de-listed models (groq `qwen3.6-27b`; mistral
+  `devstral-2512`, `mistral-large-2512`) — correct — and z.ai's two free flash models, which z.ai's
+  `/models` does not list at all (added by hand; documented in its plugin).
+- **What the backtest changed:** SambaNova moved from observation-only to account-level (it had
+  made both configured SambaNova models undiscoverable); the lane rule moved from "beats every
+  member" to "at least the weakest member" (12 real memberships missed → 4); AA matching gained the
+  `-preview`/`-reasoning` and unique-bare-ID rules (most configured Gemini/NVIDIA/SambaNova models
+  went from unscored to scored).
+- **Remaining lane gap, by design:** four capacity placements score below their lane's weakest
+  member (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gpt-oss-120b`); they appear in the
+  issue's "other lanes" column with the gap rather than as checkboxes.
+
+The same day's paused dry run found both real anomalies (Airforce `kimi-k2.7-code` now paid,
+Groq `qwen3.6-27b` retired), treated the Mistral account-tier states as acknowledged, and surfaced
+NVIDIA `z-ai/glm-5.3` (AA 44.8, above every configured model) as the top candidate. It also drove the
+alias skip, the context floor, the definitive-only memory, the Airforce spacing and a 600 s drain.
+
+## 6. Design and delivery
+
+**PR C — per-route structured-output shaping (shipped in #1854).**
+Implements R10 on today's routes, before the catalog automates them.
+- *Config:* `structured_output_profiles` in `config/provider_limits.yml` become the four R10
+  methods; `structured_output_method` + `structured_output_verified_on` may be set on a route,
+  otherwise resolved as R10 describes. `compile_llm_limits.py` validates methods, resolves every
+  route's method, and emits it into both `llm_routes.json` and the Worker's
+  `dispatch_limits.json`.
+- *Payload:* Python's durable and dispatch payloads carry `structured_output: {name, schema}`
+  instead of a pre-shaped `response_format`, and messages without schema-in-prompt edits.
+  Admission estimates keep today's conservative rule (the larger, schema-in-prompt form).
+- *Worker:* `gateway.js:upstreamRequestForRoute` renders the four methods from the chosen route's
+  method; the executor classifies an empty/unparseable structured 200 as a retryable route failure
+  (R10). A stored payload without `structured_output` (jobs already in B2) keeps today's
+  `response_format` passthrough until those drain; the passthrough is then removed.
+- *Python direct path:* the same four renderers, one local parse/validate/retry path; Instructor's
+  schema mode is retired from the direct path.
+- *Tests:* the shared shaping fixture (both suites); a Worker test that an empty structured 200
+  retries on another route and is counted; a compile test that every route resolves a method.
+- *Original rollout plan (superseded by the latency evidence in §4):* mark NVIDIA `deepseek-v4.1-flash` `prompt_only`, re-run its agenda benchmark
+  (`evals/chapter-agenda/`). The measured latency keeps it out of production pools. The other
+  configured routes keep their current method until the Slice 1 canary verifies them.
+
+**Slice 1 — observe and propose (shipped).**
+`reconcile.py` plans a run: per provider, list the catalog, health-check one live route per
+configured upstream model, and canary up to 3 free candidates, all inside the pause.
+`issue.py` renders and syncs the rolling issue: candidates table (AA score, floor flag, context,
+research links) with a checkbox decision block per candidate (ignore / add route only / add as
+backup to each eligible lane), anomalies, collapsed observations, and a base64 state marker (canary
+memory, scarce-route checks, deferrals, known anomalies, the last full report for `--due-only`
+merges). Ticked boxes survive weekly rewrites. Workflow: weekly full run + daily due-only run,
+`issues: write` only.
+
+**Slice 2 — `/apply` → curated additions PR (contract proposal: §8.2–8.4).** `provider-catalog-commands.yml` on `issue_comment`
+(`author_association` prefilter + `require_repository_write`), reading `checked_decisions` and
+re-verifying candidate digests. Writes route blocks (comment-preserving append; limits from catalog,
+canary headers, else rpm 1 / concurrency 1), lane `backup_models`, and `ignored` decisions; runs
+both compilers and the lane/limit tests in-job (GITHUB_TOKEN PRs do not trigger CI); fixed branch
+`automation/provider-catalog-additions` rebuilt from main with list/edit/create.
+
+**Slice 3 — automatic removals, lane repair, job rescue (contract proposal: §8.5–8.6).** Remove a route only when the model is
+absent from a complete catalog and its canary is `retired`/`not_served`. A free route that becomes
+paid (`not_entitled`) is **never** removed automatically, even when no lane uses it: it stays a
+notify-only anomaly for a maintainer decision (maintainer decision 2026-09-24). Same PR repairs lanes
+(drop backups; promote the first backup for a removed primary with `needs:human-verification`;
+escalate instead of removing when a lane would be empty). Worker: on a catalog-digest change, a
+bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired` -- including
+jobs already indexed under the Worker's `__unroutable__` sentinel or under a model with no route
+(2026-09-24: 34 and 10 such jobs, e.g. `llama-4-maverick`), which the first pass after Slice 3
+deploys picks up because no catalog digest has been recorded yet -- and
+also queued jobs no eligible route can ever admit (input above every route's hard ceiling -- e.g.
+2026-09-24: ~2,600 prelabeler batches built before the 2026-09-23 sizing fix could only reach a
+20/day route) as `unadmissible`, so the producer re-batches them; the
+deferred sweep does not count `route_retired` toward the retry cap, and the producer resubmits
+under the current lane. The lane↔route CI guard (#1849) blocks any removal that would strand a
+lane.
+
+**Slice 4 — bounded limit maintenance (contract proposal: §8.7).** Record header-reported limits and a bounded rate-probe
+pass under the pause. Effective value = the maximum of the last 6 observations within 90 days.
+Within ±20%: nothing. Below by >20% with ≥3 consecutive low readings: automatic tightening PR.
+Above by >20%: an issue checkbox. Any swing >50% or an observed 0: flagged as a material change.
+The Worker's `route_failures` (sustained `own_rpm`/`own_tpm`/`unknown_429`) triggers an early
+re-probe of a scarce route.
+
+**Historical shadow exit (2026-09-24; superseded for R5 on 2026-10-08 by §8.4 and review/53).** A shadow evaluator lane (today
+`topic-tags:prelabeler-shadow`, gemma-4-26b-a4b-it shadowing the gemma-4-31b-it pre-labeler) runs
+the production prompt on the same subjects, never affects display, and earns its own calibration
+row: human reviews of the production evaluator are mirrored onto it through the subject's truth
+(`llm_evaluation.mirror_shadow_prelabeler_review`), so it is scored at no extra reviewer cost.
+It **qualifies to exit** shadow when, on those mirrored reviews, it meets the same bar the
+production evaluator must meet before it may act on its own (`EvaluationConfig`):
+- at least 50 scored reviews (`prelabeler_minimum_reviews`);
+- at least 95% precision on each actionable decision (`prelabeler_required_precision`), each with
+  at least 5 reviews (`prelabeler_minimum_decision_reviews`); and
+- precision not lower than the production evaluator's over the same subjects.
+
+When it qualifies, the rolling catalog issue shows the evidence (review counts, per-decision
+precision, agreement with production) and offers a **promote shadow** checkbox; `/apply` (Slice 2)
+turns it into a curated PR that adds the model as the production lane's backup (or as an
+additional model) and retires the shadow lane. Promotion to the lane's primary stays a manual
+edit, because the primary is part of the recipe hash. Until a task has a committed evaluation set
+(GH#1852), these mirrored reviews are its task-level quality evidence; once it has one, both are
+shown side by side.
+
+## 7. Verification
+
+- Offline: `pytest tests/test_provider_catalog_*.py tests/test_llm_lanes.py tests/test_workflows.py`.
+- Live dry run: `citypods-env python scripts/reconcile_provider_routes.py` prints the would-be issue.
+- Discovery recall: `citypods-env python scripts/reconcile_provider_routes.py --backtest`.
+- New or changed provider: `--evidence-report --provider <name>` under the pause, then pin the new
+  response shapes in the fixture.
+- PR C: the shared shaping fixture passes in `pytest` and `npm test`; after deploy, one r6-moments
+  job forced to NVIDIA `deepseek-v4.1-flash` completes with valid JSON, and a route configured with
+  a failing method shows `structured_output_empty` in `/v2/stats?detail=1` and the job completes on
+  another route.
+
+## 8. Remaining-slice contract proposal — 2026-10-08
+
+**Status: accepted proposal in #2178; Slice 2a shipped in #2182 (#2179); Slice 2b tracked in
+[#2187](https://github.com/BashfulBits/city-meeting-podcasts/issues/2187).** The maintainer requested
+implementation after merging the proposal on 2026-10-08. The remaining slices retain their separate
+issue and activation gates. The earlier L3 label overstated readiness: candidate provenance, YAML writes, terminal
+recovery and scoped limit observations lacked executable contracts. This section proposes those
+contracts against current `main`; it supersedes conflicting shorthand in §6. It does not freeze the
+whole breakout or claim the remaining slices shipped.
+
+### 8.1 Maintainer decisions and delivery gates
+
+The maintainer selected these priorities in chat on 2026-10-08:
+
+1. Slice 2 additions/ignore first; then Slice 3 rescue/removal; then Slice 4 limits.
+2. Split Slice 2: 2a handles additions/ignore; 2b completes paid-route decisions and shadow support.
+   Unsupported choices remain visible but cannot be applied by 2a. The R5 shadow portion was
+   subsequently superseded by decision 6 below.
+3. Proven tightening may prepare a PR even for a decrease greater than 50%; flag the material
+   change prominently. Increases still require a maintainer choice. Zero never becomes a limit.
+4. Missing catalog output bounds may use a separately reviewed conservative cap. Automatic
+   additions still defer missing required bounds; a tiny canary cannot establish an output ceiling.
+5. Add adaptive input/output context calibration **after** bounded rate maintenance (Slice 5).
+   Repeated probes should expand successful lower bounds and refine real size-rejection brackets,
+   using provider-reported token counts rather than treating local estimates as exact.
+6. Let review/53 own graduation. Defer the legacy R5 human-review shadow-promotion automation
+   from Slice 2b; its pre-labelers and calibration will be retired by review/53 PR11. This narrows
+   the earlier accepted paid/shadow scope deliberately: avoid building soon-retired automation and
+   avoid adding storage access for obsolete evidence. Paid decisions complete Slice 2b; existing
+   review history stays untouched until review/53's archival step. The #2188 shutdown fix remains
+   a useful retirement prerequisite. Do not substitute judge graduation into `/apply` here.
+
+Decision 3 extends G4's earlier “small” automatic changes. It saves a decision round when repeated
+credible evidence proves a large capacity loss; the risk is a misleading measurement lowering
+throughput. Three independent observations, scope validation and human PR review contain that
+risk. Automation prepares PRs; it does not merge them or deploy changes.
+
+Proposed merge order: **2a → 2b → 3a recovery → 3b removal → 4 → 5 calibration**.
+The rescue deployment is a hard prerequisite for removal automation. Split 2b can proceed
+separately from 3a after 2a; paid decisions remain in the delivery list. The legacy shadow portion
+is explicitly superseded by decision 6, not silently dropped. No live probe is required to write
+or test these slices.
+Paused live evidence and post-deploy recovery validation are activation gates, not coding blockers.
+Each slice gets a separate issue and scoped implementation PR after this proposal is accepted.
+
+### 8.2 Shared evidence and identity contract
+
+Add `citypods/provider_catalog/evidence.py` with immutable `CatalogEvidence`, `RouteEvidence` and
+`LimitObservation` records, `catalog_digest()` and `candidate_digest()`. Serialize canonical JSON
+(sorted keys, stable ordering, SHA-256); never include credentials, raw response bodies or prompts.
+
+- Catalog evidence identifies provider, UTC observation time, completeness, upstream IDs and the
+  normalized fields used for free eligibility, context and identity. Pagination order does not
+  change the digest; changed eligibility or limits does. Missing pages are incomplete evidence.
+- Route evidence identifies exact provider/upstream ID, account alias, availability verdict,
+  verified structured method/date, latency and safe scoped limit observations. A candidate digest
+  binds this evidence to catalog digest, proposed logical model key and eligible lane identities.
+- Issue state advances from v2 to v3 with these optional records. Continue decoding v1/v2; those
+  records remain advisory and require fresh evidence before config writes. Partial/deferred checks
+  retain existing evidence exactly as #2169 does; deferral is never a new affirmative proof.
+- Extend `ProviderRules` in `rules.py` with pure `model_identity` and `limit_observations` callbacks;
+  defaults return no identity/observations. Plugins normalize provider-specific fields and headers.
+  The core must not branch on provider names. Unknown scope is displayed but cannot change config.
+- Quality matching in `quality.py` remains informational. Its publisher aliases/AA score cannot
+  establish serving identity, shared quotas, or judge independence. Reuse an existing pool only
+  for an exact configured upstream identity or a unique plugin-proven canonical identity. Otherwise
+  report `identity_required` and request a manual mapping; no inferred brand-name pooling.
+- An addition requires a positive catalog context bound and a verified structured method. Missing
+  hard ceilings remain unset: a successful long request is only a lower bound. Missing catalog
+  context requires a separately reviewed config/evidence change before `/apply`; never invent a
+  context value. RPM/concurrency may fall back to 1 within existing provider caps. Do not invent
+  TPM/RPD/output ceilings or copy provider/account capacity into independent route capacity.
+
+Use `issue.py`, `reconcile.py` and `probe.py` to carry these records from the actual planner. Safe
+headers must be captured before classification discards them. Availability and method verification
+have separate freshness: on apply, refetch the complete catalog and rerun selected candidates under
+R3/R6 budgets. Require unchanged candidate identity/free evidence/context and a fresh working method.
+If quota or the run budget prevents proof, defer that selection and explain why; retain its checkbox.
+A partial apply may propose other proven selections, but never silently mark deferred ones applied.
+
+### 8.3 Slice 2a: authorized commands and precise config edits
+
+New files: `citypods/provider_catalog/config_edit.py`, `citypods/provider_catalog/apply.py`,
+`scripts/provider_catalog_commands.py`, `.github/workflows/provider-catalog-commands.yml`.
+
+`process_event(event, permission)` accepts exactly `/apply` on the rolling non-PR issue with the
+catalog marker. Reuse `require_repository_write` and the existing remedy command workflow's trusted
+base checkout/permission check pattern. Fetch the current issue through GitHub before parsing
+`checked_decisions`; webhook bodies, checkbox text and embedded state are untrusted data. Reject
+unknown IDs, conflicting ignore/add choices, duplicate lanes and unsupported 2b choices. No issue
+value supplies executable code, URLs, checkout refs, filesystem paths or workflow arguments.
+
+`plan_apply(report, decisions, config)` returns an immutable edit plan plus deferred/rejected
+selections. The run refetches and re-verifies as §8.2 specifies, then binds the plan to the current
+main commit and config hashes. Recheck the base before push; rebuild and revalidate on changed main.
+Only already-configured providers/accounts/endpoints can be used. Apply never adds credentials.
+
+`apply_config_edits(texts, plan)` uses narrow line-span edits and a parsed semantic before/after
+assertion, following the approach of `feed_yaml_edit.py` without changing that feed-only module.
+Preserve comments/order and fail closed on duplicate keys, unsupported YAML shapes, collisions or
+unexpected semantic differences. The exact write set is:
+
+- `config/provider_limits.yml`: append the selected route to the identified pool or append a new
+  logical model block; route IDs are provider plus upstream identity with a collision check.
+  Write the verified method/date and evidenced limits; never overwrite existing route properties.
+- `config/site_config.yml`: append selected model keys to `llm_lanes.<lane>.backup_models` only for
+  registry-eligible lanes. Preserve primary, existing backup order and unrelated defaults.
+- `config/provider_catalog_decisions.yml`: append ignored provider/upstream identities and optional
+  revisit date. An ignore alone creates a decisions-only PR; it never modifies routing.
+- Compiler outputs only: `citypods/compute/llm_routes.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json` and
+  `workers/llm-dispatch-v2/src/ingress_reservations.json`.
+
+Run `scripts/compile_llm_limits.py` and `scripts/compile_llm_lanes.py`, then the lane/limit/catalog
+contract tests in the workflow before push. Its contents/pull-requests write token is scoped to this
+job; catalog observation keeps read-only contents. Use one concurrency group for catalog writers.
+Rebuild `automation/provider-catalog-additions` from current main, and list/edit/create one PR;
+force-with-lease only against the fetched automation branch. Never replace a human-owned branch.
+Repeated apply produces no duplicate route, lane entry, ignore entry or PR. Keep decisions ticked
+until main actually contains them; explain open-PR versus merged state on the issue. A token-created
+PR must have these in-job checks because ordinary PR CI may not be triggered.
+
+### 8.4 Slice 2b: paid decisions; legacy shadow exit superseded
+
+Extend the same planner/editor/command files; do not add a second command surface. A paid anomaly's
+explicit remove choice uses the Slice 3 removal planner only after rescue is deployed. “Keep paid”
+sets that existing route's `free: false` and writes an acknowledged decision; it does not add paid
+lane eligibility or change any lane's `allow_paid` policy. Require a fresh `not_entitled` observation
+and show lanes that lose free eligibility. Reject a change that empties a lane's usable pool.
+
+**Slice 2b preparation (#2187), 2026-10-08:** the maintainer approved a narrow shutdown
+extension after a code mismatch: promotion also sets `tagging.prelabeler.shadow_enabled: false`.
+Extend `citypods/run.py`'s dispatch-cap and StageContext construction to resolve the shadow lane
+only when enabled; exclude disabled shadow work from ingress preflight,
+and add an end-to-end regression in `tests/test_run.py` for an absent disabled shadow lane;
+an enabled missing shadow lane must still fail loudly. This permits the exact shadow-lane removal
+below without breaking builds. The fix shipped in #2188. Legacy promotion was subsequently
+superseded by review/53; no human-calibration storage loader is needed in the catalog workflows.
+
+**Paid-decision implementation checkpoint (#2187), implemented in PR #2189 on 2026-10-08:**
+extend `Decision` with the
+physical route ID and reviewed route digest, and `Anomaly` with optional observation date,
+route-config digest and pause contention. Legacy anomalies remain advisory. `reconcile(...,
+route_ids=...)` freshly checks only selected active physical routes, including separate accounts
+for the same upstream, without using previous scarce-check dates or acknowledgements to hide the
+result. Existing pause, quota, reservation and spacing behavior remains authoritative.
+
+`parse_decisions()` rejects conflicting paid choices; `plan_apply()` requires unchanged reviewed
+and live route digests plus current-day uncontended `not_entitled` proof. It changes only the
+selected route's `free` scalar and appends an existing-schema acknowledgement with a literal,
+glob-escaped upstream model. Because acknowledgements apply across a provider/upstream identity,
+a selection that would conceal another configured free route for that identity defers to manual
+review. Pool checks include all previously accepted paid changes in the same plan, require an
+unpaused free route for an affected lane's primary model set, and do not rely on delayed backups or
+paid eligibility to establish free admission. Report affected primary/backup lanes; preserve their
+model lists, primary, backup order, `allow_paid` policies, quotas and gateway properties.
+
+The editor preserves scalar comments and asserts the exact semantic delta. Repeated fulfilled
+keep-paid choices spend no quota and write nothing. Selected paid decisions survive weekly outages
+until main contains both the paid classification and acknowledgement; open PRs are not fulfillment.
+Explicit remove selections remain deferred until deployed Slice 3 rescue and the removal planner.
+No live provider calls or config changes occur during this implementation's offline validation.
+
+The shadow shutdown prerequisite shipped in #2188. The maintainer chose review/53 graduation
+on 2026-10-08 (decision 6). That design's PR11 retires this R5 pre-labeler and archives its human
+calibration; this implementation enables no legacy promotion or judge-stack path. Supporting docs
+include a cross-link in `review/53-judge-stack-tags-and-moments.md` so the scope change is durable.
+
+**Historical shadow contract, superseded by review/53 (not Slice 2b implementation scope):**
+For shadow exit, read current mirrored-review calibration through `citypods/llm_evaluation.py` and
+current `EvaluationConfig`; recompute all §6 thresholds at apply time. Treat issue counts as display
+only. Append the shadow model as a production backup, remove the exact shadow lane configuration
+from `config/site_config.yml`, and retain calibration/history. Reject missing/changed parent or
+shadow lanes and falling qualification. Never promote a primary through this command. Tests extend
+`tests/test_llm_evaluation.py`, `tests/test_llm_lanes.py` and the new apply/editor tests.
+
+### 8.5 Slice 3a: structural terminal reasons and bounded rescue
+
+Implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190);
+Implemented in PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191), merged
+2026-10-08 after Slice 2b #2189. The automatic coordinator deployment succeeded; coordinated
+client activation and a recovery canary remain prerequisites for Slice 3b activation.
+
+**Implementation checkpoint (2026-10-08, #2190; PR #2191, merged):** bounded catalog
+rescue, nullable terminal metadata, audit-before-delete structural recovery, producer guards and
+retained-subject rebatching shipped in #2191. Python recognizes only the two specified
+reasons with a nonempty catalog identity; generic/legacy failures retain existing semantics.
+The terminal fence compares backend/ref against both snapshot and current stored record.
+Structural failures preserve retry/schema-correction counts and remain blocked until an eligible
+physical route generation changes or task-specific rebatching produces a different recipe.
+Recovery estimates and input identities include the same structured schema as queue submission.
+Offline validation passes: 5,284 Python tests (16 live tests deselected), 401 Worker tests,
+whole-repository Ruff checks/format checks and diff whitespace checks. Local workerd verifies
+billed-row reservations; the existing index preserves lifecycle write costs. No deployment occurred.
+The review round also enforces combined reservations before dispatch for singleton prelabeler
+batches, retains recovery contexts by job index and reuses the gate's marker read for generation
+checks. The production catalog digest returns from an identity cache before serialization;
+mutable overrides still serialize/compare so in-place changes restart rescue. Local CPU evidence
+is in the existing benchmark README; it does not claim production invocation CPU savings.
+
+**Maintainer decision (2026-10-08): reuse the existing queue index.** The proposed `(state, id)`
+index measured 21 writes and 65 reads to build over 20 retained jobs, plus recurring lifecycle
+writes. Reuse `(state, updated_at, id)` instead, avoiding that unbounded migration and ongoing cost.
+Persist JSON `{after: [updated_at, id], through: [updated_at, id]}` in the planned TEXT cursor.
+Capture the last queued key as a fixed upper endpoint at pass start; each page seeks strictly after
+its committed cursor and no later than that endpoint. Model-index repair leaves `updated_at`
+unchanged. New arrivals and requeues get current eligibility checks independently, so ongoing
+traffic cannot extend this pass forever. Missing/legacy/malformed cursors restart a bounded pass;
+a changed catalog digest also restarts it. No additional jobs index or raised budget is needed.
+
+**Outage invariant (maintainer request 2026-10-08):** job/index mutations, queued-count changes,
+catalog identity and cursor advancement commit in the existing single transaction. A write-budget
+stop leaves the whole page unprocessed. Failure during mutation or checkpoint persistence rolls
+back the page; in-memory staged progress is cleared, and DO recreation resumes the last committed
+cursor. If the platform rejects reads/writes until its quota resets, leave progress intact and
+resume when storage is available. Test both failure locations, repeated unavailability, recreation,
+UTC budget rollover, equal timestamps and fixed endpoints under new traffic. Verify rollback with
+the existing local workerd benchmark as well as the Node SQLite tests; never exhaust live quota
+for testing. A rolled-back page may be safely replayed; a committed page remains committed even
+if the caller loses its response.
+
+**Rollout gate:** the Worker deploys automatically from main, independently of Python consumers.
+Verify that the Python sweep/producers carrying structural recovery semantics are in use before
+activating rescue in the deployed coordinator. Old clients retain `job_failed` compatibility but
+would count structural failures as generic retries. Slice 3b remains disabled until deployment and
+the recovery canary confirm bounded progress, preserved failure counts and no unchanged-recipe loop.
+
+**Maintainer decision (2026-10-08):** when none of a job's active models has a
+policy-eligible structurally fitting route, immediately unlock its already-declared backups.
+Retain paid/free policy and lane model allowlists; do not add models, rewrite attempt counts or
+activate backups for temporary pause/cooldown/quota exhaustion. Keep the usual attempt/schema
+activation when the primary remains structurally usable. Extend the existing pure route helpers
+in `workers/llm-dispatch-v2/src/routes.js` and their route/coordinator tests so indexing and actual
+claim selection use the same rule. Test against the full catalog even when claim admission uses
+a pause-filtered catalog. This resolves the primary-cannot-attempt deadlock without changing
+ordinary fallback thresholds.
+
+**Review pacing (maintainer instruction 2026-10-08):** request CodeRabbit when each implementation PR
+is ready, with at least one hour between manual requests. Check repository-wide recent requests
+before posting, including other sessions. Slice 2b #2189 was requested at 2026-10-08 14:14:23 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2189#issuecomment-6061804491));
+Slice 3a #2191 was requested at 2026-10-08 18:17:44 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6066258476));
+That review was canceled after a bookkeeping push changed the head. A fresh full review on the
+unchanged head was requested at 2026-10-08 19:18:38 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6067299806));
+it completed at 19:27:38 UTC with three valid findings, fixed in one batch. The next manual
+request cannot precede 20:18:38 UTC, and a later request elsewhere moves that floor.
+
+The deployed coordinator already has `_modelsForQueuedJob()` and
+`_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
+Structural eligibility uses the full dispatch catalog and the job's policy/context/output bounds.
+Pause, cooldown, temporarily exhausted quota and slow providers cannot produce structural failure.
+
+Add nullable `jobs.terminal_reason` and `jobs.terminal_catalog_digest`; expose them additively through
+`pollBatch()` and `terminalFeed()` while retaining `error: job_failed` for old clients. Reasons are
+`route_retired` (none of the eligible logical models has a configured route) and `unadmissible`
+(routes exist but none fits structural bounds). Ordinary failures retain their current semantics.
+The digest hashes sorted dispatch route identities and structural admission fields, not transient
+ledger state. Old failed rows remain generic; never retroactively relabel them by guesswork.
+
+Persist `catalog_digest`, `catalog_rescue_cursor` and `catalog_rescue_complete` on the existing
+scheduler row. On first deploy or changed digest, scan queued jobs with the existing
+`(state, updated_at, id)` index and bounded time/ID keyset pages through a fixed upper endpoint,
+including old model indexes and `__unroutable__`. Budget both row reads and worst
+case writes before processing; use the existing per-tick rescue ceiling and lifecycle accounting.
+Reindex still-admissible jobs; mark only structural failures terminal and unindex them atomically.
+Fold cursor changes into the existing scheduler accounting write. Restart the cursor when the digest
+changes mid-pass; new enqueues get current structural checks. Never inspect/alter leased jobs during
+this pass. Completion/requeue paths must recheck against current structural eligibility.
+
+Update `workers/llm-dispatch-v2/src/coordinator.js` and its existing schema/accounting helpers only
+as needed for these columns and existing indexes. Include index updates in billed-row accounting and maintain
+current configured budgets; if the existing budget cannot fit the worst case, defer the page. Consume
+SQL cursors synchronously inside the existing transaction, with no network await between writes
+([Cloudflare SQLite storage contract](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)).
+No new DO, alarm, polling endpoint or raised concurrency/write-budget knob is needed.
+
+In `citypods/compute/llm.py`, extend `LLMDispatchTerminalError`, single/batch polling and terminal
+feed decoding to retain these reason/digest fields. In `llm_deferred.py::discard_terminal_failure`,
+add an explicit structural disposition that writes an audit before removing the matching handle,
+preserves existing failure counts/schema-correction state and does not increment the failure cap.
+`scripts/llm_deferred_sweep.py::recover_terminal` selects it only for these typed structural reasons.
+Keep equality fencing so an old terminal response cannot delete a newer deferred handle.
+
+A recovery audit records terminal digest, original recipe/input identity and recovery disposition.
+Resubmit `route_retired` only when current lane membership offers a new eligible route generation;
+do not repeatedly enqueue the same impossible recipe under the same catalog digest. For oversized
+prelabeler work, `citypods/tags.py::prelabeler_batch_limits` regenerates batches from retained subjects
+using current limits/learned ratio. Other callers retain a recoverable blocked disposition until an
+eligible route or task-specific split plan exists; do not split agenda/moments inputs by guesswork.
+No successful episode artifact is invalidated and no pipeline version is bumped. Recovery targets
+structurally failed deferred work; already-completed recipes remain reusable.
+
+### 8.6 Slice 3b: removals and lane repair
+
+Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
+The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
+merged 2026-10-08 (America/Chicago). The separate activation is prepared in
+[PR #2446](https://github.com/BashfulBits/city-meeting-podcasts/pull/2446), tracked by #2274,
+after maintainer acceptance of the recovery evidence under #2220. It proposes reviewed route-removal
+PRs from the weekly full catalog run; it never edits configuration directly.
+Retirement requires current-day complete catalog evidence and an unchanged route digest for
+each configured physical account serving the upstream. Old issue markers alone cannot authorize
+a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
+
+**Maintainer decisions (2026-10-08):** count only surviving free routes that are not explicitly
+paused (`rpd: 0`) as safe lane replacements. Preserve all paid policies. Promote the first existing
+eligible backup when a primary is removed; if none remains, hold back that route removal and report
+pool alternatives. Remove `backup_after_attempts` when the last backup is removed and prune only
+reasoning entries for models no longer in the lane. Do not rewrite existing queued jobs or their
+stored policies. New lane primary identities affect new jobs; completed artifacts remain reusable.
+
+The code and managed writer will be activated by merging implementation PR #2446, following the
+accepted recovery-canary evidence. The existing `prepare_retirements()` rebuilds from fresh `main`, obtains
+the ordinary v2 provider pause, performs fresh route/account confirmations, compiles both catalogs,
+and publishes only a managed review PR. The writer runs after a successful weekly full catalog
+workflow under the shared writer lock; the daily due-only run does not start extra route probes.
+No route config is merged or deployed automatically.
+
+New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
+Require fresh absence from a complete catalog, an initial definitive retired/not-served result, and
+then a **second independent provider request immediately before preparing each removal**. The
+confirmation calls the exact route on its configured account while dispatch remains paused. It must
+repeat the same definitive verdict; if the route responds as reachable, or the result is a timeout,
+rate limit, ambiguity, or a mismatched account/route, defer that removal. Include the confirming
+account, route, result and timestamp in the removal evidence. Generic 404s, structured-output
+failures and account-tier failures are insufficient. With multiple configured accounts, require
+both requests and matching retirement evidence for every account serving that route; a single key
+cannot retire a pooled service for everyone. The confirmation is an extra charged provider call, so
+respect the existing dispatch pause and scarce daily-quota checks.
+
+Prepare one removal PR on `automation/provider-catalog-removals`, rebuilt and checked like additions.
+Remove only affected route blocks. Keep logical models with any surviving route. Drop a model from
+lane backups only when no policy-eligible route remains; promote the first surviving backup for a
+removed primary and label `needs:human-verification`. If any lane would become empty, reject that
+route removal and escalate with pool alternatives; do not manufacture a replacement. Run the
+lane↔route guard and both compilers before push. Paid transitions remain explicit 2b decisions.
+
+Offline acceptance: 5,316 Python tests pass (16 live tests deselected), including 263 targeted
+retirement/apply/editor/reconcile/workflow tests. Whole-repository Ruff and both compilers pass
+without generated drift. The BeatAPI regression removes one physical route while retaining its
+shared DeepSeek logical pool and all lane↔route guards. No Worker code changes or live calls.
+Final validation excludes definitively retired routes from safe replacements even when their removal
+is held back, and retains a promoted model in backups to preserve the existing retry allowance.
+CodeRabbit reviewed unchanged head a7d36703 after the 2026-10-09 02:39:17 UTC request; its sole
+roadmap-date finding was withdrawn after confirming the October 8 America/Chicago commit date.
+The final two planner edge cases are fixed together after that review. Retirement preparation
+parses freshly read lane YAML rather than the process cache, including changed-main rebuilds.
+The additions/paid snapshot-cache follow-up was implemented in PR #2197 (#2196), merged
+2026-10-08 (America/Chicago). `scripts/provider_catalog_commands.py::prepare()` now parses lanes
+from its freshly read site-config text, like retirement preparation. The apply regressions use
+successive-main snapshots against a warmed obsolete cache: current free-primary admission and
+backup opt-out win. The retirement cache-guard mock accommodates the removed loader import.
+No evidence, permission, provider probes, production config or publication gates changed. Its full
+CodeRabbit review found no actionable comments on unchanged head 1a106c9c; current-head CI passed.
+Any further manual review must be one hour after the 2026-10-09 03:40:41 UTC request and any later
+repository-wide human request.
+
+Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
+stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.
+Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
+old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
+
+**Remaining delivery checkpoint (2026-10-09, after #2208):** Slice 4 shipped in #2201 and the
+Slice 5 L3 design was accepted in #2208. Quota admission shipped in #2214; one offline
+implementation PR remains under #2209 for final calibration with input before output and all-route
+coverage.
+Removal activation still needs ordinary-run recovery-canary acceptance. Live input/output canaries
+and recurring calibration activation remain separately reviewed changes. The snapshot-cache
+follow-up shipped in #2197 and recovery telemetry in #2199 (#2198). Review/53 PR12 (accepted in
+#2195) is a separate judge-stack lane-governance extension depending on #2193; it keeps standard
+lane repair unchanged and is not a blocker for this remaining core sequence.
+
+#### Recovery-canary evidence follow-up — maintainer approved, 2026-10-09 (#2198)
+
+**Ordinary-run evidence checkpoint — 2026-10-09, tracking #2220 (partial acceptance).**
+No provider calls, synthetic jobs, storage scans, deployment or activation were performed for this
+inspection. The GitHub Actions run metadata and named payload-free telemetry artifacts were read.
+
+- Scheduled sweep [37927175388](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37927175388)
+  succeeded on `1b6f7b11048630ed6d92e4ba795b84a383cdeb69`; artifact `11615726319`
+  (`llm-submission-telemetry-37927175388`) contains two `audit_persisted` events at
+  2026-10-09 12:12:33–12:12:35 UTC. Both preserve failure count `0 → 0` and schema correction
+  `false → false`, terminal reason `unadmissible`. Correlated fingerprints are
+  `56167e9f17a4023d946787087f5615307e17bd71699ffd490044871554c0fcee` and
+  `f1713a86d2aa6bc2b23a5eb09a96c0ba9a41c0b9d107914817b758150e33e636`.
+- Scheduled locator [37954384745](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37954384745)
+  succeeded on `94049c15646de70aebaab4ddf4570d4c4e824124`, and
+  [37993571610](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37993571610)
+  succeeded on `5005879bd0626a3192b8f3890802df45a30bd2e8`. Their named
+  `llm-submission-telemetry-<run_id>` artifacts record four blocked submission decisions for each
+  correlated fingerprint in each run: `allowed=false`, `unchanged_or_unfitting_generation`.
+  Event windows are 15:51:22–15:52:03 and 21:30:48–21:31:11 UTC, respectively. Artifact
+  `11646442275` supplies the latter observations. Repeated checks are blocked decisions, not
+  evidence of repeated successful enqueue. A third fingerprint has blocked decisions but lacks
+  a correlated audit in this inspection; it is not counted as recovery-state preservation proof.
+- Both sweep snapshots and later ordinary producer/sweep snapshots show the same catalog digest
+  `93ea5092844785be2a06727b927cbde4b7652a5c52f51fd1dd2bd12ebbbe2efd`, `complete=true`,
+  and identical nonempty committed cursor. Latest sweep
+  [37995585913](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37995585913),
+  head `5005879bd0626a3192b8f3890802df45a30bd2e8`, artifact `11647393429`, records this at
+  21:48:34 and 22:05:48 UTC. It contains no recovery events; that absence is not guard proof.
+  Ordinary moments [38004086895](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38004086895)
+  reports the same completed checkpoint through 2026-10-10 00:09:15 UTC. Its start was before
+  the successful normal Worker deployment
+  [38004328681](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38004328681)
+  of `898147413ca26d4ce87265e691d5ee0de25960e9` at 23:25 UTC. This is continuity across a
+  deployment window, not proof of a particular DO instance recreation or injected outage.
+
+**Disposition at the time:** legacy sentinel/no-route index coverage was not established by these
+`unadmissible` events; nonzero retry counts or an already-used schema correction are not exercised;
+explicit outage/recreation continuity is not established. Current data proves two zero-state audits,
+subsequent blocked checks in two runs and a retained completed checkpoint. It does not satisfy the
+entire removal gate on its own. The later isolated acceptance below supersedes this partial checkpoint.
+Missing cases were not manufactured with synthetic production jobs or inferred from offline tests.
+
+
+The deployed coordinator run [37857444179](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37857444179)
+succeeded with Slice 3a on main. The ordinary Python sweep
+[37877209806](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37877209806)
+ran main head 263b237f, succeeded and logged 41 distinct structural recoveries with no repeated job
+references within that run. Its existing telemetry has only aggregate scheduler counts; it does
+not prove retry/schema-state preservation, later unchanged-recipe admission decisions or committed
+rescue progress. These observations do not satisfy the removal-activation gate by themselves.
+
+Approved file/function plan for this narrow prerequisite:
+
+- `workers/llm-dispatch-v2/src/coordinator.js::stats()` adds `catalog_rescue` with the stored digest,
+  opaque committed cursor and completion flag to the existing scheduler-row SELECT. No additional
+  queue scans, writes, columns, endpoints, deployment settings or budget changes. Existing bounded
+  leased-job reads remain unchanged; the new fields survive recreation because they are persisted.
+- `citypods/compute/llm_deferred.py` emits optional `llm_structural_recovery` events after a successful
+  structural audit write, before deleting its handle. Record effective prior/new failure counts and
+  prior/new schema-correction booleans. A persisted audit event does not assert handle deletion.
+  `terminal_failure_retry_allowed()` records the existing structural-marker decision: allowed new
+  fitting generation, blocked unchanged/unfitting generation, missing context, invalid count or
+  exhausted retry cap. Reuse existing marker reads and generation checks; admission stays unchanged.
+- `scripts/llm_submission_telemetry.py::_scheduler_summary()` retains the fixed rescue fields from
+  ordinary start/end stats. Old Workers expose unknown fields, not successful completion.
+- `citypods/compute/llm_submission_telemetry.py::render_markdown()` reports audited count/state changes
+  and admission dispositions, showing at most ten SHA-256 recipe fingerprints. Full constant-size
+  events use the existing opt-in JSONL artifact; no prompts, results, original recipe labels,
+  payload keys, recovery input identities, credentials or new durable audit objects are emitted.
+  Disabled or unavailable telemetry never changes recovery, and missing evidence is not success.
+  The summary explicitly reports no recovery observations even when the event list is empty.
+- Extend `tests/test_compute_llm_deferred.py`, `tests/test_llm_submission_telemetry.py` and Worker
+  `test/row-accounting.test.js`. Verify audit-write failure emits no persisted-success event;
+  telemetry I/O failure leaves recovery/admission intact; typed reasons and correlation match;
+  retry/schema state survives; unchanged/new-generation decisions differ; summary sampling is
+  bounded; recreated stats show committed cursor/completion without extra writes or queued scans.
+  Run complete Python/Worker suites and whole-repository Ruff checks.
+
+After maintainer merge, observe ordinary scheduled producer/sweep runs and record their exact head,
+deployment/run/artifact IDs and UTC timestamps. Follow at most ten fingerprints across successful
+runs for the same catalog: require equal audit before/after counts/schema state, blocked decisions
+when no fitting generation changed, and committed cursor progress to completion or observed
+completion for that digest. A changed digest starts a different pass; unavailable stats during a DO
+outage defer acceptance until a later successful observation. Do not inject live quota outages.
+An idle producer with no repeated admission check is unproven, not evidence that the guard ran.
+Legacy sentinel/no-route coverage also remains required; report absent live coverage as a gap,
+rather than creating synthetic production jobs, widening storage scans or relaxing the gate.
+
+Offline acceptance: 5,322 Python tests pass (16 deselected), including 55 focused deferred/telemetry
+tests; all 402 Worker tests, whole-repository Ruff lint/format and diff checks pass.
+
+CodeRabbit completed its full review of b12bddf3 with one reporting finding: empty recovery event
+lists must explicitly flag missing evidence. The fix covers both empty and snapshot-only streams.
+The advisory docstring-coverage threshold is not a repository requirement; no boilerplate test
+docstrings are added. All current-head checks are required before maintainer merge.
+
+This PR gathers evidence only; `RETIREMENTS_ENABLED` stays false. No synthetic jobs, provider probes,
+manual deployment, production config changes, episode invalidation or pipeline-version bump.
+
+### 8.7 Slice 4: scoped observations, thresholds and budget
+
+New `citypods/provider_catalog/limits.py` provides `merge_observations()`, `effective_limit()` and
+`plan_limit_changes()`. `LimitObservation` contains metric, positive value, UTC time, provider,
+account alias, optional route ID, scope (`route` or `provider_account`), source and trusted run ID.
+Header limits, documented ceilings and observed throughput remain different evidence kinds;
+throughput is a lower bound and cannot assert a hard ceiling or justify an increase by itself.
+Unknown/mixed scopes, zero, malformed values and expired observations are non-actionable.
+
+Store bounded advisory histories in v3 rolling issue state: at most six distinct successful runs per
+scope/metric within 90 days. Each scheduled maintenance run on main also uploads a versioned JSON evidence
+artifact with 90-day requested retention. Before automation, retrieve referenced artifacts and
+verify workflow identity, successful conclusion, default-branch provenance and payload digests.
+Edited issue markers cannot forge evidence. Missing/expired artifacts defer change; unavailable
+retention never becomes a reason to weaken this check. Add `actions: read` only to evidence consumers.
+
+For each comparable scope/metric, take the maximum valid value across the bounded window. Three
+consecutive independent runs below the configured value by more than 20%, and an effective maximum
+also below by more than 20%, permit a tightening PR. Within ±20% do nothing; above +20% offer an
+explicit increase checkbox handled by 2b. Greater-than-50% tightening still prepares a PR, marked
+material as the maintainer chose; an observed zero creates an anomaly only. Never auto-change
+concurrency, context/output ceilings or paid/free classification from rate observations.
+Provider/account observations may update existing provider caps only when all configured accounts
+have compatible evidence; otherwise report the mismatch. Preserve aggregate caps and never assign
+shared account capacity separately to each route. Compiler/schema extensions need a later design
+if an observed scope cannot be represented by the existing config.
+
+Reuse `citypods/llm_rate_probe.py::RateProbeRunner` budget checks. Maintenance enables only phase 0
+and a small phase-1 sample: at most three rate requests per provider per run, at most 900 seconds
+including drain/spacing, and the existing candidate/method probes consume the same total allowance
+when combined. If scheduled R10 verification already spends that allowance, skip rate samples.
+Disable input/output/endurance/agreement phases 2–4 in Slice 4; Slice 5 (§8.10) has a separate
+activation gate and must not enable those existing phases wholesale. Reserve every configured-route request, renew
+pause, and honor reset/cooldown; unknown/exhausted scarce quota defers. Never exceed a documented
+provider ceiling to “discover” capacity. Without an exclusive Worker pause, observations are
+contended and cannot support automatic tightening.
+
+Early re-probe: ≥3 `own_rpm`, `own_tpm` or `unknown_429` failures for the same route in today's
+UTC bucket schedules one paused check, no more often than daily; quota exhaustion still defers
+until reset. Counters schedule observation only, never establish a limit. Prepare one
+`automation/provider-catalog-limits` PR using the shared writer/checks; multiple automation writers
+are serialized and rebuild from main, so open PR conflicts are refreshed rather than overwritten.
+
+Maintainer decision (2026-10-09): use the existing UTC-day failure bucket for Slice 4. The Worker
+does not expose a rolling 24-hour window; using its existing bucket can delay a trigger across
+midnight and does not retain the prior day's failures; a run before new failures can therefore
+miss an early trigger unless failures recur. This avoids a telemetry/schema extension. An exact
+rolling-window trigger is a follow-up.
+
+
+#### Slice 4 implementation contract (#2200; maintainer accepted increase integration)
+
+Recovery telemetry shipped in PR #2199; its final CI and automatic deployment run 37888333212
+passed on merge head 34e30a6a. Normal-run canary evidence is still pending; removal stays disabled.
+Slice 4 offline implementation can proceed under §8's coding-versus-activation separation.
+
+The maintainer confirmed that Slice 4 supplies the missing explicit rate-increase `/apply` handler,
+rather than leaving increases as manual recommendations. Existing additions/paid selections retain
+their gates. Rate choices use authenticated artifact observations, exact current config digests and
+explicit checkboxes; throughput alone cannot offer an increase.
+
+Maintainer-approved review correction (2026-10-09): extend existing `/v2/stats` with
+`rate_failures=1`, mutually exclusive with `detail=1`. `coordinator.js::rateFailureStats`
+reads today's three rate-failure cells per configured route using full primary-key lookups;
+a hard ceiling of 128 routes bounds the read to 384 cells. It performs no job scans or writes.
+`index.js` routes this authenticated mode; `compute/llm_dispatch_pause.py` supplies a typed
+client method that rejects unavailable, malformed or truncated snapshots. Scheduled reconciliation
+uses that method and defers early checks on failure, never falling back to detailed stats.
+Extend Worker endpoint, row-accounting and rows-read tests and Python client tests. No endpoint,
+storage schema, migration or index is added. Artifact history records attempted routes; only runs
+that attempted a scope affect its consecutive-sample rule. Manual runs preserve advisory offers.
+Opposite-direction limit proposals wait successfully while the other proposal is open; a merged
+proposal's retained bot branch does not block later maintenance.
+
+Implementation details within the accepted modules/workflows:
+
+- `limits.py` keeps typed observations and internal single-scope decisions; callers rehydrate actual
+  verified artifact payloads rather than trusting issue observation values or matching run IDs.
+  Six distinct runs per scope/metric share the 90-day window across evidence kinds. Duplicate
+  samples in one run retain the conservative maximum; different sources/scopes never manufacture
+  independent-run evidence. Exact rational comparisons enforce strict 20%/50% thresholds.
+- Extend `evidence.py` with bounded versioned JSON artifact encoding/verification. The payload binds
+  repository, run ID, workflow path, branch/head SHA, UTC observation time, current route/provider
+  digests and positive scoped observations. The envelope carries its deterministic payload digest.
+  Use `provider-catalog-rate-evidence-<run_id>` and the existing reconcile workflow's 90-day upload.
+  Consumers verify GitHub run/workflow identity, successful scheduled default-branch provenance,
+  repository identity, ancestry on current main, exact artifact name/digest, expiry and bounded ZIP
+  size/contents. Independently enumerate scheduled artifact history so edited references cannot
+  omit a higher sample. Missing/malformed/expired artifacts defer; no issue-edited values supply
+  a write. A successful artifact with a missing scoped sample interrupts consecutive tightening.
+- The v3 issue retains bounded advisory references under `rate_evidence_refs`, and current offered
+  rate choices under `rate_changes`. Successful artifacts are re-fetched for every preparation.
+  References include run ID and payload digest; the current producer's reference is advisory until
+  its workflow succeeds. No credentials, response bodies or arbitrary raw headers enter artifacts.
+- `reconcile.py` and `llm_rate_probe.py` share maintenance allowance with existing verification:
+  count existing health/candidate/method requests first, skip extra samples when three requests or
+  900 seconds (including drain/spacing) are consumed, and enable only reachability/short phase-1
+  samples. Existing verification is not curtailed by this new optional sampling. Reuse successful
+  already-required responses for scoped header observations. Every configured request reserves
+  quota before sending, renews pause and honors scarce quota and provider cooldown. Missing pause
+  prevents automated evidence. Default non-maintenance callers retain their verification/selection behavior; configured health
+  requests now reserve quota before sending, matching the already-fenced method checks.
+- Opt-in header mappings live in existing plugins and fixtures. Groq request headers are RPD and
+  token headers TPM, never inferred RPM; bind to an exact configured model/account physical route
+  only where that scope is unambiguous. Unknown or shared mappings stay advisory. BeatAPI/JEV
+  capacity stays shared; unknown headers cannot replace its documented ceiling or split capacity.
+- Extend existing `EditPlan`/editor/proposal formatting with exact scalar rate changes only. Existing
+  provider caps need compatible evidence for every configured account; never copy account capacity
+  to each route or create a missing cap. Preserve comments and assert the exact semantic delta.
+  Automatic tightening and explicitly selected increases share `automation/provider-catalog-limits`;
+  material tightening is flagged. No context, output, concurrency, paid/free or lane changes.
+- Extend `provider-catalog-commands.yml` with a successful reconcile `workflow_run` consumer using
+  trusted-main checkout, authenticated artifacts and the existing writer lock/lease/main rebuild.
+  Current-run artifacts cannot be trusted while their workflow is still running. This consumer
+  prepares tightening only; `/apply` prepares increases only after explicit selected-choice checks.
+  Automatic updates wait while a reviewed-increase proposal is open; the bot commit and PR body
+  record its origin. Matching provider-account ceilings/directions are required for every account,
+  and capacities are never summed without an explicit shared-scope contract. Provider RPD defers
+  because the existing compiler exposes only provider RPM/TPM. Add `actions: read` only where
+  history/artifacts are consumed. Never execute triggering-head code
+  or artifact-supplied commands. The shared bot writer runs both compilers and catalog/limit tests.
+
+Extend the named limit/evidence/apply/editor/reconcile/rate-probe/workflow tests. Required cases
+include artifact spoof/expiry, changed-main digests, independent-run/window/boundary rules, unknown
+scope and shared-account mismatch, partial quota/pause failure, exact request/time ceilings,
+BeatAPI/JEV cooldown and protected policy/context fields. The early-429 trigger uses existing scoped
+failure counters only to schedule observation; counters cannot become ceiling evidence. No live
+provider calls or deployment are performed during implementation.
+
+### 8.8 BeatAPI regression and boundaries
+
+#2167 is merged; tests must use current config rather than its earlier context placeholders.
+BeatAPI currently uses `prompt_only`, provider RPM/concurrency 1 and a successful-call account window
+shared with JEV. Its measured large-input success is a lower bound, not a hard ceiling. Long calls
+occupy that window until completion; elapsed 60 seconds alone does not permit another concurrent
+call. Keep 65-second probe spacing and final cooldown before dispatch resumes. Do not top up the
+account or change its free-tier policy. JEV transport belongs to review/49 and stays outside chat
+addition/removal; catalog knowledge does not establish GPT serving-family independence.
+
+Pin offline fixtures for catalog/header scope and documented BeatAPI error shapes before allowing
+those signals to write config. Add coverage for shared BeatAPI/JEV capacity, reasoning-only method
+failure, partial quota deferral preserving evidence, JEV exclusion and surviving NVIDIA/OrcaRouter
+pool routes. A BeatAPI-only retirement must not remove a shared logical model or strand its lanes.
+Unknown headers and serving identity require a human mapping/evidence follow-up.
+
+Allowed supporting changes: existing catalog modules/plugins/template, the named new modules and
+command workflow, reconcile script/workflow, the specified config/compiler outputs, Python deferred
+paths, prelabeler batching and Worker coordinator/test helpers. No meeting adapters, city/feed
+configs, audio/ASR stages, dependencies, credentials, review/49 transport or Worker deployment knobs
+may change. An additional required file or behavior must be named in this contract before coding.
+
+### 8.9 Acceptance matrix and promotion to L3
+
+| Slice | Required offline acceptance |
+|---|---|
+| Shared/2a | New `tests/test_provider_catalog_evidence.py`, `test_provider_catalog_apply.py`, `test_provider_catalog_config_edit.py`: deterministic digests; incomplete/stale/deferred evidence; ambiguous identity; unknown limits; unauthorized/spoofed commands; YAML comments/semantic fencing; idempotent branch/PR updates; concurrent main change; mixed applied/deferred choices. Extend existing catalog contract/reconcile, compiler, lane and workflow tests. |
+| 2b | Paid route policy/free-pool guard across a batch; fresh selected-account proof; shared-upstream acknowledgement deferral; literal glob matching; pending/fulfilled decisions; removal gate; primary and policies untouched. Extend apply/editor/reconcile tests. Disabled-shadow runtime regression shipped in #2188; legacy promotion is superseded by review/53. |
+| 3a | Worker coordinator/protocol/row-accounting/rows-read tests: old sentinel/model indexes; bounded time/ID pages with fixed endpoints; transaction failure/quota outage/recreation/UTC rollover; digest change/restart; temporary quota/pause; leased-job fencing; fitting pooled alternative; structural reason compatibility and measured worst-case billing. Python dispatch-v2/deferred/sweep tests: preserved counts, audit-before-delete, stale handle fence, generation loop guard. Tag tests prove rebatching retains every subject; unsplittable tasks stay recoverable. |
+| 3b | New `tests/test_provider_catalog_retire.py`: incomplete catalogs, multi-account disagreement, non-retirement signals, surviving pools, backup repair, primary review flag, empty-lane rejection and current-main rebuild. |
+| 4 | New `tests/test_provider_catalog_limits.py` plus rate-probe/workflow tests: six/90-day window, independent-run requirement, stale maximum, 20%/50% boundaries, zero/mixed scopes, artifact spoof/expiry, shared account cap, scarce quota, pause failure and exact request/time ceilings. |
+
+Each implementation runs whole-repo Ruff checks/format, the complete offline Python suite and Worker
+`npm test` when Worker code changes. Config PR preparation also runs both compilers and targeted
+catalog/lane/limit tests in-job. Test fixtures never require provider keys or quota.
+
+Before promoting a slice to L3: accept its proposed technical choices, create its implementation
+issue, resolve any code/file mismatch, and copy its activation gate into that issue. Remaining
+review questions are technical acceptance of identity fallback, the trusted-artifact history and
+structural recovery lineage; priority, initial command scope and material-tightening policy are
+already decided above. #2178 and the subsequent implementation request accept the original
+remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract was accepted in §8.11 (merged PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
+maintenance; Slice 4 implementation now supplies reviewed rate proposals. Removal stays disabled.
+
+
+### Slice 2a implementation checkpoint — implemented in PR #2182, 2026-10-08 (#2179)
+
+The additions/ignore command shipped with v3 evidence/digests, pure plugin identity callbacks,
+selected-candidate fresh rechecks, exact command/current-issue authorization, additive YAML edits,
+both compilers and in-job tests, and one managed additions branch/PR. Observation and apply share
+`provider-catalog-writers` concurrency. Legacy issue markers/state remain readable; old proofs cannot
+authorize additions. Deferred/rejected selections remain ticked until fulfilled on main. If a concurrent change adds the route without the selected backup,
+the old choice and its advisory provenance survive weekly rewrites; apply defers the missing lane
+placement for review instead of using that stale choice as new admission evidence. An already
+fulfilled route/backup selection is a no-op. A pending selected choice keeps the rolling issue open.
+
+The current compiler requires both input and output context bounds. Additions with either absent
+are deferred without guessing a limit; other valid additions/ignores can still form a PR. The
+maintainer accepted separately reviewed conservative output caps in #2186; automatic additions
+continue to require evidenced bounds. No cap override is implemented. Initial identity opt-in covers
+publisher-qualified NVIDIA/OpenRouter/Kilo IDs and native Gemini IDs; other plugins leave unknown
+identities for a manual mapping. AA matching is never used for pooling.
+
+#2180 temporarily paused BeatAPI chat routes with `rpd: 0`; #2181 restored them through the
+registered `custom-beatapi` gateway slug. Apply preserves existing gateway config and backup tiers;
+an explicitly paused physical route remains deferred and cannot be re-enabled by this command.
+JEV stays outside chat addition.
+There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
+in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
+
+### Maintainer-directed route reopening — 2026-10-09
+
+The maintainer explicitly approved setting `rpd: 20` on these three previously paused free routes:
+`openrouter_google_gemma_4_31b_it_free`, `openrouter_google_gemma_4_26b_a4b_it_free`, and
+`nvidia_gemma_4_31b_it_free`, so ordinary health monitoring and eventual Slice 5 calibration can
+include them. This deliberately supersedes the OpenRouter config's prior requirement for a live
+recovery probe before reopening. The trade-off is a bounded opportunity to collect fresh evidence
+versus renewed upstream 429s and NVIDIA shared-concurrency pressure; recovery is not yet proven.
+
+Twenty RPD is each route's ordinary dispatch allowance, not a probe-only reservation. RPM, TPM,
+concurrency, lane order, free/paid policy and token bounds stay as configured. Existing scarce-quota
+checks require known remaining quota and normally revisit healthy routes every 28 days; the daily
+bounded early-failure trigger can schedule a check sooner. Reopening does not change that cadence,
+activate Slice 5 probes or bypass pause/quota guards. This config PR performs no live calls or manual
+deployment. No pipeline-version bump or completed-episode backfill is needed.
+
+### 8.10 Slice 5: adaptive context calibration — accepted decisions
+
+**Maintainer decision, 2026-10-08:** accept separately reviewed conservative output caps when
+catalog bounds are absent, and sequence adaptive context calibration after Slice 4. This explicitly
+extends §8.7's rate-only maintenance scope; it does not enable context probes or override current
+Slice 2a admission checks. Missing input bounds still need their own evidence/review. No runtime
+config, deployment or stored episode artifact changes are part of this design update.
+
+The goal is gradual refinement of usable input and output bounds, not a promise to discover a
+provider's true maximum within three scans. Three successful 50% expansions reach about 3.4 times
+the starting value; quota, token uncertainty, truncation and changing provider behavior may require
+more scans or leave a boundary unresolved. Configured admission caps and experimental measurements
+remain separate. A locally chosen cap must not permanently fence exploration, but documented
+provider ceilings, shared account quotas and reviewed probe budgets remain hard guards.
+
+#### Maintainer priorities — 2026-10-09
+
+The maintainer accepted input calibration first, then output calibration. Implement and validate
+provider-count feedback, tail-processing evidence and input search state before adding actual-output
+capacity probing. Output parameter acceptance alone remains insufficient proof of generated capacity.
+
+Start local validation with a few useful existing free routes, then expand the implementation and
+its offline acceptance matrix to **all configured free routes in the final implementation PR**.
+The pilot is a development sequence, not a permanent route allowlist or a separate production-only
+pilot that delays broad coverage. Local validation uses recorded/synthetic provider fixtures and fake
+pause/quota controls; it does not authorize live provider calls or establish live capacity proof.
+
+All-route coverage includes BeatAPI's configured free chat routes and their shared JEV window.
+It does not reactivate paused routes, include paid routes or infer unsupported token-count bases.
+A route with missing or uninterpretable evidence stays deferred with an explicit reason; each plugin
+must have acceptance coverage for its supported parser behavior and its fail-closed fallback.
+
+Run conservative weekly experiments within firm reviewed budgets. Covering all routes means all
+eligible routes participate in fair bounded rotation, not that every route must be probed in one run.
+Token/request/time allowances, account quota and exclusive pause/cooldown gates still bound each
+scan. Separate input and output token allowances prevent output generation from exhausting the
+input-calibration allowance. Spare capacity may permit an experiment within the budget; it does
+not authorize extra scans, budget expansion, top-ups or production cap changes.
+
+These priorities are implemented by the L3 contract in §8.11. The accepted numerical budgets,
+resolution threshold, exact parser/file plan and separate live activation gates are specified below.
+Local pilot acceptance must expand to all configured free routes before calling the implementation
+complete; live activation retains its separate scoped canary gate.
+
+#### Accepted contract decisions — 2026-10-09
+
+This contract preserves the accepted priorities above:
+the maintainer approved the token-aware Worker prerequisite and doubled the proposed new budget
+allowances on 2026-10-09. The maintainer also rejected an additional blanket cap margin and
+accepted a tighter refinement target of 0.5% or 128 tokens, whichever is larger.
+No live calls occur while writing or validating this design. Section 8.11 supplies the exact
+schemas, functions, parser matrix and activation gates; offline implementation follows design merge.
+
+**Approved starting budgets — 2026-10-09.** Use the existing weekly reconciliation slot, with no context
+experiments on daily early-rate checks or incidental manual reconciles. Start with these hard
+ceilings; they are allowances, never targets to consume:
+
+| Scope | Approved ceiling |
+|---|---|
+| Input experiment, one call | 524,288 reserved input tokens; 256 reserved output tokens |
+| Output experiment, one call | 2,048 reserved input tokens; 32,768 reserved output tokens |
+| Weekly input allowance | 2,097,152 reserved input tokens across all context calls |
+| Weekly output allowance | 131,072 reserved output tokens across all context calls |
+| Weekly context requests | 24 calls, including baseline, retry and confirmation calls |
+| One route per weekly run | At most 6 context calls; input before output |
+| Weekly context wall time | 3,600 seconds, including drain, spacing and cooldown |
+| One provider pause | Existing 900-second allowance; context cannot extend it implicitly |
+
+Input and output allowances charge **both dimensions on every call**, including the fixed opposite
+dimension. Context requests also consume the existing shared reconciliation request allowance;
+neither pool can be topped up by the other. Stop before a call if its full conservative reservation
+cannot fit, including time for cleanup. Token allowances bound conservative reservations, not an
+unobservable exact provider count before submission. Reserve the larger of the local estimate and
+the supported observed mapping with an uncertainty allowance; when no defensible bound is available,
+defer. If returned usage exceeds the reservation, stop that route and report the overshoot rather
+than refunding or hiding it. Failed, timed-out or ambiguously completed requests retain
+their charge; restarting a workflow cannot reset the weekly allowance. A durable weekly admission
+record is specified in §8.11.A; an advisory issue marker cannot supply admission authority.
+
+Doubling applies to the new context allowances, including their fixed opposite dimension, route
+call count and total wall time. Existing provider pause duration and production/account quota guards
+remain unchanged; the larger context allowance cannot extend them. Live activation is still gated.
+
+These starting budgets do **not** cover every configured maximum. The current
+catalog includes input caps above one million and output caps up to 384,000. A route that reaches
+the experiment ceiling without a definitive size rejection is `budget_limited`, retaining its
+verified lower bound and next desired target. Do not report that ceiling as the route maximum,
+reduce production caps to it, or repeat an identical capped experiment every week. Continue other
+routes and offer a separately reviewed budget expansion. The accepted trade-off is that bounded
+initial spending delays discovery of large boundaries. All configured free routes still receive parser and offline
+acceptance coverage; coverage does not promise a live maximum measurement for every route.
+
+**Existing estimator feedback versus boundary refinement.** The v2 Worker already consumes
+provider-reported `prompt_tokens` and `completion_tokens`, forwarded as observed input/output usage.
+`calibration.js` keeps a 32-sample window per route/model/prompt family and enables learning after
+16 usable samples. Its input ratio is the larger of the configured prior and the observed p95
+provider-input/local-estimate ratio; direct Google Gemma routes additionally use 1.2x input headroom.
+Its output forecast uses 1.25x p95 actual output, bounded by the request maximum, and successful
+completion settles quota to actual usage. Producers can read the learned input ratio through the
+existing read-only calibration endpoint. These are already shipped mechanisms, not new Slice 5 work.
+
+Slice 5 should reuse that meaning of provider-count feedback, with separate fixture-specific
+observations for prompt construction and boundary search. Ordinary production output forecasts must
+not size an output-capacity experiment: that experiment deliberately requests long generation and
+must reserve its full output allowance. Synthetic calibration fixtures must not populate ordinary
+production prompt-family estimates. Do not treat the Worker p95 as an exact upper bound for every
+prompt or substitute an estimated count when the boundary observation reports an actual count.
+
+**Maintainer decision — 2026-10-09:** add no blanket percentage reduction to measured caps.
+Existing estimate calibration, request sizing and route-selection headroom already provide safety
+mechanisms. Final L3 design must identify their units and where each applies; quota headroom is
+not automatically a context-window buffer. Express both cap and request in the same provider-token
+basis, include output reservation for a combined window, and reuse existing production estimate
+correction. If that relationship is unsupported, withhold the cap proposal instead of adding an
+arbitrary percentage. A separately justified buffer requires explicit evidence and review; Slice 5
+does not silently stack one on existing safeguards or change production calibration.
+
+**Fair rotation and uncertainty.** Schedule eligible routes by oldest attempted context scan,
+with a stable route-id tie-break; choose never-attempted routes first. Persist deferred reasons
+without marking an unattempted route as measured. A quota failure cannot advance a context bracket.
+Use provider-counted observations for bound updates and retain local estimate/count pairs to
+construct the next prompt. Synthetic fixtures do not redefine production counting behavior;
+unknown basis or unsupported production-estimator mapping prevents a config cap proposal.
+
+Stop midpoint refinement when the provider-token bracket width is at most the greater of **128
+tokens or 0.5% of the successful bound**. Use exact comparisons without rounding a percentage
+into a looser goal. This is a multi-scan accuracy target, not a reason to add calls per run: retain
+an unresolved bracket and continue in later weekly scans under the unchanged approved request,
+token and elapsed-time ceilings and fair rotation. Once converged, retain subsequent revalidation
+and the existing 110% expansion policy rather than repeatedly refining the same resolved interval.
+
+Report the interval, never an exact maximum. A budget-limited or uninterpretable interval is not
+convergence. Repeated counts, tokenizer granularity or inconsistent provider behavior can prevent
+further progress; record that uncertainty and defer without claiming the tighter target was met.
+This target generally needs about four more midpoint steps than 5% precision, spread
+across runs as needed; it does not promise four calls or a fixed completion date for every route.
+Tail checks must succeed at multiple positions in deterministic varied fixtures; their failure is
+inconclusive, while successful checks remain supporting evidence rather than proof against every
+possible truncation behavior. For output, require actual counted generation and an interpretable
+length termination; early EOS or parameter acceptance cannot advance that bound.
+
+**Required quota-accounting prerequisite.** `reserveRouteRequests` currently reserves zero tokens
+and describes its out-of-band calls as only a few tokens each. `dispatchPauseStatus` exposes daily
+request headroom, not token headroom. Large context probes cannot safely inherit that contract.
+The maintainer approved extending the existing reservation/status APIs and typed pause client to
+perform bounded, atomic context admission against known request/token limits and existing pause
+ownership on 2026-10-09. Exact schemas and functions still require the L3 contract. Do not assume that
+calling the existing request reservation with a larger prompt checks token quota.
+
+The L3 contract must specify input/output reservation units, existing ledger-window semantics,
+shared account scopes, idempotency and crash recovery. Reserve before provider I/O; ambiguous Worker
+responses or DO row-write exhaustion must authorize **no** provider call. Replayed admission must
+not create another request allowance or double-charge an already admitted attempt. Unknown quota
+scope or incompatible token units defer the route. Never enlarge a production token quota so a
+context experiment fits. Retain conservative charges after ambiguous provider outcomes; reconcile
+known actual usage only if it preserves account pacing and bounded storage writes. No queue scans,
+synthetic jobs or dependency on rescue/removal activation are part of this prerequisite.
+
+**Parser and transport contract.** Add a pure context-observation callback to `ProviderRules`;
+provider modules interpret their own configured chat endpoint envelopes. A provider advertising
+OpenAI compatibility is not enough to accept undocumented error numbers or reasoning semantics.
+Successful usage, output termination, size rejections and counting basis need separate fixtures.
+BeatAPI chat responses must not inherit JEV `/v1/systemone` field meanings or ceilings, although
+both consumers share account pacing. Likewise Gemini native API fields do not automatically
+describe its configured compatibility endpoint. Unknown shapes return an explicit unsupported or
+inconclusive result. No native token-count endpoint or extra generation lookup is assumed.
+
+Keep catalog discovery's first-event `canary` unchanged. Context measurement needs a separate
+bounded transport operation in `probe.py` which obtains final usage/termination without retaining
+prompt or completion text in durable artifacts. Its L3 specification must cap response bytes,
+request duration and output reservation, distinguish cancellation from completion, and make lease
+renewal/cleanup work even on timeouts. Only parser-supported routes run live; every free route has
+offline support or an explicit fail-closed unsupported case.
+
+**Proposed file plan.** Extend `provider_catalog/evidence.py` with typed observations and verified
+context artifact lineage; `rules.py` and `providers/*.py` with pure endpoint-specific parsers;
+`limits.py` with search planning and proposal eligibility; `probe.py` with bounded measurement;
+`reconcile.py` and `issue.py` with rotation/deferred reporting and advisory state. Integrate the
+weekly-only path in `scripts/reconcile_provider_routes.py` and
+`.github/workflows/provider-catalog-reconcile.yml`. Extend `compute/llm_dispatch_pause.py` and the
+existing Worker reservation/status handlers for the approved quota prerequisite, with focused
+client/Worker tests. Use the exact command/apply/config-edit contract in §8.11.C. No production estimator, configured rate/cap, paid policy or lane-routing change is
+authorized by this proposal.
+
+Context state separates **measurement identity** from the catalog digest observed at each run.
+Provider/account/physical model/gateway/counting-basis/fixture changes invalidate comparability;
+an approved numeric cap edit alone must not erase a still-comparable search bracket. Authenticate
+the configuration used by each run and re-check current eligibility before replaying state. Retain
+at most 16 observations per route/dimension over 90 days plus a bounded authenticated summary;
+§8.11.C fixes proof expiry at 90 days without indefinite summary carry-forward. Old measurements
+without valid lineage cannot authorize cap edits.
+
+**Activation remains separate.** First validate a few free routes entirely offline, then expand
+the acceptance matrix to every configured free route in the final implementation PR. After merge,
+request approval for a small live canary naming route identities, reserved tokens/requests, time
+budget and expected evidence. That approval does not enable recurring full-catalog experiments.
+Recurring activation requires a separate recorded decision after the canary's evidence and quota
+accounting are reviewed. A DO outage, missing artifact or partial run remains a deferred scan;
+it cannot reset budgets, loosen a cap or enable route removals.
+
+#### Evidence and token-count feedback (accepted direction)
+
+Extend the existing evidence/limit-history path with typed context observations. Keep input,
+output and combined input-plus-output window distinct; fix a small output reservation during input
+calibration and a small input during output calibration, recording both. Provider-specific pure
+parsers belong in the catalog plugins with offline fixtures, not generic number extraction from
+arbitrary error text. The provider/gateway counts tokens; the model's generated claims do not count
+as telemetry. Parse successful usage, documented size-error fields and documented error messages.
+
+Each observation records local token estimate and estimator identity/version, requested output
+reservation, provider-reported input/output/total counts with their documented counting basis,
+explicit reported ceiling if present, finish reason and size-error classification. Record whether
+reasoning tokens are included, excluded or unknown; do not add reasoning counts twice or equate
+visible text with total output. Keep requested, reported, estimated and inferred values distinct.
+Reject boolean, negative, contradictory, malformed or unscoped values; zero output is not proof of
+capacity. Preserve safe parsed fields and provenance, never credentials, prompts or raw responses.
+
+Provider-reported counts override estimates for that observation when their scope/basis is known.
+They feed back into the next prompt construction: retain observed estimate/count pairs for the
+same route, tokenizer/estimator and probe fixture; use a conservative observed mapping to approach
+the next target, and update it after each response. This mapping is an estimate, not a universal
+conversion ratio or proof for arbitrary production text. Use varied representative offline fixtures
+and document existing estimate/headroom behavior before translating measured bounds into admission
+caps; do not add a blanket percentage margin.
+
+A rejection can report both an actual request size and an allowed ceiling; store each separately.
+A rejected request of 15,300 provider tokens does not prove a ceiling of 15,299. For a combined
+window error, interpret the documented input/output reservation semantics before deriving any
+input bound. Only compare brackets in a common counting basis with the same fixed reservation.
+Unknown basis or irreconcilable counts make the observation advisory and prevent cap changes.
+Where the provider supplies no actual count, retain the estimated observation but do not present it
+as an exact provider-token boundary. A provider estimate correction must not silently reinterpret
+old observations or overwrite the production estimator; that integration requires an explicit plan.
+
+#### Search policy and proof strength
+
+Maintain separate input/output search states with nullable highest verified success and lowest
+definitive size rejection. Parameter acceptance, processed input and generated output are separate
+evidence kinds. A 200 response with a large `max_tokens` but tiny actual output proves parameter
+acceptance only: it cannot establish that output capacity. Silent parameter clamping, early EOS,
+reasoning-only responses and silent input truncation must not masquerade as boundary proof.
+Input probes require provider-counted input and a fixture checking processing near the tail;
+output capacity requires actual provider-counted generation and interpretable termination.
+Tail checks are supporting evidence; a failed content check alone is not a size rejection.
+
+- With no rejection bracket, target 150% of the highest verified success in the same basis,
+  bounded by the approved budget and documented ceilings. With no verified success, start from the
+  reviewed conservative cap and establish a baseline first. Do not grow from parameter acceptance
+  when the desired evidence is actual generated output.
+- Once a definitive size rejection brackets a success, choose a midpoint within that bracket.
+  Update bounds using the provider's actual counts; if estimate correction lands outside the
+  intended interval or repeats a size, replan rather than claim progress. Stop at an agreed
+  uncertainty/resolution threshold or when the per-run budget is exhausted; resume next scan.
+- On a later boundary-revalidation scan, try roughly 110% of the last verified successful size,
+  subject to documented ceilings and budget. Preserve the historical rejected bound; fresh success
+  above it invalidates that active bracket and resumes exploration. Fresh failures refine it.
+- Quota/rate errors, timeouts, gateway failures, policy refusal, invalid request shape and unrelated
+  errors never tighten a context bracket. A size-like status alone is insufficient. Confirm a
+  definitive rejection under a valid pause/quota before using it for a cap proposal; conflicting
+  outcomes leave the boundary unresolved.
+
+There is no implied exact maximum: report successful lower bounds and rejected upper bounds with
+basis, age and uncertainty. Input success near a combined window with a one-token output reservation
+cannot justify allowing that same input alongside a large production output reservation.
+
+#### Durable state, config review and activation gate
+
+Reuse §8.7's bounded rolling-issue advisory state and trusted successful-main Actions artifacts.
+Bind state to provider, account alias, physical route, upstream model, gateway path, catalog digest,
+probe fixture/version and counting basis. Carry search bounds, evidence kinds, estimate/count pairs,
+last outcomes and trusted run references; a single `maximum_found` boolean is insufficient. Preserve
+verified aggregate search state across artifact expiry only through a fresh successful-main artifact
+that carries authenticated evidence lineage. Expired or missing proof without that lineage requires
+revalidation. Changes to identity, gateway, basis or fixture require revalidation rather than mixing
+old measurements into a new bracket. Bound both state size and lineage; do not accumulate an
+unbounded per-probe log or treat edited issue markers as trusted evidence.
+
+Separately reviewed caps are ordinary config PR decisions with rationale, evidence basis and
+documented existing headroom and uncertainty. No additional blanket margin applies. Calibration may
+propose increases or reductions for explicit maintainer review;
+it never automatically raises or lowers context/output caps. Slice 4's rate-tightening thresholds
+and six-observation maximum are not a context search algorithm. Keep context search summaries
+separate from rate aggregates while reusing their provenance checks. Current `/apply` additions
+remain dependent on evidenced required bounds until a later explicit contract implements reviewed
+cap handling. No unchecked cap override is introduced here.
+
+Section 8.11 supplies the separate implementation issue, exact file/function/schema changes,
+provider parser fixtures, prompt construction/counting basis, resolution policy and production
+admission integration. Its file plan is binding; no unchanged reuse of `run_phase_2` is authorized.
+Accepted numerical budgets, weekly rotation, confirmation allowance and trusted history retention
+are fixed below. Reuse pauses, reservation/renewal, quota checks, spacing and cooldown, with shared
+request allowances and unknown account scopes deferred. No top-ups, paid calls, credentials or
+production ceiling changes occur in this design PR. Live activation remains separately reviewed.
+
+Required offline acceptance: underestimated/overestimated input and output counts; provider usage
+versus size-error feedback; mixed/unknown token bases; reasoning counts; shared context reservations;
+clamping, early EOS and truncation; malformed/contradictory parser fields; 50% exploration, midpoint
+refinement and 10% revalidation; estimate correction outside brackets; transient failures preserving
+bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
+ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
+
+### 8.11 Slice 5 implementation contract — L3, accepted in merged PR #2208
+
+This section resolves §8.10's implementation placeholders and is normative for Slice 5. Accepted
+budgets and precision are unchanged. Code may be implemented after this design PR merges; merging
+the design authorizes offline implementation, not provider calls, manual deployments or activation.
+Implementation issue [#2209](https://github.com/BashfulBits/city-meeting-podcasts/issues/2209)
+tracks this contract. Slice 3b removal remains independently gated.
+
+#### A. Durable admission and failure semantics
+
+Extend the existing authenticated `POST /v2/dispatch:reserve` with discriminated operations. Missing
+`operation` retains today's `{route_id, requests}` request-only behavior. Context operations reject
+unknown fields, booleans as integers, non-finite numbers, unknown/paid/paused routes and stale compiled
+catalog digests. All ceilings are server-owned constants; callers cannot supply larger allowances.
+
+- `operation: context_start`, `run_id` (positive decimal Actions run id), `catalog_digest` (SHA-256).
+  Set the current UTC Monday `week_start` and a 3,600-second session deadline once per week. Return
+  `{ok, week_start, run_id, deadline_ms, remaining_input, remaining_output, remaining_requests}`.
+  Repeating the same start returns the original deadline without writes or extension. A different
+  run in the same week is rejected, including workflow re-runs with the same id but an expired
+  deadline. Fresh weeks require a run id greater than every retained session id, checked before
+  pruning; this bounded high-water mark rejects expired runs across rollover and long idle periods.
+  Starting occurs before drain/spacing so those consume the allowance. No request/token
+  allowance is charged merely for opening the session. Start denial means no context experiment.
+- `operation: context_admit`, `run_id`, `catalog_digest`, `route_id`, `dimension: input|output`,
+  `attempt_id` (SHA-256 of run id, route id, dimension, monotonically increasing attempt ordinal),
+  `input_tokens` (conservative provider-token reservation), `output_tokens` (full requested output),
+  `request_digest` (SHA-256 of measurement identity, fixture version and complete shaped request).
+  Admit one request only; require the matching unexpired session and a provider pause with zero
+  in-flight jobs and at least 205 seconds left. Return `{ok:true, disposition:new, attempt_id}` only
+  after committing all charges. An existing matching attempt returns
+  `{ok:false, error:already_consumed}` without writes; differing contents return `attempt_conflict`.
+  Neither response permits provider I/O. Denials include `disabled`, `quota_unknown`, `quota_wait`,
+  `budget_exhausted`, `session_expired`, `pause_not_drained`, `daily_row_budget` and `stale_catalog`.
+
+An admission is a single-use permission consumed by the client receiving `disposition:new`; it is
+not an exactly-once provider-delivery guarantee. After transport ambiguity or process restart,
+abandon that attempt. Never resend it, automatically retry the provider request, or generate a new
+attempt solely to bypass an ambiguous admission. A skipped call remains charged. This deliberately
+trades some experiment allowance for safety across DO outages, runner crashes and lost responses.
+Later weekly scans can revalidate missing evidence under a fresh week's allowance.
+
+Add two SQLite tables through existing readiness/init machinery, without a DO class migration:
+
+| Table/key | Stored fields and bound |
+|---|---|
+| `context_probe_weeks`, `week_start TEXT PRIMARY KEY` | `run_id TEXT`, `catalog_digest TEXT`, `deadline_ms INTEGER`, `input_used INTEGER`, `output_used INTEGER`, `requests_used INTEGER`; retain current plus seven preceding UTC weeks |
+| `context_probe_attempts`, `PRIMARY KEY (week_start, attempt_id) WITHOUT ROWID` | `week_start TEXT`, `run_id TEXT`, `route_id TEXT`, `dimension TEXT`, `request_digest TEXT`, `input_tokens INTEGER`, `output_tokens INTEGER`, `admitted_at INTEGER`; at most 24 rows per week |
+
+Use no secondary indexes. The maintainer approved the clustered weekly key on 2026-10-09 after
+real workerd measured 192 reads for 24 current-week attempts with an attempt-only primary key.
+The clustered table returns those 24 attempts with 25 billed reads (including the range boundary),
+independent of retained history. Replay and cleanup use both key fields. At admission read the
+current week and at most its 24 attempts (a 25-row corruption sentinel) to enforce
+the six-calls-per-route ceiling; never inspect jobs or scan historical queue state for that count.
+Use existing in-flight pause status queries for drain confirmation, with the existing bounded route
+selection. Expire at most one oldest week's attempts and summary on session start, only within the
+optional row budget; if more backlog exists, defer admission rather than unbounded cleanup. Refuse
+session start if retaining it would exceed eight weeks/192 attempts. Schema readiness must protect
+old deployments; no rebuild of job indexes or unrelated state is authorized.
+
+`_transactionSync` must atomically check admission, charge weekly totals, persist the attempt and
+update route quota ledgers. Estimate the full mutation cost, including primary-key index writes
+and scheduler accounting, before it starts; use `_optionalRowStop` and the existing write counter.
+Row exhaustion or storage exceptions roll back the entire mutation and never return permission.
+Do not add a cleanup alarm or write on polling. Read-only status failures remain failures, not zero
+usage. SQLite transaction semantics are documented in the
+[Cloudflare storage API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+
+Reuse `_applyProvisionalReservation`, `_writeRouteLedger` and `earliestSafeStart` quota arithmetic,
+with `inputRatio:1` for already-converted input and no learned output forecast. Require safe start
+at the current time; return `quota_wait` with its next eligible timestamp otherwise. Context
+experiments deliberately bypass authored context/hard-input caps so exploration can stretch them,
+but never bypass documented provider ceilings or rate/TPM/TPD gates. Isolate that choice in context
+admission: do not relax the ordinary job path or fabricate a persisted job. The helper extension
+may skip only measured-context guards for this operation; existing callers retain defaults.
+Google charges input to its trailing-minute quota; other supported routes charge input plus full
+output, preserving current ledger semantics. Both dimensions always charge the weekly experiment
+budget. Unknown account-sharing mappings defer; they do not create separate allowances per route.
+
+Probe reservations are conservative consumption, not in-flight job reservations: release their
+temporary provisional accounting within the admission transaction while retaining RPM/RPD/TPM/TPD
+debits and trailing-window entries. No completion/refund API is added. Successful usage becomes
+search evidence, but unused generation allowance is not refunded to enable more probes. Observed
+usage beyond reservation stops that route for the run and reports an accounting gap; it cannot
+produce a cap decision. Unknown completion, 429 or rejection keeps the charge. No claim-time output
+forecast is used for intentional long-output generation.
+
+Extend `GET /v2/dispatch:pause-status` with opt-in `context=1`: return current session totals and
+route quota scope/readiness with the existing selection, without mutation. The server remains the
+admission authority; client headroom is advisory. Context probes require a known physical account
+scope matching the plugin mapping. Shared or unverified scopes, including BeatAPI/JEV until their
+shared-start accounting is proven, receive `quota_unknown`; all such routes still get offline
+coverage. This does not alter their ordinary dispatch eligibility or health checks.
+
+#### B. Observation, parser and transport schemas
+
+Add frozen `ContextObservation` in `evidence.py`: `schema_version=1`, `identity_digest`, `route_id`,
+`provider`, `account_id`, `upstream_model`, `gateway_digest`, `dimension`, `fixture_version`,
+`estimator_version`, `local_input_estimate`, `reserved_input`, `requested_output`, nullable
+`reported_input`, `reported_output`, `reported_total`, `reported_ceiling`, `count_basis`,
+`reasoning_basis`, `finish_reason`, `evidence_kind`, `outcome`, `observed_at`, `run_id`, `head_sha`,
+`attempt_id`, and `parser_version`. `count_basis` is `input`, `output`, `combined_reserved`,
+`combined_generated` or `unknown`; reasoning basis is `included`, `excluded` or `unknown`.
+Evidence kind is `processed_input`, `generated_output`, `parameter_only` or `size_rejection`.
+Outcome is `verified`, `inconclusive`, `quota`, `transport` or `unsupported`. All sizes are strict
+non-negative integers bounded by safe-integer range; positive evidence requires positive counts.
+Reject inconsistent totals, conflicting counts or an unknown ceiling basis rather than guessing.
+A fresh rejection at/below comparable success marks drift/uncertainty; a fresh verified success
+above a historical rejection invalidates that active bracket and resumes exploration. No raw bodies, prompt/completion text or secrets persist.
+
+Add `ProviderRules.context_observation: Callable[[Response, ContextRequest], ContextObservation]`;
+default returns `unsupported`. Shared strict envelope helpers belong in `rules.py`. Plugins opt in
+per documented endpoint shape, keeping core reconciliation free of provider-name branches.
+
+| Configured free provider | Required initial parser/fixture contract |
+|---|---|
+| Groq, OpenRouter | Strict chat `usage.prompt_tokens`, `completion_tokens`, optional consistent `total_tokens`; normalized finish reason. Reasoning inclusion must be declared; unknown reasoning permits input evidence only. Explicit size-error fields/messages need separate documented fixtures; never extract arbitrary numbers. |
+| Gemini | Compatibility-endpoint fixtures only; native `usageMetadata`/Interactions fields remain unsupported in this path. Input quota rejection is quota evidence, never a context upper bound. |
+| NVIDIA, SambaNova, Airforce, Kilo, OrcaRouter, ZAI, BeatAPI | Each plugin requires positive/negative fixtures for its configured chat envelope before enabling its supported usage parser. Without an endpoint-specific basis, return `unsupported`; a generic compatibility claim is insufficient. BeatAPI JEV envelopes are always rejected by chat parsing. |
+| Any paid-only or paused route | Offline exclusion fixture; no context admission or live measurement |
+
+Initial Groq and OpenRouter envelope references are their
+[chat API reference](https://console.groq.com/docs/api-reference) and
+[response schema](https://openrouter.ai/docs/api_reference/overview). Documentation examples supply
+parser fixtures, never serving proof. Unsupported size errors mean success-only exploration can
+proceed within budgets; they cannot supply a rejection bracket. Unsupported successful counts
+prevent live measurement. Adding endpoint support is within the named plugin/test plan, requires
+primary documentation or redacted captured protocol evidence, and cannot invoke live providers
+merely to obtain a fixture. All configured free routes must have positive support or an explicit
+unsupported reason in the final offline matrix.
+
+
+**Onboarding a provider or endpoint.** Treat every new provider adapter, API endpoint, or materially
+different response envelope as an explicit parser-onboarding task before its route can steer a
+search. The maintainer should:
+
+1. Identify the exact endpoint, API version, model/account scope and documented response contract.
+   Record which usage fields count input, generated output, reasoning tokens and combined totals;
+   identify the provider's documented context-size, token-rate, request-rate, daily-quota and
+   shared-capacity signals. Similar status codes or OpenAI-compatible branding do not establish
+   equivalent semantics.
+2. Add sanitized positive and negative fixtures from primary documentation or already available,
+   redacted protocol evidence. Cover successful usage, each claimed typed rejection, reset/remaining
+   headers, missing or malformed fields, contradictory counts, unrelated quota exhaustion and
+   ambiguous failures. Never call a live provider just to create a fixture.
+3. Implement the endpoint parser in `providers/<provider>.py`, or copy the structure of a similar
+   parser only after confirming the endpoint has the same field meanings and error contract. Keep
+   the parser provider/endpoint-specific, version it, validate strict integer ranges and count
+   consistency, and return unsupported/inconclusive for unknown forms. Do not infer a boundary from
+   HTTP status alone or scrape arbitrary numbers from free-text messages.
+4. Add parser tests plus reducer/search tests proving that actual provider-counted usage updates the
+   right input, output or combined bracket; typed size errors only bound their declared dimension;
+   typed rate errors remain separate and use the matching exhausted quota's reset; and unknown,
+   daily-quota and shared-capacity errors never become size bounds. Add a route-specific offline
+   eligibility fixture and preserve explicit unsupported coverage for routes without evidence.
+5. Verify the physical quota scope and compiled-catalog identity for the route. Parser support alone
+   does not authorize live calls. Any server allowlist, measurement dimension, budget or production
+   behavior change follows a separate reviewed activation contract and approval.
+
+The PR should identify the primary contract or redacted evidence used, parser/version added or
+reused, fixtures and test cases, supported versus unsupported signals, and whether separate
+activation is still required. This checklist is repeated in the contributor guide so future provider
+additions include parser work in their initial route-onboarding plan rather than leaving it for a
+later canary.
+
+Add frozen `ContextRequest` with `route_id`, `provider`, `account_id`, `upstream_model`,
+`identity_digest`, `dimension`, `fixture_version`, `estimator_version`, `local_input_estimate`,
+`reserved_input`, `requested_output`, `attempt_ordinal`, and transient `messages`/`shaped_body`.
+Only hashes and typed observation metadata enter artifacts; transient bodies are never serialized.
+Add `measure_context(request, *, session, before_call, clock, timeout=120)` in
+`probe.py`, separate from existing canaries. Reuse existing request shaping, chat URL and authentication;
+require final usage and finish reason. Consume a bounded response stream with a 120-second monotonic
+deadline and 4 MiB aggregate byte ceiling, no transport retries, no redirects to unvalidated URLs,
+and output limited by the full reserved maximum. Parse documented SSE final usage when streaming
+is required; non-streaming responses use the same bounded collector. Close responses on every exit.
+Call `before_call` exactly once immediately before submission; only a new durable admission permits
+I/O. Abort/cancel/byte overflow is inconclusive and retains its reservation. Renew the existing pause
+before admission and require cleanup time, including the existing 65-second BeatAPI cooldown.
+
+Input fixture `context-input-v1` uses deterministic numbered filler blocks and unpredictable run-
+specific sentinels at the start, middle and tail; ask for those sentinel values in a bounded response.
+Success requires their exact positions/values plus provider-counted input. This checks processing,
+not universal absence of truncation. Output fixture `context-output-v1` requests a long deterministic
+sequence; capacity evidence requires positive provider-counted output and documented length
+termination. Refusal, malformed sequence, early EOS or reasoning-only generation is inconclusive.
+Do not count visible bytes as provider tokens. Use varied text families in offline construction
+tests; initial live construction follows the fixture's recorded estimate/count mapping, never a
+universal cross-route tokenizer ratio. Cold start uses existing configured input ratio; no unapproved
+extra multiplier applies. Budget fits use the larger of that prior and the maximum compatible
+observed ratio, not a production output forecast or an unbounded cross-fixture aggregate.
+
+#### C. Search state, trusted history and cap decisions
+
+Add `ContextSearchState` in `limits.py`, keyed by measurement identity and dimension: nullable
+success/rejection observation references, `next_target`, `status`, `last_attempted_at`, and at most
+16 compatible estimate/count pairs. Status is `baseline`, `exploring`, `refining`, `converged`,
+`budget_limited`, `uncertain` or `unsupported`. `next_context_probe(state, limits, budget)` chooses
+baseline, 150% exploration, exact midpoint or 110% subsequent boundary revalidation per §8.10.
+`advance_context_state(state, observation)` uses actual counts and rejects incompatible bases.
+Compare refinement exactly: width <= 128 **or** width * 200 <= success. Do not round percentage
+thresholds, repeat a count as progress or spend confirmation calls outside the budget. Two compatible
+verified successes in distinct successful weekly runs are required before offering a cap; a size
+rejection may tighten a search bracket but never automatically lower a production cap.
+
+Measurement identity hashes provider, account alias, physical route/upstream model, gateway path,
+fixture/parser/estimator versions, counting basis and fixed opposite-dimension reservation. Numeric
+config caps and rates are recorded in each run's catalog digest, not identity; changes still trigger
+fresh eligibility and quota checks. Basis/identity changes discard the active bracket. Preserve
+older evidence for diagnostics only. Converged states remain eligible for later revalidation, with
+fair rotation; uncertainty never monopolizes the weekly queue.
+
+**Maintainer direction — 2026-10-09:** a route stops its current scan on conflicting or repeated
+counts. The next weekly scan restarts at its configured baseline, retaining fixture-local estimate/
+count correction while clearing active success/rejection references. Previous observations remain
+diagnostic only. Require two compatible successes in distinct subsequent weekly runs before a cap
+offer; pre-restart successes cannot satisfy that proof. Replay of authenticated history enforces the
+same run boundary, so an issue summary or process restart cannot erase the uncertainty gate.
+
+Add `context_artifact`, `discover_context_references` and `verified_context_history` alongside the
+rate equivalents. Artifacts include schema version, repository, successful-main run/head, catalog
+digest, typed observations, attempted scopes and per-identity summaries. Authenticate run success,
+workflow id/path, main ancestry, artifact identity and current eligibility using existing rate
+provenance checks; issue text supplies no authority. Retain 16 observations/dimension and 90-day
+search summaries; do not carry expired success/rejection proof indefinitely via a summary. Fresh
+revalidation restarts stale bounds. Raw artifacts have a 4 MiB limit and at most 128 route identities;
+larger catalogs fail closed with an explicit coverage gap, requiring a reviewed bound increase.
+Missing artifacts lose measurement progress, never durable budget charges. Issue state may retain
+rotation/deferred timestamps, but spoofed timestamps cannot invent counts or cap offers.
+
+`context_cap_changes(history, config)` offers only `hard_input_ceiling` and `output_context_limit`
+for existing free routes. No edit to `input_context_limit`, rate limits, estimator ratios, tolerance,
+concurrency, paid policy, lanes or retired routes. Input-only evidence sets a verified input bound;
+combined-window evidence can support an input ceiling only when the documented reservation basis
+allows subtracting the current full configured production output reservation. Unknown semantics
+withhold the choice. If the resulting ceiling exceeds the retained total context window, cap it at
+that window minus production output reservation; report the limiting guard. Output offers require
+actual generation evidence and cannot exceed the retained total window. Respect current stricter
+documented quota/input guards; do not erase a 14,400-token Google ceiling on context evidence alone.
+No blanket percentage reduction is added. Existing producer/calibration safeguards remain intact.
+
+Extend exact issue choices with
+`<route_id>: set <field> from <old-or-null> to <new> (context <evidence-digest>)`. `/apply` rebuilds
+choices from fresh main and authenticated history, requires an exact offered selection and current
+scalar match, and offers both tightening and increases for explicit review. Adds no automatic context
+proposal path. A missing input ceiling may be offered as a new optional scalar; no new YAML key is
+invented. Context decisions stay separate from additions lacking evidence and Slice 4's rate rules.
+Use `automation/provider-catalog-context`, marker `citypods:provider-catalog-context`, existing writer
+lock/compiler validation and retained-branch ownership guards. A different open context proposal
+waits; never overwrite reviewed choices with a new measurement. PR descriptions include both count
+bases, observed interval, existing safeguards, budget limitation and exact semantic delta.
+
+Extend `Report` with `context_observations`, `context_states`, `context_changes` and
+`context_attempted_routes`, empty by default. Add keyword `context_run=None` to `reconcile`;
+legacy/daily/manual callers supply none. Issue state adds versioned `context_v1` containing
+advisory route/dimension status and rotation timestamps only; rebuilding exact offers always uses
+trusted artifacts. Add `plan_context_scan`, `context_edit_plan`, `parse_context_choice` and
+`prepare_context` in the corresponding planner/apply/command files. `EditPlan.context_changes`
+is a tuple of route id, field, old nullable scalar, new positive scalar and evidence digest;
+`proposal_kind=context` selects the isolated publisher. Existing defaults and rate/addition
+paths retain behavior. Workflow creates `provider-catalog-context-evidence-<run_id>` only for the
+weekly full schedule on main, with 90-day retention. No new workflow input can bypass admission.
+
+#### D. Exact file/function plan and acceptance
+
+| Files | Authorized implementation changes |
+|---|---|
+| `workers/llm-dispatch-v2/src/coordinator.js` | readiness/init for the two tables; context branches in `reserveRouteRequests`; bounded opt-in status in `dispatchPauseStatus`; existing row-budget transaction integration |
+| Worker `protocol.js`, `index.js`, `pacing.js` | discriminated validation/routing; context-only measured-cap bypass in `earliestSafeStart`; ordinary callers unchanged |
+| `citypods/compute/llm_dispatch_pause.py` | typed `start_context`, `reserve_context`, `context_status` methods; strict disposition validation; no automatic retries |
+| `provider_catalog/evidence.py`, `rules.py`, `providers/*.py` | observation/request schemas, artifact verification, pure plugin parsers and endpoint support declarations |
+| `provider_catalog/limits.py`, `probe.py` | state/search/cap planning and bounded measurement/fixture construction; no unchanged reuse of phase 2 |
+| `provider_catalog/reconcile.py`, `issue.py` | context report/state fields, fair planning, exact reviewed choices and deferred reasons |
+| `provider_catalog/apply.py`, `config_edit.py` | context decision parsing, scalar edit plan and exact semantic assertions |
+| `scripts/reconcile_provider_routes.py`, `scripts/provider_catalog_commands.py` | weekly context orchestration, typed admission, artifact output and fresh-main reviewed context publisher |
+| `.github/workflows/provider-catalog-reconcile.yml`, `provider-catalog-commands.yml` | weekly-only context evidence and apply integration; preserve writer lock, permissions, secrets and pinned Actions |
+| Python catalog/pause/limits/apply/config-edit tests; `tests/test_workflows.py` | meaningful search/parser/budget/provenance/editor/weekly exclusion fixtures; new `tests/test_provider_catalog_context.py` and `tests/fixtures/provider_catalog/context/` permitted |
+| Worker protocol/coordinator/pacing/row-accounting/schema-readiness/index tests | durable admission replay/rollback/recreation, compatibility and bounded rows/writes |
+| `review/48`, `review/11`, `ROADMAP.md`, `CHANGELOG.md`, `ARCHITECTURE.md` | lifecycle, shipped behavior and gates recorded in each implementation PR |
+
+Do not modify production config or compiled catalogs in the implementation PR, existing calibration
+estimator/forecast behavior, job schemas/rescue indexes, `/v2/stats`, JEV transport, provider secrets,
+dependencies, episode artifacts or pipeline versions. Catalog compilers may run for validation but
+their output must remain unchanged. Changes beyond this table require the AGENTS clarification gate.
+
+Acceptance must prove: start/admit schema rejection; exact weekly/per-call/per-route ceilings and
+UTC rollover; same-attempt replay/conflict; lost response/crash between admission and I/O; rollback
+at every write; eviction/recreation; optional/hard row-budget exhaustion; cleanup bounds; zero job
+scans for budgets; Google trailing-minute/input-only and other input+output accounting; unknown
+shared scope deferral; pause expiry/drain/renewal; ordinary request-only reservation compatibility;
+full output reservations unaffected by production forecasts; no daily/manual context calls;
+unsupported parser paths for every configured free route; count correction, malformed/mixed basis,
+reasoning, tail/truncation/EOS/error cases; exact 0.5%/128 boundaries; resumed 150%/midpoint/110%
+search; artifact tampering/expiry/cap-only identity preservation; explicit fresh-main cap choices,
+scalar insertion/change, combined-window subtraction, no unrelated config delta; writer collisions.
+
+Run focused Python/Worker suites, full offline Python/Worker suites, whole-repo Ruff lint/format,
+both catalog compilers and diff checks. Verify real-workerd bounded read/write and transaction
+rollback/recreation fixtures for the new admission tables; do not treat an in-memory fake alone as
+outage acceptance. No live tests are required or authorized by offline implementation acceptance.
+
+#### E. Delivery and activation
+
+Sequence: (1) quota-admission prerequisite PR, (2) final Slice 5 implementation PR with input first,
+then output and all-route offline coverage. Use a small Groq/OpenRouter local fixture pilot internally
+before expanding the final implementation matrix; no permanent pilot allowlist. Each PR closes its
+review loop and ships lifecycle docs. The parent implementation issue tracks both deliverables.
+
+Keep server-owned `CONTEXT_PROBE_ROUTE_IDS` empty and `CONTEXT_OUTPUT_ENABLED=false` in committed
+implementation code; context start/admit return `disabled` and workflow does not make context calls.
+Activation is a separately reviewed narrow change naming eligible route ids. After maintainer
+approval, the first live canary is input-only on one parser/quota-supported free route, at most two
+calls, 8,192 reserved input and 256 output per call, within the same durable weekly allowance and
+pause gates. Acceptance: correct provider-count feedback, tail result, retained charges across
+status reads/recreation, normal cleanup and no unexplained quota/accounting error. No synthetic DO
+jobs, paid calls, manual deploy or implicit recurring activation. Output needs its own reviewed
+canary after input acceptance; recurring fair rotation requires recorded maintainer approval and a
+separate activation change. This calibration gate does not substitute for the removal recovery canary.
+
+### Slice 5 quota-admission checkpoint — implemented in PR #2214 (merged 2026-10-09)
+
+[PR #2214](https://github.com/BashfulBits/city-meeting-podcasts/pull/2214) implements §8.11.A
+through the existing reservation/status handlers and typed
+pause client. The server-owned route allowlist remains empty and output activation remains false;
+no context calls are wired into reconciliation or workflows. Groq and Gemini have explicit physical
+model/account quota mappings; duplicate physical routes, duplicate account credential mappings,
+provider-wide shared ceilings and other unverified gateways defer. Normal route policy is unchanged.
+The bounded schema initialization adds only the two context tables to current deployments.
+
+Offline acceptance: 5,389 Python tests (16 deselected), 424 Worker tests, whole-repository Ruff
+lint/format, both unchanged catalog compilers and diff checks. Real workerd confirms 25 billed reads
+for a 24-attempt current week amid 192 retained attempts, three writes for session start, six for
+first admission and zero for replay. Five injected mutation failures roll back every durable charge;
+dispose/recreation retains the spent attempt. Node fixtures additionally cover the exact budget
+ceilings, expired-run rollover fence, optional row-budget rejection and bounded weekly cleanup.
+This acceptance does not authorize live calibration or satisfy the separate recovery canary.
+
+The final implementation PR still supplies adaptive search, provider-count parsers, authenticated
+history, reviewed cap choices, weekly orchestration and all configured free-route offline coverage.
+Input/output canaries and recurring activation remain separately reviewed changes.
+
+### Final Slice 5 implementation — PR #2218 (unmerged, 2026-10-09)
+
+[PR #2218](https://github.com/BashfulBits/city-meeting-podcasts/pull/2218), branch
+`feat/2209-adaptive-context-calibration`, contains the observation/request schemas,
+strict Groq input and OpenRouter input/output chat parsers, sentinel and counted-generation fixtures,
+actual-count search, authenticated bounded history, exact scalar choices and fresh-main cap
+publication. Weekly orchestration uses the shipped durable admission and existing shared provider
+request/time budget. All configured routes have offline eligibility and parser coverage; unsupported
+endpoints, native Gemini and BeatAPI JEV remain explicitly deferred. There is no generic inferred
+size-error parser, so these initial supported endpoints explore verified lower bounds without
+inventing rejection ceilings from arbitrary error numbers. Unknown/shared quota scope separately
+defers admission; parser support alone does not enable calls. Before session start, the client
+compares its compiled catalog with the deployed Worker's canonical digest, including JS number
+formatting. Each route also requires the exact deployed provider/account/physical-model scope;
+a stale deployment or changed physical mapping cannot silently charge a different route.
+
+The provider transport uses the approved cancellation adjustment below. URL validation and key
+availability precede admission; the child waits for new durable permission before submission.
+Preflight failures do not mark a route measured. Admission ambiguity abandons the context run,
+transport ambiguity never retries the attempt, and reservation overshoot stops both dimensions of
+that route. Actual input overshoots remain fixture-local correction evidence, never cap authority.
+Raw prompts/responses do not enter artifacts. Two bounded compatible weekly successes can supply an
+explicit lower-bound choice; reaching the experiment ceiling cannot justify reducing an existing
+larger production cap. Selecting input and output changes together must fit the final retained total
+window; an incompatible pair defers both exact choices rather than inventing an unselected value.
+Current cap offers retain output/window guards and unsupported combined-
+window semantics withhold proposals until a documented endpoint parser establishes that basis.
+
+The first CodeRabbit review identified two integration gaps, both corrected: context-only provider
+pauses require an eligible enabled route with exact physical quota scope, and advisory choices include
+this run's observations so their values/digests match the artifacts `/apply` independently authenticates
+only after successful completion. Failed or unfinished runs still grant no writer authority.
+The follow-up review adds rejection-required cap reductions and route-local fixture-construction
+error deferral. Success-only lower bounds can insert or raise a cap but cannot lower an existing one.
+The suggested removal of the shared three-request guard was rejected: regular probes may exhaust
+that allowance and defer context measurement, as the accepted shared-budget contract requires.
+
+Final offline acceptance is recorded below; updated-head CI must finish. The matrix
+covers every configured route and both dimensions, including paid/paused exclusions, actual-count
+feedback, reservation overshoot, uncertain weekly restart, convergence revalidation, deadline/byte
+cancellation, new-admission gating, tampered/missing/expired history, retained unexpired anchors,
+exact fresh-main scalar edits and context-writer collisions. No production YAML,
+compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
+Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
+
+Offline acceptance: 5,550 Python tests passed (16 live cases deselected), 346 focused catalog/context/
+apply/editor/workflow tests, 424 Worker tests, whole-repository Ruff lint/format, both unchanged
+catalog compilers and diff checks. Production-spawn private-URL exclusion and forked fake transport
+prove admission gating and hard cancellation without live HTTP. The client canonical digest matches
+Worker `canonicalJson`/`sha256Hex` for the current compiled catalog and a Unicode/numeric fixture.
+The admission table's real-workerd bounded reads/writes, rollback and recreation acceptance remains
+in the merged #2214 checkpoint above; final calibration adds no Worker table or schema change.
+This offline acceptance does not satisfy any live canary or enable recurring scans.
+
+**Maintainer-approved transport adjustment — 2026-10-09:** §8.11.B requires a 120-second
+monotonic total response deadline. Requests' socket-inactivity timeout does not enforce that total
+for a slowly progressing stream, as its
+[timeout documentation](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts) explains.
+The maintainer approved isolating the existing Requests call in a short-lived standard-library
+subprocess. The child validates the URL and loads the configured credential before waiting;
+the parent obtains a new typed durable admission before permitting submission. The parent
+terminates the child at the total deadline, never retries and retains the admission charge.
+The collector also enforces four MiB and closes responses. This preserves the hard bound without
+adding a dependency or authorizing live calls. This is an explicit narrow adjustment to §8.11.B,
+recorded after the AGENTS.md file/function-plan clarification gate.
+
+### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
+
+The implementation supplies pure six-run/90-day history and strict rational thresholds, independently
+enumerated authenticated artifacts, exact scalar edits, reviewed increase selections and a successful
+reconcile consumer for automatic tightening proposals. An attempted scope without a valid sample interrupts the
+three-consecutive-run rule; unrelated runs do not. Header units are explicitly mapped only for Groq's configured physical
+model/account scope; duplicate physical routes and unknown/shared mappings remain non-actionable.
+Matching provider-account ceilings/directions are required across all configured accounts; no capacity
+summation or compiler/schema extension is inferred.
+
+Optional reachability and one phase-1 sample share a provider-wide allowance with required verification.
+Drain/spacing/cooldown consume its 900 seconds; configured reservations precede provider calls.
+Undrained/expired pauses cannot supply artifact observations. Existing required verification is not
+curtailed. BeatAPI's successful-call window remains shared with JEV; unknown headers supply no new
+capacity and the existing 65-second final cooldown remains. Today's UTC counters schedule one early
+route observation per day; the rolling 24-hour limitation is recorded above.
+
+Mixed `/apply` selections publish independent catalog/rate proposals under the shared writer lock.
+A reviewed-increase origin is recorded in the bot commit and PR body. Open increase and tightening
+proposals cannot replace each other; each direction waits successfully for the other to finish.
+A retained bot branch from a merged proposal can be replaced under the existing ownership/lease guard. No changes to context/output bounds, concurrency, paid/free policy, lane routing,
+provider credentials, pipeline versions or completed artifacts. Removal publication remains disabled.
+
+Offline acceptance after the six review corrections: 5,380 Python tests pass (16 deselected),
+359 focused tests and 405 Worker tests pass. Counter-only tests cover authentication, mutual
+exclusion, current-day/configured-route filtering, exhausted writes, recreation, unavailable reads,
+route-count truncation and indexed read-cost invariance as history grows. Whole-repository Ruff
+lint/format, both compilers and diff checks pass. Compiler outputs are unchanged.
+No live provider probes, synthetic jobs, manual deployment or production config edits were performed.
+
+
+### Recovery-canary acceptance — #2220, maintainer decision 2026-10-10
+
+The maintainer explicitly approved replacing indefinite waiting for rare production cases with
+isolated tests of the production rescue code plus the ordinary-run evidence recorded above.
+The trade-off is deterministic legacy/failure coverage without production disruption; isolated
+fixtures do not demonstrate actual platform quota exhaustion or every production workload.
+The approved procedure creates its own temporary Worker and SQLite DO namespace, uses synthetic
+records and a test catalog, and has no production bindings, provider credentials or model calls.
+The existing local-only row benchmark is not deployed.
+
+The Cloudflare run of `bench/recovery-canary/harness.js` imported the unchanged production
+`LLMSchedulerDO`. The committed `result-2026-10-10.json` records the source commit/hash and deployment
+version. Twenty-four fixtures include the old sentinel, missing `queue_models`, obsolete model
+indexes, historical secondary index, oversized input and retired/no-route policies. All have
+attempts=2, schema_retry_count=1 and transient_retry_count=3.
+
+Acceptance results:
+
+- A failure injected on the third transaction mutation rolled back the exact jobs, indexes,
+  scheduler and route snapshot. This simulates write failure; it does not consume actual quota.
+- The first bounded page repaired two fitting jobs and failed eighteen. A real `ctx.abort()`
+  reset produced a new instance UUID; the exact persisted snapshot and incomplete cursor survived.
+- The resumed page failed the remaining four jobs; a repeat pass repaired/failed zero. The rescue
+  checkpoint completed with two queued indexed jobs, correct `unadmissible`/`route_retired` reasons,
+  and every nonzero retry counter unchanged.
+- The existing Python structural-audit/admission regressions passed for both terminal reasons,
+  preserving failure_count=2 and schema_correction_attempted=true, blocking unchanged/missing
+  generations and allowing a new fitting generation. The focused deferred/telemetry suite passed
+  55 tests and the complete Worker suite passed 437 tests.
+- The test class was deleted by migration and the temporary Worker removed. Cloudflare listings
+  confirmed neither remained. No production data, provider quota, config or deployment changed.
+
+Combined with the two preserved production audits, subsequent blocked unchanged-generation checks
+in two ordinary runs and completed checkpoint continuity, this satisfies the revised #2220 evidence
+gate. The separate removal activation is tracked by #2274. This acceptance does not claim actual
+Cloudflare quota exhaustion was tested. Live context input/output canaries and recurring calibration
+remain independent gates.
+
+### Proposed input-canary activation contract — #2221, 2026-10-10
+
+**Maintainer approval — 2026-10-10.** Permit the existing six-call per-route weekly limit
+on the single verified free Groq route, with no one-week expiry. This intentionally replaces
+§8.11.E's two-call input canary and the proposed expiring window. The maintainer judged the
+volume small and approved reviewing evidence immediately after the first scheduled run,
+without a week-long waiting period. Wider route activation remains a separately reviewed
+change after that evidence passes; output remains disabled.
+
+**Route and identity.** Select `groq_gpt_oss_120b_primary`, upstream `openai/gpt-oss-120b`,
+free account `primary`. Physical quota scope is `groq:primary:openai/gpt-oss-120b`; the deployed
+status endpoint confirmed that exact mapping, disabled activation and no context session on
+2026-10-10. The deployed and checkout canonical catalog digests both equal
+`77c6bd0280d6c5cb13ce1b5d608373be62775e1f278c8d7190a060c12300bd36`.
+Groq's [rate-limit documentation](https://console.groq.com/docs/rate-limits) describes organization/
+model accounting and lists this free route at 8,000 TPM, 30 RPM and 1,000 RPD. The catalog has one
+credential mapping and one physical route for this model/account, with no provider-wide shared cap.
+This is verified configured scope, not proof that unrelated applications never use the account.
+Existing quota admission and provider pause/drain remain mandatory. Fresh checkout/deployed digest
+equality is required at run time; a mismatch defers, never bypasses the check.
+
+**Approved bounded authority.** At most six durably consumed input admissions per UTC week,
+including lost responses or process restarts; no output admissions. Each call reserves at most
+8,192 input and 256 output tokens. Use the existing 7,125-token input baseline and fixture-local
+count correction. Quota admission remains binding; an oversized adaptive target defers rather
+than shrinking/repeating the measurement. Six is a ceiling, not a promise of six observations.
+One verified observation can satisfy count/tail feedback; this is not a maximum-cap proof.
+
+Only the existing full weekly scheduled main workflow initiates measurement within its shared
+request, pause, time and durable weekly budgets. No top-up if regular probes consume the allowance.
+The earliest opportunity is 2026-10-12 10:17 UTC, contingent on review, merge and successful
+normal Worker deployment. No manual workflow, provider call or deployment. Review first-run
+evidence immediately when available; no mandatory week-long wait before proposing expansion.
+
+**Evidence and acceptance.** Preserve the successful-main context artifact's authenticated run,
+head, catalog digest, route identity, estimated/reserved/provider-reported input counts, parser
+basis and exact start/middle/tail result. Record payload-free status snapshots before and after
+the scheduled run and a later read/normal recreation, showing consumed request/input/output
+charges never decrease. Match admissions to observations; a missing response remains charged and
+deferred. Require normal provider pause release and no unexplained accounting/quota error.
+Unsupported, truncated, conflicting-count, missing-tail or outage observations are not success.
+Do not force a production restart to obtain recreation evidence; if it has not been observed,
+keep that acceptance item open rather than claiming it happened. No cap changes from this canary.
+
+**Disable and rollback.** Clear the server-owned allowlist in a reviewed revert through normal
+deployment. Existing provider-pause cleanup still runs; retain tables, evidence and charges.
+Verify status disabled and later weekly runs make no context calls. The approved single-route
+input pilot may recur until disabled; #2223 broader fair rotation remains separately approved.
+Input acceptance precedes #2222 output planning. No removal automation is enabled.
+
+**Activation file plan.** Worker `src/coordinator.js` enables this one route and a server-owned
+8,192 input ceiling, keeping output false and the existing durable six-call limit. No schema,
+endpoint, client, workflow or production catalog changes. Coordinator tests verify the exact
+allowlist, output/other-route rejection, oversized input denial, six successful admissions and
+seventh denial. Existing rollback/replay/recreation and ordinary admission tests remain binding.
+Lifecycle documents record the revised approval; #2221 remains open for live evidence.
+
+### Manual calibration trigger contract — #2221 follow-up, 2026-10-10 (L3)
+
+The maintainer requested a reusable manual trigger instead of waiting for Monday, with selectable
+routes and budgets for remaining review/48 canaries. They chose a separately bounded manual
+allowance and server-approved routes only. This intentionally revises §8.11's schedule-only/no-
+top-up rules. Faster feedback and bounded reruns justify the additional accounting and evidence
+complexity; ordinary provider quotas and approval of new route/dimension authority remain binding.
+The maintainer explicitly approved the exact limits and session/evidence/schema plan on
+2026-10-10. Implementation and normal deployment are authorized; actual manual canary
+execution remains a separate explicit run selection.
+
+**Approved hard allowance.** A separate manual pool allows 24 consumed admissions, 2,097,152
+reserved input tokens and 131,072 reserved output tokens per UTC week. Combined scheduled plus
+manual authority is therefore at most 48 calls, 4,194,304 input and 262,144 output tokens weekly.
+No refund for a timeout, lost response or unavailable artifact. At most eight calls per manual
+run and twelve manual calls per route per week, subject to remaining pool capacity and provider
+quota. All dimensions share that route ceiling. A run cannot replenish either pool; exhaustion
+requires waiting for UTC rollover or a newly reviewed server-ceiling change. The existing
+provider pause/drain, row-write budget, transport cancellation and cleanup reserve still apply.
+
+**Workflow options.** Extend existing `provider-catalog-reconcile.yml` manual dispatch with an
+explicit context-canary switch; comma-separated exact route IDs (one to eight); dimension choice
+`input`, `output` or `both`; call ceiling (default two, maximum eight); input/output per-call
+reservation ceilings; per-run aggregate input/output budgets (bounded by manual pool); and a
+required purpose/issue reference (bounded plain text, never shell-interpolated). Default input
+ceiling is 8,192 and output reservation 256. Advanced per-call ceilings cannot exceed existing
+reviewed transport/probe bounds (524,288 input and 32,768 output), route-specific server authority
+or provider admission. Requesting higher values never overrides the deployed 8,192 Groq pilot
+ceiling. For output mode, the input fixture reservation remains 2,048. No paid routes, unknown
+quota scopes, unsupported endpoints or disabled dimensions. No inputs edit provider limits,
+production caps, route allowlists, secrets or schema. Reject invalid/duplicate/unknown selections
+before pause or provider I/O. Reject mixing manual context with due-only/catalog discovery.
+
+**Execution and sessions.** Manual mode runs context measurement only on the selected routes;
+it does not spend allowance listing catalogs, adding models, running health/rate probes or
+publishing config proposals. It shares the existing writer concurrency lock. Only authenticated
+`workflow_dispatch` on default-branch main may run; no local CLI credential bypass. Use explicit
+manual start/admit/finish operations through existing reservation handlers and typed client.
+Server persists selected routes/dimensions and run ceilings, checks them on every admission and
+uses a separate bounded manual ledger. Finish releases session ownership while retaining charges.
+A monotonically newer run can start after finish or expiry; old runners are fenced. A crashed
+run's consumed attempts remain charged and its session expires normally. No admission retries.
+Status is payload-free and includes remaining manual totals and session identity.
+
+**Storage and outage contract.** Add bounded `context_manual_weeks` and
+`context_manual_attempts` SQLite tables, keeping scheduled tables/keys/accounting unchanged.
+Week summaries retain consumed totals, monotonic run watermark, active session deadline and
+validated session limits/selection. Cluster attempts by `(week_start, attempt_id)` WITHOUT ROWID
+with no secondary index. Retain eight weeks, prune at most one expired week per start, at most
+24 attempt rows per week. Reject oversized/inconsistent rows. Account every read/write/prune
+against existing row budgets. Atomic admission charges manual pool, route quota and attempt
+receipt together. Replay, lost response, rollback, actual workerd recreation and UTC rollover
+must prove charges cannot reset or migrate into the scheduled pool. No historical job scans.
+
+**Evidence.** Upload named manual-context artifacts with run purpose, selected identities,
+requested limits, admission/status accounting and typed payload-free observations. Authenticate
+repository, exact workflow identity, successful default-branch main run/head ancestry, event
+`workflow_dispatch`, artifact identity/digest/size and route/parser/quota eligibility. Discover
+manual evidence separately with bounded pagination; missing/partial artifacts are deferred.
+Manual observations can satisfy canary acceptance, but cannot bypass the existing two distinct
+weekly-success rule for production cap offers. Scheduled cap history remains scheduled-only.
+Output support/activation and broader rotation still require #2222/#2223 review.
+
+**File/function plan for approval.**
+
+- `.github/workflows/provider-catalog-reconcile.yml`: typed dispatch inputs, environment-only
+  argument transport, main/event guards, isolated manual mode and manual artifact upload; pinned
+  actions, writer lock and minimum existing permissions retained.
+- `scripts/reconcile_provider_routes.py`: validate manual arguments and context-only orchestration;
+  start/status/finish with cleanup in `finally`; no regular discovery work in manual mode.
+- `citypods/provider_catalog/reconcile.py`, `limits.py`, `probe.py`: explicit selected-route/
+  dimension/call/token planning using current count parsers and bounded transport.
+- `citypods/compute/llm_dispatch_pause.py`: typed manual session/admission/status/finish methods.
+- Worker `coordinator.js`, `protocol.js`, `index.js`: discriminated manual operations, new bounded
+  tables/readiness, atomic accounting, scoped session fencing and optional read-only status.
+- `citypods/provider_catalog/evidence.py`: separate bounded manual artifact discovery and
+  authentication; keep scheduled cap-offer provenance unchanged.
+- Existing context/pause/workflow/evidence and Worker protocol/coordinator/index/row-accounting
+  tests, plus `bench/rows-written`: denial-before-I/O, multi-run conservation, stale-session
+  fencing, pool separation, every-write rollback, replay, recreation and billed storage bounds.
+- `review/48`, `review/11`, `ROADMAP.md`, `ARCHITECTURE.md`, `CHANGELOG.md`: approved deviation,
+  lifecycle and actual activation/evidence status. #2221 remains open until input evidence passes.
+
+Do not alter credentials, dependencies, provider/compiled catalogs, ordinary jobs/rescue indexes,
+producer estimator margins, production cap choices or paid policy. This trigger does not itself
+activate additional routes or output, perform manual deployments or authorize test execution.
+After contract approval, implement and review the trigger PR, merge/deploy normally, then the
+maintainer may select an approved manual canary. Failed evidence remains charged and deferred.
+
+### Manual trigger implementation checkpoint — #2221, prepared 2026-10-10
+
+The approved L3 manual contract is implemented through the existing reservation handler and
+workflow. Dispatch exposes an explicit context-canary switch, exact route IDs, dimensions, call
+ceilings, per-call input/output ceilings, aggregate token ceilings and purpose. Manual mode performs
+only context measurement, authenticates the current in-progress main dispatch run and verifies
+deployed catalog/scope/parser authority before pause or admission. Existing scheduled execution
+and scheduled cap-offer history remain separate. Manual evidence is authenticated independently.
+
+Manual week/attempt tables are additive, clustered and bounded; startup readiness adds only these
+tables to existing production objects. A finish or expired session permits a monotonically newer
+run without resetting consumed weekly charges. Old runners and consumed attempts remain fenced.
+The server enforces 24 calls/2,097,152 input/131,072 output weekly, eight/run, twelve/route/week
+and current route/dimension authority. Groq pilot input remains capped at 8,192, output false.
+Manual inputs cannot increase provider quota or widen route authority. No live run or manual
+deployment was performed as implementation acceptance. #2221 remains open for explicit canary
+execution/evidence; #2222/#2223 remain separately gated.
+
+Real local workerd acceptance: three writes at start, seven per admission, zero on replay and
+recreation; five injected SQL-mutation failures plus the accounting-flush boundary restore the
+exact snapshot. A newer run preserves charges. Current-week attempt reads are exactly 24 among
+192 retained attempts, with zero writes. No provider I/O, production data or credentials.
+
+**Manual diagnostic evidence follow-up — CodeRabbit CLI review, 2026-10-10.** A measurement
+exception must not skip the partial artifact, and a cleanup/status failure must not replace
+the original measurement error. Manual dispatch uploads diagnostic artifacts even after failure;
+records contain only error stage/type, attempted routes, available observations and accounting.
+Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.
+
+### 8.12 Scope correction — 2026-10-11
+
+The maintainer narrowed review/48 to discovery/addition/removal of physical routes and bounded
+request-cap discovery for new routes. Existing runtime adaptations remain intact. The earlier
+automatic runtime ceiling publication and unified quota/refill redesign are deferred to
+[review/54](54-provider-limit-characterization.md), retaining the former §8.12–8.13 design and
+prototype notes as historical material. This supersedes the earlier L3 implementation direction
+for #2264; that issue now tracks deferred future characterization. No production policy, schema,
+quota or workflow activation is changed by this scope correction.
+
+### 8.13 New-route request-cap discovery — L3, amended 2026-10-15
+
+Implementation tracking: [#2271](https://github.com/BashfulBits/city-meeting-podcasts/issues/2271).
+
+**Maintainer decisions, amended 2026-10-15.** The earlier all-axis route-addition language below
+is superseded for automatic discovery: input evidence alone is the required request-size gate.
+Manual output/combined probes remain diagnostics and do not set route-addition caps. During
+reachability verification, run the bounded
+input-size search on each newly qualifying free route. Input is the only measured request-size
+limit required to propose a route: output and combined searches are not route-addition gates because
+their results have not been reliable enough to constrain dispatch. Include API/LiteLLM claims and
+sources, AA quality, verified admitted input, calibrated rejected-size estimate, count basis and
+uncertainty in the route-addition decision. Ask for missing provider quotas or an explicit cap
+override before preparing the exact config PR. Provider values remain separate canonical facts;
+empirical discrepancies request a provider re-check and maintainer choice. Do not treat an
+unsourced entered value as provider-canonical.
+
+**New-provider onboarding requirement (maintainer decision, 2026-10-15).** Before adding a newly
+onboarded provider's free route to `config/provider_limits.yml`, run the input-size suite on that
+exact physical route as part of reachability verification. Use shared or provider-level parsing,
+not model-specific parsing. Include published/API/LiteLLM starting hints, the largest verified
+admitted input, any typed refusals, calibrated rejected-size estimate, provider-count basis and
+uncertainty in the route-addition issue.
+
+The route-addition PR must carry authenticated input evidence into the proposed `max_input_tokens`
+value and explain any provider claim or override. A calibrated rejected-size estimate is useful for
+reporting and refinement, but is not an exact refused count or a provider limit. If no verified
+admitted input is available, ask the maintainer for an explicit value or select `test again`; do not
+silently substitute a provider claim for empirical evidence. Output and combined observations may
+be shown as diagnostics but do not gate a new route or get converted into caps by this workflow.
+This applies to newly added free routes only; recurring configured-route calibration remains deferred
+to #2264.
+
+**Implementation gap.** The shipped discovery flow reports request-cap observations separately from
+`RouteEvidence`; current `/apply` builds route values from catalog evidence and does not yet project
+authenticated input history into the addition PR. The onboarding requirement is not complete until
+the candidate decision is bound to compatible authenticated input evidence and the proposed
+`max_input_tokens` value carries its count basis and provider/local estimate conversion. Add
+regression coverage for stale, missing, mismatched and partial evidence. No route cap is published
+automatically. Track this follow-up under #2271.
+
+**Probe axes.** Automatic route-addition discovery searches input only, holding the output
+reservation and task fixed and verifying input processing. Manual output/combined probes may still
+be used to diagnose a route, but their natural stops, clipping and unresolved parser semantics do
+not establish a route cap. Keep provider-reported input counts distinct from local estimates and
+record count-basis uncertainty explicitly.
+
+**Direction and convergence.** Reduce after a typed input-size refusal until a compatible input
+probe passes; then increase and refine using the existing search and count-correction rules. The
+0.5% gap is a target for the calibrated rejected-size estimate, not a provider-verified upper
+bound. Preserve a truthful admitted lower bound and mark an upper estimate as approximate when a
+provider refusal supplies no exact count. Never infer output or combined caps from this search.
+
+**RPD and bounded execution.** Newly discovered routes need no configured RPD value before this
+search. Never ignore provider-enforced daily/token limits or bypass credential/account scope,
+free/paid policy or known shared quotas. The reviewed finite call, aggregate-token, per-call and
+wall-time envelope below bounds discovery. Reaching it returns partial evidence rather than
+claiming convergence; it is not an assumption about the route's daily quota.
+
+**Stuck escape hatch.** Bound same-shape retries and consecutive no-progress observations for the
+active search. Honor typed reset/Retry-After, reducing size only for the appropriate typed size constraint.
+Persistent quota errors, unavailable service, repeated unparseable results, inability to generate
+output, contradictory counts, transport deadline or cancellation defer the affected axis and
+report a reason, calls/tokens spent and all admitted/refused bounds found so far. Other axes may
+continue when the remaining envelope and error scope permit. A quota rejection alone never
+becomes a context upper bound. Checkpoint after each usable observation; a lost response is not
+a success and its attempt cannot be reused. **Maintainer clarification (2026-10-12):** for one
+request-size probe that receives no usable response due to a transport timeout/connection failure,
+make at most five total calls of the same size, each with a fresh charged attempt ID. Do not change
+the probe size during these retries. If all five have no usable response, stop discovery with an
+uncertain result and report the bounds already established; do not interpret transport failure as a
+size limit. If a later call responds, keep the earlier charged attempts and report per-attempt
+telemetry whenever more than one call was needed. This bounded retry direction supersedes the
+previous no-retry wording for new-route request-cap discovery only; it does not alter configured-
+route context-probe retry policy. Every call still consumes the existing per-session and per-run
+budgets.
+
+**`test again` decision.** The maintainer can request another discovery run for the same route
+on a later day. The same maintenance workflow selects that pending route, authenticates prior
+evidence, and resumes its per-axis brackets instead of restarting blindly or requiring a catalog
+addition first. Preserve identity (provider, account, upstream model, endpoint), fixture/parser
+versions, fixed counterpart, count basis, request/result timestamps, attempt IDs and bracket
+lineage in durable workflow evidence. The issue displays and links results but its editable prose
+is never trusted numeric search state. Only fresh compatible authenticated evidence is reused;
+identity/parser changes or contradictory outcomes trigger baseline revalidation. Explicit
+maintainer retry schedules at most one bounded discovery session per decision/run and preserves
+charges/history across failure; exhausted daily quotas defer until reset/the later run.
+
+**Issue and acceptance.** Present a table for each axis: canonical published value/source,
+admitted lower bound, refused upper bound, width/target, verified count semantics, status and
+proposed operational cap. Include missing provider quotas with exact model/shared pool scope,
+AA comparison, reachability and reason for any inconclusive axis. A maintainer can test again,
+enter/override limits, approve preparing an addition PR, ignore or reject. No auto-addition or
+automatic runtime/YAML ceiling publication occurs. Dead-route removal and structural recovery
+retain their accepted contracts and rollout gates.
+
+#### Offline implementation checkpoint — foundation shipped ([PR #2273](https://github.com/BashfulBits/city-meeting-podcasts/pull/2273))
+
+Implementation is split into a foundation PR and a following report/retry/workflow PR under #2271.
+The foundation supplies the pure planner, bounded distinct transport, charged/fsynced checkpoints,
+strict observation/control semantics and authenticated version-1 history primitives. Deterministic
+adapters exercise all axes, including both combined mixes. Live Groq input and OpenRouter
+input/output parsers opt into verified usage only: neither currently interprets an undocumented
+size-error number as a refused boundary, and combined semantics remain explicitly unsupported.
+Other endpoints remain unsupported until a provider adapter has verified count/error fixtures.
+Thus simulator convergence does not claim that a live route's caps have been measured.
+
+The foundation added no workflow calls, quota reservations, issue choices or runtime publication.
+The follow-up implementation in #2271 integrates reports, authenticated retry receipts and daily
+selection. Manual live activation shipped in #2281, and weekly automatic input discovery shipped in
+#2445. The remaining integration is to bind authenticated input evidence to the proposed input cap
+in the route-addition PR; it must not infer output/combined caps or alter configured-route maintenance.
+That work remains tracked by #2271. Recurring configured-route measurement is deferred to #2264.
+
+#### 8.13.1 Execution contract and escape budgets
+
+The offline implementation and automatic weekly input activation shipped in #2445. The weekly full
+catalog run selects only newly discovered routes that pass the existing free, reachability and
+structured-output checks and exceed the GPT-OSS-120B AA reference. Missing or lower/equal AA scores
+defer the route. One provider-paused input-search session per selected provider is allowed; pending
+candidates are rechecked on later weekly runs. Manual exact-candidate diagnostics and authenticated
+retry receipts remain available under their existing guards. Configured-route calibration is not
+part of this execution contract.
+
+| Bound | Per candidate/session | Per maintenance run |
+| --- | --- | --- |
+| Provider submissions, including qualification and retries | 96 | 288 |
+| Reserved estimated input tokens | 16,777,216 | 50,331,648 |
+| Requested output tokens | 1,572,864 | 4,718,592 |
+| Elapsed time, including cooldowns | 90 minutes | 270 minutes discovery work |
+| Candidate selection | One session per identity | Three sessions, at most one per provider |
+| Individual request | 1,000,000 input estimate; bounded output counterpart | Same |
+| Transport | 720 seconds; 4 MiB response | Same |
+
+The weekly full workflow has a 300-minute timeout. A manual discovery-enabled run has a 180-minute
+timeout. The per-call timeout is now 720 seconds. Bounds and any earlier provider cooldown apply.
+One input search can return partial evidence when its finite budget is reached; no output or
+combined maximum is inferred from an input-only result.
+
+All bounds bind simultaneously. Charge an attempt and its reservations before releasing a child
+transport process; failed or unknown attempts are never refunded or reused. A no-response probe
+allows at most five calls total, counting the initial send. The 90-minute session deadline may stop
+the search earlier; timeouts are uncertain attempts, never refused-size evidence. Reservations do
+not claim local estimates equal provider usage. Record actual counts and stop if reported usage
+reveals an aggregate overrun. Provider/account permissions, verified-free eligibility, known
+applicable quotas and provider cooldowns always bind. The provider pause drains repo-managed
+traffic, not unrelated clients using the same account; unknown shared quota scope remains unknown.
+**Superseded timeout decision — 2026-10-12.** After workflow run
+[38271477606](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/38271477606)
+timed out five times at 120 seconds while probing a larger input after a verified 645,195-token
+input success, the maintainer approved a 600-second hard deadline for new-route discovery calls.
+Later decisions expanded the per-call deadline to 720 seconds and the session to 90 minutes, and
+raised the call and aggregate token budgets as listed above. Timeouts remain inconclusive and never
+create a refused boundary. Configured-route calibration retains its separate transport deadline.
+
+Take the existing exclusive provider dispatch pause, drain current work and renew its lease before
+calls and during waits. Contention, inability to drain/renew or unclear free endpoint eligibility
+returns deferred without submissions. Do not create a fake configured route or bypass the existing
+Worker context-admission API. Unconfigured discovery uses a distinct typed local admission receipt
+and bounded direct transport while holding the provider pause. Admission includes session, attempt,
+identity, reservation and deadline; existing `measure_context` still requires Worker admission.
+Provider pause protects v2 traffic; unrelated external/account consumers cannot be presumed absent.
+
+Stop an axis after three consecutive non-progress/unparseable observations. A quota rejection may
+retry the same shape once, only after the reported reset/Retry-After fits the remaining deadline;
+otherwise defer. Daily exhaustion defers until its reset and never forces exhaustion for measurement.
+Typed size rejection changes size; quota errors are not size bounds. Provider/account outages stop
+the entire session. Lost responses and unsupported parsers remain inconclusive. When another axis
+can proceed independently within the remaining budget it may do so. There is no minimum call
+spend: stop as soon as all supported axes converge or no safe progress remains.
+
+#### 8.13.2 Search, fixtures and evidence semantics
+
+The all-axis behavior in this subsection remains available only to explicitly selected diagnostic
+runs. Automatic weekly route-addition discovery searches input only; it does not require output or
+combined searches to converge.
+
+Use separate input, output and combined searches in that order. A pure planner chooses requests;
+transport and parser cannot edit limits or config. Seed from compatible history; with no compatible
+history, begin input at 500,000, output at 16,384, and combined searches at 18,432 total tokens.
+Pure input probes reserve 16,384 output tokens so reasoning-heavy models have substantially more
+room to finish the input verification fixture.
+If the provider rejects that output allowance, halve it and start a new
+control identity; never treat that rejection as an input boundary. Input and input-heavy combined
+control versions are `v2`, so old observations made with a 256-token counterpart are not pooled
+with the new probes.
+Output probes hold verified small input at approximately 2,048. Combined searches use a 2,048 input
+counterpart for the output-heavy mix and a 16,384 output counterpart for the input-heavy mix.
+Combined uses at least two distinct mixes, an input-heavy mix with the 16,384 output counterpart
+and an output-heavy mix with the 2,048 input counterpart. If either fixed counterpart cannot
+be admitted, reduce it and start a new control identity rather than pooling incomparable
+observations.
+
+The fixture includes unpredictable start/middle/end markers for input verification and a repeatable
+long-output task for output. A response must satisfy the verification task; HTTP success alone is
+not admission evidence. Record actual prompt, completion, reasoning and cache counts separately,
+usage provenance, finish reason, requested sizes and local estimates. Never persist prompts or
+credentials. Native endpoint adapters must shape the same task in their documented native format.
+
+Search wide before spending calls on fine refinement. After a typed size rejection without an
+admitted bound, halve the target until a compatible request passes, with 2,000 input tokens as
+the smallest probe. A refusal at that floor reports no admitted bound and defers the axis. This
+descending sequence finds the first passing region; it is not binary search until both a passing
+lower bound and a refused upper bound exist. After admission without an upper bound, increase by 50%, clamping the next probe
+to the hard per-call ceiling. Once both bounds exist, test their midpoint, using actual-count
+feedback to correct fixture sizing. If the ceiling passes without a refusal, report that value as a
+verified lower bound and stop; do not label it an exact maximum. If rounding produces an endpoint
+target, choose an interior integer; no interior integer means integer-resolution convergence.
+Repeated actual counts that do not move the bracket count as non-progress. A contradictory
+observation invalidates the bracket, retains its history and starts fresh verification within the
+same budget. No additional percentage safety discount is applied to the verified admitted endpoint.
+
+Each bracket has one declared coordinate/count basis. Actual accepted input is comparable only to
+a refusal identifying that same input basis. For output, accepting `max_tokens` is not proof of
+producing that output: require verified generated counts and a limit finish reason. A refusal of
+an output parameter bounds that parameter, and is reported separately unless the adapter establishes
+its equivalence to generated output. Natural stopping creates only an observed lower bound.
+Combined evidence requires explicit provider semantics for prompt plus reserved output or prompt
+plus generated output (including any reasoning/cache rules). Two mixes must support those semantics;
+a binding input/output constraint is reported as conditional, not as an independent total maximum.
+A TPM rejection, including Groq's requested-token/TPM message, never becomes a total-context bound.
+
+The strict goal remains `upper - lower <= max(1, ceil(lower * 0.005))`. Report converged only with
+verified, comparable admitted/refused evidence for that axis/control. Parser capabilities are
+explicit per endpoint and axis. Groq/OpenRouter chat start with existing usage/error parsers plus
+verified fixtures; every other current endpoint is covered offline as explicitly unsupported until
+its adapter supplies verified semantics. An unsupported endpoint can still be reachable and can
+be added using explicitly reviewed provider-sourced caps; it cannot fabricate empirical brackets.
+
+#### 8.13.3 Checkpoints, authentication and retry decisions
+
+Add a separate version-1 `provider-catalog-discovery-evidence.json` artifact, never accepted as
+configured-route context history. Each session includes repository/workflow/run/head identity,
+physical provider/account/upstream/endpoint identity, catalog/free evidence digest, parser/fixture
+versions, control/count basis, source references and timestamps. Each attempt records unique ID,
+charged reservations, typed outcome, usage, finish reason, verification result and diagnostic
+category. Brackets are derived from observations, not trusted serialized summaries. Store payload-free
+journal entries before submission and after each result using atomic replace plus filesystem sync.
+Upload with `if: always()` after failure; a cancelled run that cannot upload has no recoverable
+result, and its missing response never counts as an admission. Do not promise durable recovery of
+an artifact that GitHub never received.
+
+Retain artifacts for 90 days; authenticate workflow identity, repository, trusted main ancestry,
+run IDs and artifact digest via GitHub. Failed/cancelled trusted runs may supply terminal verified
+observations, not incomplete attempts. Reject fork/PR runs, editable issue values and unverified
+local artifacts as history authority. Read at most six sessions per candidate, 64 attempts each,
+2 MiB per artifact; original observation age is never renewed by copying it into a later artifact.
+Parser, fixture, account, endpoint or model identity changes require baseline revalidation.
+A new catalog digest alone requires fresh reachability/free verification, not erasure of compatible
+size evidence. Input/combined axes resume after two compatible fresh successes. Output uses the approved
+fresh-lower/fresh-upper policy below; contradictions reopen the axis.
+
+The existing rolling issue gains `- [ ] candidate:<key> test again` next to add/ignore choices.
+The maintainer checks it and submits existing `/apply`. Retry conflicts with add/ignore for that
+candidate and makes no config PR or provider call. Existing repository-write authorization applies.
+The commands workflow uploads a version-1 retry receipt containing authorized comment ID/time,
+issue/candidate identity, current head, requested earliest day and consumed session ID if known.
+The daily maintenance run authenticates that receipt against the original authorized comment and
+trusted commands run, verifies the candidate is still unconfigured/free/reachable, and executes
+at most one session per receipt no earlier than the next UTC date or provider reset. Use the shared
+writer concurrency group; session identity derives from receipt and candidate identity. Receipt
+consumption and results share one uploaded artifact. If a run is lost after submission but before
+upload, mark it indeterminate from the Actions run status and require a new maintainer receipt;
+never automatically replay it. A completed partial session consumes the request; `test again`
+creates another bounded session. Repeated `/apply` of the same checked choice is idempotent until
+the issue publishes a new result revision. Retry selection bypasses the daily no-work short circuit.
+
+#### 8.13.4 Issue results and configuration boundary
+
+The route-addition issue shows API/provider/LiteLLM input claims with sources and scope, AA score,
+reachability, provider-counted admitted input, calibrated rejected-size estimate, count basis,
+uncertainty, spend, deferrals and authenticated evidence links. The addition PR binds compatible
+authenticated input history to the proposed `max_input_tokens` and labels provider claims separately
+from measurements. Missing quotas and explicit overrides require maintainer review; no cap is
+published automatically. Output/combined observations are diagnostic only and do not gate the
+addition. Configured-route recurring measurement is deferred to #2264.
+
+For a new route with fresh authenticated input evidence, `/apply` proposes `hard_input_ceiling` at
+the largest provider-counted admitted input. It proposes `input_context_limit` at least as large as
+the published provider/catalog claim and the admitted input plus actual generated output from that
+same request. The addition PR and YAML comments preserve the provider claim and source so a
+maintainer can review a discrepancy before merge. Estimated refusal sizes never become caps. The
+separate `output_context_limit` comes from provider/catalog or LiteLLM claims; if neither exists,
+`/apply` defers for maintainer input.
+
+One successful authenticated discovery run is sufficient to offer the cap. This is one-time
+onboarding, not a weekly re-probe of configured routes. `/apply` reauthenticates the run and
+artifact and requires the exact observation digest and matching route, parser, fixture, control,
+and count basis. Partial, failed, stale or mismatched history cannot authorize a cap. The
+`input_context_limit` is the combined request window, not a promise that maximum input and maximum
+output fit together; direct and Worker dispatch limit output by both `output_context_limit` and the
+window remaining after input. Do not inflate the window to the sum of separate maxima without
+evidence for that larger combined request.
+
+#### 8.13.5 Live activation — automatic weekly input discovery
+
+The automatic weekly activation runs only for newly found routes that are free, unconfigured,
+unignored, reachable, pass the existing structured-output check, and exceed the configured AA
+quality reference. Ineligible candidates make no size-search calls. Each selected candidate uses
+the input-only bounded search and the provider pause; existing configured routes are not scanned.
+The exact-candidate manual path remains available for diagnostics but does not broaden automatic
+selection or route-addition authority.
+
+The workflow sends catalog and completion requests directly from the GitHub Actions runner to the
+provider API; the v2 Worker is used only for its repo-wide dispatch pause, so these requests do not
+appear in Cloudflare AI Gateway logs. Each structured-output method result records HTTP status,
+provider request ID when returned, stream event/byte counts, visible completion bytes, reported
+usage counts, finish reason and a diagnostic code. Discovery attempts also record bounded response
+shape states for message content, finish reason and usage, plus response media type/size and response
+or provider request IDs. Valid provider-reported input/output counts are kept even when the response
+content or finish reason prevents the probe from proving an admitted size.
+
+For failed discovery attempts, retain only a 128-character JSON-escaped excerpt. Prefer the
+provider's short error message or returned model text when available; otherwise show the bounded
+response prefix. Escape issue markup and redact the generated prompt and credentials before writing
+the excerpt. Successful completion text and full response bodies are never persisted. Non-success
+structured-output checks retain at most a 1-KiB escaped error-body preview, and streamed provider
+errors retain a similarly bounded preview. These diagnostics remain in the rolling issue even when
+no route candidate or request-cap artifact is produced.
+
+For malformed SSE JSON, also retain the response content type/encoding, number of `data:` lines in
+the event, a bounded escaped preview around the parser's failure offset, JSON parser message and
+line/column/offset, plus whether re-encoding with the response charset and decoding as UTF-8 would
+make the same event parse. These are diagnostics only: the candidate UTF-8 parse never changes the
+structured-method verdict. Credentials and full response bodies remain excluded.
+
+**Runner stream decoding correction (2026-10-12).** The NVIDIA candidate worked in local direct
+submissions, but runner run 38291210125 failed all four methods with a 127-byte malformed event
+inside `reasoning_content`; Requests inferred ISO-8859-1 for `text/event-stream` without a charset.
+Requests' Unicode `splitlines()` recognizes U+0085 and Unicode paragraph/line separators, which
+can split valid JSON inside decoded reasoning text. In particular, Latin-1 decoding maps UTF-8
+continuation byte 0x85 to U+0085. A real-Requests offline response reproduces this failure without
+provider calls. Structured canaries therefore frame LF, CRLF and CR lines directly from transport bytes,
+preserving delimiters across chunk boundaries, then strictly decode complete lines as UTF-8 before
+assembling SSE events. A single buffered line is bounded by the existing 128-KiB ceiling. This applies to every provider, not a model-specific exception.
+
+The next run records `stream_decoder`, Python/Requests/urllib3/platform versions,
+`legacy_unicode_extra_line_breaks` (the breaks the previous decoder would introduce), bytes/chunks
+read, clean HTTP-stream EOF, and whether
+the last event had a blank-line delimiter. A positive legacy-break count with a verified completion
+confirms the framing diagnosis. Malformed JSON retains a redacted 128-byte base64 window and its
+byte offset; invalid UTF-8 retains a redacted 64-byte window, decode location/reason and line length.
+These preserve exact bytes independently of issue markup escaping, separating invalid provider
+bytes, incomplete framing, JSON errors and transport exceptions. Existing request counts, provider
+pause/spacing, 128-KiB event ceiling, deadlines and qualification rules remain binding. No extra
+provider calls or workflow permissions are introduced; the rolling issue carries diagnostics even
+when discovery produces no artifact. The maintainer requested this correction and diagnostics after
+the inconclusive merged #2317 rerun.
+
+**Shared new-route chat parser follow-up (2026-10-12).** Runner run 38293878784 verified all four
+NVIDIA JSON methods and confirmed the old Unicode line-splitting hazard. Size discovery then
+deferred because NVIDIA had no registered discovery axes. The maintainer requested a general
+parser correction rather than a Nemotron exception. NVIDIA now explicitly registers input/output
+discovery using the shared `chat_discovery_observation` adapter; it applies to any of that
+provider's chat models with the documented response envelope. Native Gemini and other unverified
+endpoints remain explicitly unsupported. This does not enable configured-route calibration.
+
+Success requires strict chat usage, consistent totals, the existing input sentinels or counted
+output fixture, and the appropriate finish reason. NVIDIA's NIM documentation defines
+`completion_tokens` as generated tokens including reasoning, with reasoning details as a breakdown:
+[NIM reasoning usage](https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html).
+This provider opt-in sets the existing included-reasoning basis; compatibility branding alone never
+registers an endpoint. Other providers can reuse the same adapter after confirming these meanings.
+
+The shared refusal parser accepts documented chat/vLLM token-size messages in either nested or
+top-level typed error envelopes. It validates exact input counts, a matching fixed output
+reservation, an overflow and internally consistent total counts. A prompt-only refusal must
+report a count above its explicit context ceiling. This establishes a conditional input bracket
+at the reported output control; it does not establish an independent output or combined cap.
+Character counts, `at least` tokenizer counts, unsupported envelopes and quota errors are not
+refused coordinates. Primary reference:
+[vLLM token validation](https://docs.vllm.ai/en/v0.31.0/api/vllm/renderers/params/).
+Typed FastAPI/Pydantic upper-bound validation for `max_tokens`/`max_completion_tokens` can establish
+an output refusal only when its integer request value matches this attempt and the provider has
+verified included-reasoning semantics. Numeric field types and the bound must be consistent; other
+fields, mixed errors and unknown shapes remain inconclusive. Primary reference:
+[Pydantic upper-bound errors](https://docs.pydantic.dev/latest/errors/validation_errors/#less_than_equal).
+
+Groq and OpenRouter share the new refusal handling with incremented discovery parser versions;
+old histories do not silently become new-version boundary proof. Combined axes remain deferred
+until their request-reservation versus generated-total semantics are verified. The buffered SSE
+usage normalizer also uses wire LF rather than Unicode line splitting, preserving reasoning text.
+No new calls occur outside the existing selected-candidate admission, pause, spacing, token/call
+budgets, deadline and manual activation. Runtime Worker/direct dispatch and provider YAML remain
+unchanged. Offline acceptance covers provider-reported successes, each refusal envelope, wrong
+axes, mismatched controls, malformed counts, quotas and Unicode SSE normalization.
+
+**Discovery boundary refinement follow-up (2026-10-12).** Run 38296813993 established verified
+input counts of 500,024 and 750,001 for NVIDIA Nemotron Lightning. The local estimate understated
+provider-counted input by roughly 29%. At the 1,000,000-token target, a special-case reservation
+override discarded that learned ratio and submitted roughly 1.29M actual tokens. The planner now
+keeps the count correction at every input target and clamps only the local reservation to the
+existing hard ceiling. It still uses provider-reported counts as bracket coordinates. A local
+regression with 1.29x actual counts must converge to the existing 0.5% goal, with every reservation
+within the approved ceiling. No ceiling or per-run budget increases are authorized by this fix.
+
+The same run captured HTTP 400 JSON with the exact prefix "This model's maximum context length
+is 1000000 tokens. However, your messages resulted in 1290360 tokens." The shared chat parser now
+accepts this explicit input-count shape for any registered compatible provider. A message-only
+error envelope is permitted only for this recorded form, with a positive exact input count above
+the declared ceiling. Character counts, lower-bound counts, quota errors, wrong axes, unknown
+fields and untyped variants of other error shapes remain inconclusive. Validate the complete outer
+envelope for message-only errors and allow only standard request-shortening advice after the count;
+appended uncertainty/approximation qualifiers cannot become exact boundary evidence. The ceiling remains a
+provider claim; the refused bracket coordinate is the reported request count, not the claim itself.
+This additive wording does not reinterpret persisted inconclusive observations as boundary proof;
+existing verified input counts keep their parser/count/control compatibility.
+
+All three output probes in that run stopped naturally before the requested 16,384 completion
+tokens. Discovery-only output fixtures now explicitly request every integer from 1 through
+1,000,000, one per line, without summaries or omissions. The existing completion cap bounds the
+actual generation. `output:v2` identifies this changed prompt and excludes `output:v1` boundary
+history; the old history remains diagnostic. A completed early-stop reply still does not establish
+an output maximum: the existing exact numeric fixture, actual counted output and length finish are
+required. Configured-route calibration keeps its existing prompt and fixture versions. The input
+control, provider pause, spacing, budgets, timeout, session deadline and combined-axis deferrals
+remain unchanged. After review/merge, the next authorized selected-candidate run can refine input
+instead of repeatedly sending the same oversized request, and test the stronger output fixture.
+
+**Approved API-capacity / retrieval-quality separation (2026-10-12).** Run 38301430270 verified
+16,384 and 24,576 output tokens including reasoning, then reached the 20-minute session deadline
+on the 36,864-token attempt. Its input completions reported about 750K tokens but miscopied or
+missed the three sentinels. The maintainer approved separating these two measurements: API request
+admission measures capacity; sentinel retrieval measures quality and can also warn of truncation.
+This supersedes only new-route discovery's input-sentinel admission gate in §8.13. Configured-route
+calibration under §8.11 retains its existing processing/sentinel proof requirements.
+
+For discovery input, HTTP 200 plus a completed ordinary chat response with nonempty visible text,
+`stop` or `length`, and positive exact integer prompt/completion counts and a consistent reported
+total establishes an API-admitted size. Validate the documented envelope, single choice, absence
+of errors/refusals/tool calls and any provided reasoning/cache breakdown. Missing, malformed or
+inconsistent usage remains inconclusive. Use provider-reported input counts for count correction
+and bracket coordinates; only explicit comparable token-size refusals establish upper bounds.
+Retrieval mistakes, early stopping, timeouts and quotas never establish a refused size.
+
+Add backward-compatible `sentinel_verification` (`passed`, `failed`, `not_checked`, legacy
+`unknown`) to discovery observations and expose it separately in the rolling issue. Grade a
+completed sentinel reply independently of usage evidence. Failed retrieval on an API-admitted
+request may retain the existing bounded/redacted failure preview; full successful bodies remain
+excluded. Trusting provider usage does not prove that every submitted token received model
+attention: failed sentinel checks remain an explicit retrieval/truncation warning for the
+maintainer. This does not add a blanket margin or automatically change route limits.
+
+The authenticated manual workflow adds `discovery_axis=all|input|output` (default `all`), wired to
+CLI `--discovery-axis`. Narrowed selection requires the existing exact candidate/manual activation
+gate, provider pause and evidence path. Filter requested axes against provider-supported axes;
+unsupported axes cannot become enabled by selection. Skipped axes report `not_selected`. An
+output-only run can resume compatible `output:v2` history from 24,576 in its own existing 20-minute
+session, including the existing two fresh baseline successes. Reachability/JSON checks still run
+and remain charged. Budgets, deadlines, concurrency, quotas and recurring-discovery gates remain
+unchanged; the selector narrows work rather than adding a quota override.
+
+Existing positive input observations remain stronger, compatible API-admission evidence. Old
+inconclusive observations are never retroactively upgraded, and absent sentinel metadata defaults
+to `unknown`. Output proof still requires the exact numeric fixture, actual generated counts and
+a length finish; combined axes remain deferred. Keep discovery parser/count/control identities
+compatible because original count coordinates and request fixtures are unchanged by this policy.
+The allowed implementation extends `discovery.py`, `rules.py`, `reconcile.py`, `issue.py`, the
+existing reconciliation script/workflow and their offline tests; no Worker/YAML/runtime changes.
+
+**Output early-stop diagnosis and route-scoped minimum generation (2026-10-13).** Run
+38317673384 requested 24,576 output tokens three times but received ordinary HTTP 200 completions
+with `stop` and only 2,731, 7,566 and 10,414 generated tokens including reasoning. This was an
+intentional end of generation, not a timeout or a context-size refusal. A local stronger-prompt
+probe also stopped after 200 numeric lines / 4,241 completion tokens; its returned reasoning
+explicitly chose a shorter answer. Earlier successful local calls do not establish a deterministic
+output-length guarantee, and runner/streaming bugs must remain distinct from this behavior.
+
+The maintainer approved an optional documented minimum-generation capability, with explicit
+attribution to the applicable model/route rather than every NVIDIA provider route. Add pure
+`ProviderRules.discovery_output_min_tokens(endpoint, model)` (default false). Opt in only the
+served combination `https://integrate.api.nvidia.com/v1/chat/completions` plus
+`nvidia/nemotron-3.5-lightning-30b-a3b`, after bounded local verification. This is a transport
+capability of that hosted deployment, not a numerical model limit, provider quota or intrinsic
+Nemotron behavior. Other NVIDIA models, alternate hosts and providers require independent
+support evidence. The bounded local minimum-generation test reported 24,576 completion tokens
+and `length` (including 5,273 reasoning tokens); its ascending answer restarted, so the text
+verifier correctly withheld boundary proof. The final repeated-line probe reported 2,481 input /
+24,576 completion / 27,057 total tokens, including 1,372 reasoning tokens, `length` and 11,602
+valid fixed lines. The parser accepted a 24,576-token lower bound under `output:v3:min_tokens`;
+no refused upper boundary was measured. A matched original-prompt local comparison also reached
+24,576 / `length`, so ordinary output behavior can vary and no runner-only cause is claimed for
+these early stops. All diagnostic calls used provider pause/drain, charged one-call sessions and
+the existing timeout/token bounds. GitHub verification of the final fixture remains after merge.
+NVIDIA documents the top-level parameter in its
+[NIM release notes](https://docs.nvidia.com/nim/large-language-models/1.14.0/release-notes.html).
+When onboarding another endpoint/model, verify parameter support and actual generation before
+opting in this callback; never infer support from OpenAI compatibility or model branding.
+
+For opted-in discovery output requests only, set top-level `min_tokens = max_tokens` within the
+existing charged output allowance. Input discovery, reachability/JSON checks, configured-route
+calibration, Worker/direct dispatch and production YAML are unchanged. Do not set `ignore_eos`,
+change reasoning settings, increase budgets or silently fall back from an ignored/rejected
+minimum control. An unknown parameter error remains inconclusive; it cannot prove an output cap.
+A requested minimum is never proof: the existing parser still requires positive provider counts,
+verified repeated-line text, non-reasoning-only generation and documented `length` termination.
+
+The discovery-only prompt uses an explicit prefix-generation system instruction and requests
+131,072 copies of the fixed line `1`, with inert padding before the final user instruction. It stays
+constant as output targets vary; actual generation remains bounded by the API allowance. Record
+`output:v3` for prompt-only probes and `output:v3:min_tokens` for the opted-in experiment, retaining
+this flag when a fixed input counterpart is reduced. Fence old output prompts and different
+minimum controls from comparable boundary history. Verify at least three lines, each exactly `1`,
+without prose, compression or ellipses; missing/inconsistent usage and reasoning-only replies
+remain inconclusive. The minimum setting suppresses natural EOS but does not enforce ascending
+count accuracy, so repeated fixed text avoids an answer restarting its count. Configured-route
+output calibration retains its ascending fixture and parser. Preserve legacy artifacts as diagnostics;
+never upgrade them. Input history/parser identities remain unchanged. The builder must reject
+any mismatch between the charged request's recorded control and the endpoint/model capability.
+
+Report valid natural stops explicitly as `output_stopped_early`, still inconclusive. Failed
+output response previews retain both beginning and ending inside the existing redacted, escaped
+128-character allowance, so a deliberate closing remark or abbreviation is visible without
+retaining full responses or reasoning. Acceptance covers exact served-route opt-in, other models
+and hosts excluded, bounded output-only parameters, forged/mismatched controls, old-history
+fencing, early-stop classification and redaction. The approved file plan additionally includes
+`providers/nvidia.py`; use the existing `rules.py`, `probe.py`, `discovery.py`, `reconcile.py` and
+their tests, with no new API endpoint, dependency, Worker or production catalog edit.
+
+**Approved streamed output transport (2026-10-13).** The purpose of this workflow remains
+new-route onboarding: reachable free candidates, validated JSON methods, provider claims and
+bounded per-request input/output/combined-cap discovery for maintainer review. Sustained rates,
+daily/monthly quota inference, burst/refill behavior and recurring maintenance remain in #2264.
+Neither a timeout nor a framing limit is evidence of a refused token size.
+
+Run 38341337478 revalidated 16,384 twice and admitted 24,576 under `output:v3:min_tokens`;
+36,864 returned HTTP 504 at roughly 303 seconds without usage. Buffered completion latency is a
+plausible transport bottleneck, not a proved intrinsic model ceiling. A paused local streamed
+4,096-token probe returned final usage (2,478 input, 4,096 completion, 6,574 total, 646 reasoning),
+`length` and a valid fixture; first data arrived at 348ms. Its decoded stream used 1,334,918 bytes,
+about 326 bytes per completion token. The existing 4-MiB aggregate ceiling would prevent larger
+streamed probes despite their small assembled answers. The maintainer explicitly approved this
+byte-bound extension while preserving token/call/time budgets and correct served-route scope.
+
+Add default-off `ProviderRules.discovery_output_stream_usage(endpoint, model)`, separate from
+minimum-generation support. Initially register only the same verified NVIDIA hosted Lightning
+endpoint/model combination. On those discovery output calls send `stream=true` and
+`stream_options.include_usage=true`. Input probes, reachability/JSON checks, configured-route
+calibration and Worker/direct dispatch retain their current paths. Unsupported/ignored streaming
+or missing final usage is inconclusive; no silent buffered fallback. Primary references:
+[NIM API](https://docs.nvidia.com/nim/large-language-models/2.0.10/reference/api-reference.html) and
+[vLLM stream options](https://docs.vllm.ai/en/v0.14.1/api/vllm/entrypoints/openai/protocol/).
+
+The discovery-only incremental collector caps decoded HTTP stream data at 64 MiB, pending SSE
+frames at 128 KiB, events at 1,000,000 and the assembled/normalized response at the existing 4 MiB.
+Discard framing, redundant metadata and reasoning text after validating each event. Preserve UTF-8
+across split chunks and delimit only with wire LF/CRLF, never Unicode line splitting. Require a
+complete `[DONE]` stream, one final usage object after finish, and a consistent finish reason.
+Once the terminal message is validated, close without waiting for HTTP EOF. Reject further
+content after finish and conflicting/post-terminal data already present in the collected chunk. Error envelopes,
+bad choices/deltas, conflicting usage/finish, post-terminal data, unfinished frames, invalid UTF-8,
+overflows and cancellations cannot establish capacity. Keep process admission/preflight,
+600-second hard cancellation, cleanup, provider pause and the 20-minute session unchanged.
+
+Record optional bounded `stream_bytes` / `stream_events` in discovery observations and issue
+telemetry, separately from compact `response_bytes`; these count decoded framing data, not billed
+or compressed network bytes. Legacy artifacts default to absent metrics. Never persist the raw
+stream, full answer or reasoning. Failed completed output retains the existing bounded/redacted
+preview; verified repeated output clears it. Stream delivery changes no prompt, fixed counterpart,
+minimum-generation control, usage-count meaning or boundary coordinate, so compatible
+`output:v3:min_tokens` history remains valid and receives the reviewed baseline checks below.
+New provider/route opt-ins require documented semantics and independent streamed final-usage
+verification; minimum support alone never implies streaming support.
+
+Use existing `rules.py`, `probe.py`, `discovery.py`, `providers/nvidia.py`, `reconcile.py`,
+`issue.py` and their tests, plus lifecycle docs. No dependency, Worker endpoint/schema, credential,
+production YAML, route activation, token ceiling or timeout change. Acceptance covers split
+UTF-8/CRLF and multiline SSE, large discarded metadata with a small retained answer, every byte/
+event bound, malformed or partial terminal evidence, safe cancellation, exact route exclusion,
+optional metric compatibility/sanitization and verified-output preview suppression. A bounded
+larger local test precedes the implementation PR; GitHub verification follows maintainer merge.
+The initial streamed 36,864-token local attempt hit the 600-second subprocess deadline without
+final usage, so it established no size bound. That test does not identify the provider timeout's
+root cause. Review also found the collector must stop at DONE rather than HTTP EOF; the corrected
+terminal behavior has an explicit non-closing HTTP-stream regression. Retain the existing verified
+24,576 lower bound and the escape-hatch result rather than asserting a larger intrinsic cap.
+A final local 4,096-token test of incremental parsing and DONE termination succeeded: 2,481 input,
+4,096 completion, 6,577 total, 945 reasoning, `length`, 1,575 valid lines; 1,321,516 decoded stream
+bytes / 4,002 events became a 5,181-byte compact envelope. First data arrived at 934ms and the
+call took about 103 seconds. This validates streamed final usage, not a 36,864-token boundary.
+Transport timing diagnostics use the authorized deadline rather than clipping discovery durations
+to the configured-route 120-second ceiling. No timeout ceiling change is included here.
+On 2026-10-13 the maintainer approved one paused local diagnostic at the same 36,864-token
+size with a 1,200-second deadline. The diagnostic varies time alone, retains the existing token
+and one-call budgets, and changes no committed workflow or production timeout. Its result must
+be recorded as completed usage evidence or an inconclusive failure, never a numerical refusal.
+The approved test received HTTP 200 with first data at 359ms, 7,537,360 streamed bytes and
+22,977 events, then failed SSE envelope validation after 600.216 seconds. The local call allowance
+was 1,200 seconds; this was not its hard cancellation. No final usage or finish was retained,
+and the offending event shape was not retained, so an upstream timeout is a hypothesis rather
+than a verified cause. No higher cap or numerical refusal was established. The provider pause
+was released and read-only status confirmed zero in-flight calls and no active pauses. Keep the
+600-second production ceiling and the verified 24,576 lower bound; do not raise timeouts based
+on this result. A future diagnostic must distinguish invalid event shapes before attributing
+the failure to a provider or endpoint.
+
+The v2 Worker provider pause remains mandatory. It stops repo-managed dispatch to all routes for
+that provider, drains in-flight jobs, and is renewed before calls and waits. It cannot pause other
+clients using the same upstream account. The maintainer explicitly accepted this bounded first
+canary with unknown/shared provider quota scope because the route is not yet configured for
+repo-managed jobs. The existing 64-submission, token-reservation and 20-minute session limits still
+apply; known published or configured limits and provider cooldowns are honored. Unknown scope and
+unreported quotas stay labeled unknown; this change does not infer or publish quota values.
+
+Authenticated `/apply` retry receipts remain restricted to the exact new candidate and its saved
+history. The daily workflow may resume an explicitly approved retry, but it does not scan fresh
+candidates for size discovery. The weekly schedule remains discovery-off. After reviewing the first
+route's reachability, usage, cap brackets, scope uncertainty, spend, deferrals and pause evidence,
+broader scheduled discovery requires a separate reviewed activation change. No config values are
+automatically added or changed.
+
+#### 8.13.6 Closed implementation plan and acceptance
+
+The three-axis acceptance below records the original offline planner/diagnostic contract. Current
+automatic route-addition activation is input-only as amended above. Its acceptance additionally
+requires weekly-only trusted selection, strict AA/free/reachability/JSON gates, authenticated
+input-evidence projection into the addition PR, and fail-closed removal regressions.
+
+Allowed implementation files and responsibilities:
+
+- New `citypods/provider_catalog/discovery.py`: immutable admission/request/observation/session
+  types, pure three-axis planner, bounded runner, checkpoint journal and retry/session fencing.
+- `citypods/provider_catalog/probe.py`: discovery fixture builder and distinct bounded
+  `measure_discovery` transport; preserve configured-route admission and transport limits.
+- `citypods/provider_catalog/evidence.py`: versioned discovery artifacts, authenticated history
+  and retry receipts, bounded reads and compatibility validation.
+- `citypods/provider_catalog/rules.py`, `providers/groq.py`, `providers/openrouter.py`: pure
+  discovery parser/capability callbacks, exact usage/error semantics and unsupported defaults.
+- `citypods/provider_catalog/reconcile.py`: candidate selection, discovery report fields, pause
+  integration, pending daily retry selection and separate budget accounting.
+- `citypods/provider_catalog/issue.py`, `apply.py`: result rendering, mutually exclusive retry
+  choices, required-limit/dependency gating and no guessed provider-canonical facts.
+- `scripts/reconcile_provider_routes.py`: manual single-candidate discovery switch, pause renewal,
+  history/receipt loading, artifacts and shared run deadlines.
+  `scripts/provider_catalog_commands.py`: authenticated retry queueing and result receipts without
+  provider calls; preserve ordinary `/apply` behavior.
+- `.github/workflows/provider-catalog-reconcile.yml`, `provider-catalog-commands.yml`: explicit
+  single-candidate discovery option, existing daily retry selection, bounded artifact uploads and
+  receipt plumbing;
+  existing concurrency/security settings and configured-route canary authority stay intact.
+- New `tests/test_provider_catalog_discovery.py` and
+  `tests/fixtures/provider_catalog/discovery/*.json`; existing catalog evidence/reconcile/apply/
+  config-edit/contract/context tests and `tests/test_workflows.py` cover integration.
+- Lifecycle docs: review/48, review/11, ROADMAP, CHANGELOG; ARCHITECTURE only when implementation
+  introduces the described discovery transport/evidence path.
+
+Do not modify Worker runtime/schema/endpoints, configured-route admission budgets, production
+credentials/catalog/limits, quota compilers, direct dispatcher pacing, AA scoring policy, removal
+or rescue policy. No dependencies, new workflows or automatic cap publication. Quota/refill
+characterization remains review/54, not a hidden prerequisite or side effect.
+
+Offline acceptance must prove all three comparable axes converge to strict 0.5% on deterministic
+provider simulators; rejected-first halving, accepted-first stretching and actual-count estimate
+correction; distinct total mixes and conditional constraints; natural output termination and
+parameter-only admission stay inconclusive; rate/daily failures never become size evidence;
+known budgets, every escape and pause-loss path stop safely; lost requests remain charged;
+checkpoint/restart, stale/contradictory/parser-change revalidation, artifact tampering and failed-run
+history handling; authorized retry idempotency/next-day selection and no `/apply` provider I/O;
+canonical discrepancy/override and schema-dependent addition gating; unsupported current providers
+report honestly; unchanged configured-route admission, automatic rate tightening and dead-route
+recovery. Run full offline Python tests, whole-repository Ruff lint/format and both existing
+`compile_llm_limits.py`/`compile_dispatch_tuning.py` compilers with unchanged generated outputs.
+No live canary is part of offline acceptance. Implement discovery/report/retry first, then integrate
+reviewed addition values after the separate configuration contract, then propose a finite reviewed
+activation and GitHub canary with evidence/rollback before recurring discovery is enabled.
+
+
+Streaming failure diagnostics distinguish provider error events from invalid event types and
+unexpected object tags. Retain only a bounded/redacted provider error in the existing failed
+response preview, never sibling generated content or reasoning. These events supply no capacity
+proof. Discovery capacity-parser reuse omits transport duration/first-byte fields from the
+configured-context evidence projection: that schema retains its 120-second contract, while
+original discovery transport diagnostics keep their actual timings. Long failures must remain
+journalable inconclusive observations, not collapse into a schema ValueError or invalid JSON.
+Regression acceptance includes provider errors, malformed shapes, preview exclusion/redaction,
+and failure projection beyond the configured-context deadline. No extra live call is implicit.
+
+The maintainer approved one repeat local diagnostic with these failure-detail fixes. It stopped
+before any provider submission: `v2/dispatch:pause` returned HTTP 500 with the explicit Durable
+Objects free-tier rows-read exhaustion message. Do not bypass the pause guard or infer a NVIDIA
+size result from this failure. Resume the approved single test only after pause admission works.
+This Worker quota failure is separate from the earlier 600-second SSE-envelope failure.
+
+After the DO rows-read exhaustion blocked pause admission, the maintainer explicitly authorized
+the same single local diagnostic to submit directly without Worker reservation or pause. This
+is a diagnostic-only exception: retain the one-call/token budget and 1,200-second local deadline,
+make no production-path change, and treat quota interference from concurrent traffic as
+inconclusive. Normal discovery workflow admission/pause contracts remain unchanged.
+
+The authorized direct diagnostic completed successfully: HTTP 200, 2,483 prompt tokens,
+36,864 completion tokens including 1,418 reasoning tokens, 39,347 total, and `length`. The
+repeated-output verifier accepted the fixture (17,723 lines). First data arrived at 401ms;
+completion took 311.441 seconds. The 11,964,623-byte / 36,480-event stream normalized to a
+53,626-byte envelope. The observation/journal records a verified 36,864 output lower bound,
+no refused upper bound, and one-call budget exhaustion rather than convergence. The corrected
+long-duration projection preserved the observation; successful output retained no preview.
+This success fits the existing 600-second workflow deadline, so it does not justify increasing
+that deadline or attribute the earlier stream failure to the Worker. The prior provider call
+also used direct HTTP; its Worker interaction was pause coordination. Next GitHub verification
+follows merge, and further boundary search requires its separately authorized bounded run.
+
+
+#### Follow-up: incomplete output-stream terminal evidence
+
+The maintainer approved one direct 55,296-output-token diagnostic, with no Worker reservation or
+pause and the existing 600-second deadline. HTTP 200 began sending data after 44.529 seconds,
+then the stream ended after 250.581 seconds, with 720,244 bytes and 2,168 events but no complete
+terminal evidence. The observation/journal correctly retained `incomplete_sse`, not a size
+refusal. The independently verified 36,864 lower bound remains; no refused upper bound exists.
+Do not increase the timeout to address a stream that already ended before its local deadline.
+
+The approved diagnostic follow-up modifies the existing `probe.py` collector and discovery tests
+only, plus lifecycle docs and a changelog fragment. For incomplete/error streams without a
+provider error explanation, retain a compact terminal-state summary in the existing bounded
+response preview: natural HTTP EOF, DONE seen, finish category, usage presence, pending-frame
+bytes, assembled-content bytes and last event category. Never retain generated or reasoning
+text. A provider error explanation takes priority over that structural summary. Successful
+verified output keeps the existing preview suppression. Normal termination at DONE does not
+claim HTTP EOF. Parent hard cancellation still cannot supply a child's lost terminal state.
+
+Acceptance covers missing DONE/usage/finish, partial frames, strict existing preview size,
+provider-error precedence and no generated-text retention; all evidence remains inconclusive.
+No new artifact schema, request parameters, Worker path, production config, search algorithm,
+budget or timeout changes. Any new live call requires explicit authorization. This diagnostic
+will identify the missing terminal component before further boundary-search changes are chosen.
+
+
+#### Approved follow-up: cancellation-safe streamed discovery progress
+
+After merged #2421, another direct 55,296-token probe reached the existing 600-second local
+subprocess deadline. It saved `worker_response_timeout`; that name identifies the local child,
+not a Cloudflare Worker. No terminal snapshot returned, so it established no size boundary.
+The maintainer explicitly approved payload-free child-to-parent progress on 2026-10-13.
+
+File plan: existing `probe.py`, discovery transport tests, ARCHITECTURE, review/11, review/48
+and one changelog fragment. Streamed discovery only sends typed progress envelopes after
+admission, before requesting headers, after headers and during stream reads. Phase changes
+report immediately; repeated stream-phase reports are throttled to one per five seconds.
+Only bounded structural previews, media/status, elapsed/first-byte timing and capped byte/event
+counts cross this channel. No credentials, URLs, generated text, reasoning, provider bodies or
+usage/cap claims. A snapshot is never a final response or an admission. The parent retains only
+the newest snapshot and recomputes the original remaining deadline after every progress message.
+On hard cancellation it preserves that snapshot with the existing timeout reason and admission
+timestamp, then terminates/joins/kills the child as before. Fields describe the last observed
+state, not guaranteed state at cancellation. Successful final responses replace progress and
+retain existing proof and preview-suppression rules.
+
+Acceptance: a real isolated offline child reports progress then stalls; the parent cancels on
+time and retains payload-free diagnostics. Streaming phase changes and five-second throttling
+are verified; ordinary configured-context paths emit no progress. Existing receipt-before-send,
+hard-cancellation, SSE validity, evidence projection and artifact/issue checks must still pass.
+No artifact schema, provider request, timeout/budget, Worker, production config or search-policy
+change. No new live request is included; repeat diagnostics require explicit authorization.
+
+
+#### Efficient resumed output search — implemented in PR #2424
+
+The maintainer explicitly approved replacing duplicate output baseline calls on 2026-10-13.
+A verified 46,080 output call took 530.423 seconds: two such baselines consume approximately
+1,061 of the existing 1,200-second session, leaving no useful large-probe window. This change
+spends the second call on useful new evidence rather than silently expanding time/token budgets.
+
+Only output changes. Recheck the compatible historical admitted lower bound once. Do not import
+a historical refused upper into current proof: re-test it next when present. A fresh refusal
+sets the current upper; a fresh admission reopens growth; a time/server failure remains partial.
+If the lower is now refused, discard prior boundaries and seek smaller sizes. Existing identity,
+account, endpoint, parser, fixture, count basis and control fences remain binding. Input and
+combined axes retain their two-success contract.
+
+Compatible authenticated failures within the last 24 hours may guide an output retry size,
+never supply a refused boundary. Eligible hints are transport/local timeouts, typed outage
+outcomes, and the observed SSE `Internal server error` diagnostic. Authentication/quota errors,
+expired observations and mismatched controls are excluded. Choose a midpoint between the
+current admitted lower and the nearest failed larger target, capped by the ordinary next target.
+Failures at or below the new admitted lower cease to constrain exploration. Once that retry
+space is within the existing 0.5% precision goal, stop with `output_time_limited_lower_bound`,
+not cap convergence. Expiry lets later approved retries explore upward again.
+
+Use measured successful output duration per actual completion coordinate from the current run
+to estimate whether its next output target fits the remaining session, capped at the existing
+600-second call deadline. If it does not fit, stop before admission with
+`insufficient_output_probe_window`. This is a scheduling estimate only: no numerical route
+limit, blanket cap margin, timing artifact schema or guaranteed latency claim. All 600-second,
+20-minute, call/token and shared-run ceilings bind as before.
+
+File plan: `discovery.py`, existing discovery tests, lifecycle docs and changelog fragment.
+No Worker/runtime, request body, provider parser, history authentication/schema, workflow,
+production limits or configured-route calibration changes. Acceptance covers stale lower/upper
+changes, fresh refusal requirements, time-only hints with no fabricated cap, hint expiry and
+control fencing, slow-run progress and pre-admission time deferral, unchanged input behavior,
+contradictions, checkpoint/budget accounting and all existing offline checks. No live call is
+part of this implementation; local/GitHub canary continuation remains separately authorized.
+
+#### Direct output-discovery evidence after cancellation-safe progress
+
+After merged #2422, the maintainer authorized one direct 55,296-output-token probe with the
+existing 600-second local deadline and no Worker reservation/pause. Its last progress snapshot
+showed HTTP 200, first data at 362ms, 16,532,085 decoded stream bytes and 50,440 events. The
+structural state was `phase=streaming eof=0 done=0 finish=missing usage=0 pending=0`, with
+49,512 retained content bytes. The parent cancelled at 600 seconds. This preserves evidence
+that streaming had been progressing; it supplies no provider token counts or size refusal.
+
+The maintainer then approved one same-size direct diagnostic with a 1,200-second local deadline.
+It received HTTP 200 with first data at 485ms, 17,778,319 streamed bytes and 54,246 events, then
+the provider sent an SSE error message, `Internal server error`, after 600.298 seconds. The
+local timeout did not cause this error: its deadline was 1,200 seconds. No finish, usage or
+verified output count returned. The journal retained an inconclusive `provider_sse_error`.
+The repeated approximately 600-second timing suggests an upstream execution time limit, but
+the generic message does not prove a particular timeout mechanism or an intrinsic model limit.
+Attribute the observed error to this hosted endpoint/route, not every NVIDIA model or provider.
+
+Do not increase production timeouts on this evidence, infer tokens from event/text counts, or
+insert 55,296 as a refused upper bound. The independently verified 36,864 output lower bound
+remains; the upper bound is unknown. A smaller future probe can seek another verified lower
+bound without converting this timing failure into a size bracket. True 0.5% cap convergence
+still requires an independently verified numerical size refusal; otherwise retain partial
+evidence and the existing escape/resumable discovery contract. No new live call, search-policy
+change, deployment or production timeout change is authorized by this evidence record.
+
+
+The maintainer then authorized a smaller direct 46,080-output-token probe at the unchanged
+600-second deadline. It completed successfully: HTTP 200, 2,474 prompt tokens, 46,080 completion
+tokens including 1,138 reasoning, 48,554 total, `length`, and a verified repeated-output fixture
+with 22,471 lines. First data arrived at 356ms; total duration was 530.423 seconds. The stream
+had 15,080,780 bytes and 46,007 events, normalized to a 67,870-byte response. The local
+observation/journal records an admitted coordinate of 46,080 with completion-including-
+reasoning semantics; successful output retained no preview. This raises the verified lower bound
+to 46,080 but supplies no refused upper bound or 0.5% convergence. Transport time failures at
+55,296 remain incomparable to numerical size refusals. Do not publish a true maximum from them.
+The one-call diagnostic budget stopped normally; no automatic retry or production change.
+
+
+The revised output-search implementation in merged #2424 was exercised locally in a single
+bounded 20-minute diagnostic, using prior reviewed local records only as diagnostic hints,
+not authenticated GitHub history. It sent exactly two direct calls with no Worker interaction:
+
+| Target output | Provider prompt | Completion (reasoning included) | Reasoning | Finish | Duration |
+| --- | --- | --- | --- | --- | --- |
+| 46,080 revalidation | 2,477 | 46,080 | 913 | length | 499.033s |
+| 50,688 new probe | 2,477 | 50,688 | 1,025 | length | 513.217s |
+
+Both repeated-output fixtures verified. Total charged usage was 4,954 input and 96,768 output
+tokens across two calls, within the original ceilings. The runner stopped before a third
+admission with `insufficient_output_probe_window`, rather than submitting a call with a shortened
+timeout unlikely to complete. Its final bracket records admitted 50,688, refused unknown,
+completion-including-reasoning count basis and partial status. No numerical upper or 0.5%
+convergence was inferred from time failures. Successful observations retained no preview.
+The lower bound is diagnostic evidence only, not a production config change. Separate GitHub
+canary verification must obtain its own authenticated history and still use its admission guards.
+
+
+#### Approved one-hour discovery sessions
+
+The maintainer requested an initial one-hour session ceiling so slow output searches can refine
+more sizes per run. This supersedes historical 20-minute/40-minute timing references above.
+Set the existing runner's session ceiling to 3,600 seconds, subtracting original checkpoint
+elapsed time exactly as before. An explicit earlier caller deadline still binds; restarting
+does not grant a fresh hour. At most two candidate sessions allow 120 minutes of discovery
+work per reconciliation run. No per-call extension: the 600-second transport ceiling stays.
+All 64/128 call, five-no-response, 8M/16M input and 524,288/1,048,576 output ceilings stay.
+Revalidation, hint expiry, size proof and time-window admission guards stay unchanged.
+
+The manual discovery-enabled workflow receives a 180-minute enclosing timeout to leave room
+for discovery, health/drain work, evidence upload and cleanup. Ordinary reconciliation keeps
+120 minutes. Candidate count/provider selection, pause lease and renewal, artifact retention,
+workflow permissions and provider parameters are unchanged. This extension does not turn
+provider errors/timeouts into size refusals or promise true-cap convergence on every route.
+
+File plan: `discovery.py`, the existing reconcile workflow, discovery/workflow tests and lifecycle
+docs/changelog. Acceptance proves more than two slow successful refinement calls fit the default
+hour, all existing numeric budgets bind, checkpoint elapsed time persists and explicit shorter
+deadlines remain effective. Update the expired-checkpoint golden test to use the new ceiling.
+No Worker, quota, production-config, parser or dependency changes; no live calls in acceptance.
+
+
+#### Worker-aligned discovery deadline and full-axis continuation
+
+The maintainer approved a 720-second discovery per-call ceiling, matching the v2 dispatch
+executor's default `MAX_RESPONSE_SECONDS=720`. This supersedes earlier 600-second discovery
+ceiling references; historical measurements above retain their actual deadlines. The one-hour
+session, shorter explicit deadlines, admission guards and call/token budgets still bind.
+Timeouts remain operational failures, not numerical size refusals or published model caps.
+The existing manual `discovery_axis=all` default selects input, output, total-input-heavy and
+total-output-heavy searches for supported route parsers. The next full-axis run must select
+`all`, rather than repeat the previous output-only selection; unsupported axes remain explicit.
+No Worker configuration changes or live workflow dispatch are part of this change. File plan:
+existing discovery runner, discovery tests, workflow input help and lifecycle docs/changelog.
+Acceptance checks the 720-second cap, shorter deadline clipping and all-axis selection wiring.
+
+Discovery pause failures retain allowlisted control operation, HTTP status or transport class
+and chained exception class in the existing stop reason, excluding URLs and response bodies.
+This approved diagnostic change uses discovery.py and its tests only; no control retry or
+provider call is added. The approved combined-axis contract below resolves the earlier
+consumption-versus-reservation question and requires filled-output generation proof.
+
+
+#### Approved combined request-cap eligibility evidence
+
+For queue eligibility, enforce input <= input cap, requested output <= output cap, and
+input estimate + requested output <= total cap whenever each corresponding cap is configured.
+Reuse existing tokenizer calibration; add no blanket margin. Provider completion allowances
+include reasoning where counted. Discovery's combined coordinate is provider-counted input
+plus requested output, not an early-stopped usage total. Recognized shared-chat routes support
+both combined mixes with `reservation-v2` controls and the varied-row fixture. A passing proof
+requires final consistent usage, a length finish and at least the requested output. Output text
+correctness is irrelevant. These approved follow-ups supersede the original `reservation-v1`
+repeated-line/exact-fill gate.
+An explicit context overflow must name input/output/total counts whose sum matches the request;
+output-field validation or input-only rejection cannot establish a combined upper bound.
+Short/empty length completions report `combined_output_clipped` and their actual total as a
+diagnostic only. Ordinary early stopping remains inconclusive. No clipped completion alone
+becomes a numerical refusal. Both mixes remain independent, conditional brackets; reaching
+the output ceiling may leave the output-heavy upper unknown. Unknown protocols stay unsupported.
+File plan: existing discovery runner/control, probe fixture builder, shared chat parser, NVIDIA
+adapter and discovery tests, plus lifecycle docs/changelog. Existing workflow `all` selects these
+axes; deadlines, budgets, pauses, history authentication and production caps remain unchanged.
+The configured Worker/direct eligibility changes are outside this discovery-only implementation.
+
+Approved discovery recovery fixes preserve compatible provider-count calibration across resumed
+searches, recognize exact token refusals with harmless request-shortening advice, and keep both
+ends of redacted errors within the same preview ceiling. Pause-control POST transport failures
+get at most one immediate retry; provider submissions/admission/reservations and HTTP failures
+do not retry. File plan extends existing discovery/rules/probe/pause client and corresponding
+tests. A second control failure still stops safely; no cap/Worker schema/production config change.
+
+New-route discovery uses a shared chat response interpreter before optional provider extensions,
+without requiring route-specific parser registration. All four axes are attempted; actual counts,
+consistent usage arithmetic and explicit summed refusals remain proof requirements. Unknown API
+formats stay inconclusive. Transport/auth formatting and minimum-output/streaming capabilities
+stay provider-owned and are never guessed. Parser identity gains shared-chat-v1 fencing. Existing
+reconcile/rules modules and discovery tests implement this approved generalization; no runtime
+config/cap changes. Selected small unconfigured diagnostic candidate: NVIDIA nvidia/mistral-nemo-minitron-8b-8k-instruct,
+currently catalog-listed, with an 8K model context claim to verify, not a proven route cap.
+
+CLI review raised a concern about generic reasoning/combined assumptions. The shared interpreter
+is deliberately restricted to the recognized chat protocol's prompt/completion/total fields,
+consistent arithmetic and actual filled output; it does not project these semantics onto native
+or unknown envelopes. Exact output-parameter refusals are labelled requested_output on other
+axes so they can reduce fixed counterparts without creating combined bounds. Provider names and
+model allowlists do not grant size proof. This retains discovery for unseen routes while failing
+closed on undocumented shapes and ambiguous counts.
+
+A maintainer-authorized next direct session resumed from those local diagnostic observations.
+It revalidated 50,688 completion tokens (734 reasoning, 2,485 prompt, `length`) in 557.930
+seconds, then verified 52,992 completion tokens (1,198 reasoning, 2,485 prompt, `length`) in
+525.385 seconds. Both repeated-output fixtures passed. It sent exactly two calls, charged
+4,970 input and 103,680 output tokens, and stopped before a third admission with
+`insufficient_output_probe_window`. The verified local output lower bound is now 52,992, with
+unknown numerical upper and partial status. The next retry-hint midpoint would be 54,144; that
+value is not measured evidence or an authorized automatic next call. No Worker interaction,
+production publication or GitHub-history authentication was introduced. Local evidence remains
+diagnostic only; the workflow must obtain its own authenticated observations.
+
+
+The next maintainer-authorized direct session revalidated 52,992 output tokens (1,272 reasoning,
+2,484 prompt, `length`) in 550.353 seconds, then verified 54,144 output tokens (1,104 reasoning,
+2,484 prompt, `length`) in 551.162 seconds. Both fixtures passed; the two calls charged 4,968
+input and 107,136 output tokens. Again, `insufficient_output_probe_window` stopped the runner
+before a third admission. The verified local lower bound is now 54,144, with no numerical
+refused upper or true-cap convergence. The next unmeasured hint target would be 54,720. This
+continues the same reviewed diagnostic exception and changes no production limits or authority.
+
+
+The first local one-hour search after merged #2426 completed four direct calls in about
+39 minutes, without Worker reservations or pauses. Prior local records were diagnostic hints
+only; this does not establish authenticated workflow history.
+
+| Output target | Result | Actual completion | Reasoning | Duration |
+| --- | --- | --- | --- | --- |
+| 54,144 | verified, length | 54,144 | 881 | 528.748s |
+| 54,720 | verified, length | 54,720 | 1,001 | 588.610s |
+| 55,008 | local deadline, still streaming | unknown | unknown | 600s |
+| 54,864 | local deadline, still streaming | unknown | unknown | 600s |
+
+Both successes reported 2,476 prompt tokens. The two cancellations retained HTTP 200 and active
+streaming diagnostics with no finish or final usage; `worker_response_timeout` names the local
+transport subprocess here, not a Cloudflare Worker failure. The planner reduced the next size
+after the first timeout and stopped with `output_time_limited_lower_bound` after the second.
+Its final bracket is admitted 54,720, refused unknown, partial, with target width 274.
+The 144-token distance to the latest failed target is not a verified refusal bracket or true
+0.5% cap convergence. Charged/reserved totals were four calls, 9,048 input and 218,736 output
+tokens; canceled calls have no actual final usage. The hour allowed four attempts in one session,
+but the unchanged per-call deadline still limits proof for slow generation. No production cap
+was published and no additional call was automatically started after the escape.
+
+Explicit manual discovery selections now retain terminal eligibility evidence even without a
+retry receipt. Absent, ignored, configured or unverified-free selections make no size calls;
+artifacts report the reason rather than silently succeeding empty. Existing reconcile/tests
+and lifecycle docs implement this reporting fix; free-route gates remain unchanged. Run
+38583807252 skipped the small Minitron route because current Build Catalog lacks free evidence.
+
+Reachability failures now log bounded exception-class chains and awaiting-headers/reading-response
+phase, plus any received HTTP status. Logs exclude exception text, URLs, credentials and response
+bodies. Existing canary transport/timeouts and free-route eligibility remain unchanged. The
+shared probe module and reconciliation tests implement this authorized diagnostic extension.
+
+
+### Local convergence correction — approved 2026-10-14
+
+This contract supersedes the repeated-line content gate above for **new-route discovery only**.
+The maintainer confirmed that the goal is output token capacity, not exact text reproduction.
+Existing structured-output qualification and configured-route calibration proof are unchanged.
+
+- Shared chat parsing (`rules.py`) accepts output capacity from a completed successful response,
+  consistent positive usage (including reasoning where defined), valid response shape and length
+  termination. Text may differ from the repeated-line fixture or be empty when the provider
+  accounts for generation; refusal/tool calls, invalid usage, natural stops and partial streams
+  remain inconclusive. Successful text is not retained. Fixture mismatch is diagnostic only.
+- Combined reservation proof still requires actual output to fill the **entire requested** output
+  allowance. Both mixes remain conditional on the fixed opposite dimension. Clipping does not
+  establish a refused upper: output rechecks the generated size, then stops on repeated clipping;
+  combined input-heavy reduces its fixed output, while output-heavy rechecks the clipped amount
+  with a smaller fixed input when necessary. Changed counterparts fence history by control.
+- Approximate proxy counts and typed count-free size refusals guide halving/midpoint requests in
+  `discovery.py`; they never become exact provider-counted upper bounds. Resume may reuse those
+  compatible target hints. Reaching a 0.5% hint gap reports `size_refusal_unmeasured_upper`, still
+  partial with unknown numerical upper. A rejected minimum input can reduce its fixed output.
+- Explicit daily/monthly request/token exhaustion defers the session; it does not measure a cap
+  or change configured quotas. Other 429 handling remains bounded. No daily limit is exhausted
+  intentionally and no throughput/refill characterization is added.
+- Selected supported axes receive equal shares of remaining wall time, redistributing unused
+  time to later axes without extending the one-hour session or 720-second per-call ceiling.
+  Current output generation cost also gates combined admissions. Exhausting one axis's time
+  leaves its bracket partial and allows the next axis to run; five consecutive no-response
+  attempts across axes still terminate uncertain, with every retry group reported.
+
+File plan: existing `citypods/provider_catalog/discovery.py`, `rules.py`, discovery acceptance
+tests, this doc, review/11, ARCHITECTURE and a changelog fragment. No Worker, schema, endpoint,
+provider YAML, transport capability, workflow inputs, dependencies or production cap edits.
+Configured routes can be exercised by authorized direct local diagnostics using the same engine;
+the production reconciliation workflow remains focused on newly discovered routes. Acceptance
+covers clipped output/recheck escape, both combined mixes, text-independent proof, approximate
+refusal guidance, daily/monthly deferral, all-axis time fairness and shared no-response bounds.
+
+Local evidence (diagnostic only, not authenticated workflow history):
+
+| Route | Observed result | Interpretation |
+| --- | --- | --- |
+| OpenRouter Liquid LFM 2.5 2.6B free | 13 input calls; 46,759 native input admitted | Refusals say “about”; numerical upper unknown |
+| Same Liquid route | Requested 16,384; generated 8,192 with length finish | Output lower bound; fixture mismatch must not reject capacity |
+| Groq GPT-OSS-120B configured | Count-free size refusals, then explicit TPD exhaustion | Smaller-request guidance; no capacity boundary or TPM inference |
+| NVIDIA Riva Translate 4B v2 | Read timeout awaiting headers | No size evidence; no parser guess |
+| OpenRouter Gemma 4 26B configured | One fresh output call returned HTTP 429 | Quota deferred; no capacity evidence |
+
+The first configured Gemma harness attempt stopped before sending because a temporary diagnostic
+journal path belonged to another session. Unique session paths fixed the harness; the real journal
+correctly rejected the identity mismatch. No production journal behavior needed changing.
+
+The updated local Liquid output search completed three calls: requested 16,384/generated 8,192,
+requested/generated 8,192, and requested 12,288/generated 8,192. All ended with length and
+consistent usage, with fixture mismatch reported diagnostically and no successful text retained.
+It stopped `output_clipped_lower_bound`, admitted 8,192/refused unknown, rather than retrying
+unproductive text validation. Its reserved totals were 6,144 input and 36,864 output tokens.
+
+A subsequent three-call output-heavy combined search requested 16,384, 8,192 and 13,092 output
+tokens. The first clipped to 8,192; the second filled all 8,192 and reported 1,901 input tokens,
+proving a conditional combined lower bound of 10,093. The third clipped to 8,192 with 2,051 input.
+The planner stopped `combined_output_clipped_lower_bound` with no numerical refused upper.
+Those clipping replies do not establish the model's total context maximum. All returned length.
+The configured Gemma 429 was not retried; no further Groq calls followed daily exhaustion.
+
+CLI review found one valid ordering issue: an approximate-size hint could override a required
+fresh baseline or exact historical upper recheck. Explicit rechecks now take precedence; regression
+tests cover both cases. This correction applies to all providers through the shared planner.
+
+The three-call input-heavy combined check clipped the initial 16,384 output allowance to 8,192,
+then reduced the fixed output and fenced the control with `:opposite=8192`. Two subsequent filled
+replies reported 9,814 and 18,904 input tokens plus 8,192 output, proving conditional combined
+lower bounds of 18,006 and 27,096. It stopped at the deliberately smaller local three-call budget,
+with no refused upper. No normal workflow default seed, production cap or activation was changed.
+
+
+### Seeded discovery and early-stop recovery — approved 2026-10-14
+
+After merged #2436, Liquid workflow 38617709662 passed reachability/JSON and produced input
+46,756, output 8,192, combined input-heavy 62,814 (fixed output 8,192), and output-heavy 10,089
+lower bounds. Refusals used approximate counts and output clipped, so numerical uppers remain
+unknown. It spent 33 size plus five qualification calls and reserved 2,061,216 input/410,398
+output tokens; no transport/pause failure occurred. One natural combined stop was inconclusive
+until its next request filled output. These are workflow-authenticated observations.
+
+NVIDIA GPT-OSS-20B workflow 38619484923 passed free/chat/JSON gates but all four size searches
+stalled after three identical targets each (12 size plus five qualification calls; 1,518,432
+reserved input/196,608 output). Input returned a computed negative `max_tokens` error; output
+and both combined mixes ended naturally short of their allowance. No cap was fabricated.
+The same model reproduced both behaviors directly on this machine: the 500k input returned
+HTTP 400 with negative budget, and a 16,384-output request generated 4,109 then stopped. Thus
+this is a route/response convergence gap, not evidence that GitHub alone causes the failure.
+Prior successful local tests were mostly Liquid, a different provider/model.
+
+The maintainer requested shared fixes and published LiteLLM limits as starting points:
+
+- In existing `rules.py`, narrowly recognize a matching negative computed output-budget error
+  on HTTP 400. It supplies **smaller-input guidance**, no exact cap/count. Input-heavy searches
+  halve their target; output-heavy searches reduce the fixed input and fence its control.
+- In `discovery.py`, a valid natural stop may select a smaller next output allowance, bounded
+  to three recovery attempts per axis. It never proves a passing size or upper bound itself.
+  Only a fresh length-terminated valid usage reply establishes output capacity; combined still
+  must fill all requested output. Existing lower bounds guide smaller upward probes instead of
+  discarding known passing output. Counterpart changes reset incompatible history/control.
+- In `reconcile.py`, read the installed LiteLLM package's bundled cost/context map without
+  importing the SDK or fetching its remote map. Use only exact provider-qualified entries with
+  matching `litellm_provider`; NVIDIA's namespace is `nvidia_nim`. Missing entries, malformed
+  data or absent dependency use normal defaults. Never borrow another host's same-model limits,
+  strip free suffixes, or infer input/output from legacy ambiguous `max_tokens`.
+- Provider API claims take precedence over LiteLLM starting hints. Clamp initial targets to
+  existing per-dimension ceilings. Combined targets are experimental mixes, not inferred
+  combined proofs from LiteLLM. No hint pre-populates a bracket or creates cap evidence.
+- Existing `issue.py` reports exact LiteLLM key, installed package version and input/output
+  values separately from provider API claims and measured brackets, including explicit missing
+  matches. Fresh reports and history-built reports both include the metadata. Journal/evidence
+  schema, admission, workflow inputs, limits, credentials, production config and dependencies
+  are unchanged. The workflow pins LiteLLM 1.105.0; the initial local environment had 1.83.7,
+  so catalog-version differences must be visible rather than silently treated as route proof.
+
+File/test plan: the four existing modules above, discovery/reconciliation tests, this document,
+review/11, ARCHITECTURE and a changelog fragment. Acceptance covers strict negative-error
+recognition without numerical bounds, target halving/fixed-input reduction, smaller-output
+recovery and finite escape, exact provider metadata matches, legacy-field exclusion, provider
+claim precedence, seed ceilings, offline package lookup and separate issue reporting. No new
+provider/model-specific parsing branch or recurring configured-route maintenance is introduced.
+
+Available output hints also cap the initial fixed output used by input/input-heavy probes,
+with an explicit `:opposite=` control so previous larger-output measurements are not reused.
+The helper only reduces existing counterpart allowances; it cannot raise the budget. Inspection
+of the workflow-pinned LiteLLM 1.105.0 wheel found Liquid at 65,536 input/8,192 output and no
+exact NVIDIA GPT-OSS-20B entry; the older local 1.83.7 snapshot lacked Liquid. This snapshot
+difference is reported, not silently converted into route proof. No local environment package
+was changed during that metadata-only wheel inspection.
+
+With shared recovery changes, six direct local NVIDIA input attempts halved 500k/250k/125k,
+verified 121,055 input, then tried higher midpoint targets with no fabricated refused count.
+Six output attempts first stopped at 1,149, verified that allowance with length, then refined
+upward/downward to a verified 1,292 before the finite early-stop escape. Both remain diagnostic
+lower bounds; no maximum is claimed. No Worker reservation, pause, production cap or setting
+was changed for these explicitly authorized direct local tests.
+
+A four-call local input-heavy combined check also recovered: natural stops at 1,549 and 906
+selected smaller allowances, then two fresh length replies filled 774 requested output tokens.
+They reported 1,937 and 3,317 input, giving conditional combined lower bounds 2,711 and 4,091
+under `:opposite=774`. The local four-call budget stopped further stretching; upper unknown.
+
+
+### Generation-fixture floor and cross-provider diagnostics — approved 2026-10-14
+
+Workflow 38630477016 progressed after #2437: NVIDIA GPT-OSS-20B admitted input 130,607, output
+2,420, and input-heavy combined 8,630 with fixed output 524; all numerical uppers remain unknown.
+The output-heavy early stop at 238 selected a 79-input reservation. Building its next request
+failed locally, without provider work, because the generation prompt exceeded that reservation.
+The workflow completed with retained partial evidence and `measurement_stopped:ValueError`;
+31 calls included 26 size/five qualification, reserving 2,096,237 input/250,389 output tokens.
+LiteLLM 1.105.0 correctly showed no exact NVIDIA entry. Merged #2437 CI and final 6,388 local
+tests were green. The maintainer requested the fix plus bounded local checks on other providers.
+
+Implementation contract in existing `discovery.py`, `probe.py` and discovery acceptance tests:
+
+- Centralize the existing 256-token generation-prompt headroom as a minimum **probe input
+  reservation**, not a provider cap, runtime-job margin or extra charge. Output and both
+  combined request shapers, counterpart reductions, restored history and hints must preserve
+  it. Actual generated-prompt estimation still must fit the charged reservation.
+- Output-heavy recovery can reduce requested output below 256 without shrinking input below
+  the generation fixture floor. Counterpart changes still fence history; unchanged counterparts
+  do not discard comparable proof. Input-heavy combined requests also keep the floor when a
+  halved total target falls below the output counterpart. Pure input-search rules are unchanged.
+- Optional inert padding may not fit its own sentinel minimum in small reservations above 256.
+  Omit only that optional padding for the exact known construction failure, retain the unchanged
+  generation task, and validate the final prompt against its reservation. Other errors propagate.
+  Default 2,048-input fixtures retain their existing padding/content and history compatibility.
+- If typed/computed fixed-input refusal persists at the floor, report a bounded partial stop;
+  never shrink into an invalid prompt. HTTP 401/402/403 defers access without repeated targets
+  or later-axis calls, and supplies no size/retirement evidence.
+
+Acceptance builds the real failed request's successor (256 input plus 238 output), covers small
+reservations from 256 through 2,048, both combined directions, fixed-input refusal floor escapes
+and immediate access deferral. No new provider/model-specific response parser, Worker, schema,
+endpoint, dependency, workflow input, provider YAML or production-cap change is introduced.
+Lifecycle updates use this doc, review/11, ARCHITECTURE and a changelog fragment.
+
+Cross-provider local diagnostics select only current API/plugin-verified free chat routes, reuse
+the shared request builder/interpreter/search and published starting hints, and keep separate
+private journals (not authenticated workflow history). The local batch allows at most two calls
+per axis, 32 calls/16 Mi input/1 Mi output reserved across providers, 90-second local call limits,
+known provider pacing and stop-on-access/quota/outage deferrals. These small budgets test shapes
+and recovery, not complete 0.5% maximum brackets. No Worker reservations or production edits occur,
+consistent with the maintainer's approved direct local testing direction.
+
+The same generation floor also applies **after** provider-count calibration; a native-token
+rescale must not undo initial reservation shaping. CLI review identified that missing clamp;
+the regression uses a prior input-count ratio that would otherwise shrink 256 to fewer tokens.
+The three advisory findings were also addressed: shared sentinel-error constant, explicit
+below-floor builder rejection/other-error propagation tests, and clearer architecture wording.
+
+The local batch selected current free records for Kilo Liquid, SambaNova DeepSeek-V3.2, Airforce
+Gemma3-270M and OrcaRouter DeepSeek-V4-Flash. Kilo returned 8,192 output and filled combined
+requests; approximate size errors remain hints. SambaNova catalog listing succeeded but chat
+returned HTTP 401 (no cap evidence); Airforce returned HTTP 503 (no cap evidence). The initial
+batch began before the access-deferral guard was loaded, so it recorded two SambaNova denials;
+the new guard's regression requires stopping at the first denial. No credentials were changed.
+OrcaRouter reported completion counts above its requested output, including reasoning; those
+actual output counts prove generation. The maintainer approved accepting at least the requested
+output on a length finish as combined lower-bound proof, retaining actual counts separately. No numerical
+upper is inferred from these observations. Final per-axis results are recorded with the PR.
+
+A targeted extra OrcaRouter size-error capture (one call, still inside the aggregate call/token
+allowance) identified typed `metadata.reason=err_free_prompt_cap` with explicit text that the
+prompt exceeds the free tier's single-request size. Existing shared `rules.py` now emits
+input-size guidance without a numerical bound; the planner reduces input or its fixed input
+counterpart and applies the same fixture-floor escape. It does not reinterpret this as TPM/RPD
+exhaustion, buy credits, follow the response URL, or alter free-route eligibility. Tests cover
+matching typed evidence, a different reason that must remain unknown, and target reduction.
+
+The completed local batch used 19 calls (plus the one targeted OrcaRouter error capture):
+
+| Provider/model | Measured lower bounds or stop |
+| --- | --- |
+| Kilo Liquid free | output 8,192; output-heavy combined 10,086; input-heavy combined 31,889 |
+| SambaNova DeepSeek-V3.2 | chat HTTP 401; no capacity proof |
+| Airforce Gemma3-270M free | HTTP 503; no capacity proof |
+| OrcaRouter DeepSeek-V4-Flash free | output 27,278; free prompt cap lacks numerical counts; combined overfilled length replies prove the requested reservation |
+
+The batch charged/reserved 1,858,544 input/300,300 output tokens; the targeted capture reserved
+500,000/16,384 more, within the declared aggregate ceilings. No numerical upper was established.
+Raw error capture was private and bounded; no key or credential was printed or modified.
+Combined proof accepts provider-reported output at or above the requested allowance with a
+length finish and consistent usage. The coordinate remains input plus requested output; actual
+consumption is recorded separately. Clipped replies and natural stops remain inconclusive.
+This maintainer-approved change avoids discarding overfilled replies without inferring an upper.
+The local observations are diagnostics, not authenticated workflow history, and do not publish any production cap.
+
+The follow-up CLI review found a valid precedence issue: collector diagnostics may classify
+`free_rate_limited` broadly as quota before examining the explicit typed prompt-cap reason.
+That narrowly recognized HTTP 400 input-size evidence is now checked first. Regression cases
+include `provider_error_class=rate_limited`; a different typed reason still remains quota,
+so true throughput/daily errors are not reclassified as context proof.
+
+### Varied output elicitation and negative-budget replay — approved 2026-10-14
+
+The maintainer requested local generic output-elicitation improvements and offline negative-budget
+checks after merged #2439. Workflow 38646666670 completed without the old prompt-floor exception:
+input 130,617, output 2,722 and input-heavy combined 131,021 (246 fixed output) were verified
+lower bounds. Output-heavy replies stopped voluntarily. No exact refused upper was established.
+The installed LiteLLM 1.105.0 snapshot has no exact NVIDIA GPT-OSS-20B entry. These are not caps
+published by NVIDIA or values to apply automatically to runtime configuration.
+
+Replace the shared repeated-single-line generation task with numbered, varied data rows. Keep
+that task fixed across output targets and both combined mixes; output text correctness remains
+irrelevant to capacity proof. Valid consistent provider usage and a length finish remain required.
+Combined proof still requires at least the requested output, retains actual usage separately and
+uses provider input plus requested output for its coordinate. A voluntary stop, timeout or size
+hint never creates a numerical upper. No minimum-generation capability is added or broadened.
+
+Fence the new task with `output:v4` (and existing capability suffixes) and combined
+`reservation-v2` controls. Previous output/combined observations are diagnostic history only;
+charges remain consumed. Input-only history remains comparable because its fixture is unchanged.
+This deliberately trades another fresh baseline for honest comparison across different tasks.
+
+File plan: existing discovery.py, probe.py, rules.py and discovery tests; review/11, this document,
+ARCHITECTURE and a changelog fragment. No Worker, production configuration, endpoint/schema,
+dependency, quota, timeout, workflow step/input or recurring-maintenance change. Acceptance covers
+fixed task/padding/headroom, below/equal/overfilled count-based proof, malformed usage, tool calls,
+natural stops, old output/combined history exclusion and retained input comparability.
+
+Offline replay of the observed negative-output-budget error family covers deficits 63, 423,
+1,143, 6,918 and 352,879, both output field spellings and three provider adapters. Mismatched
+parameter/value pairs and zero are rejected as that typed guidance. These messages identify an
+unusable request but do not supply an independently measured input count or context cap. They
+continue to guide smaller requests without filling a refused bracket or claiming convergence.
+
+Local prompt comparison: NVIDIA GPT-OSS-20B counted to 1,692 output tokens then stopped on a
+4,096 allowance; varied numbered rows reached all 4,096 with a length finish. Kilo Liquid counted
+to the full 4,096. A separate NVIDIA 8,192 counting attempt hit the explicitly shorter local
+120-second diagnostic timeout, proving no cap. Those comparison calls omitted inert padding;
+subsequent acceptance uses the normal padded shared builder. All are authorized direct local
+diagnostics, without Worker admission or production changes, not authenticated workflow history.
+
+CLI review identified a stale earlier combined-proof paragraph. Updated that active contract to
+reservation-v2, at-least-requested generation and text-independent proof; the historical measured
+repeated-line results above remain point-in-time records. This is a documentation correction,
+not another parser or runtime change.
+
+Normal padded-builder validation reached NVIDIA GPT-OSS-20B 4,096 output (1,910 input) and
+Kilo Liquid 8,192 output (1,869 input, 142 reasoning included in output), both length finishes.
+NVIDIA's separate 8,192-output combined call stopped at 2,350 (1,915 input); no bound was inferred.
+A six-call normal output-heavy search then recovered from 16,384 requested / 2,713 stopped to
+802 input + 2,713 requested/generated output (length). Later early stops selected a different
+fixed-input control; the terminal comparable lower was 2,087 (397 input + 1,690 output) under
+`:opposite=364`, with upper unknown and `budget_exhausted`. The earlier 3,515 pass remains a
+verified different mix, not a larger comparable bound for the final control. Search reservations
+were 5,542 input and 28,432 output. No further calls were sent after the six-call escape.
+Reported `stop` does not distinguish model EOS from an undocumented serving-side termination;
+it is not a proved context refusal or evidence that GitHub transport truncated the reply.
+
+Validation: 6,445 offline tests passed (16 live tests deselected), 505 focused discovery,
+reconciliation and contract tests passed, whole-repository Ruff lint/format passed, and both
+compiled catalogs stayed unchanged. CLI review's one valid stale-contract finding was fixed.
+
+### Input-first discovery and approximate-boundary reporting — L3 approved 2026-10-14
+
+The maintainer approved prioritizing input characterization and treating output/combined checks
+as supporting evidence. This supersedes the earlier requirement to converge independent output
+and combined maxima during every route addition; full isolated output search remains optional.
+They explicitly authorized local validation on the same NVIDIA route and one different provider
+before any push. Workflow 38653665370 established input 130,626, output
+4,037 and conditional combined lower bounds, with no numerical refused bounds. This is useful
+approximate input-boundary evidence, not evidence that no boundary was found. Natural output
+stops do not establish output ceilings and must not become restrictive configured caps.
+
+For normal `all` discovery (manual or a queued new-route retry), spend most search effort on input:
+weight remaining wall time 8:1:1 for input/output/input-heavy combined. Keep the one-hour session,
+720-second calls, token/call envelopes, pauses and provider quotas. One fresh output example and
+one fresh input-heavy combined example replace their independent maximum searches. Omit the
+output-heavy maximum search in this profile. Explicit isolated `input`/`output` dispatches retain
+the existing full selected-axis search. The profile is an internal runner argument, not a new
+workflow input or runtime setting. Existing transport/auth/quota safety gates remain binding.
+
+Input keeps verified provider-counted passing/refused brackets and the existing two-success
+history rule. Recheck a compatible historical qualitative input refusal once after baseline
+validation before using it to finish approximate refinement. If it now passes, reopen exploration;
+if it fails without counts, retain a local estimated rejection, not a numerical provider upper.
+Report the largest confirmed passing input with its requested and actual output. Separately show
+the passing/rejected local input estimates and a clearly labelled provider-scale rejected-size
+estimate calibrated through the passing request. These estimates never enter a verified bracket,
+prove exact 0.5% convergence, write configuration, or acquire provider-canonical status. Dates and
+fixed-output controls bind those samples; incompatible route/account/parser/fixture evidence is
+excluded. A missing numerical refused cell must not be described as finding no input boundary.
+
+The fresh supporting combined example targets the confirmed passing input and uses generated
+output from the fresh output example as a generation target when available (bounded by the
+existing counterpart allowance). That choice is experimental, not a configured output limit.
+Calibrate its input reservation using fresh input evidence; use its own final provider counts
+for proof. Keep actual >= requested output with length finish for combined admission. Early
+stops remain inconclusive. An unknown output maximum does not prevent route-addition review.
+Supporting examples do not borrow old output/combined baselines or alter their proof rules.
+
+File plan: existing discovery.py, reconcile.py, issue.py, discovery/reconcile/apply tests,
+provider-catalog-reconcile.yml input-description text only, review/11, ARCHITECTURE and a changelog
+fragment. Advisory issue summaries may add derived input characterization; authenticated
+attempt/session artifacts are unchanged. No Worker, YAML caps, provider/model-specific parser,
+API/schema, dependency or configured-route recurring maintenance change. Acceptance
+covers weighting/call bounds, unsupported input, support failures, history reopening, cross-scope
+rejection exclusion, estimated-vs-actual reporting and preserved selected-axis search. Use the
+shared builder/interpreter/search locally via citypods-env, without Worker interaction; retain
+all successes/failures and never infer a cap from a timeout or natural stop.
+
+
+CLI review identified two valid reporting/calibration concerns. Profile labels now distinguish
+normal input-priority runs, explicit isolated-axis runs and history-only reports. Supporting
+combined checks always use verified fresh primary-input calibration, even when older combined
+measurements exist; old tiny-output controls are excluded from supporting selection. Added
+regressions, including safe rendering of edited advisory input data and a clipped 131,072-total
+example without claiming requested-output capacity. Supporting output uncertainty does not keep
+an exactly characterized input search unfinished: status can be `input_characterized` or
+`input_boundary_estimated`; estimated boundaries remain distinct from exact convergence.
+
+Local direct acceptance on NVIDIA GPT-OSS-20B completed in 13 calls: confirmed input 130,625,
+passing local estimate 134,886, nearest rejected local estimate 135,403 (calibrated estimate
+131,126; estimated gap 501 or 0.38%). Fixed requested output was 16,384; the maximum-input pass
+generated 200. The single output example generated 2,444 with `stop`. The combined example
+reported 130,463 input + 609 generated = 131,072 consumed, `length`, but had requested 2,444
+output; it is clipped evidence, not proof that the requested combination fits or a canonical cap.
+
+Kilo Liquid completed in 14 calls: confirmed input 54,420, passing local estimate 56,203, nearest
+rejected local estimate 56,464 (calibrated estimate 54,673; estimated gap 253 or 0.46%). Fixed
+requested output was 8,192; the maximum-input pass generated 3,136. Its output example filled
+8,192 with length, while combined 54,279 input / 4,175 generated stopped before the 8,192 goal.
+Its API supplied the 8,192 output starting hint; the local LiteLLM 1.83.7 exact Kilo entry was
+missing. NVIDIA's exact LiteLLM entry was also missing. Both use generic/shared parsing.
+
+The two sessions reserved 3,599,078 input and 313,740 output across 27 submissions; no Worker
+interaction, production setting, credential change or GitHub workflow dispatch. Both stopped
+at the approximate input-boundary tolerance without exhausting their 32-call per-route allowance.
+Numerical provider-counted refused bounds remain unknown. Final-code offline replay consumed
+all 27 recorded responses with exactly the same request axis/target/input/output/control and
+returned `input_boundary_estimated`; no additional quota was spent. This also verifies the final
+profile-label/calibration corrections made while the local diagnostics were running.
+
+### Automatic new-route input discovery — maintainer-approved 2026-10-14
+
+The maintainer changed the activation target from manual-only discovery to automatic discovery
+when the weekly full catalog run finds a new route that passes the existing free-route,
+reachability and structured-output checks and has an Artificial Analysis score strictly above
+the current `openai/gpt-oss-120b` score. A missing score or a score equal to/below that reference
+does not qualify. Discovery is input-only; the existing output/combined checks remain supporting
+evidence and are not expanded into automatic limit searches. Generic shared chat response and
+provider parsers remain the contract; route/model-specific parsing is not allowed.
+
+Only routes newly qualified in that run are eligible. Authenticated history for the exact
+provider/account/model/endpoint suppresses an automatic repeat; another attempt requires the
+existing maintainer-reviewed `test again` path. The workflow retains the v2 provider pause,
+provider quota/spacing rules, strict evidence semantics and finite escape hatches. It never
+publishes a measured or inferred value into provider YAML, and configured-route recurring
+maintenance remains outside review/48.
+
+To fit ordinary 12–13-call searches and bounded slow calls, one candidate session allows up to
+96 charged calls, 16,777,216 reserved input tokens and 1,572,864 reserved output tokens, with a
+90-minute session ceiling and the existing 720-second per-call deadline. A weekly run allows at
+most three sessions (one per provider), 288 calls, 50,331,648 input tokens and 4,718,592 output
+tokens. The weekly GitHub Actions job is capped at five hours; a manually selected discovery job
+gets three hours. Catalog, qualification and cleanup time remain inside those job limits. Runs
+that reach a session/run bound retain partial evidence and are not reported as converged.
+When a qualified route cannot get one of the three sessions, its candidate memory keeps a pending
+marker. The next weekly run rechecks reachability/JSON before spending on it and prioritizes
+providers with the oldest pending route; a completed or ineligible attempt clears the marker.
+
+Implementation amendment file plan: discovery.py owns the raised shared limits; reconcile.py and
+reconcile_provider_routes.py own weekly activation, quality/history gates and pending fairness;
+evidence.py accepts the larger bounded attempt set; the existing workflow owns the weekly/manual
+timeouts. Tests cover generic parser compatibility, strict AA cutoff, input-only automatic axes,
+reviewed retry-axis preservation, pending deferral/recheck and budget enforcement. Lifecycle docs
+and a changelog fragment record this approved scope. Scheduled discovery remains limited to
+newly discovered routes; the configured-route sweep is a separate request.

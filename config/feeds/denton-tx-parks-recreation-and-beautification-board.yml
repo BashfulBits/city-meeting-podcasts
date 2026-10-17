@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Parks, Recreation and Beautification Board on *"
+lifecycle:
+  status: dormant
+  reason: "latest observed meeting was 1040 days ago; standing board inactive in provider feed"
 podcast_title: 'Denton: Parks, Recreation and Beautification Board'
 podcast_author: City of Denton, TX
 podcast_email: ''

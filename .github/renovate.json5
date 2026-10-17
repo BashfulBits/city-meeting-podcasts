@@ -12,7 +12,75 @@
   timezone: "America/Chicago",
   schedule: ["before 9am on monday"],
   labels: ["type:infrastructure", "deps"],
+  // ---- PYTHON LOCKS (constraints/*.txt) ----
+  // The pip-compile manager matches no files by default. Listing the four compiled lock
+  // files makes Renovate read each lane's source (constraints/<lane>.in, generated from
+  // pyproject.toml by scripts/lane_inputs.py) through its header, bump the lock with
+  // `pip-compile --upgrade-package`, and use the Python the header was compiled with.
+  // One source per lock is what makes each lane its own Renovate project: locks sharing
+  // pyproject.toml would read every current version from asr.txt alone.
+  // gh-cli.txt is not a pip lock (custom regex manager below).
+  "pip-compile": {
+    managerFilePatterns: ["/^constraints/(prod|dev|asr|chapter-research)\\.txt$/"],
+  },
+  // Security fixes skip the schedule and minimumReleaseAge (Renovate's vulnerabilityAlerts
+  // defaults) and reach indirect locked deps too. They are labeled but never automerged
+  // here: an ASR or output-affecting fix still goes through the smoke gate.
+  vulnerabilityAlerts: {
+    labels: ["type:infrastructure", "deps", "security"],
+  },
+  // OSV adds advisories GitHub lacks, including malicious-package reports (direct deps only).
+  osvVulnerabilityAlerts: true,
+  // Full lock refresh moves every transitive pin, ASR included, so it waits for a ticked box.
+  lockFileMaintenance: {
+    enabled: true,
+    dependencyDashboardApproval: true,
+    schedule: ["before 9am on the first day of the month"],
+  },
+  // pyproject.toml is read through the generated constraints/*.in above. The pep621 and
+  // poetry managers would read it a second time and raise floors there on security fixes
+  // (torch>=2.0 -> >=2.13.0), leaving the .in files stale and failing python-compat.yml.
+  // Disabled at the manager, not by a packageRule: GitHub-alert rules are appended after
+  // ours with `force`, which re-enables a dep a packageRule had disabled.
+  pep621: {
+    enabled: false,
+  },
+  poetry: {
+    enabled: false,
+  },
   packageRules: [
+    {
+      // Skip releases whose requires_python excludes the Python the locks are compiled with
+      // (the ASR lane's, checked by scripts/python_lanes.py), instead of opening a PR that
+      // python-compat.yml would only fail. Scoped to pip-compile: as a global setting the
+      // pins below also reach the npm/regex deps, where "==7.6.2" is an invalid range.
+      matchManagers: ["pip-compile"],
+      constraintsFiltering: "strict",
+      constraints: {
+        // One value, two uses: requires_python filtering here, and the Python the hosted app
+        // installs to run pip-compile. It must be a full patch version: the filter's pep440
+        // matcher rejects ranges (==3.12.*) against ">=3.9", and the installer treats a bare
+        // "3.12" as an exact build that doesn't exist ("install-tool python 3.12" fails).
+        python: "3.12.15",
+        // Keep in sync with scripts/compile_constraints.sh (>=7.5.1 writes parseable headers).
+        pipTools: "==7.6.2",
+      },
+    },
+    {
+      // The python constraint above follows .github/python/asr/.python-version (the pyenv
+      // rule below proposes minor bumps there); Renovate only keeps its patch current.
+      matchManagers: ["renovate-config"],
+      matchDepNames: ["python"],
+      matchUpdateTypes: ["minor", "major"],
+      enabled: false,
+    },
+    {
+      matchManagers: ["renovate-config"],
+      matchDepNames: ["python"],
+      matchUpdateTypes: ["patch"],
+      groupName: "renovate python patch",
+      automerge: true,
+    },
     // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
       // Python dev/test tooling — matched by name (pep621 optional-dependencies has
@@ -44,12 +112,44 @@
         "pypdf",
         "beautifulsoup4",
         "cairosvg",
-        "pydantic",
-        "litellm",
-        "instructor",
         "scikit-learn",
       ],
       groupName: "python runtime (hygiene)",
+    },
+    {
+      // LLM stack: kept at the latest release (new models and provider fixes land there).
+      // Lock-only bumps (pyproject floors stay put) on any day once a release is 3 days old,
+      // automerged when CI, including python-compat.yml, is green (majors excepted, below).
+      matchManagers: ["pip-compile"],
+      matchPackageNames: ["litellm", "instructor", "pydantic", "openai", "tiktoken"],
+      groupName: "llm stack",
+      rangeStrategy: "update-lockfile",
+      minimumReleaseAge: "3 days",
+      schedule: ["at any time"],
+      automerge: true,
+    },
+    {
+      // ...except majors (e.g. openai 2 -> 3): same lane, but a human reads the changelog.
+      matchManagers: ["pip-compile"],
+      matchPackageNames: ["litellm", "instructor", "pydantic", "openai", "tiktoken"],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+    },
+    {
+      // openai and tiktoken are transitive (via litellm), so pip-compile marks them indirect
+      // and disabled. Enable just these two so the group above can move them.
+      matchManagers: ["pip-compile"],
+      matchDepTypes: ["indirect"],
+      matchPackageNames: ["openai", "tiktoken"],
+      enabled: true,
+    },
+    {
+      // Python itself (.python-version and .github/python/asr/.python-version). A bump must
+      // resolve every lane in python-compat.yml, and an ASR bump also needs the locks
+      // recompiled (python_lanes.py --check fails until they are), so it waits for approval.
+      matchManagers: ["pyenv"],
+      dependencyDashboardApproval: true,
+      automerge: false,
     },
     // Actions & workflow files are SHA-pinned but NEVER auto-merged (a compromised
     // update could move a pinned SHA — see review/22 / the Renovate malicious-SHA caveat).
@@ -70,11 +170,11 @@
       groupName: "gh CLI (pinned, hash verified against a human-reviewed pin)",
     },
     {
-      // Deployment tooling under review/22: track exact pins on the weekly hygiene cadence.
-      // Workflow changes still require review; do not auto-merge deployment-tool upgrades.
+      // Workflow tooling under review/22: track exact pins on the weekly hygiene cadence.
+      // Workflow changes still require review; do not auto-merge workflow-tool upgrades.
       matchManagers: ["custom.regex"],
-      matchPackageNames: ["wrangler"],
-      groupName: "wrangler deployment tooling (hygiene)",
+      matchPackageNames: ["wrangler", "renovate"],
+      groupName: "workflow tooling (hygiene)",
       automerge: false,
     },
     // ---- OUTPUT-AFFECTING LANE: one checkbox + one bot comment ----
@@ -108,8 +208,8 @@
       // customManagers comment below). Separate rule so these actually reach the
       // approval lane (matchers of different types are AND-ed together).
       matchManagers: ["custom.regex", "dockerfile"],
-      // Wrangler has its own hygiene rule above; it does not rebuild audio/ASR artifacts.
-      matchPackageNames: ["!wrangler"],
+      // Workflow tools have their own hygiene rule above; they do not rebuild audio/ASR artifacts.
+      matchPackageNames: ["!wrangler", "!renovate"],
       groupName: "output-affecting: image/ffmpeg/model (needs approval + smoke)",
       dependencyDashboardApproval: true,
       automerge: false,
@@ -128,11 +228,23 @@
   // smoke-gated — review/22).
   customManagers: [
     {
+      // CI's validator must install under setup-node 24; review upgrades before merging.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/ci\\.yml$/"],
+      matchStrings: ["--package renovate@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      datasourceTemplate: "npm",
+      depNameTemplate: "renovate",
+      versioningTemplate: "npm",
+    },
+    {
       // Wrangler action inputs are not package.json dependencies; track every workflow pin.
+      // The package-smoke exact-version assertion is a second copy of the same pin, so track it
+      // too: otherwise a Wrangler bump fails the smoke job until someone edits both by hand.
       customType: "regex",
       managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
       matchStrings: [
         "(?:^|\\n)[ \t]*wranglerVersion:[ \t]*[\"'](?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']",
+        "require\\(\"wrangler/package\\.json\"\\)\\.version'\\)\" = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"",
       ],
       datasourceTemplate: "npm",
       depNameTemplate: "wrangler",
@@ -142,7 +254,7 @@
       // Hugging Face Whisper model revisions (GH#498). Pinned by commit SHA via git-refs;
       // output-affecting → Dashboard approval.
       customType: "regex",
-      fileMatch: ["^citypods/asr\\.py$"],
+      managerFilePatterns: ["/^citypods/asr\\.py$/"],
       matchStrings: [
         "(?<depName>[\\w-]+/[\\w.-]+)\"\\s*#\\s*renovate\\s*\\n\\s*HF_\\w+_REVISION\\s*=\\s*\"(?<currentDigest>[a-f0-9]+)\"",
       ],
@@ -156,7 +268,7 @@
       // update the adjacent GH_CLI_SHA256_LINUX_AMD64 pin by hand (this regex intentionally
       // doesn't touch it), or the resulting PR's CI fails on a checksum mismatch.
       customType: "regex",
-      fileMatch: ["^constraints/gh-cli\\.txt$"],
+      managerFilePatterns: ["/^constraints/gh-cli\\.txt$/"],
       matchStrings: [
         "renovate:\\s*datasource=github-releases depName=cli/cli\\s*\\n\\s*GH_CLI_VERSION=(?<currentValue>[\\d.]+)",
       ],

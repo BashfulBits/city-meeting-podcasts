@@ -205,7 +205,13 @@ def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallo
         now=NOW,
     )
     assert result.model is None
-    assert all(reason == "quota or budget exhausted" for _, reason in result.rejected)
+    # Worker-only routes (a non-chat api_shape such as JEV's, review/53) are refused by the
+    # transport gate before quota is consulted; every direct-capable route is quota-exhausted.
+    worker_only = {r.model for r in ROUTES.values() if "direct" not in r.transports}
+    assert all(
+        reason == ("transport gate" if model in worker_only else "quota or budget exhausted")
+        for model, reason in result.rejected
+    )
 
 
 def test_allowlist_can_select_the_free_deepseek_v41_route():
@@ -347,15 +353,14 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     assert (route.model, "transport gate") in result.rejected
 
 
-def test_mistral_codestral_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Codestral matches the upstream 2.08-RPS (124 RPM) ceiling with split-cap lifted.
+def test_codestral_policy_is_paced_at_the_airforce_ceiling():
+    """Codestral is served only by the Airforce route (1 RPM, one request in flight).
 
-    (Mistral Large, this test's former subject, was removed 2026-09-24: this account's plan
-    blocks it.)"""
+    (Native Mistral, this test's former subject, was removed 2026-09-30.)"""
     route = ROUTES["mistral/codestral-2508"]
     assert route.transport == "direct"
     assert set(route.transports) == {"direct"}
-    assert route.quota.rpm == 124
+    assert route.quota.rpm == 1
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
@@ -1015,3 +1020,49 @@ def test_select_route_compares_ceilings_in_the_routes_tokenizer_units():
     rejected = pick(10_500)
     assert rejected.route is None
     assert {reason for _, reason in rejected.rejected} == {"hard input ceiling"}
+
+
+def test_physical_allowlist_precedes_overflow_and_also_serves(monkeypatch):
+    weak = LLMRoute(
+        model="weak",
+        route_id="weak-route",
+        also_serves=("strong",),
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"strong": ("weak",)})
+    policy = LLMRequestPolicy(allowed_models=("strong",), allowed_route_ids=("strong-route",))
+    result = select_route(
+        policy,
+        routes={"weak-route": weak},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+    assert result.route is None
+    assert result.rejected == (("weak", "physical route allowlist gate"),)
+    assert result.retry_at is None
+
+
+def test_physical_allowlist_none_and_empty_semantics():
+    route = LLMRoute(
+        model="test",
+        route_id="test-route",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    for allowed, expected in ((None, route), ((), None), (("test-route",), route)):
+        result = select_route(
+            LLMRequestPolicy(allowed_route_ids=allowed),
+            routes={"test-route": route},
+            ledger=LLMBudget(),
+            available_transports=DIRECT,
+            estimated_tokens=1,
+            now=NOW,
+        )
+        assert result.route == expected

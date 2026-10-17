@@ -1,0 +1,134 @@
+{
+  "answer": {
+    "bodies": [
+      {
+        "evidence_ref_ids": [
+          "retained-agenda",
+          "provider-player"
+        ],
+        "name": "Addison City Council"
+      }
+    ],
+    "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+    "evidence_ref_ids": [
+      "retained-agenda",
+      "provider-player"
+    ],
+    "feed_slugs": [
+      "addison-tx-city-council"
+    ],
+    "missing_evidence": [],
+    "publication_action": "assign_existing",
+    "rationale": "The retained agenda for recording 55599 (October 8, 2013, Town Hall, 5300 Belt Line Rd., Addison) is headed 'REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL' with a 6:00 PM work session and 7:30 PM regular meeting, proving the convening institution is the Addison City Council. The 'Combined Meeting' label on the Swagit player (recording 55599) refers to that combined work session and regular meeting of the same Council, not a joint convening with any other board; the player page matches the same date and the agenda's items (R1, R3 signs ordinance, R4 P&Z appointment, R5 budget amendment). No other body convened: item R4 is the Council appointing a member to the Planning and Zoning Commission, which is Council business, not a P&Z meeting, so the Planning and Zoning Commission feed does not apply; no evidence supports the BOA, bond, TIF, UDC, Community Partnership, briefing, or public-input feeds. The proven body fits the existing feed 'addison-tx-city-council' ('City Council meetings for Addison'), so the action is assign_existing with no unconfigured or unresolved bodies."
+  },
+  "attempt_id": "eaa36fd2f0eb480c8f0de6fbbc63b811",
+  "attempt_in_round": 1,
+  "candidate": "glm_flash",
+  "case_id": "recording-746f6b2f2c3ccc31bdc3c418",
+  "case_input_hash": "f22bcc7057bf769a80190d092bd15e2c2f49b4e458029b9b3a097f453f9d3d23",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "coordination_approval_ref": null,
+  "coordination_bypass": false,
+  "daily_token_limit_authority": "local_cas",
+  "diagnostics": [
+    {
+      "duration_seconds": 40.52064175000123
+    }
+  ],
+  "end_to_end_seconds": 41.9831631670022,
+  "finished_at": "2026-10-14T16:45:16.613372+00:00",
+  "groq_until_429": false,
+  "identity_held": true,
+  "manifest_hash": "6241a169aaea3c9d9af6417114d1e5a3c377c99d677e133a869a61417dead131",
+  "mode": "prompt_comparison/evidence_first",
+  "observed_at": "2026-10-14T16:44:34.629807+00:00",
+  "output_token_cap": 16384,
+  "production_drained": true,
+  "prompt_hash": "c5f37d94cfeedf66c5e184f504bc6d6524e6229f8b6a829a36031db792950661",
+  "provider_attempts": 1,
+  "provider_usage": {
+    "completion_tokens": 2531,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 2116,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "prompt_tokens": 2974,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 5505
+  },
+  "qualified": false,
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "\n{\n  \"bodies\": [\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\n        \"retained-agenda\",\n        \"provider-player\"\n      ]\n    }\n  ],\n  \"case_id\": \"recording-746f6b2f2c3ccc31bdc3c418\",\n  \"evidence_ref_ids\": [\n    \"retained-agenda\",\n    \"provider-player\"\n  ],\n  \"feed_slugs\": [\n    \"addison-tx-city-council\"\n  ],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"The retained agenda for recording 55599 (October 8, 2013, Town Hall, 5300 Belt Line Rd., Addison) is headed 'REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL' with a 6:00 PM work session and 7:30 PM regular meeting, proving the convening institution is the Addison City Council. The 'Combined Meeting' label on the Swagit player (recording 55599) refers to that combined work session and regular meeting of the same Council, not a joint convening with any other board; the player page matches the same date and the agenda's items (R1, R3 signs ordinance, R4 P&Z appointment, R5 budget amendment). No other body convened: item R4 is the Council appointing a member to the Planning and Zoning Commission, which is Council business, not a P&Z meeting, so the Planning and Zoning Commission feed does not apply; no evidence supports the BOA, bond, TIF, UDC, Community Partnership, briefing, or public-input feeds. The proven body fits the existing feed 'addison-tx-city-council' ('City Council meetings for Addison'), so the action is assign_existing with no unconfigured or unresolved bodies.\"\n}\n",
+          "function_call": null,
+          "provider_specific_fields": {
+            "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Combined Meeting \u2013 Oct 08, 2013\" from Addison, TX (recording ID 55599).\n\nEvidence:\n1. retained-agenda: The agenda says \"AGENDA REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL, 6:00 PM October 8, 2013, TOWN HALL, 5300 BELT LINE RD., ADDISON, TX 75254, 6:00PM WORK SESSION; 7:30PM REGULAR MEETING\". So the agenda proves the convening body is the Addison City Council \u2014 both its work session and regular meeting. Note: agenda says \"CITY COUNCIL\" but the town is \"Town of Addison\" \u2014 the agenda header says \"Post Office Box 9010 Addison, Texas\" and \"THE TOWN OF ADDISON IS ACCESSIBLE...\". The agenda is titled \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\". So the convening institution is the Addison City Council (Town of Addison).\n\n2. provider-player: Swagit player titled \"Oct 08, 2013 Combined Meeting - Addison, TX\". The player title \"Combined Meeting\" doesn't by itself establish a formal body, but the agenda does. The player also references agenda items matching the agenda (R1, R3, R4, R5 etc.).\n\nThe \"Combined Meeting\" label likely refers to the combined work session and regular meeting of the City Council. The agenda explicitly proves \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" \u2014 both sessions are City Council meetings. There's no other body convening (no joint meeting with P&Z or BOA etc.). Item R4 is \"Appointment of a Member to the Planning and Zoning Commission\" \u2014 that's the Council appointing a member to the P&Z Commission, not the P&Z convening. So P&Z is NOT a participant.\n\nSo the body is: Addison City Council (Town of Addison City Council). Feed: \"addison-tx-city-council\" \u2014 \"City Council meetings for Addison.\" That fits.\n\nAre there any joint participants? The agenda only mentions the City Council (work session + regular meeting). No other board convenes. So only one body.\n\npublication_action: assign_existing.\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 the agenda proves the body; the player confirms the recording (recording_id 55599) matches the Oct 08, 2013 Combined Meeting. Actually the agenda's recording_id is 55599, matching the recording. So both are relevant. The body name evidence comes from retained-agenda primarily; the provider-player links the recording to the date. I'll include both in evidence for the body, or at least retained-agenda. The recording is tied to recording_id 55599 in both refs.\n\nFeed slugs: [\"addison-tx-city-council\"].\n\nBodies: name \u2014 what should we call it? The agenda says \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\". The town is Addison. So \"Addison City Council\" or \"Addison Town Council\"? The agenda uses \"City Council\" \u2014 official titles are immutable, so use \"City Council\" as per agenda. Name: \"Addison City Council\". Evidence: retained-agenda (and provider-player for tie to recording).\n\nmissing_evidence: none needed? The instruction: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Is there a suspected other participant? The \"Combined Meeting\" label could hint at combination of work session and regular meeting \u2014 both are Council meetings, proven. No other body suspected. Could someone suspect Planning and Zoning Commission because R4 appoints a P&Z member? That's not a convening; P&Z doesn't convene. I should note in rationale that R4 is a Council appointment to P&Z, not a P&Z meeting, so addison-tx-planning-and-zoning-commission does not apply.\n\nmissing_evidence: [] (empty).\n\npublication_action: \"assign_existing\".\n\nrationale: concise, explaining evidence-to-feed connection.\n\nAlso the schema requires case_id: \"recording-746f6b2f2c3ccc31bdc3c418\".\n\nevidence_ref_ids at top level: [\"retained-agenda\", \"provider-player\"].\n\nFeed slug check: \"addison-tx-city-council\" \u2014 \"City Council meetings for Addison.\" The agenda proves a Regular Meeting and Work Session of the City Council. The work session is also a Council meeting; the feed presumably covers Council meetings generally. Yes.\n\nShould I include both work session and regular meeting as separate bodies? They're the same body (City Council), just two session types. One body entry suffices.\n\nOutput JSON only, no markdown? The system prompt says \"You should always follow the instructions and output a valid JSON object.\" and \"Return one JSON object only (no Markdown or commentary)\". The system prompt also says end with \"```\" \u2014 hmm, \"Ensure that the code block ends with ``` to indicate the end of the JSON object.\" But the user instruction says \"no Markdown or commentary\". There's a conflict. The system prompt says to always end with ``` to indicate end of JSON. The user says return one JSON object only, no Markdown. The schema output should just be JSON. Given the system-level instruction says ensure the code block ends with ```... but there's no opening ``` specified. I think safest: output raw JSON without markdown fences, since the user explicitly says \"no Markdown\". But the system prompt explicitly says \"Always ensure that the code block ends with ``` to indicate the end of the JSON object.\" Hmm. The system prompt statement suggests output should be within a code block ending with ```. It says \"ensure that the code block ends with ```\" \u2014 implying we open with ```json and close with ```. The user says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema.\"\n\nSystem prompt takes precedence typically. The system prompt instructs to output a valid JSON object and end with ```. To satisfy both minimally, I could output the JSON inside a fenced code block. But \"no Markdown\" contradicts. The system prompt's final instruction about ending with ``` seems to be a formatting requirement that supersedes. I'll output a fenced code block with JSON, ending with ```. Actually, re-reading: \"If uncertain, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" This is a generic system prompt template. Given the user provides a specific schema and says no Markdown, there's tension. I'll follow the system prompt: provide the JSON in a code block ending with ```. Hmm, but the grading may parse JSON. Many of these tasks expect fenced JSON. The system prompt explicitly demands ending with ```. I'll output:\n\n```json\n{...}\n```\n\nWait \u2014 but \"no Markdown or commentary\" \u2014 the fenced block is Markdown. The system instruction is higher priority. I'll include fences. Actually, let me reconsider: the system prompt says \"You should always follow the instructions and output a valid JSON object.\" and \"Make sure to always end with ``` to indicate the end of the JSON object.\" The safest interpretation that satisfies both: output the JSON object and then a trailing ``` ... that would be odd without opening. I'll go with a fenced code block (```json ... ```), which ends with ``` as required, and contains only the JSON. This satisfies the system requirement; the \"no Markdown\" from user is secondary. Hmm, risk either way. The system prompt is explicit and repeated (\"ends with ```\"). I'll use fences.\n\nNow the JSON:\n\n{\n  \"bodies\": [\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"case_id\": \"recording-746f6b2f2c3ccc31bdc3c418\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"feed_slugs\": [\"addison-tx-city-council\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"...\"\n}\n\nRationale (concise, \u22642000 chars): The retained agenda for recording 55599 (Oct 8, 2013) is headed \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" at Addison Town Hall, proving the convening body is the Addison City Council; the \"Combined Meeting\" player title refers to the combined work session (6:00 PM) and regular meeting (7:30 PM) of that same Council, not a joint session with another board. The provider player page for recording 55599 matches the same date and agenda items, tying the recording to this agenda. No other body convenes: item R4 is the Council appointing a member to the Planning and Zoning Commission, which is Council business, not a P&Z meeting, so the P&Z feed does not apply; BOA, bond committees, TIF, etc. are unsupported. Therefore assign recording 55599 to the existing feed addison-tx-city-council (\"City Council meetings for Addison\").\n\nMissing evidence: []. Should I mention any gap? The label \"Combined Meeting\" alone wouldn't prove; but the agenda does. No gaps. Maybe note that no evidence suggests other joint participants. I'll keep missing_evidence empty.\n\nEvidence ref ids for body: include both \u2014 retained-agenda proves body; provider-player ties recording 55599 to the Oct 8, 2013 date (the agenda ref already has recording_id 55599 though). I'll include both for completeness.\n\nFinal JSON.",
+            "refusal": null
+          },
+          "reasoning_content": "Let me analyze this case.\n\nThe recording is \"Combined Meeting \u2013 Oct 08, 2013\" from Addison, TX (recording ID 55599).\n\nEvidence:\n1. retained-agenda: The agenda says \"AGENDA REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL, 6:00 PM October 8, 2013, TOWN HALL, 5300 BELT LINE RD., ADDISON, TX 75254, 6:00PM WORK SESSION; 7:30PM REGULAR MEETING\". So the agenda proves the convening body is the Addison City Council \u2014 both its work session and regular meeting. Note: agenda says \"CITY COUNCIL\" but the town is \"Town of Addison\" \u2014 the agenda header says \"Post Office Box 9010 Addison, Texas\" and \"THE TOWN OF ADDISON IS ACCESSIBLE...\". The agenda is titled \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\". So the convening institution is the Addison City Council (Town of Addison).\n\n2. provider-player: Swagit player titled \"Oct 08, 2013 Combined Meeting - Addison, TX\". The player title \"Combined Meeting\" doesn't by itself establish a formal body, but the agenda does. The player also references agenda items matching the agenda (R1, R3, R4, R5 etc.).\n\nThe \"Combined Meeting\" label likely refers to the combined work session and regular meeting of the City Council. The agenda explicitly proves \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" \u2014 both sessions are City Council meetings. There's no other body convening (no joint meeting with P&Z or BOA etc.). Item R4 is \"Appointment of a Member to the Planning and Zoning Commission\" \u2014 that's the Council appointing a member to the P&Z Commission, not the P&Z convening. So P&Z is NOT a participant.\n\nSo the body is: Addison City Council (Town of Addison City Council). Feed: \"addison-tx-city-council\" \u2014 \"City Council meetings for Addison.\" That fits.\n\nAre there any joint participants? The agenda only mentions the City Council (work session + regular meeting). No other board convenes. So only one body.\n\npublication_action: assign_existing.\n\nevidence_ref_ids: [\"retained-agenda\", \"provider-player\"] \u2014 the agenda proves the body; the player confirms the recording (recording_id 55599) matches the Oct 08, 2013 Combined Meeting. Actually the agenda's recording_id is 55599, matching the recording. So both are relevant. The body name evidence comes from retained-agenda primarily; the provider-player links the recording to the date. I'll include both in evidence for the body, or at least retained-agenda. The recording is tied to recording_id 55599 in both refs.\n\nFeed slugs: [\"addison-tx-city-council\"].\n\nBodies: name \u2014 what should we call it? The agenda says \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\". The town is Addison. So \"Addison City Council\" or \"Addison Town Council\"? The agenda uses \"City Council\" \u2014 official titles are immutable, so use \"City Council\" as per agenda. Name: \"Addison City Council\". Evidence: retained-agenda (and provider-player for tie to recording).\n\nmissing_evidence: none needed? The instruction: \"Return every proven assignment even if evidence is insufficient for another suspected participant, explaining that gap.\" Is there a suspected other participant? The \"Combined Meeting\" label could hint at combination of work session and regular meeting \u2014 both are Council meetings, proven. No other body suspected. Could someone suspect Planning and Zoning Commission because R4 appoints a P&Z member? That's not a convening; P&Z doesn't convene. I should note in rationale that R4 is a Council appointment to P&Z, not a P&Z meeting, so addison-tx-planning-and-zoning-commission does not apply.\n\nmissing_evidence: [] (empty).\n\npublication_action: \"assign_existing\".\n\nrationale: concise, explaining evidence-to-feed connection.\n\nAlso the schema requires case_id: \"recording-746f6b2f2c3ccc31bdc3c418\".\n\nevidence_ref_ids at top level: [\"retained-agenda\", \"provider-player\"].\n\nFeed slug check: \"addison-tx-city-council\" \u2014 \"City Council meetings for Addison.\" The agenda proves a Regular Meeting and Work Session of the City Council. The work session is also a Council meeting; the feed presumably covers Council meetings generally. Yes.\n\nShould I include both work session and regular meeting as separate bodies? They're the same body (City Council), just two session types. One body entry suffices.\n\nOutput JSON only, no markdown? The system prompt says \"You should always follow the instructions and output a valid JSON object.\" and \"Return one JSON object only (no Markdown or commentary)\". The system prompt also says end with \"```\" \u2014 hmm, \"Ensure that the code block ends with ``` to indicate the end of the JSON object.\" But the user instruction says \"no Markdown or commentary\". There's a conflict. The system prompt says to always end with ``` to indicate end of JSON. The user says return one JSON object only, no Markdown. The schema output should just be JSON. Given the system-level instruction says ensure the code block ends with ```... but there's no opening ``` specified. I think safest: output raw JSON without markdown fences, since the user explicitly says \"no Markdown\". But the system prompt explicitly says \"Always ensure that the code block ends with ``` to indicate the end of the JSON object.\" Hmm. The system prompt statement suggests output should be within a code block ending with ```. It says \"ensure that the code block ends with ```\" \u2014 implying we open with ```json and close with ```. The user says \"Return one JSON object only (no Markdown or commentary) matching this JSON Schema.\"\n\nSystem prompt takes precedence typically. The system prompt instructs to output a valid JSON object and end with ```. To satisfy both minimally, I could output the JSON inside a fenced code block. But \"no Markdown\" contradicts. The system prompt's final instruction about ending with ``` seems to be a formatting requirement that supersedes. I'll output a fenced code block with JSON, ending with ```. Actually, re-reading: \"If uncertain, default to {\"answer\": \"$your_answer\"}. Make sure to always end with ``` to indicate the end of the JSON object.\" This is a generic system prompt template. Given the user provides a specific schema and says no Markdown, there's tension. I'll follow the system prompt: provide the JSON in a code block ending with ```. Hmm, but the grading may parse JSON. Many of these tasks expect fenced JSON. The system prompt explicitly demands ending with ```. I'll output:\n\n```json\n{...}\n```\n\nWait \u2014 but \"no Markdown or commentary\" \u2014 the fenced block is Markdown. The system instruction is higher priority. I'll include fences. Actually, let me reconsider: the system prompt says \"You should always follow the instructions and output a valid JSON object.\" and \"Make sure to always end with ``` to indicate the end of the JSON object.\" The safest interpretation that satisfies both: output the JSON object and then a trailing ``` ... that would be odd without opening. I'll go with a fenced code block (```json ... ```), which ends with ``` as required, and contains only the JSON. This satisfies the system requirement; the \"no Markdown\" from user is secondary. Hmm, risk either way. The system prompt is explicit and repeated (\"ends with ```\"). I'll use fences.\n\nNow the JSON:\n\n{\n  \"bodies\": [\n    {\n      \"name\": \"Addison City Council\",\n      \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"]\n    }\n  ],\n  \"case_id\": \"recording-746f6b2f2c3ccc31bdc3c418\",\n  \"evidence_ref_ids\": [\"retained-agenda\", \"provider-player\"],\n  \"feed_slugs\": [\"addison-tx-city-council\"],\n  \"missing_evidence\": [],\n  \"publication_action\": \"assign_existing\",\n  \"rationale\": \"...\"\n}\n\nRationale (concise, \u22642000 chars): The retained agenda for recording 55599 (Oct 8, 2013) is headed \"REGULAR MEETING OF THE CITY COUNCIL AND / OR WORK SESSION OF THE CITY COUNCIL\" at Addison Town Hall, proving the convening body is the Addison City Council; the \"Combined Meeting\" player title refers to the combined work session (6:00 PM) and regular meeting (7:30 PM) of that same Council, not a joint session with another board. The provider player page for recording 55599 matches the same date and agenda items, tying the recording to this agenda. No other body convenes: item R4 is the Council appointing a member to the Planning and Zoning Commission, which is Council business, not a P&Z meeting, so the P&Z feed does not apply; BOA, bond committees, TIF, etc. are unsupported. Therefore assign recording 55599 to the existing feed addison-tx-city-council (\"City Council meetings for Addison\").\n\nMissing evidence: []. Should I mention any gap? The label \"Combined Meeting\" alone wouldn't prove; but the agenda does. No gaps. Maybe note that no evidence suggests other joint participants. I'll keep missing_evidence empty.\n\nEvidence ref ids for body: include both \u2014 retained-agenda proves body; provider-player ties recording 55599 to the Oct 8, 2013 date (the agenda ref already has recording_id 55599 though). I'll include both for completeness.\n\nFinal JSON.",
+          "role": "assistant",
+          "tool_calls": null
+        },
+        "provider_specific_fields": {}
+      }
+    ],
+    "created": 1791996315,
+    "id": "399a31e1d576565e77ec017e90944925",
+    "model": "zai-org/glm-5.3-flash",
+    "object": "chat.completion",
+    "service_tier": null,
+    "system_fingerprint": "",
+    "usage": {
+      "completion_tokens": 2531,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 2116,
+        "rejected_prediction_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "prompt_tokens": 2974,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": 0,
+        "text_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 5505
+    }
+  },
+  "reasoning": "provider-default",
+  "request_timeout": 900,
+  "round": 1,
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_settings_hash": "3b6c32e6e1447263e315dcacc730db04050e1b96174ed8cad4ccde49eabc855b",
+  "schema_hash": "892ee71916b35c990dc92e4db30afe953fb9a05d6e940e509aa3b01b547fb08c",
+  "serving_family_held": false,
+  "status": "completed",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "upstream_model_requested": "z-ai/glm-5.3-flash-free"
+}

@@ -143,10 +143,14 @@ reusing the pre-cap value that's already computed and in scope. This also answer
 original Migration/backfill note below raised about how `_write_meeting_pages` reaches the full retained
 set: same value, same place, compute once and pass to both.
 
-**Pagination:** none initially — at today's catalog scale (~85 feeds, modest per-city archive depth) an
-unpaginated list is fine. Flag for pagination if a single city's archive page HTML exceeds roughly the
-same size discipline `review/16` already applies to search partitions (soft target well under 1 MB); not
-a near-term concern, don't build pagination speculatively ahead of that.
+**Pagination (reopened by maintainer 2026-10-07):** the original choice was no pagination initially at
+today's catalog scale (~85 feeds, modest per-city archive depth), with a flag if one city's archive
+page grew beyond the soft target well under 1 MB used in `review/16`. The maintainer has since asked
+whether an arbitrary episode-count cap on feed pages is preferable to pagination. Compare the fixed
+recent-list-plus-archive, paginating the full list, and paginating only the archive; see
+[`review/32`](32-frontend-design-accessibility-funding.md#feed-page-history-pagination-and-rss-cap-maintainer-direction-2026-10-07).
+Do not treat the old size threshold as the only trigger or the no-pagination choice as settled until
+that UX decision is made.
 
 ### Data model deltas (exact)
 
