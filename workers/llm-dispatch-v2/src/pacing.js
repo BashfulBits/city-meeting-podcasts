@@ -37,6 +37,7 @@
 
 import {
   hardInputCeilingLimit,
+  learnedCeilings,
   outputReserveFor,
   routeInputTokenRatio,
   scaledInputTokens,
@@ -262,7 +263,17 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // counts, while the job carries a tokenizer-agnostic chars/4 estimate (see calibration.js).
   const inputEstimate = scaledInputTokens(job?.input_token_estimate, inputRatio);
   const tolerant = Boolean(options?.ceilingTolerance);
-  if (!options.contextProbe && inputEstimate > hardInputCeilingLimit(route, { tolerant })) {
+  // Observed provider behavior (review/55 piece 3). At or above the smallest size this route has
+  // refused, skip it -- except in the claim's drain pass (`ceilingTolerance`, only when nothing
+  // else is dispatchable), which re-tests it so a refusal can never strand a job for the whole
+  // TTL. At or below the largest size it has accepted, a conservative configured ceiling is not
+  // allowed to reject the job.
+  const learned = options.contextProbe ? { acceptedMax: 0, rejectedMin: 0 } : learnedCeilings(route, now);
+  if (!tolerant && learned.rejectedMin > 0 && inputEstimate >= learned.rejectedMin) return null;
+  if (
+    !options.contextProbe &&
+    inputEstimate > Math.max(hardInputCeilingLimit(route, { tolerant }), learned.acceptedMax)
+  ) {
     return null;
   }
 

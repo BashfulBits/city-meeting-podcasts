@@ -49,6 +49,8 @@ import {
   CALIBRATION_WINDOW,
   calibrationFor,
   hardInputCeilingLimit,
+  LEARNED_CEILING_TTL_MS,
+  learnedCeilings,
   outputReserveFor,
   parseCalibrationSummary,
   recordCalibrationSample,
@@ -251,6 +253,11 @@ const ROUTE_QUOTA_COLUMNS = {
   tpd_used: "INTEGER NOT NULL DEFAULT 0",
   prompt_cap_estimate: "INTEGER NOT NULL DEFAULT 0",
   input_window_json: "TEXT NOT NULL DEFAULT '[]'",
+  // Learned input sizes (review/55 piece 3), in the provider's tokens.
+  input_accepted_max: "INTEGER NOT NULL DEFAULT 0",
+  input_accepted_at: "INTEGER NOT NULL DEFAULT 0",
+  input_rejected_min: "INTEGER NOT NULL DEFAULT 0",
+  input_rejected_at: "INTEGER NOT NULL DEFAULT 0",
 };
 
 // Columns added after the initial table definitions. Keep this list aligned with the
@@ -1330,6 +1337,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["tpd_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["tpd_used", "INTEGER NOT NULL DEFAULT 0"],
       ["prompt_cap_estimate", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_accepted_max", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_accepted_at", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_rejected_min", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_rejected_at", "INTEGER NOT NULL DEFAULT 0"],
       ["input_window_json", "TEXT NOT NULL DEFAULT '[]'"],
       ["rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
@@ -1605,12 +1616,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** A structural learned-ceiling rejection, independent of pause or spent daily quota.
    * Every policy-permitted configured alternative is considered, including temporarily paused
    * routes. An uncapped fitting route prevents failure even when it must wait until tomorrow. */
-  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache) {
+  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache, now = Date.now()) {
     if (!eligibleRoutes || eligibleRoutes.length === 0) return false;
     for (const route of eligibleRoutes) {
       if (Number(route.prompt_cap_estimate) > 0 &&
           Number(job.input_token_estimate) > Number(route.prompt_cap_estimate)) continue;
-      const limit = hardInputCeilingLimit(route, { tolerant: true });
+      // The size admission uses: a route that has actually served an input larger than its
+      // configured ceiling is not one the job structurally exceeds (see pacing.js).
+      const limit = Math.max(
+        hardInputCeilingLimit(route, { tolerant: true }),
+        learnedCeilings(route, now).acceptedMax
+      );
       if (!Number.isFinite(limit)) return false;
       const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
       if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
@@ -3273,6 +3289,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
               last_provider_status, rpd_count, rpd_day_key, buffer_seconds, buffer_updated_at,
               provisional_reservation, settled_usage, tpd_used, tpd_updated_at, prompt_cap_estimate,
+              input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
               rpm_count, tpm_reserved, full_token_budget,
               token_budget_updated_at, tpm_window_start, rpm_window_start, rpd_window_start
          FROM routes`
@@ -3319,6 +3336,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         tpd_limit: catalogRoute?.tpd ?? null,
         tpd_used: catalogRoute ? dailyTokenDebt(merged, now) : row.tpd_used,
         prompt_cap_estimate: row.prompt_cap_estimate,
+        // Learned input sizes in the provider's tokens (review/55 piece 3); 0 = none/expired.
+        input_accepted_max: learnedCeilings(row, now).acceptedMax,
+        input_rejected_min: learnedCeilings(row, now).rejectedMin,
         provisional_reservation: row.provisional_reservation,
         in_catalog: Boolean(catalogRoute),
       };
@@ -5612,7 +5632,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
              full_token_budget = full_token_budget + ?,
              throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
              payment_required_streak = 0, upstream_capacity_streak = 0,
-             last_failure_class = '', blocked_until = NULL, last_provider_status = ?
+             last_failure_class = '', blocked_until = NULL, last_provider_status = ?,
+             input_accepted_at = CASE
+               WHEN ? > 0 AND (? > input_accepted_max OR ? - input_accepted_at > ?) THEN ?
+               ELSE input_accepted_at END,
+             input_accepted_max = CASE
+               WHEN ? > 0 AND (? > input_accepted_max OR ? - input_accepted_at > ?) THEN ?
+               ELSE input_accepted_max END
            WHERE route_id = ?`,
           pending.reservation,
           pending.settledUsage,
@@ -5620,6 +5646,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
           windowDelta,
           pending.budgetDelta,
           pending.lastStatus,
+          // Raise-only high-water mark of accepted input (provider tokens); re-seeded from the
+          // current observation once the stored one is older than half the TTL, so a route that
+          // stops seeing large inputs does not keep an old maximum alive forever.
+          pending.maxObservedInput, pending.maxObservedInput, now, LEARNED_CEILING_TTL_MS / 2, now,
+          pending.maxObservedInput, pending.maxObservedInput, now, LEARNED_CEILING_TTL_MS / 2,
+          pending.maxObservedInput,
           routeId
         );
       };
@@ -6024,7 +6056,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             let pending = pendingSuccess.get(job.lease_route_id);
             if (!pending) {
               pending = { reservation: 0, settledUsage: 0, budgetDelta: 0,
-                windowDeltas: new Map(), dailyDelta: 0 };
+                windowDeltas: new Map(), dailyDelta: 0, maxObservedInput: 0 };
               pendingSuccess.set(job.lease_route_id, pending);
             }
             pending.reservation += reservation;
@@ -6032,6 +6064,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             pending.budgetDelta += delta;
             pending.dailyDelta += observedTotal != null ? reservation - observedTotal : 0;
             pending.lastStatus = result.provider_status_code ?? 200;
+            pending.maxObservedInput = Math.max(
+              pending.maxObservedInput,
+              Number(result.observed_input_tokens) || 0
+            );
             if (routeTpm > 0 && reservation <= routeTpm && delta !== 0) {
               const w = job.reservation_tpm_window_start;
               pending.windowDeltas.set(w, (pending.windowDeltas.get(w) ?? 0) + delta);
@@ -6115,11 +6151,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // The route stays selectable for every other job: this job carries its own exclusion
             // (jobs.size_excluded_routes), so a rejection of one large packet no longer stands the
             // route down for the small ones behind it.
+            const rejectedRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const rejectedInput = rejectedRoute
+              ? scaledInputTokens(
+                  job.input_token_estimate,
+                  this._calibration(
+                    { ...rejectedRoute, route_id: job.lease_route_id },
+                    job.prompt_family
+                  ).inputRatio
+                )
+              : Number(job.input_token_estimate) || 0;
             sql.exec(
-              "UPDATE routes SET last_provider_status = ?, last_failure_class = ? " +
-                "WHERE route_id = ?",
+              `UPDATE routes SET last_provider_status = ?, last_failure_class = ?,
+                 input_rejected_min = CASE
+                   WHEN input_rejected_min > 0 AND ? - input_rejected_at <= ?
+                   THEN MIN(input_rejected_min, ?) ELSE ? END,
+                 input_rejected_at = ?
+               WHERE route_id = ?`,
               result.provider_status_code ?? null,
               result.failure_class,
+              now, LEARNED_CEILING_TTL_MS, rejectedInput, rejectedInput, now,
               job.lease_route_id
             );
           } else if (isTransientRouteFailure && !isUpstreamClass) {

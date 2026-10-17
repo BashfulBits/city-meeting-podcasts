@@ -1091,6 +1091,36 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
 });
 
+test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {
+  // The learned accepted-input maximum (review/55 piece 3) lifts the conservative configured
+  // ceiling in the structural check as well as in admission.
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio"] },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+  );
+  coordinator._getOrCreateRouteLedger("gemma-ai-studio", Date.now(), {});
+  sql.exec(
+    "UPDATE routes SET input_accepted_max = 20000, input_accepted_at = ? WHERE route_id = ?",
+    Date.now(),
+    "gemma-ai-studio"
+  );
+  await coordinator.enqueueBatch([gemmaJob("served-size", 7500)]); // 12,600 at 1.68
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.notEqual([...sql.exec("SELECT state FROM jobs WHERE id = 'served-size'")][0].state, "failed");
+});
+
 test("an oversized job stays queued while a fitting uncapped route has spent daily quota", async () => {
   const catalog = {
     ...CEILING_CATALOG,
@@ -2205,6 +2235,70 @@ test("a size rejection reported as a retryable 5xx still fails when no route is 
   )][0];
   assert.equal(job.state, "failed");
   assert.equal(job.terminal_reason, "input_too_large");
+});
+
+test("a size rejection records the smallest refused input on the route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-learn-reject", { input_token_estimate: 4000 })]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-learn-reject",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  const row = [...sql.exec(
+    "SELECT input_rejected_min, input_rejected_at FROM routes WHERE route_id=?", claimed.route_id
+  )][0];
+  assert.ok(row.input_rejected_min >= 4000, "recorded in the provider's tokens (ratio >= 1)");
+  assert.ok(row.input_rejected_at >= t);
+});
+
+test("a success raises the route's accepted-input high-water mark and never lowers it", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  let pinned = null;
+  let turn = 0;
+  const complete = async (id, observedInput) => {
+    const policy = { allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false };
+    if (pinned) policy.allowed_route_ids = [pinned];
+    await coordinator.enqueueBatch([makeJob(id, { policy_json: JSON.stringify(policy) })]);
+    turn += 1;
+    const plan = await coordinator.claimDispatchWindow(Date.now() + turn * 120_000, 25);
+    const claimed = plan.jobs.find((j) => j.id === id);
+    assert.ok(claimed, `${id} was claimed`);
+    const t = Date.now();
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-${id}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: t,
+        actual_end_at: t + 100,
+        outcome: "success",
+        provider_status_code: 200,
+        observed_input_tokens: observedInput,
+        observed_output_tokens: 50,
+        result_key: `results/${id}.json`,
+      },
+    ]);
+    pinned ??= claimed.route_id;
+    return [...sql.exec(
+      "SELECT input_accepted_max FROM routes WHERE route_id=?", pinned
+    )][0].input_accepted_max;
+  };
+  assert.equal(await complete("j-acc-1", 3000), 3000);
+  assert.equal(await complete("j-acc-2", 1000), 3000, "a smaller success does not lower it");
+  assert.equal(await complete("j-acc-3", 5000), 5000, "a larger one raises it");
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
