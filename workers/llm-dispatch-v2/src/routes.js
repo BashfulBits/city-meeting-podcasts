@@ -103,6 +103,18 @@ export function jobPolicy(job) {
   }
 }
 
+/** Route ids that rejected this job's input size (`jobs.size_excluded_routes`, a JSON array). */
+export function sizeExcludedRoutes(job) {
+  const raw = job?.size_excluded_routes;
+  if (!raw) return new Set();
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /** Physical pins may only narrow the job's declared logical model pool. */
 export function routeIdsOutsideModelPool(job, dispatchLimits) {
   const policy = jobPolicy(job);
@@ -193,6 +205,7 @@ export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispa
       : []);
   const inputTokens = job.input_token_estimate || 0;
   const outputTokens = job.max_output_token_estimate || 0;
+  const sizeExcluded = sizeExcludedRoutes(job);
 
   const seenRouteIds = new Set();
   const eligible = [];
@@ -202,6 +215,9 @@ export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispa
     for (const routeId of routeIds) {
       if (allowedRouteIds && !allowedRouteIds.has(routeId)) continue;
       if (seenRouteIds.has(routeId)) continue;
+      // A route that already rejected this job for size is not retried for it (it stays eligible
+      // for every other job).
+      if (sizeExcluded.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
       // An explicit rpd: 0 is the catalog's paused-route convention. Filter it before the

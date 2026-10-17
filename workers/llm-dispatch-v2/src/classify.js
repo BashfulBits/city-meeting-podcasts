@@ -555,6 +555,20 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
         msg.includes("(tpm)") ||
         msg.includes("(itpm)")
       ) {
+        // "Limit L, Requested R" with R > L and nothing already used: ONE request larger than the
+        // whole minute quota. No amount of waiting admits it on this route, so it is a size
+        // rejection (the job moves to a sibling route), not pacing. With "Used U" in the message
+        // the bucket was merely full, which clears on its own.
+        const limit = /limit\s*[:=]?\s*(\d+)/.exec(msg);
+        const requested = /requested\s*[:=]?\s*(\d+)/.exec(msg);
+        if (limit && requested && !/used\s*[:=]?\s*\d+/.test(msg) && Number(requested[1]) > Number(limit[1])) {
+          return {
+            failure_class: "route_input_limit",
+            rule_id: "size-status-request-exceeds-tpm",
+            retry_after_seconds: retryAfterSeconds,
+            scope: "route",
+          };
+        }
         return {
           failure_class: "own_tpm",
           rule_id: "size-status-token-rate-limit",

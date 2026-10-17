@@ -2079,21 +2079,90 @@ test("a provider input-limit failure requeues for a sibling route", async () => 
   ]);
 
   const job = [...sql.exec(
-    "SELECT state, transient_retry_count FROM jobs WHERE id='j-input-limit'"
+    "SELECT state, transient_retry_count, size_excluded_routes FROM jobs WHERE id='j-input-limit'"
   )][0];
   assert.equal(job.state, "queued");
-  assert.equal(job.transient_retry_count, 1);
+  // A size rejection is not a transient failure: the 5xx retry budget is untouched.
+  assert.equal(job.transient_retry_count, 0);
+  assert.deepEqual(JSON.parse(job.size_excluded_routes), [claimed.route_id]);
   const route = [...sql.exec(
     "SELECT blocked_until, last_failure_class FROM routes WHERE route_id=?",
     claimed.route_id
   )][0];
-  assert.ok(route.blocked_until > now);
+  // The route is NOT stood down for other jobs; the rejection is only recorded.
+  assert.ok(!route.blocked_until);
   assert.equal(route.last_failure_class, "route_input_limit");
 
   const second = await coordinator.claimDispatchWindow(now + 1_000, 25);
   assert.equal(second.jobs.length, 1);
   assert.equal(second.jobs[0].id, "j-input-limit");
   assert.notEqual(second.jobs[0].route_id, claimed.route_id);
+});
+
+test("a size rejection leaves the route selectable for other jobs", async () => {
+  const { coordinator } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-big")]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const big = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: big.id,
+      lease_token: big.lease_token,
+      attempt_id: "attempt-big",
+      planned_at: big.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  // A small job enqueued right after can still be claimed on the very route that rejected the big
+  // one (the big job itself is excluded from that route, so it cannot take the slot).
+  await coordinator.enqueueBatch([makeJob("j-small")]);
+  const seen = new Map();
+  for (let i = 0; i < 4; i += 1) {
+    const plan = await coordinator.claimDispatchWindow(t + 1_000 + i * 90_000, 25);
+    for (const job of plan.jobs) seen.set(job.id, job.route_id);
+  }
+  assert.ok(seen.has("j-small"), "the small job is dispatched");
+  assert.ok(seen.has("j-big"), "the big job is dispatched to a sibling route");
+  assert.notEqual(seen.get("j-big"), big.route_id, "never back to the rejecting route");
+});
+
+test("a job rejected for size by every route fails to its producer as input_too_large", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-too-big")]);
+  let when = Date.now();
+  const tried = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    tried.push(claimed.route_id);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-too-big-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "terminal_error",
+        provider_status_code: 400,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  assert.equal(new Set(tried).size, tried.length, "no route is tried twice for the same job");
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason, transient_retry_count FROM jobs WHERE id='j-too-big'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
+  assert.equal(job.transient_retry_count, 0);
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
