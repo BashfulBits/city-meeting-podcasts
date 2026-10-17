@@ -64,7 +64,7 @@ from a statistical ratio. Today only `free_prompt_cap` writes anything like it
 - **Packing** uses a safe tail: the p95 ratio x 1.05 (`packRatio`). `GET /v2/calibration?model=&prompt_family=`
   returns `pack_ceiling_input_estimate`: the smallest free route's tightest size limit (configured
   ceiling, a learned refusal, the context window) over that ratio, with the per-route detail. The
-  judge reads it at run start and sizes sibling packets to 90% of it, between 2,000 tokens and 1.5x
+  judge reads it at run start and sizes sibling packets to 90% of it, up to 1.5x
   the configured ceiling (which stays the safe default when the Worker is unreadable).
 - **Admission** uses a lower quantile: p75 x 1.05 (`admitRatio`), not floored by the route prior
   once 16 samples exist, never above the reservation ratio. It drives only the size gates (configured

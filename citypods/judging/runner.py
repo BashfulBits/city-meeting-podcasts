@@ -168,9 +168,8 @@ def in_sample(subject_id: str, rate: float) -> bool:
 # Share of the Worker's packing ceiling a packet may use: the ceiling is for the request as the
 # Worker sizes it (system prompt and JSON framing included); the packer sizes items.
 PACK_CEILING_SAFETY = 0.9
-MIN_PACKET_TOKENS = 2_000
 # The configured ceiling is the safe default used when the Worker cannot be read. When it can, the
-# Worker's figure decides, within [MIN_PACKET_TOKENS, this multiple of the default].
+# Worker's figure decides, up to this multiple of the default.
 PACK_CEILING_GROWTH = 1.5
 
 
@@ -186,10 +185,9 @@ def _sibling_backend(
     total, items = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)
     worker = (pack_ceilings or {}).get(model)
     if worker:
-        total = max(
-            MIN_PACKET_TOKENS,
-            min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)),
-        )
+        # Never above the safe share of what the Worker will admit, however small; an item too big
+        # for it is reported as payload_too_large by the packer instead of being sent to fail.
+        total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
     return ChatJudgeBackend(max_total_tokens=total, max_items=items)
 
 

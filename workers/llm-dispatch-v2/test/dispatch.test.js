@@ -1126,9 +1126,26 @@ test("packingCeiling is the smallest free route's limit over the p95 packing rat
   assert.equal(ceilinged.input_estimate_limit, Math.floor(10000 / 1.26));
   assert.ok(roomy.input_estimate_limit > ceilinged.input_estimate_limit);
   assert.equal(status.pack_ceiling_input_estimate, ceilinged.input_estimate_limit);
-  assert.equal(await coordinator.packingCeiling("no/such-model", "judge"), null);
   // It only reads: no ledger row is created for a route that has none.
   assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id='gemma-roomy'")][0].n, 0);
+  assert.equal(await coordinator.packingCeiling("no/such-model", "judge"), null);
+  // A learned free-prompt cap is a raw estimate limit and tightens the preflight further.
+  coordinator._getOrCreateRouteLedger("gemma-roomy", Date.now(), {});
+  sql.exec("UPDATE routes SET prompt_cap_estimate = 3000 WHERE route_id = 'gemma-roomy'");
+  const capped = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.equal(capped.routes.find((r) => r.route_id === "gemma-roomy").input_estimate_limit, 3000);
+  assert.equal(capped.pack_ceiling_input_estimate, 3000);
+  // A route with an unspecified (null) daily quota still counts.
+  const nullRpd = {
+    ...catalog,
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "gemma-roomy": { ...catalog.routes_by_id["gemma-roomy"], rpd: null },
+    },
+  };
+  const other = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: nullRpd });
+  const uncapped = await other.coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.ok(uncapped.routes.some((r) => r.route_id === "gemma-roomy"));
 });
 
 test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {

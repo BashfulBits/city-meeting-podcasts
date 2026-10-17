@@ -109,9 +109,11 @@ export function learnedCeilings(route, now = Date.now(), ttlMs = LEARNED_CEILING
  */
 export function packingInputLimit(route, packRatio, now = Date.now()) {
   const limits = [];
-  const ceiling = hardInputCeilingLimit(route);
+  const { acceptedMax, rejectedMin } = learnedCeilings(route, now);
+  // The same size admission applies (pacing.js): a route that has served more than its configured
+  // ceiling is not limited to it.
+  const ceiling = Math.max(hardInputCeilingLimit(route), acceptedMax);
   if (Number.isFinite(ceiling)) limits.push(ceiling);
-  const { rejectedMin } = learnedCeilings(route, now);
   if (rejectedMin > 0) limits.push(rejectedMin - 1);
   const context = Number(route?.input_context_limit);
   if (Number.isFinite(context) && context > 0) limits.push(context);

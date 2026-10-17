@@ -158,6 +158,15 @@ test("packingInputLimit is the tightest known size limit over the packing ratio"
     ),
     8999
   );
+  // A route that has served more than its configured ceiling is not limited to it.
+  assert.equal(
+    packingInputLimit(
+      { hard_input_ceiling: 10000, input_accepted_max: 13000, input_accepted_at: now - 5 },
+      1.0,
+      now
+    ),
+    13000
+  );
   // A context window bounds a route with no configured ceiling; no limits at all -> null.
   assert.equal(packingInputLimit({ input_context_limit: 100000 }, 1.25, now), 80000);
   assert.equal(packingInputLimit({}, 1.2, now), null);

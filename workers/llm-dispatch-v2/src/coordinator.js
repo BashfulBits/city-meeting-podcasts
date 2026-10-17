@@ -4513,15 +4513,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
     let ceiling = null;
     for (const routeId of routeIds) {
       const stored = limits.routes_by_id?.[routeId];
-      if (!stored || !stored.free || Number(stored.rpd) === 0) continue;
+      // Only an explicit zero daily quota pauses a route; null means unspecified (unlimited).
+      if (!stored || !stored.free || (stored.rpd != null && Number(stored.rpd) === 0)) continue;
       const row = [...sql.exec(
-        `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at
+        `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
+                prompt_cap_estimate
            FROM routes WHERE route_id = ?`,
         routeId
       )][0] || {};
       const route = { ...stored, ...row, route_id: routeId, model: canonical };
       const calibration = this._calibration(route, family);
-      const limit = packingInputLimit(route, calibration.packRatio, now);
+      let limit = packingInputLimit(route, calibration.packRatio, now);
+      // A learned free-prompt cap is a RAW estimate limit (admission compares it before scaling).
+      const promptCap = Number(route.prompt_cap_estimate) || 0;
+      if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
       routes.push({
         route_id: routeId,
         pack_ratio: calibration.packRatio,
