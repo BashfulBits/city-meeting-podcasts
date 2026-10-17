@@ -6304,13 +6304,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // either saturated route could be reselected on the very next tick and burn through
             // the retry budget back to back instead of backing off between attempts.
             const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
-            const streak = (ledger.upstream_capacity_streak || 0) + 1;
+            // A saturated route already cooling down is not escalated again: authorizeRetry just
+            // advanced the ladder for this very call (it hands the declined 429 back here), and
+            // calls in flight when the cooldown began would otherwise each climb a rung too.
+            const alreadyCooling =
+              result.failure_class === "upstream_capacity" &&
+              Number(ledger.blocked_until) > now;
+            const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
             sql.exec(
               `UPDATE routes SET upstream_capacity_streak = ?,
                                  blocked_until = MAX(COALESCE(blocked_until, 0), ?),
                                  last_provider_status = ? WHERE route_id = ?`,
               streak,
-              this._upstreamCapacityBlockedUntil(
+              alreadyCooling ? 0 : this._upstreamCapacityBlockedUntil(
                 streak,
                 now,
                 result.failure_class === "upstream_capacity"
