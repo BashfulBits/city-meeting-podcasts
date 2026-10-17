@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Routes learn their real input limits from traffic.** Each route now keeps the largest input
+  it accepted (from `usage.prompt_tokens`) and the smallest it refused for size, in provider
+  tokens, expiring after 7 days. Admission skips a route for jobs at or above its refusal point
+  (the drain pass re-tests it) and no longer lets a conservative configured ceiling reject a
+  size the route has already served. Both show in `/v2/stats?routes=1`. Review/55 piece 3.
+
 - **Size rejections overflow per job, not per route.** A provider "input too long" answer (or one
   request larger than the whole minute quota) now records the rejecting route on the job
   (`size_excluded_routes`) and requeues it onto a sibling route of the same model without spending
