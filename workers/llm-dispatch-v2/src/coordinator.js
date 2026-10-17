@@ -63,6 +63,17 @@ import {
 /** Persist calibration for 1 in this many completions once a key's window is full. */
 const CALIBRATION_SAMPLE_EVERY = 4;
 
+// Stable widget contract: these are the six core production purposes. Operational, benchmark,
+// shadow, tournament, and review-only purposes are intentionally outside this overview.
+const STATS_INGRESS_PURPOSES = [
+  "chapter-agenda",
+  "chapter-locator",
+  "topic-tags:tagger",
+  "topic-tags:prelabeler",
+  "r6-moments",
+  "r6-judge",
+];
+
 /** A stable 0..buckets-1 bucket for an id (FNV-1a), so sampling is deterministic per job. */
 function sampleBucket(id, buckets) {
   let hash = 0x811c9dc5;
@@ -3111,15 +3122,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
            FROM ingress_purpose WHERE utc_day = ?`,
         utcDay
       )];
-      const ingressByPurpose = ingressPurposes.map((row) => {
-        const quotaInfo = reservations[row.purpose];
+      const ingressUsage = new Map(ingressPurposes.map((row) => [row.purpose, row]));
+      const ingressByPurpose = STATS_INGRESS_PURPOSES.map((purpose) => {
+        const row = ingressUsage.get(purpose) || {};
+        const quotaInfo = reservations[purpose];
         const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
         const perJob = Number(quotaInfo?.write_units_per_job) || 1;
         const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
         const ingested = Number(row.jobs_ingested) || 0;
         const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
         return {
-          purpose: row.purpose,
+          purpose,
           jobs_ingested: ingested,
           write_units: Number(row.write_units) || 0,
           jobs_completed: Number(row.jobs_completed) || 0,
