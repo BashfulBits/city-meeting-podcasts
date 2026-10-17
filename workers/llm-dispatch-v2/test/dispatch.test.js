@@ -1091,6 +1091,36 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
 });
 
+test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {
+  // The learned accepted-input maximum (review/55 piece 3) lifts the conservative configured
+  // ceiling in the structural check as well as in admission.
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio"] },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+  );
+  coordinator._getOrCreateRouteLedger("gemma-ai-studio", Date.now(), {});
+  sql.exec(
+    "UPDATE routes SET input_accepted_max = 20000, input_accepted_at = ? WHERE route_id = ?",
+    Date.now(),
+    "gemma-ai-studio"
+  );
+  await coordinator.enqueueBatch([gemmaJob("served-size", 7500)]); // 12,600 at 1.68
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.notEqual([...sql.exec("SELECT state FROM jobs WHERE id = 'served-size'")][0].state, "failed");
+});
+
 test("an oversized job stays queued while a fitting uncapped route has spent daily quota", async () => {
   const catalog = {
     ...CEILING_CATALOG,

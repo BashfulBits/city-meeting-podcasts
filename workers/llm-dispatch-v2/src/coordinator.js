@@ -1616,12 +1616,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** A structural learned-ceiling rejection, independent of pause or spent daily quota.
    * Every policy-permitted configured alternative is considered, including temporarily paused
    * routes. An uncapped fitting route prevents failure even when it must wait until tomorrow. */
-  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache) {
+  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache, now = Date.now()) {
     if (!eligibleRoutes || eligibleRoutes.length === 0) return false;
     for (const route of eligibleRoutes) {
       if (Number(route.prompt_cap_estimate) > 0 &&
           Number(job.input_token_estimate) > Number(route.prompt_cap_estimate)) continue;
-      const limit = hardInputCeilingLimit(route, { tolerant: true });
+      // The size admission uses: a route that has actually served an input larger than its
+      // configured ceiling is not one the job structurally exceeds (see pacing.js).
+      const limit = Math.max(
+        hardInputCeilingLimit(route, { tolerant: true }),
+        learnedCeilings(route, now).acceptedMax
+      );
       if (!Number.isFinite(limit)) return false;
       const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
       if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
@@ -3284,6 +3289,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
               last_provider_status, rpd_count, rpd_day_key, buffer_seconds, buffer_updated_at,
               provisional_reservation, settled_usage, tpd_used, tpd_updated_at, prompt_cap_estimate,
+              input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
               rpm_count, tpm_reserved, full_token_budget,
               token_budget_updated_at, tpm_window_start, rpm_window_start, rpd_window_start
          FROM routes`
