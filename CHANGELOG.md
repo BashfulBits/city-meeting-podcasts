@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **A route whose provider keeps saying its pool is full now backs off to one call a day.** After
+  an `upstream_capacity` failure the route's cooldown doubles from 60 s up to 24 hours (it was
+  15 s up to 5 minutes, about 288 probes a day). On 2026-10-17 the OpenRouter free Gemma routes
+  returned 116 such failures and no successes. The first success resets the ladder; gateway limits
+  and unusable replies keep the 5 minute ceiling (`UPSTREAM_CAPACITY_SATURATED_*` in
+  `config/dispatch_tuning.yml`).
+
 - **NVIDIA Nemotron 3.5 Super VL routes and Nemotron 3 aliases.** Configured direct NVIDIA and
   OpenRouter routes for `nvidia/nemotron-3.5-super-vl-120b-a12b` and
   `openrouter/nvidia/nemotron-3.5-super-vl:free`, pooling under the canonical 3.5 Super key with
