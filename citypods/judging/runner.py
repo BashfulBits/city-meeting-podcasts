@@ -61,6 +61,12 @@ SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": (24_000, 25),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
+# Output sent per sibling packet instead of the route's own limit. Gemma 4 26B falls into
+# repetition loops on mixed-kind packets (replayed 2026-10-17: 2 of 2 replies ran to the length
+# limit repeating one phrase, 87 s for 4,096 tokens; in production 25 to 40% of its calls hit the
+# 32,768-token limit and held a key slot up to 12 minutes). A good reply is about 900 to 1,200
+# tokens for 25 items, so 4,096 leaves margin and stops a loop in about 90 s.
+SIBLING_OUTPUT_CAPS: dict[str, int] = {"google/gemma-4-26b-a4b-it": 4_096}
 
 
 @dataclass
@@ -188,7 +194,9 @@ def _sibling_backend(
         # Never above the safe share of what the Worker will admit, however small; an item too big
         # for it is reported as payload_too_large by the packer instead of being sent to fail.
         total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
-    return ChatJudgeBackend(max_total_tokens=total, max_items=items)
+    return ChatJudgeBackend(
+        max_total_tokens=total, max_items=items, output_cap=SIBLING_OUTPUT_CAPS.get(model)
+    )
 
 
 def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:
