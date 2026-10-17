@@ -245,7 +245,7 @@ def judging_demand(
         "packets": lanes,
         "sibling_by_model": {
             "google/gemma-4-*": math.ceil(gemma_packets),
-            "openrouter/nvidia/nemotron-3-super-120b-a12b:free": math.ceil(nemotron_packets),
+            "openrouter/nvidia/nemotron-3.5-super-vl:free": math.ceil(nemotron_packets),
         },
         # reserved = routine jobs x 4 ingress units (per_model) x 1.2 margin
         "reserved_write_units": {lane: math.ceil(jobs * 4 * 1.2) for lane, jobs in lanes.items()},

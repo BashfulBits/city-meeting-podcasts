@@ -225,7 +225,7 @@ def test_sibling_and_adjudicator_are_chosen_per_entry():
     assert family_of("rule:7", FAMILIES) == RULE_FAMILY
     assert FAMILIES[sibling_for(None, sibling, FAMILIES)] == "google"
     gemini_sibling = sibling_for(GEMINI, sibling, FAMILIES)
-    assert gemini_sibling == "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    assert gemini_sibling == "openrouter/nvidia/nemotron-3.5-super-vl:free"
     # Qwen is eligible, never active, so it is never chosen.
     assert "qwen/qwen3.8-27b" not in {sibling_for(m, sibling, FAMILIES) for m in FAMILIES}
     chosen = adjudicator_for("zai/glm-5.3-flash", gemini_sibling, adjudicator, FAMILIES)
@@ -512,7 +512,7 @@ def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
     [llm_subject] = [x for x in _subjects(ep) if x.payload.get("source_kind") == "llm"]
     llm_rows = ledger.judgments(llm_subject)
     assert {r["judge_model"] for r in llm_rows if r["judge_role"] == "sibling"} == {
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     }
     assert ep.uid in second.episodes_complete
     # Shadow: every candidate is byte-for-byte unchanged; judgments live in ep.judging only.
@@ -582,7 +582,7 @@ def test_moments_are_judged_per_meeting_with_both_choose_orders():
     assert question_ids == ["best", "best_r", "publishable", "supported", "usefulness"]
     # Gemini-produced moments get the non-Google sibling for every question, choose included.
     assert {p.judge_model for p, _ in dispatch.submitted.values() if p.role == "sibling"} == {
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     }
     dispatch.answer()
     runner.run([ep], _ctx(dispatch, tasks=("moment",)))
@@ -942,7 +942,7 @@ def test_stored_producer_identities_are_normalized_and_unknown_ones_fail_safe():
     prefixed = "litellm:" + GEMINI
     assert family_of(prefixed, FAMILIES) == "google"
     assert sibling_for(prefixed, sibling, FAMILIES) == (
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     )
     # Route-specific aliases resolve to the logical key.
     assert family_of("nvidia/deepseek-v4.1-flash", FAMILIES) == "deepseek"
