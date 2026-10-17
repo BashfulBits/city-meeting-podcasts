@@ -1319,10 +1319,13 @@ def test_an_unreadable_record_keeps_its_marker_and_never_aborts_the_pass():
     )
 
 
-def test_lookups_stop_after_a_few_unreadable_records_in_one_pass():
+def test_a_permanent_outage_waits_a_bounded_time_then_skips_the_rest(monkeypatch):
     dispatch = FakeDispatch()
     ep = _episode(llm=[])
     runner.run([ep], _ctx(dispatch))
+    slept: list[float] = []
+    monkeypatch.setattr(runner, "_sleep", slept.append)
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
     calls = []
 
     def look_up(recipe):
@@ -1331,6 +1334,36 @@ def test_lookups_stop_after_a_few_unreadable_records_in_one_pass():
 
     ctx = _ctx(dispatch)
     ctx.look_up = look_up
+    stats = runner.run([ep], ctx)  # does not raise
+    assert sum(slept) == runner._RECOVERY_WAIT_SECONDS
+    # Three failed reads trip the breaker, then one probe per recovery interval, then no more.
+    probes = int(runner._RECOVERY_WAIT_SECONDS / runner._RECOVERY_PROBE_SECONDS)
+    assert len(calls) == runner._MAX_UNREADABLE_STREAK + probes
+    assert stats.counts["lookup_probe_failed"] == probes
+    assert _all_pending(ep)
+
+
+def test_a_short_outage_is_waited_out_and_the_pass_still_collects(monkeypatch):
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch))
+    dispatch.answer(anchor_p=0.9)
+    slept: list[float] = []
+    monkeypatch.setattr(runner, "_sleep", slept.append)
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
+    failures = {"left": runner._MAX_UNREADABLE_STREAK + 2}  # the trip, then two failed probes
+
+    def look_up(recipe):
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
     stats = runner.run([ep], ctx)
-    assert len(calls) <= runner._MAX_UNREADABLE_LOOKUPS
-    assert stats.counts["lookup_unavailable"] >= len(calls)
+    assert stats.counts["lookup_recovered"] == 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["judgments_appended"] >= 1
+    # Two failed probes, then a third that reads.
+    assert stats.counts["lookup_probe_failed"] == 2
+    assert sum(slept) == 3 * runner._RECOVERY_PROBE_SECONDS
