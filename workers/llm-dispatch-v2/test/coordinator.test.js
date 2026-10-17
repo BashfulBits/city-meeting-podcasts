@@ -2495,6 +2495,29 @@ function completeLeased(sql, coordinator, bundleId, jobs, results) {
   })));
 }
 
+test("stats reports completed and failed jobs by purpose with per-batch ledger updates", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await completeLeased(sql, coordinator, "purpose-success", [
+    ["purpose-success-1", "chapter-agenda", 100, "route-a"],
+    ["purpose-success-2", "chapter-agenda", 100, "route-a"],
+  ], [{ job_id: "purpose-success-1" }, { job_id: "purpose-success-2" }]);
+  await completeLeased(sql, coordinator, "purpose-failed", [
+    ["purpose-failed-1", "topic-tags", 100, "route-b"],
+  ], [{
+    job_id: "purpose-failed-1",
+    outcome: "terminal_error",
+    provider_status_code: 400,
+    failure_class: "request_defect",
+  }]);
+
+  const stats = await coordinator.stats(Date.now());
+  const byPurpose = new Map(stats.ingress.by_purpose.map((row) => [row.purpose, row]));
+  assert.equal(byPurpose.get("chapter-agenda").jobs_completed, 2);
+  assert.equal(byPurpose.get("chapter-agenda").jobs_failed, 0);
+  assert.equal(byPurpose.get("topic-tags").jobs_completed, 0);
+  assert.equal(byPurpose.get("topic-tags").jobs_failed, 1);
+});
+
 test("detailedStats reports today's usage per lane and route from completed attempts", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();

@@ -340,6 +340,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "catalog_rescue_cursor",
     "catalog_rescue_complete",
   ],
+  ingress_purpose: ["jobs_completed", "jobs_failed"],
 };
 
 const CURRENT_SCHEMA_OBJECTS = [
@@ -1056,6 +1057,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         purpose                             TEXT NOT NULL,
         jobs_ingested                       INTEGER NOT NULL DEFAULT 0,
         write_units                         INTEGER NOT NULL DEFAULT 0,
+        jobs_completed                      INTEGER NOT NULL DEFAULT 0,
+        jobs_failed                         INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (utc_day, purpose)
       );
 
@@ -1184,6 +1187,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "failed_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "retried_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "hourly_burndown_json", "TEXT NOT NULL DEFAULT '[]'");
+    this._ensureColumn("ingress_purpose", "jobs_completed", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("ingress_purpose", "jobs_failed", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "lease_count_today", "INTEGER NOT NULL DEFAULT 0");
     const addedRowCounter = this._ensureColumn(
       "scheduler",
@@ -1394,6 +1399,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["queue_models", "TEXT"],
       ["size_excluded_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["jobs_completed", "INTEGER NOT NULL DEFAULT 0"],
+      ["jobs_failed", "INTEGER NOT NULL DEFAULT 0"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -3098,9 +3105,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
       const reservationConfig = this._ingressPurposeReservations();
       const reservations = reservationConfig?.purposes || reservationConfig?.reservations || {};
+      const utcDay = this._currentUtcDay(now);
       const ingressPurposes = [...sql.exec(
-        "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
-        scheduler.utc_day
+        `SELECT purpose, jobs_ingested, write_units, jobs_completed, jobs_failed
+           FROM ingress_purpose WHERE utc_day = ?`,
+        utcDay
       )];
       const ingressByPurpose = ingressPurposes.map((row) => {
         const quotaInfo = reservations[row.purpose];
@@ -3113,6 +3122,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           purpose: row.purpose,
           jobs_ingested: ingested,
           write_units: Number(row.write_units) || 0,
+          jobs_completed: Number(row.jobs_completed) || 0,
+          jobs_failed: Number(row.jobs_failed) || 0,
           daily_quota: dailyQuota,
           percent_used: pct,
         };
@@ -5774,6 +5785,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let requeuedCount = 0;
       let completedCount = 0;
       let failedCount = 0;
+      const purposeOutcomeDeltas = new Map();
 
       // Success settlements, folded per route and written once (P1): a bundle whose jobs share a
       // route used to rewrite that routes row once per success. Any non-success write to a route
@@ -6110,6 +6122,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         settledCount += 1;
         if (newState === "completed") completedCount += 1;
         if (newState === "failed") failedCount += 1;
+        if (newState === "completed" || newState === "failed") {
+          const purpose = this._purposeForJob(job);
+          const delta = purposeOutcomeDeltas.get(purpose) || { completed: 0, failed: 0 };
+          delta[newState === "completed" ? "completed" : "failed"] += 1;
+          purposeOutcomeDeltas.set(purpose, delta);
+        }
 
         // Settle the route's provisional reservation and decay its throttle state on success.
         // Never touch rpm/rpd/tpm-window/full-token-budget bookkeeping here: those were already
@@ -6406,6 +6424,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       for (const routeId of [...pendingSuccess.keys()]) flushSuccess(routeId);
       this._writeAttemptUsage(usageCells, now);
+
+      // One ingress ledger write per purpose and completion batch, not per settled job. Keep the
+      // outcome totals on the current UTC day so recurring stats reads remain indexed and small.
+      const outcomeDay = this._currentUtcDay(now);
+      for (const [purpose, delta] of purposeOutcomeDeltas) {
+        sql.exec(
+          `INSERT INTO ingress_purpose (
+             utc_day, purpose, jobs_ingested, write_units, jobs_completed, jobs_failed
+           ) VALUES (?, ?, 0, 0, ?, ?)
+           ON CONFLICT (utc_day, purpose) DO UPDATE SET
+             jobs_completed = jobs_completed + excluded.jobs_completed,
+             jobs_failed = jobs_failed + excluded.jobs_failed`,
+          outcomeDay,
+          purpose,
+          delta.completed,
+          delta.failed
+        );
+      }
 
       if (requeuedCount > 0 || completedCount > 0 || failedCount > 0) {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter
