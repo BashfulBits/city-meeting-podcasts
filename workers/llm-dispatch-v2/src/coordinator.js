@@ -2610,7 +2610,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  result_key = NULL, terminal_reason = NULL, terminal_catalog_digest = NULL,
                  lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
-                 transient_retry_count = 0, queue_models = ?, created_at = ?, updated_at = ?
+                 transient_retry_count = 0, queue_models = ?, size_excluded_routes = NULL,
+                 created_at = ?, updated_at = ?
                WHERE id = ?`,
               job.request_digest,
               providerIdempotencyKey,
@@ -3813,6 +3814,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const routesByModel = dispatchLimits?.model_routes_map || {};
     const catalog = dispatchLimits?.routes_by_id || {};
 
+    const sizeExcluded = sizeExcludedRoutes(job);
     const models = new Set();
     for (const rawModel of allowedModels) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -3822,6 +3824,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
         const route = catalog[routeId];
         if (!route) return false;
+        // A route that already rejected this job for size can no longer take it, so a model all of
+        // whose routes did is not an index entry for it.
+        if (sizeExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
         return routeFitsContext(route, inputTokens, outputTokens);
       });
@@ -5780,14 +5785,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
           job.transient_retry_count < (isSingleModelJob
             ? this._maxSingleModelOutputBudgetRetries()
             : _retryCeiling(this._maxUpstreamCapacityRetries()));
-        const shouldRequeue =
-          shouldRetryOutputBudget ||
-          shouldRetryRouteUnavailable ||
-          shouldRetry5xx ||
-          shouldRetryRouteInputLimit ||
-          isPaymentRequired ||
-          isRateLimitTerminal ||
-          isUpstreamRetryable;
+        // A classified size rejection is decided only by whether a sibling route is left: it may
+        // arrive as a retryable 4xx/5xx outcome, and the transient predicates must not requeue a
+        // job with no route left (or spend their budget on one that has).
+        const shouldRequeue = isSizeRejection
+          ? shouldRetryRouteInputLimit
+          : shouldRetryOutputBudget ||
+            shouldRetryRouteUnavailable ||
+            shouldRetry5xx ||
+            shouldRetryRouteInputLimit ||
+            isPaymentRequired ||
+            isRateLimitTerminal ||
+            isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -5856,7 +5865,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
           // with no index row and holding a stale lease -- claimDispatchWindow can never select it
           // again, stranding it silently.
-          const queueModels = this._modelsToIndex(job);
+          const queueModels = this._modelsToIndex({
+            ...job,
+            size_excluded_routes: nextSizeExcludedRoutes,
+          });
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,

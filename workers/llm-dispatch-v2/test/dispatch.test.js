@@ -2120,13 +2120,23 @@ test("a size rejection leaves the route selectable for other jobs", async () => 
   ]);
   // A small job enqueued right after can still be claimed on the very route that rejected the big
   // one (the big job itself is excluded from that route, so it cannot take the slot).
-  await coordinator.enqueueBatch([makeJob("j-small")]);
+  // Pin the small job to the route that rejected the big one: it can only be claimed there if the
+  // route was not stood down.
+  await coordinator.enqueueBatch([
+    makeJob("j-small", {
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        allow_paid: false,
+        allowed_route_ids: [big.route_id],
+      }),
+    }),
+  ]);
   const seen = new Map();
   for (let i = 0; i < 4; i += 1) {
     const plan = await coordinator.claimDispatchWindow(t + 1_000 + i * 90_000, 25);
     for (const job of plan.jobs) seen.set(job.id, job.route_id);
   }
-  assert.ok(seen.has("j-small"), "the small job is dispatched");
+  assert.equal(seen.get("j-small"), big.route_id, "the small job runs on the rejecting route");
   assert.ok(seen.has("j-big"), "the big job is dispatched to a sibling route");
   assert.notEqual(seen.get("j-big"), big.route_id, "never back to the rejecting route");
 });
@@ -2163,6 +2173,38 @@ test("a job rejected for size by every route fails to its producer as input_too_
   assert.equal(job.state, "failed");
   assert.equal(job.terminal_reason, "input_too_large");
   assert.equal(job.transient_retry_count, 0);
+});
+
+test("a size rejection reported as a retryable 5xx still fails when no route is left", async () => {
+  // The executor can map a classified size error to retryable_error; the 5xx retry predicates
+  // must not requeue a job that has no sibling route left.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-5xx-size")]);
+  let when = Date.now();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-5xx-size-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "retryable_error",
+        provider_status_code: 500,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason FROM jobs WHERE id='j-5xx-size'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {

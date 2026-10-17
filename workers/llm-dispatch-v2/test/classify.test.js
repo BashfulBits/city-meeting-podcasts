@@ -787,6 +787,17 @@ test("one request larger than the whole minute quota is a size rejection, not pa
   assert.equal(result.rule_id, "size-status-request-exceeds-tpm");
 });
 
+test("a request over the quota is a size rejection even when some of the bucket is used", () => {
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large on tokens per minute (TPM): " +
+      "Limit 8000, Used 1000, Requested 9500." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+});
+
 test("a minute bucket that is merely full stays own_tpm", () => {
   const result = classifyProviderFailure({
     status: 413,
