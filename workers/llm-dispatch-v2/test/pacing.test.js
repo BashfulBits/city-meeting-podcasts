@@ -414,3 +414,29 @@ test("Google releases trailing-window credit chronologically across overlapping 
   const request = { input_token_estimate: 1000, max_output_token_estimate: 8192 };
   assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 10000);
 });
+
+test("a learned refusal skips the route, the drain pass re-tests it, and a learned success lifts the ceiling", () => {
+  const now = Date.now();
+  const base = { rpm: 30, tpm: 100000, hard_input_ceiling: 10000, input_token_ratio: 1 };
+  const at = (route, raw, options = {}) =>
+    earliestSafeStart(route, { input_token_estimate: raw }, now, now, options);
+  // Configured ceiling: 9,000 fits, 12,000 does not.
+  assert.notEqual(at(base, 9000), null);
+  assert.equal(at(base, 12000), null);
+  // The route has actually accepted 13,000 provider tokens: the conservative ceiling no longer
+  // rejects 12,000.
+  const accepted = { ...base, input_accepted_max: 13000, input_accepted_at: now - 1000 };
+  assert.notEqual(at(accepted, 12000), null);
+  // ...but 14,000 is still above both.
+  assert.equal(at(accepted, 14000), null);
+  // The route refused 8,000: 8,000 and larger are skipped without calling it, smaller ones go.
+  const refused = { ...base, input_rejected_min: 8000, input_rejected_at: now - 1000 };
+  assert.equal(at(refused, 8000), null);
+  assert.equal(at(refused, 9000), null);
+  assert.notEqual(at(refused, 7000), null);
+  // The claim's drain pass (ceilingTolerance) re-tests it so a refusal cannot strand a job.
+  assert.notEqual(at(refused, 8500, { ceilingTolerance: true }), null);
+  // A refusal older than the TTL is forgotten.
+  const old = { ...base, input_rejected_min: 8000, input_rejected_at: now - 8 * 24 * 3600 * 1000 };
+  assert.notEqual(at(old, 9000), null);
+});

@@ -70,6 +70,30 @@ export function hardInputCeilingLimit(route, { tolerant = false } = {}) {
   return Math.min(Math.floor(ceiling * (1 + slack)), quotaCeiling);
 }
 
+/** How long a learned accepted/rejected input size is trusted before the route is re-tested. */
+export const LEARNED_CEILING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * What this route has actually done with input sizes, in the provider's own tokens: the largest
+ * input it accepted (`input_accepted_max`, from usage.prompt_tokens) and the smallest it refused
+ * for size (`input_rejected_min`). An entry older than the TTL is ignored so a provider that
+ * changed its limit is re-tested. If the two contradict (accepted >= rejected) the more recent
+ * observation wins and the other is dropped.
+ */
+export function learnedCeilings(route, now = Date.now(), ttlMs = LEARNED_CEILING_TTL_MS) {
+  let acceptedMax = Number(route?.input_accepted_max) || 0;
+  const acceptedAt = Number(route?.input_accepted_at) || 0;
+  let rejectedMin = Number(route?.input_rejected_min) || 0;
+  const rejectedAt = Number(route?.input_rejected_at) || 0;
+  if (acceptedMax > 0 && now - acceptedAt > ttlMs) acceptedMax = 0;
+  if (rejectedMin > 0 && now - rejectedAt > ttlMs) rejectedMin = 0;
+  if (acceptedMax > 0 && rejectedMin > 0 && acceptedMax >= rejectedMin) {
+    if (acceptedAt >= rejectedAt) rejectedMin = 0;
+    else acceptedMax = 0;
+  }
+  return { acceptedMax, rejectedMin };
+}
+
 /** A raw chars/4 estimate expressed in the route's own tokenizer units. */
 export function scaledInputTokens(rawInput, ratio) {
   const raw = Math.max(0, Number(rawInput) || 0);

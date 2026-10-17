@@ -43,13 +43,19 @@ What the code did on 2026-10-16/17 (verified by reading it):
 - `classify.js`: "Limit L, Requested R" with R > L and no "Used" is `route_input_limit`
   (`size-status-request-exceeds-tpm`); with "Used" the bucket was merely full and stays `own_tpm`.
 
-### 3. Learned per-route ceilings from outcomes — *planned (next PR)*
+### 3. Learned per-route ceilings from outcomes — *shipped in the second PR*
 
-Per route, in provider-token units, keep the largest input that succeeded (`accepted_max`, from
-`usage.prompt_tokens`) and the smallest that was rejected for size (`rejected_min`, from the error's
-own numbers when present, else the scaled estimate). Admission: attempt at or below `accepted_max`,
-skip at or above `rejected_min`, and use the percentile rule in between. Entries decay (~7 days) so
-provider changes are re-tested. This is observed provider behavior and replaces guessing a ceiling
+Per route, in provider-token units, keep the largest input that succeeded (`routes.input_accepted_max`,
+from `usage.prompt_tokens`; raise-only, re-seeded after half the TTL) and the smallest that was
+rejected for size (`routes.input_rejected_min`: the job's scaled estimate, since the completion
+result carries only the failure class, not the provider's message). Admission: attempt at or below `accepted_max`,
+skip at or above `rejected_min`, and use the percentile rule in between. Entries decay (7 days) so
+provider changes are re-tested; the claim's drain pass (only when nothing else is dispatchable)
+waives the refusal, so a refusal can never strand a job; contradictory entries (accepted >=
+rejected) resolve to the more recent observation. An accepted maximum above the configured
+`hard_input_ceiling` lifts that conservative ceiling for jobs up to it. `/v2/stats?routes=1` shows
+both numbers (0 = none/expired). Rejections are deliberately not used for the terminal
+"structurally unroutable" decision, only for admission ordering. This is observed provider behavior and replaces guessing a ceiling
 from a statistical ratio. Today only `free_prompt_cap` writes anything like it
 (`routes.prompt_cap_estimate`, never decays, rejected side only).
 

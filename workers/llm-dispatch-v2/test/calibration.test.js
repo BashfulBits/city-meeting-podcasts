@@ -5,7 +5,9 @@ import {
   CALIBRATION_WINDOW,
   MIN_OUTPUT_RESERVE,
   calibrationFor,
+  LEARNED_CEILING_TTL_MS,
   hardInputCeilingLimit,
+  learnedCeilings,
   outputReserveFor,
   parseCalibrationSummary,
   recordCalibrationSample,
@@ -90,4 +92,33 @@ test("outputReserveFor never exceeds the request's own max_tokens", () => {
   assert.equal(outputReserveFor({ max_output_token_estimate: 8200 }, null), 8200);
   assert.equal(outputReserveFor({ max_output_token_estimate: 8200 }, 850), 850);
   assert.equal(outputReserveFor({ max_output_token_estimate: 500 }, 850), 500);
+});
+
+test("learnedCeilings ignores entries older than the TTL and resolves contradictions by recency", () => {
+  const now = 10 * LEARNED_CEILING_TTL_MS;
+  const fresh = now - 1000;
+  const stale = now - LEARNED_CEILING_TTL_MS - 1;
+  assert.deepEqual(learnedCeilings({}, now), { acceptedMax: 0, rejectedMin: 0 });
+  assert.deepEqual(
+    learnedCeilings({ input_accepted_max: 9000, input_accepted_at: fresh,
+      input_rejected_min: 15000, input_rejected_at: fresh }, now),
+    { acceptedMax: 9000, rejectedMin: 15000 }
+  );
+  // An old refusal and an old success are both forgotten, so the route is re-tested.
+  assert.deepEqual(
+    learnedCeilings({ input_accepted_max: 9000, input_accepted_at: stale,
+      input_rejected_min: 15000, input_rejected_at: stale }, now),
+    { acceptedMax: 0, rejectedMin: 0 }
+  );
+  // Accepted >= rejected is contradictory: the newer observation wins.
+  assert.deepEqual(
+    learnedCeilings({ input_accepted_max: 16000, input_accepted_at: now - 10,
+      input_rejected_min: 15000, input_rejected_at: now - 5000 }, now),
+    { acceptedMax: 16000, rejectedMin: 0 }
+  );
+  assert.deepEqual(
+    learnedCeilings({ input_accepted_max: 16000, input_accepted_at: now - 5000,
+      input_rejected_min: 15000, input_rejected_at: now - 10 }, now),
+    { acceptedMax: 0, rejectedMin: 15000 }
+  );
 });
