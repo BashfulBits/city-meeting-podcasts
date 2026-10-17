@@ -1,7 +1,7 @@
 # review/55 — Adaptive input-token admission (estimator, ceilings, size-rejection policy)
 
-Status: **in progress** (2026-10-17). Four stacked PRs, shipped in this order: piece 4, piece 3,
-piece 2, piece 1. Each PR updates the status line of its piece below.
+Status: **implemented** (2026-10-17) as four stacked PRs, in this order: piece 4, piece 3, piece 2,
+piece 1. Merge in that order; each PR is based on the previous one.
 
 ## Why
 
@@ -76,12 +76,27 @@ from a statistical ratio. Today only `free_prompt_cap` writes anything like it
   AI Studio limit was the size gate (estimate x 1.4 against a 14,400 ceiling, i.e. 10,285 raw), and
   the producer's 10,000 target excluded the system prompt and framing.
 
-### 1. Estimator — *planned*
+### 1. Estimator — *shipped in the fourth PR*
 
-Key by (tokenizer family, prompt family) and pool across routes serving the same model. Window 128,
-percentiles only from 64 samples; below that the prior counts as pseudo-samples that measured data
-replaces (the prior becomes a seed, not a floor). Same treatment for the output reserve. Optional
-size bands.
+- **Pooled** by (tokenizer family, prompt family): the `estimates` key is
+  `pool:<tokenizer family>:<prompt family>` where the tokenizer family is the route's
+  `tokenizer_family` if the catalog names one, else its primary model, so all five routes serving
+  Gemma 4 31B share one ring per prompt family (previously one ring per route). Until a pooled ring
+  has 64 samples, the route's older per-route ring is used if it has more.
+- **Window 128**, ratios and output sizes. Below 16 samples only the prior; from 16 to 63 the
+  learned tail is blended in with a linearly shrinking weight on the prior (`1 - n/64`); from 64
+  the learned percentiles stand alone -- the prior is a seed worth ~64 pseudo-samples, **not a
+  floor** any more. Reservation = the safe tail (`max(p95 x headroom, p99)`), admission = p75 x
+  1.05, packing = p95 x 1.05, each blended the same way.
+- **Output reserve:** from 16 to 63 outputs the largest stands in for the p95; from 64 a real p95
+  x 1.25.
+- `GET /v2/stats?detail=1` lists pooled cells (`route_id: null`, `model` = tokenizer family) with
+  the admission and packing ratios.
+- Not done: size bands within a prompt family (a later refinement if the pooled per-family tail is
+  too loose for large packets).
+- Watch after merge: `own_tpm` 429 rates and `route_input_limit` counts per route in the budget
+  monitor; reservations on routes whose full-window learned ratio is below their prior drop, which
+  is the point, but is the one behavior change that touches every route. Revert is a single PR.
 
 ## Additional goals
 

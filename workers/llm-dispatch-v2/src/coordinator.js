@@ -46,6 +46,7 @@ import {
   effectiveBufferSeconds,
 } from "./pacing.js";
 import {
+  CALIBRATION_FULL_SAMPLES,
   CALIBRATION_WINDOW,
   calibrationFor,
   hardInputCeilingLimit,
@@ -3241,6 +3242,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ORDER BY updated_at DESC LIMIT ?`,
       LLMSchedulerDO.CALIBRATION_STATS_LIMIT
     )) {
+      if (row.key.startsWith("pool:")) {
+        // Pooled ring (review/55 piece 1): `pool:<tokenizer family>:<prompt family>`. The
+        // tokenizer family can itself contain ":" (e.g. "...:free"); the prompt family does not.
+        const split = row.key.lastIndexOf(":");
+        const tokenizer = row.key.slice("pool:".length, split);
+        const family = row.key.slice(split + 1);
+        const match = Object.entries(routes).find(
+          ([id, candidate]) => (candidate.tokenizer_family || this._modelForRoute(id)) === tokenizer
+        );
+        if (!match) continue;
+        const representative = { ...match[1], route_id: match[0] };
+        const pooled = calibrationFor(representative, parseCalibrationSummary(row.recent_observed_summary));
+        cells.push({
+          route_id: null,
+          model: tokenizer,
+          prompt_family: family,
+          updated_at: row.updated_at,
+          input_ratio_samples: pooled.inputRatioSamples,
+          input_ratio_p95: pooled.inputRatioP95,
+          input_ratio_prior: routeInputTokenRatio(representative),
+          input_ratio_effective: pooled.inputRatio,
+          input_ratio_admit: pooled.admitRatio,
+          input_ratio_pack: pooled.packRatio,
+          output_samples: pooled.outputSamples,
+          output_reserve_forecast: pooled.outputForecast,
+        });
+        continue;
+      }
       const separator = row.key.indexOf(":");
       if (separator < 1) continue;
       const routeId = row.key.slice(0, separator);
@@ -4477,16 +4506,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * calibration.js). `cache` is an optional per-claim Map so a claim that weighs the same route
    * for several jobs of one family reads its estimates row once. */
   _calibration(route, promptFamily, cache = null) {
-    // Keyed by the route's PRIMARY model, exactly as _calibrateEstimate writes it: a route
-    // serving several pools (also_serves) is one tokenizer and one set of observations, whichever
-    // pool a given job reached it through.
-    const key = `${route.route_id}:${this._modelForRoute(route.route_id)}:${promptFamily}`;
-    if (cache?.has(key)) return cache.get(key);
+    // Pooled by (tokenizer family, prompt family), exactly as _calibrateEstimate writes it: every
+    // route serving a model shares one tokenizer, so its observations are pooled instead of split
+    // across routes (review/55 piece 1). The tokenizer family is the route's `tokenizer_family` if
+    // the catalog names one, else the route's PRIMARY model. Until the pooled ring has the
+    // percentile gate's worth of samples, the route's older per-route ring is used if it has more.
+    const model = this._modelForRoute(route.route_id);
+    const key = this._estimatesKey(route, model, promptFamily);
+    const cacheKey = `${key}|${route.route_id}`;
+    if (cache?.has(cacheKey)) return cache.get(cacheKey);
     const sql = this._getSql();
     const rows = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)];
-    const result = calibrationFor(route, parseCalibrationSummary(rows[0]?.recent_observed_summary));
-    cache?.set(key, result);
+    let summary = parseCalibrationSummary(rows[0]?.recent_observed_summary);
+    if (summary.r.length < CALIBRATION_FULL_SAMPLES) {
+      const legacy = [...sql.exec(
+        "SELECT recent_observed_summary FROM estimates WHERE key = ?",
+        `${route.route_id}:${model}:${promptFamily}`
+      )];
+      const older = parseCalibrationSummary(legacy[0]?.recent_observed_summary);
+      if (older.r.length > summary.r.length) summary = older;
+    }
+    const result = calibrationFor(route, summary);
+    cache?.set(cacheKey, result);
     return result;
+  }
+
+  /** The `estimates` key a route's observations for a prompt family are pooled under. */
+  _estimatesKey(route, model, promptFamily) {
+    const tokenizer = String(route?.tokenizer_family || model || route?.route_id || "");
+    return `pool:${tokenizer}:${promptFamily}`;
   }
 
   /**
@@ -6307,7 +6355,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _calibrateEstimate(routeId, promptFamily, observedTotal, now, sample = {}) {
     const sql = this._getSql();
     const model = this._modelForRoute(routeId);
-    const key = `${routeId}:${model}:${promptFamily}`;
+    const key = this._estimatesKey(
+      { ...(this._dispatchLimits()?.routes_by_id?.[routeId] || {}), route_id: routeId },
+      model,
+      promptFamily
+    );
     const existing = [...sql.exec(
       "SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?",
       key

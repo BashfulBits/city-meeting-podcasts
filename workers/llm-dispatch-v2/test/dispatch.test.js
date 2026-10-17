@@ -813,19 +813,20 @@ test("claim reserves input in the route's tokenizer units via its input_token_ra
 
 test("calibration follows recent output sizes instead of ratcheting on one large job", async () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
-  // A window of 16 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
+  const key = "pool:google/gemma-4-31b-it:tags";
+  // A full window of 64 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
   // high-water margin that the old calibration would have reserved for every later job.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 15000, 16, ?, 0)`,
+     VALUES (?, 15000, 64, ?, 0)`,
     key,
-    JSON.stringify({ r: Array(16).fill(1.0), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.0), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  // The learned ratio (1.0 * 1.2 gemma headroom) never drops below the 1.2 route prior, so
-  // 5000 * 1.2 input only; output forecast and the old 15000 margin do not apply.
+  // With a full window the learned tail stands alone (the prior is a seed, not a floor): the
+  // learned ratio is 1.0 x the 1.2 gemma headroom = 1.2, so 5000 * 1.2 input only; the output
+  // forecast and the old 15000 margin do not apply.
   assert.equal(plan.jobs[0].token_reservation, 6000);
 
   await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
@@ -945,9 +946,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   // "google/gemma-4-" gemma headroom, so the effective ratio is 1.4 * 1.2 = 1.68.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   // 7,500 raw fits the ceiling at the 1.2 prior (9,000) but not at the effective 1.68 (12,600).
   // A static-ratio SQL prefilter would return only these and stall the model.
@@ -983,9 +984,9 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
     });
     sql.exec(
       `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-       VALUES (?, 0, 16, ?, 0)`,
+       VALUES (?, 0, 64, ?, 0)`,
       "gemma-ai-studio:google/gemma-4-31b-it:tags",
-      JSON.stringify({ r: Array(16).fill(1.45), o: Array(16).fill(200) })
+      JSON.stringify({ r: Array(64).fill(1.45), o: Array(64).fill(200) })
     );
     return coordinator;
   };
@@ -1022,9 +1023,9 @@ test("jobs over every live route ceiling fail instead of holding the lookahead",
   // Learned 1.4 x 1.2 headroom = 1.68: 7,500 raw is 12,600, over the 10,000 ceiling.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("over-1", 7500), gemmaJob("over-2", 7500)]);
   await coordinator.enqueueBatch([gemmaJob("tail-fits", 5000)]); // 8,400 at 1.68; ids break created_at ties
@@ -1082,9 +1083,9 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   });
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]); // 12,600 at 1.68; 9,000 > 4,000 context
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
@@ -1116,9 +1117,9 @@ test("packingCeiling is the smallest free route's limit over the p95 packing rat
   // 16 samples at 1.2 -> packing ratio 1.2 x 1.05 = 1.26 on the ceilinged route.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:judge",
-    JSON.stringify({ r: Array(16).fill(1.2), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.2), o: Array(64).fill(200) })
   );
   const status = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
   const ceilinged = status.routes.find((r) => r.route_id === "gemma-ai-studio");
@@ -1162,9 +1163,9 @@ test("a job over a route's configured ceiling is not failed once the route has s
   });
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   coordinator._getOrCreateRouteLedger("gemma-ai-studio", Date.now(), {});
   sql.exec(
@@ -1207,9 +1208,9 @@ test("an oversized job stays queued while a fitting uncapped route has spent dai
   // learned 1.68 (12,600).
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   const now = Date.now();
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]);
@@ -2859,7 +2860,7 @@ test("claimDispatchWindow enforces provider-level TPM across routes sharing a pr
 
 test("calibration persists every completion until its window is full, then a 1-in-4 sample", () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
+  const key = "pool:google/gemma-4-31b-it:tags";
   const summary = () => {
     const row = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)][0];
     return row ? JSON.parse(row.recent_observed_summary) : { r: [], o: [] };
@@ -2875,12 +2876,63 @@ test("calibration persists every completion until its window is full, then a 1-i
     });
     writes.push(JSON.stringify(summary()) !== before);
   };
-  for (let i = 0; i < 32; i += 1) record(i);
+  for (let i = 0; i < 128; i += 1) record(i);
   assert.ok(writes.every(Boolean), "every completion is recorded while the window fills");
   writes.length = 0;
-  for (let i = 32; i < 432; i += 1) record(i);
+  for (let i = 128; i < 728; i += 1) record(i);
   const rate = writes.filter(Boolean).length / writes.length;
   assert.ok(rate > 0.15 && rate < 0.35, `sampled write rate ${rate}`);
+});
+
+test("routes serving the same model pool their observations under one key", () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-b"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-b": { ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"], upstream_model: "gemma-4-31b-it" },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const sample = (route, i) =>
+    coordinator._calibrateEstimate(route, "tags", 1300, Date.now(), {
+      jobId: `job-${route}-${i}`,
+      inputEstimate: 1000,
+      observedInput: 1100,
+      observedOutput: 200,
+    });
+  for (let i = 0; i < 5; i += 1) {
+    sample("gemma-ai-studio", i);
+    sample("gemma-b", i);
+  }
+  const rows = [...sql.exec("SELECT key, recent_observed_summary FROM estimates")];
+  assert.deepEqual(rows.map((r) => r.key), ["pool:google/gemma-4-31b-it:tags"]);
+  assert.equal(JSON.parse(rows[0].recent_observed_summary).r.length, 10);
+});
+
+test("a sparse pooled ring falls back to the route's older per-route ring when that has more", () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.5), o: Array(64).fill(200) })
+  );
+  const route = {
+    ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
+    route_id: "gemma-ai-studio",
+    model: "google/gemma-4-31b-it",
+  };
+  // Only the legacy ring exists: it carries the learned ratio (1.5 x 1.2 gemma headroom).
+  assert.ok(Math.abs(coordinator._calibration(route, "tags").inputRatio - 1.8) < 1e-9);
+  // A pooled ring with a few samples does not shadow the fuller legacy one.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 3, ?, 0)`,
+    "pool:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: [1.0, 1.0, 1.0], o: [100, 100, 100] })
+  );
+  assert.ok(Math.abs(coordinator._calibration(route, "tags", new Map()).inputRatio - 1.8) < 1e-9);
 });
 
 test("retireConsumed deletes only completed jobs whose consumed result_key still matches", async () => {
