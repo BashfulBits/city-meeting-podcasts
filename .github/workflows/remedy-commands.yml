@@ -42,8 +42,8 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
-      - name: Install storage dependencies
-        run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Install storage and policy dependencies
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
       - name: Check current repository write permission
         env:
           GH_TOKEN: ${{ github.token }}
@@ -188,8 +188,8 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
-      - name: Install storage dependencies
-        run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Install storage and policy dependencies
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
       - name: Fetch the actor's permission and the artifact
         env:
           GH_TOKEN: ${{ github.token }}

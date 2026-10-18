@@ -23,7 +23,7 @@ on:
         type: boolean
         default: false
       older_than_hours:
-        description: "Also classify current-model handles older than this many hours"
+        description: "Minimum current-model handle age in hours (0: no minimum; ignored for lane any)"
         required: true
         type: number
         default: 24

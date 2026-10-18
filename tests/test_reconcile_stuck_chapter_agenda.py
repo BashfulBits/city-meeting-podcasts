@@ -649,3 +649,35 @@ def test_current_catalog_models_reads_the_compiled_catalog_and_canonicalizes(tmp
 
 def test_lane_choices_include_any():
     assert reconcile_module.LANE_CHOICES == (*reconcile_module.LANES, "any")
+
+
+@pytest.mark.parametrize("age", [-1.0, float("nan"), float("inf"), -float("inf")])
+def test_run_rejects_invalid_minimum_age(age):
+    with pytest.raises(ValueError, match="--older-than-hours"):
+        reconcile_module.run(
+            apply=False, site_config_path="unused", output_dir="unused", older_than_hours=age
+        )
+
+
+def test_main_zero_age_reaches_real_classification(monkeypatch, capsys):
+    storage = MemStorage()
+    handle = _handle("fresh", model=next(iter(reconcile_module.CURRENT_MODELS)), ref="fresh-job")
+    monkeypatch.setattr(reconcile_module, "load_site_config", lambda path: {})
+    monkeypatch.setattr(reconcile_module, "make_storage", lambda *a: storage)
+    monkeypatch.setattr(
+        reconcile_module,
+        "load_deferred_snapshot",
+        lambda *a, **k: SimpleNamespace(
+            entries=[_entry(handle, age_hours=1)],
+            listed_count=1,
+            omitted_count=0,
+            unavailable_reads=[],
+            deadline_reached=False,
+        ),
+    )
+
+    assert reconcile_module.main(["--dry-run", "--older-than-hours", "0.0"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["older_than_hours"] == 0.0
+    assert report["candidates"][0]["reasons"] == ["age"]
+    assert storage.get_bytes("state/llm_deferred/fresh.json") is None
