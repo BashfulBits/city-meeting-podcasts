@@ -33,7 +33,14 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
     claim = claim if isinstance(claim, Mapping) else {}
     rescue = body.get("catalog_rescue")
     rescue = rescue if isinstance(rescue, Mapping) else {}
+    row_budget = body.get("row_budget")
+    row_budget = row_budget if isinstance(row_budget, Mapping) else {}
+    ingress = body.get("ingress")
+    ingress = ingress if isinstance(ingress, Mapping) else {}
+    purposes = ingress.get("by_purpose")
+    purposes = purposes if isinstance(purposes, list) else []
     return {
+        "utc_day": scheduler.get("utc_day"),
         "active_bundles": bundles.get("active"),
         "active_calls": bundles.get("active_call_count"),
         "queued": by_state.get("queued"),
@@ -42,6 +49,18 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
         "last_reason": claim.get("last_reason"),
         "empty_claims": claim.get("empty_count_today"),
         "reason_counts": claim.get("reason_counts_today"),
+        "row_budget": {
+            key: row_budget.get(key)
+            for key in ("rows_written_today", "account_safe_stop", "enqueue_open", "claims_open")
+        },
+        "ingress_by_purpose": [
+            {
+                key: row.get(key)
+                for key in ("purpose", "jobs_ingested", "daily_quota", "write_units")
+            }
+            for row in purposes[:100]
+            if isinstance(row, Mapping)
+        ],
         "catalog_rescue": {
             "digest": rescue.get("digest"),
             "cursor": rescue.get("cursor"),

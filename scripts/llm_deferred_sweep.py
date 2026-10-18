@@ -22,6 +22,7 @@ import argparse
 import json
 import signal
 import sys
+from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,27 +32,32 @@ from citypods.compute.llm import (
     _WORKER_BATCH_LIMIT,
     LiteLLMBackend,
     LLMBackendConfig,
+    LLMDispatchMissingError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     _enqueue_batch_with_retry,
-    _LLMBatchItemError,
 )
 from citypods.compute.llm_deferred import (
     MAX_TERMINAL_FAILURE_RETRIES,
+    discard_deferred,
     discard_terminal_failure,
     load_deferred_snapshot,
+    load_pending_audit_snapshot,
     load_v2_terminal_cursor,
     look_up_v2_deferred_ref,
     prune_expired_deferred_snapshot,
     prune_expired_failure_markers,
     record_schema_correction,
+    refresh_pending_pointers,
     repair_deferred_index,
     schema_correction_attempted,
     snapshot_deferred_handles,
     write_deferred,
+    write_pending_audit_cursor,
     write_v2_terminal_cursor,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
+from citypods.compute.llm_submission_telemetry import record as record_submission_telemetry
 from citypods.config import load_site_config
 from citypods.storage import make_storage
 
@@ -224,6 +230,36 @@ def _register_known_contracts() -> None:
         ensure_remedy_contract()
     except ImportError:
         pass
+    try:
+        from citypods.moment_judging import ensure_judge_contract
+
+        ensure_judge_contract()
+    except ImportError:
+        pass
+    try:
+        from citypods.judging.backends import ensure_contract
+
+        ensure_contract()
+    except ImportError:
+        pass
+    try:
+        from citypods.tournament import _judge_model
+
+        _judge_model()
+    except ImportError:
+        pass
+    try:
+        from citypods.remedy_p3_runner import _register_contract
+
+        _register_contract()
+    except ImportError:
+        pass
+    try:
+        from citypods.chapter_titles import ensure_title_equivalence_contract
+
+        ensure_title_equivalence_contract()
+    except ImportError:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -246,7 +282,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="List the full canonical registry and prune expired records without reconciling jobs.",
     )
+    parser.add_argument(
+        "--pending-audit-limit",
+        type=int,
+        default=1000,
+        help="Maximum indexed pending recipes to audit (1-20000); normal sweeps rotate 1000.",
+    )
     args = parser.parse_args(argv)
+    if not 1 <= args.pending_audit_limit <= 20000:
+        parser.error("--pending-audit-limit must be between 1 and 20000")
     if args.repair_index and args.full_prune_only:
         parser.error("--repair-index and --full-prune-only are mutually exclusive")
 
@@ -301,11 +345,13 @@ def main(argv: list[str] | None = None) -> int:
             include_ineligible=True,
         )
         pruned = prune_expired_deferred_snapshot(storage, snapshot)
+        refreshed = refresh_pending_pointers(storage, snapshot)
         print(
             json.dumps(
                 {
                     "event": "llm_deferred_full_prune_end",
                     "pruned": pruned,
+                    "pending_index_refresh_attempted": refreshed,
                     "snapshot": {
                         "deadline_reached": snapshot.deadline_reached,
                         "elapsed_seconds": round(
@@ -341,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     # could drift out of sync with the registry itself.
     skipped_by_pool: dict[tuple, int] = {}
     v2_unobserved = 0
+    missing_cleared = 0
 
     snapshot_started_at = datetime.now(UTC)
     print(
@@ -406,7 +453,17 @@ def main(argv: list[str] | None = None) -> int:
 
     def recover_terminal(handle: JobHandle, exc: Exception, *, target_snapshot=snapshot) -> None:
         """Persist one terminal result without re-polling a batch-observed v2 job."""
-        nonlocal failed, recovered_terminal_failures
+        nonlocal failed, recovered_terminal_failures, missing_cleared
+        if isinstance(exc, LLMDispatchMissingError):
+            if discard_deferred(storage, handle.recipe_hash, expected_ref=handle.ref):
+                target_snapshot.mark_terminal_failure(handle.recipe_hash)
+                missing_cleared += 1
+                print(
+                    f"llm-deferred-sweep: {handle.recipe_hash} cleared confirmed missing ref "
+                    f"{handle.ref} without spending a provider retry",
+                    flush=True,
+                )
+            return
         failed += 1
         if isinstance(exc, LLMStructuredOutputError):
             if schema_correction_attempted(storage, handle.recipe_hash):
@@ -487,14 +544,6 @@ def main(argv: list[str] | None = None) -> int:
                             recover_terminal(handle, result, target_snapshot=terminal_snapshot)
                         elif isinstance(result, JobResult):
                             completed += 1
-                        elif isinstance(result, Exception) and not isinstance(
-                            result, _LLMBatchItemError
-                        ):
-                            recover_terminal(
-                                handle,
-                                LLMDispatchTerminalError(str(result)),
-                                target_snapshot=terminal_snapshot,
-                            )
                         else:
                             v2_unobserved += 1
                             terminal_page_fully_consumed = False
@@ -510,7 +559,54 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"llm-deferred-sweep: v2 terminal feed failed: {exc}", file=sys.stderr)
                 break
 
+    # Complement the terminal feed with a rotating, bounded audit. Neither local route quota nor
+    # delivery of a terminal event proves a stored handle is still outstanding at the coordinator.
+    # Pending checks use primary-key batch reads and add zero DO row writes.
+    audit_cursor = None
+    if (
+        has_v2_dispatch
+        and hasattr(storage, "list_objects")
+        and not stop_state.requested
+        and datetime.now(UTC) < deadline_at
+    ):
+        try:
+            audit, next_cursor = load_pending_audit_snapshot(
+                storage,
+                deadline_at=deadline_at,
+                should_stop=lambda: stop_state.requested,
+                limit=args.pending_audit_limit,
+            )
+            existing_keys = {entry.key for entry in snapshot.entries}
+            added = [entry for entry in audit.entries if entry.key not in existing_keys]
+            snapshot.entries.extend(added)
+            snapshot.listed_count += len(added)
+            if not audit.omitted_count:
+                audit_cursor = next_cursor
+            audit_summary = {
+                "limit": args.pending_audit_limit,
+                "listed": audit.listed_count,
+                "loaded": len(audit.entries),
+                "omitted": audit.omitted_count,
+                "pending": _pending_breakdown(list(audit.pending()), legacy_backend=legacy_backend),
+                "unavailable": len(audit.unavailable_reads),
+                "by_task": dict(Counter(handle.task for handle in audit.pending())),
+            }
+            record_submission_telemetry("llm_pending_audit", **audit_summary)
+            print(
+                json.dumps({"event": "llm_pending_audit", **audit_summary}, sort_keys=True),
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001 -- retain cursor and normal reconciliation
+            record_submission_telemetry(
+                "llm_pending_audit", unavailable=1, error=type(exc).__name__
+            )
+            print(
+                f"llm-deferred-sweep: pending audit unavailable: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+
     if not stop_state.requested and datetime.now(UTC) < deadline_at:
+        pending_handles = list(snapshot.pending())
         handled_recipe_hashes: set[str] = set()
         # Queue-only records created before the normal call sites adopted run batching must not
         # turn the sweep into one ingress invocation per record. Their portable policy capsule is
@@ -583,7 +679,13 @@ def main(argv: list[str] | None = None) -> int:
             unresolved = [
                 handle
                 for handle in v2_handles
-                if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception)
+                if handle.ref not in v2_results
+                or (
+                    isinstance(v2_results[handle.ref], Exception)
+                    and not isinstance(
+                        v2_results[handle.ref], (LLMStructuredOutputError, LLMDispatchTerminalError)
+                    )
+                )
             ]
             if unresolved:
                 print(
@@ -684,6 +786,9 @@ def main(argv: list[str] | None = None) -> int:
         for entry in snapshot.entries
         if not entry.deleted and isinstance(entry.decoded, JobHandle)
     )
+    if audit_cursor is not None and not stop_state.requested and datetime.now(UTC) < deadline_at:
+        write_pending_audit_cursor(storage, audit_cursor)
+
     end_summary = {
         "event": "llm_deferred_sweep_end",
         "completed": completed,
@@ -700,8 +805,13 @@ def main(argv: list[str] | None = None) -> int:
         "unavailable": len(snapshot.unavailable_reads),
         "v2_unobserved": v2_unobserved,
         "v2_terminal_seen": v2_terminal_seen,
+        "missing_cleared": missing_cleared,
     }
     print(json.dumps(end_summary, sort_keys=True), flush=True)
+    record_submission_telemetry(
+        "llm_deferred_sweep_end",
+        **{key: value for key, value in end_summary.items() if key != "event"},
+    )
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "

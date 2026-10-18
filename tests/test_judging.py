@@ -1162,8 +1162,12 @@ def test_the_jev_sizing_constants_match_the_route_catalog():
     assert routes[0]["hard_input_ceiling"] == JEV_HARD_INPUT_CEILING
 
 
-def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit():
+def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit(tmp_path, monkeypatch):
     """The PR4 shadow run queued ~8,500 jobs and added ~3,300 a day against ~700 claimed."""
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    telemetry = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(telemetry))
     dispatch = FakeDispatch()
     limits = {"judge:anchor": 1, "judge:sibling": 1}
     first_ep, second_ep = _episode(uid="ep-a"), _episode(uid="ep-b")
@@ -1180,6 +1184,17 @@ def test_a_pass_submits_only_into_the_room_left_under_the_outstanding_limit():
     assert held.counts["packets:sibling"] == 1
     sibling_models = {p.judge_model for p, _ in dispatch.submitted.values() if p.role == "sibling"}
     assert {GEMMA_31B, GEMMA_26B} <= sibling_models
+    import json
+
+    observations = [json.loads(line) for line in telemetry.read_text().splitlines()]
+    gauges = {
+        event["model"]: event
+        for event in observations
+        if event["event"] == "llm_judge_backpressure" and event["purpose"] == "judge:sibling"
+    }
+    assert gauges[GEMMA_31B]["room"] == 0
+    assert gauges[GEMMA_26B]["room"] == 1
+    assert gauges[GEMMA_31B]["limit"] == 1
     full = runner.run(
         [first_ep, second_ep, _episode(uid="ep-c")], _ctx(dispatch, max_outstanding=limits)
     )

@@ -24,6 +24,11 @@ on:
     - cron: "30 5,11,17,23 * * *" # every 6h; the 17:30 run is 1h into DeepSeek's off-peak window
   workflow_dispatch:
     inputs:
+      pending_audit_limit:
+        description: "Pending recipes to verify; 1000 normally, up to 20000 for catch-up"
+        required: false
+        type: number
+        default: 1000
       repair_index:
         description: "Rebuild B2 pointer index (--repair-index)"
         required: false
@@ -74,6 +79,7 @@ jobs:
         env:
           # Surface phase telemetry even when GitHub cancels the job during a storage read.
           PYTHONUNBUFFERED: "1"
+          PENDING_AUDIT_LIMIT: ${{ inputs.pending_audit_limit || 1000 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -97,7 +103,8 @@ jobs:
           if [ "${{ inputs.repair_index }}" = "true" ]; then
             python scripts/llm_deferred_sweep.py --repair-index
           else
-            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90
+            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90 \
+              --pending-audit-limit "$PENDING_AUDIT_LIMIT"
           fi
 
       - name: Summarize LLM submission telemetry

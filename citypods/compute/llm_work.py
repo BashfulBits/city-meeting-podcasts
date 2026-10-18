@@ -142,6 +142,11 @@ class WorkItem:
     def _item(self) -> _Item:
         return self.tracker._items[self.purpose][self.identity]
 
+    def has_prepared_jobs(self) -> bool:
+        """Whether this item's batch collector prepared any new work in this pass."""
+        with self.tracker._lock:
+            return "prepared" in self._item().jobs.values()
+
     def defer(self, state: str) -> None:
         if state not in WORKING | HELD:
             raise ValueError(f"Invalid LLM work deferral state: {state}")

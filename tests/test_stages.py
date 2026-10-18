@@ -2674,3 +2674,67 @@ def test_all_stage_classes_satisfy_runtime_checkable_protocol():
         assert isinstance(instance.name, str) and instance.name
         assert isinstance(instance.version, str) and instance.version
         assert callable(getattr(instance, "process", None))
+
+
+def test_pending_tagger_episode_does_not_spend_new_work_cap(tmp_path, monkeypatch):
+    from citypods.compute.base import InferenceJob, JobHandle
+    from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend, LLMBackendConfig
+    from citypods.compute.llm_deferred import write_deferred
+    from citypods.compute.llm_policy import LLMRequestPolicy
+    from citypods.stages import TagsStage
+    from tests._cas_fake import MemStorage
+
+    storage = MemStorage()
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = BatchingDispatchBackend(
+        LiteLLMBackend(
+            LLMBackendConfig(
+                model="gemini/gemini-3.1-flash-lite", dispatch_v2_url="https://dispatch.example"
+            ),
+            storage=storage,
+        )
+    )
+    ctx.tag_max_dispatches = 1
+    calls = 0
+
+    def suggestions(backend, **kwargs):
+        nonlocal calls
+        recipe = kwargs["recipe_hash"]
+        if calls == 0:
+            write_deferred(
+                storage,
+                recipe,
+                JobHandle(
+                    task="tag", ref="already-queued", recipe_hash=recipe, backend="llm-dispatch-v2"
+                ),
+            )
+        calls += 1
+        backend.run_inference(
+            InferenceJob(
+                task="tag",
+                recipe_hash=recipe,
+                inputs={
+                    "messages": [{"role": "user", "content": "Tag this chapter"}],
+                    "llm_policy": LLMRequestPolicy(
+                        purpose="topic-tags:tagger",
+                        queue_only=True,
+                        allowed_models=("gemini/gemini-3.1-flash-lite",),
+                    ),
+                },
+            )
+        )
+        return [], {}, True, None
+
+    monkeypatch.setattr("citypods.tags.llm_tag_suggestions", suggestions)
+    for i in range(2):
+        ep = _ep(f"pending-cap-{i}")
+        ep.source_chapters = [{"start": 0, "title": f"Intro {i}"}]
+        ep.links = {"agenda_text_artifact_key": f"doc-{i}"}
+        ctx.storage.put_file(
+            f"doc-{i}", _write_temp(tmp_path, f"doc-{i}.txt", b"Item: housing"), "text/plain"
+        )
+        stats = TagsStage().process(None, _city(), [ep], ctx)
+        assert not stats.errors
+        assert ctx.tag_dispatches_count == i
+    assert calls == 2
+    assert ctx.tag_backend.queued_count == 1

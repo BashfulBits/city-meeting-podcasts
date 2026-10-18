@@ -682,7 +682,11 @@ test("pollBatch returns statuses and omits absent IDs", async () => {
     "UPDATE jobs SET state = 'completed', result_key = 'results/j1/lt1.json' WHERE id = 'j1'"
   );
 
+  const before = [...sql.exec("SELECT total_changes() AS n")][0].n;
   const pollRes = await coordinator.pollBatch(["j1", "nonexistent"]);
+  assert.deepEqual(pollRes.missing, ["nonexistent"]);
+  assert.equal([...sql.exec("SELECT total_changes() AS n")][0].n, before,
+    "polling present and missing rows must not write DO rows");
   assert.equal(pollRes.statuses.length, 1);
   assert.equal(pollRes.statuses[0].id, "j1");
   assert.equal(pollRes.statuses[0].state, "completed");

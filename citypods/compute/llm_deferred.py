@@ -1164,6 +1164,70 @@ def load_reconcile_snapshot(
     )
 
 
+V2_AUDIT_CURSOR_KEY = f"{DEFERRED_INDEX_PREFIX}pending-audit-cursor.json"
+PENDING_AUDIT_LIMIT = 1000
+
+
+def load_pending_audit_snapshot(
+    storage,
+    *,
+    deadline_at: datetime | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    limit: int = PENDING_AUDIT_LIMIT,
+) -> tuple[DeferredSnapshot, str]:
+    """Rotate through advisory pending pointers independently of terminal-feed delivery.
+
+    The ordinary feed remains the fast path. This bounded safety pass also sees jobs whose
+    terminal event was already passed, whose v2-ref pointer was lost, or whose model was retired.
+    Listing keys needs no pointer-body reads; canonical records remain authoritative. All cursor
+    state stays on B2, and the caller advances it only after reconciliation finishes.
+    """
+    cursor = _read_json(storage, V2_AUDIT_CURSOR_KEY)
+    after = cursor.get("after", "") if isinstance(cursor, Mapping) else ""
+    after = after if isinstance(after, str) else ""
+    keys = sorted(
+        {
+            deferred_key(key.rsplit("/", 1)[-1][:-5])
+            for key, _modified in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX)
+            if key.endswith(".json")
+        }
+    )
+    remaining = [key for key in keys if key > after]
+    if not remaining:
+        remaining = keys
+    selected = remaining[:limit]
+    snapshot = _load_snapshot_from_keys(
+        storage,
+        ((key, None) for key in selected),
+        deadline_at=deadline_at,
+        should_stop=should_stop,
+    )
+    next_after = selected[-1] if selected and selected[-1] != keys[-1] else ""
+    return snapshot, next_after
+
+
+def refresh_pending_pointers(storage, snapshot: DeferredSnapshot) -> int:
+    """Best-effort repair while weekly maintenance already has the canonical snapshot.
+
+    This reaches records whose advisory pointers were ALL lost. Stale extra pointers are safe:
+    every consumer checks the current canonical record before acting. No canonical or DO writes.
+    """
+    attempted = 0
+    for entry in snapshot.entries:
+        if not entry.deleted and isinstance(entry.decoded, JobHandle) and entry.data is not None:
+            _write_pointer_keys(
+                storage,
+                _index_keys(entry.data, recipe_hash=entry.decoded.recipe_hash),
+                entry.decoded.recipe_hash,
+            )
+            attempted += 1
+    return attempted
+
+
+def write_pending_audit_cursor(storage, after: str) -> None:
+    _write_json(storage, V2_AUDIT_CURSOR_KEY, json.dumps({"after": after}).encode())
+
+
 def look_up_v2_deferred_ref(storage, ref: str) -> JobHandle | None:
     """Resolve one submitted v2 job id to its canonical pending handle, if still current."""
     pointer = _read_json(storage, f"{DEFERRED_INDEX_V2_REF_PREFIX}{ref}.json")

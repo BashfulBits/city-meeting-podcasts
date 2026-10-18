@@ -518,7 +518,7 @@ class StageContext:
     tag_prelabeler_dispatches_reserved: int = 0
     tag_prelabeler_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
     # The shadow evaluator (`topic-tags:prelabeler-shadow`) is a third, independently budgeted
-    # purpose. Counted at reservation: it is audit-only, so an unused slot is not worth reclaiming.
+    # purpose. Counted at reservation, then returned if no new work was prepared.
     tag_prelabeler_shadow_max_dispatches: int | None = None
     tag_prelabeler_shadow_dispatches_count: int = 0
     tag_prelabeler_shadow_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -550,7 +550,10 @@ class StageContext:
                 and self.tag_dispatches_count + self.tag_dispatches_reserved
                 >= self.tag_max_dispatches
             ):
-                self.tag_llm_dispatch_exhausted.set()
+                # In-flight reservations can fail or resolve from cache. Only committed
+                # dispatches may latch exhaustion for the rest of the run.
+                if self.tag_dispatches_count >= self.tag_max_dispatches:
+                    self.tag_llm_dispatch_exhausted.set()
                 return False
             self.tag_dispatches_reserved += 1
             return True
@@ -578,7 +581,10 @@ class StageContext:
                 and self.tag_prelabeler_dispatches_count + self.tag_prelabeler_dispatches_reserved
                 >= self.tag_prelabeler_max_dispatches
             ):
-                self.tag_prelabeler_dispatch_exhausted.set()
+                # In-flight reservations can fail or resolve from cache. Only committed
+                # dispatches may latch exhaustion for the rest of the run.
+                if self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches:
+                    self.tag_prelabeler_dispatch_exhausted.set()
                 return False
             self.tag_prelabeler_dispatches_reserved += 1
             return True
@@ -618,6 +624,14 @@ class StageContext:
             self.tag_prelabeler_shadow_dispatches_count += 1
             return True
 
+    def settle_tag_prelabeler_shadow_dispatch(self, dispatched: bool) -> None:
+        """Release a shadow slot when no new work was prepared (cache, pending, or failure)."""
+        if not dispatched:
+            with self.tag_prelabeler_shadow_lock:
+                self.tag_prelabeler_shadow_dispatches_count = max(
+                    0, self.tag_prelabeler_shadow_dispatches_count - 1
+                )
+
     def reserve_chapter_agenda_dispatch(self) -> bool:
         """Atomically reserve one per-run chapter-agenda dispatch slot before submitting work."""
         with self.chapter_agenda_dispatches_lock:
@@ -628,7 +642,10 @@ class StageContext:
                 and self.chapter_agenda_dispatches_count + self.chapter_agenda_dispatches_reserved
                 >= self.chapter_agenda_max_dispatches
             ):
-                self.chapter_agenda_dispatch_exhausted.set()
+                # In-flight reservations can fail or resolve from cache. Only committed
+                # dispatches may latch exhaustion for the rest of the run.
+                if self.chapter_agenda_dispatches_count >= self.chapter_agenda_max_dispatches:
+                    self.chapter_agenda_dispatch_exhausted.set()
                 return False
             self.chapter_agenda_dispatches_reserved += 1
             return True
@@ -658,7 +675,10 @@ class StageContext:
                 and self.chapter_locator_dispatches_count + self.chapter_locator_dispatches_reserved
                 >= self.chapter_locator_max_dispatches
             ):
-                self.chapter_locator_dispatch_exhausted.set()
+                # In-flight reservations can fail or resolve from cache. Only committed
+                # dispatches may latch exhaustion for the rest of the run.
+                if self.chapter_locator_dispatches_count >= self.chapter_locator_max_dispatches:
+                    self.chapter_locator_dispatch_exhausted.set()
                 return False
             self.chapter_locator_dispatches_reserved += 1
             return True
@@ -2181,6 +2201,7 @@ class TagsStage(LLMProducerStage):
     ) -> StageStats:
 
         from citypods.chapters import episode_served_chapters
+        from citypods.compute.llm import BatchingDispatchBackend
         from citypods.llm_evaluation import (
             apply_admission,
             shadow_prelabel_fields,
@@ -2813,7 +2834,14 @@ class TagsStage(LLMProducerStage):
                                 # and should not carry an expiring deadline to the worker queue.
                                 deadline_at=None,
                             )
-                        queued_dispatch = bool(dispatched and resolved_model != "payload-too-large")
+                        queued_dispatch = bool(
+                            dispatched
+                            and resolved_model != "payload-too-large"
+                            and (
+                                not isinstance(ctx.tag_backend, BatchingDispatchBackend)
+                                or tag_work.has_prepared_jobs()
+                            )
+                        )
                         ctx.settle_tag_dispatch(queued_dispatch)
                         dispatch_settled = True
                         remember_call_attempt(
@@ -2972,6 +3000,10 @@ class TagsStage(LLMProducerStage):
                             queued_prelabel = bool(
                                 prelabel_dispatched
                                 and _prelabel_resolved_model != "payload-too-large"
+                                and (
+                                    not isinstance(ctx.tag_backend, BatchingDispatchBackend)
+                                    or production_work.has_prepared_jobs()
+                                )
                             )
                             ctx.settle_tag_prelabeler_dispatch(queued_prelabel)
                             dispatch_settled = True
@@ -3070,6 +3102,7 @@ class TagsStage(LLMProducerStage):
                             ).encode()
                         ).hexdigest()[:16]
                         shadow_call_metadata: dict[str, Any] = {}
+                        shadow_queued = False
                         try:
                             (
                                 shadow_prelabels,
@@ -3088,6 +3121,14 @@ class TagsStage(LLMProducerStage):
                                 llm_schema_version=prelabeler_llm_schema_version,
                                 call_metadata_out=shadow_call_metadata,
                                 purpose=PRELABELER_SHADOW_PURPOSE,
+                            )
+                            shadow_queued = bool(
+                                shadow_dispatched
+                                and shadow_resolved_model != "payload-too-large"
+                                and (
+                                    not isinstance(ctx.tag_backend, BatchingDispatchBackend)
+                                    or shadow_work.has_prepared_jobs()
+                                )
                             )
                             remember_call_attempt(
                                 ep,
@@ -3132,6 +3173,8 @@ class TagsStage(LLMProducerStage):
                             # and must not read as a production tagging failure.
                             shadow_work.defer("errored")
                             stats.defer("tag-prelabeler-shadow-error", sample=ep.uid or ep.guid)
+                        finally:
+                            ctx.settle_tag_prelabeler_shadow_dispatch(shadow_queued)
 
             # Re-project after the evaluator attempt. This is intentionally cheap and makes the
             # overlay a pure function of the persisted ledger + calibration state; a deferred or
@@ -9404,7 +9447,6 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
             # Short-circuit pending jobs: if the deferred registry already records a pending
             # handle, avoid reading the source artifact from storage and defer immediately.
             agenda_recipe = raw_agenda.get("recipe")
-            is_new_dispatch = True
             if agenda_status == "pending" and isinstance(agenda_recipe, str):
                 pending_model = raw_agenda.get("model")
                 current_models = {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
@@ -9432,19 +9474,9 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                             work.defer("queued")
                         stats.defer("llm-pending")
                         continue
-                    if isinstance(cached, JobResult):
-                        is_new_dispatch = False
-
-            if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
-                if work is not None:
-                    work.defer("ingress_limited")
-                stats.defer("producer-cap")
-                continue
 
             raw = _read_storage_bytes(ctx.storage, source_artifact)
             if raw is None:
-                if is_new_dispatch:
-                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 # DIAGNOSTIC: a different failure mode than the one above -- the link exists but
                 # the object it points at could not be read back (deleted, wrong bucket/prefix,
                 # transient read error). Kept as its own reason so it doesn't get conflated with
@@ -9456,8 +9488,6 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
             agenda_text = raw.decode("utf-8", errors="replace")
             source_hash = hashlib.sha256(raw).hexdigest()
             if ctx.stop is not None and ctx.stop():
-                if is_new_dispatch:
-                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 if work is not None:
                     work.defer("stopped")
                 stats.defer("stop-signal")
@@ -9473,9 +9503,18 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                 # build pass for every other episode
                 if work is not None:
                     work.defer("errored")
-                if is_new_dispatch:
-                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
+                continue
+            # As with the locator, episode metadata may lag an already-known current recipe.
+            cached = look_up_deferred(ctx.storage, job.recipe_hash)
+            is_new_dispatch = not (
+                isinstance(cached, JobResult)
+                or (isinstance(cached, JobHandle) and cached.deferred_request is None)
+            )
+            if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
+                stats.defer("producer-cap")
                 continue
             job = work.bind(job)
             prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch))

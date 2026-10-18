@@ -853,3 +853,38 @@ def test_client_only_deferred_locator_still_requires_dispatch_slot(tmp_path, mon
     assert stats.defer_reasons["producer-cap"] == 1
     assert ctx.chapter_locator_dispatches_count == 0
     assert ctx.chapter_locator_dispatches_reserved == 0
+
+
+@pytest.mark.parametrize(
+    ("prefix", "cap", "event"),
+    [
+        ("tag", "tag_max_dispatches", "tag_llm_dispatch_exhausted"),
+        ("tag_prelabeler", "tag_prelabeler_max_dispatches", "tag_prelabeler_dispatch_exhausted"),
+        ("chapter_agenda", "chapter_agenda_max_dispatches", "chapter_agenda_dispatch_exhausted"),
+        ("chapter_locator", "chapter_locator_max_dispatches", "chapter_locator_dispatch_exhausted"),
+    ],
+)
+def test_unsettled_reservations_do_not_permanently_close_lane(prefix, cap, event):
+    ctx = _ctx()
+    setattr(ctx, cap, 1)
+    reserve = getattr(ctx, f"reserve_{prefix}_dispatch")
+    settle = getattr(ctx, f"settle_{prefix}_dispatch")
+    assert reserve()
+    assert not reserve()
+    assert not getattr(ctx, event).is_set()
+    settle(False)
+    assert reserve()
+    settle(True)
+    assert getattr(ctx, event).is_set()
+    assert not reserve()
+
+
+def test_shadow_slot_is_released_when_no_new_work_was_prepared():
+    ctx = _ctx()
+    ctx.tag_prelabeler_shadow_max_dispatches = 1
+    assert ctx.reserve_tag_prelabeler_shadow_dispatch()
+    assert not ctx.reserve_tag_prelabeler_shadow_dispatch()
+    ctx.settle_tag_prelabeler_shadow_dispatch(False)
+    assert ctx.reserve_tag_prelabeler_shadow_dispatch()
+    ctx.settle_tag_prelabeler_shadow_dispatch(True)
+    assert not ctx.reserve_tag_prelabeler_shadow_dispatch()

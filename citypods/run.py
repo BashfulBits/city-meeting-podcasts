@@ -34,7 +34,7 @@ from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
 from citypods.compute.llm_lanes import lane_for
-from citypods.compute.llm_submission_telemetry import record_stage_activity
+from citypods.compute.llm_submission_telemetry import record_producer_caps, record_stage_activity
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
@@ -3891,6 +3891,7 @@ def _build_impl(
     # real tag-lane run's finalization tail (this block through push_state/reconcile_state below)
     # look like a silent ~7.5-minute hang with no trailing output before the job was cancelled --
     # the work may well have been happening, just never made it to the log.
+    record_producer_caps(ctx)
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue

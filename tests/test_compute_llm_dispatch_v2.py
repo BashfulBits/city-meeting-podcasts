@@ -2423,3 +2423,76 @@ def test_recovery_context_is_bound_to_the_accepted_duplicate_payload():
     record = json.loads(storage.files[deferred_key("duplicate-recipe")])
     submitted = session.post.call_args.kwargs["json"]["jobs"][0]
     assert record["recovery_context"]["input_identity"] == submitted["request_digest"]
+
+
+@pytest.mark.parametrize("explicit_missing", [True, False])
+def test_poll_batch_requires_explicit_missing_proof(explicit_missing, tmp_path, monkeypatch):
+    from citypods.compute.llm import LLMDispatchMissingError, _LLMBatchItemError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    telemetry = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(telemetry))
+    storage = MockStorage()
+    session = MagicMock()
+    body = {"statuses": []}
+    if explicit_missing:
+        body["missing"] = ["gone"]
+    session.post.return_value = _mock_response(json_data=body)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(dispatch_v2_url="https://dispatch.example"),
+        storage=storage,
+        http_session=session,
+    )
+    handle = JobHandle(task="tag", recipe_hash="r", ref="gone", backend="llm-dispatch-v2")
+    result = backend.poll_batch([handle])["gone"]
+    assert isinstance(result, LLMDispatchMissingError if explicit_missing else _LLMBatchItemError)
+    # Observing absence must not enqueue, cancel or spend a provider retry.
+    assert session.post.call_count == 1
+    assert not storage.files
+    events = [json.loads(line) for line in telemetry.read_text().splitlines()]
+    task_event = next(event for event in events if event["event"] == "llm_pending_poll")
+    assert task_event["task"] == "tag"
+    assert task_event["missing" if explicit_missing else "unknown"] == 1
+    assert "gone" not in telemetry.read_text()
+
+
+def test_poll_missing_job_preserves_a_concurrently_persisted_result():
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = MockStorage()
+    done = JobResult(task="tag", recipe_hash="r", output={"answer": "already consumed"})
+    write_deferred(storage, "r", done)
+    session = MagicMock()
+    session.post.return_value = _mock_response(json_data={"statuses": [], "missing": ["gone"]})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(dispatch_v2_url="https://dispatch.example"),
+        storage=storage,
+        http_session=session,
+    )
+    handle = JobHandle(task="tag", recipe_hash="r", ref="gone", backend="llm-dispatch-v2")
+    assert backend.poll_batch([handle])["gone"] == done
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"statuses": [], "missing": "gone"},
+        {"statuses": [], "missing": [17]},
+        {"statuses": [], "missing": ["not-requested"]},
+        {"statuses": [{"id": "gone", "state": "queued"}], "missing": ["gone"]},
+    ],
+)
+def test_poll_batch_rejects_invalid_absence_proofs(body):
+    from citypods.compute.llm import _LLMBatchItemError
+
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.return_value = _mock_response(json_data=body)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(dispatch_v2_url="https://dispatch.example"),
+        storage=storage,
+        http_session=session,
+    )
+    handle = JobHandle(task="tag", recipe_hash="r", ref="gone", backend="llm-dispatch-v2")
+    assert isinstance(backend.poll_batch([handle])["gone"], _LLMBatchItemError)
+    assert not storage.files

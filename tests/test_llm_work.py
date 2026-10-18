@@ -325,3 +325,21 @@ def test_equal_timestamp_shard_events_do_not_compare_payload_dicts():
     events = [explicit(work, shard="0/2"), explicit(work, shard="0/2"), explicit(work, shard="1/2")]
     assert trend.purpose_points(events, "new-purpose", trend.BacklogParams())[0].backlog == 2
     assert trend.purpose_points([], "new-purpose", trend.BacklogParams()) == []
+
+
+def test_cached_pending_work_is_not_a_new_prepared_dispatch():
+    work = tracker()
+    item = work.item("new-purpose", "unit", producer="new-stage")
+    item.result(
+        job(), JobHandle(task="tag", ref="durable", recipe_hash="recipe", backend="llm-dispatch-v2")
+    )
+    assert not item.has_prepared_jobs()
+    item.result(
+        job(),
+        JobHandle(
+            task="tag", ref="batch-pending:recipe", recipe_hash="recipe", backend="llm-dispatch-v2"
+        ),
+    )
+    assert item.has_prepared_jobs()
+    item.result(job(), JobResult("tag", "recipe", {}))
+    assert not item.has_prepared_jobs()

@@ -845,3 +845,33 @@ def test_episode_needs_chapter_agenda_evaluates_correctly():
     # Provider chapters already reconciled to not_applicable
     ep.generated_agenda_candidates = {"status": "not_applicable"}
     assert episode_needs_chapter_agenda(ep) is False
+
+
+def test_agenda_current_cached_recipe_does_not_spend_new_work_cap(tmp_path):
+    import hashlib
+
+    from citypods.chapter_jobs import build_agenda_job
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    cached_ep, fresh_ep = _make_episode("cached"), _make_episode("fresh")
+    text = b"1. Call to order\n2. Housing discussion"
+    for ep in [cached_ep, fresh_ep]:
+        _put_storage_bytes(storage, ep.links["agenda_text_artifact_key"], text)
+    job = build_agenda_job(
+        episode_uid=cached_ep.uid,
+        agenda_text=text.decode(),
+        agenda_source_hash=hashlib.sha256(text).hexdigest(),
+        pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
+    )
+    cached = JobHandle(task=job.task, ref="old", recipe_hash=job.recipe_hash, backend="fake")
+    write_deferred(storage, job.recipe_hash, cached)
+    fresh = JobHandle(task=job.task, ref="new", recipe_hash="fresh", backend="fake")
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = FakeBackend(outcomes=[cached, fresh])
+    ctx.chapter_agenda_max_dispatches = 1
+    stats = AgendaChapterCandidatesStage().process(None, _make_city(), [cached_ep, fresh_ep], ctx)
+    assert not stats.errors
+    assert not stats.defer_reasons.get("producer-cap")
+    assert ctx.chapter_agenda_dispatches_count == 1
+    assert len(ctx.chapter_llm_backend.submitted_jobs) == 2

@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-15 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-18 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -401,7 +401,23 @@ artifact make it possible to separate absent candidates, cached or already-pendi
 ingress deferrals, stage-budget exits, and Worker-side scheduling limits. This is observability only:
 it changes no pipeline version, job policy, route, or backfill behavior.
 
-**Locator producer accounting fix (2026-10-17; proposed).** The locator checks the current recipe's
+**Pending-accounting hardening (2026-10-18; proposed).** Maintainer-directed debugging separates
+client pending handles from actual coordinator occupancy. Fresh-process judge contract registration,
+non-terminal treatment of local result-read failures, a bounded rotating pending audit alongside the
+terminal feed, authoritative missing-id recovery, and corrected producer reservation/cache accounting
+are under implementation. The audit uses existing batch primary-key reads and a B2 cursor, adding
+no DO counters or pending-poll row writes. No producer/provider ceiling or pipeline version changes.
+Retained Actions artifacts and summaries expose cap/reservation diagnostics, per-model judge room,
+per-task poll outcomes, audit coverage and unresolved reads, plus existing UTC-day ingress and row
+budget gauges; repeated observations and stage no-op reuse are not labeled as new jobs.
+Live classification found 667 submitted agenda handles dating from September 25–October 7;
+individual DO states still need authoritative reconciliation, rather than cancellation by age.
+Evidence, cost contract, and post-deployment checks:
+[October 18 investigation](evidence/2026-10-18-llm-pending-accounting.md).
+
+**Locator producer accounting fix (Shipped in
+[PR #2482](https://github.com/BashfulBits/city-meeting-podcasts/pull/2482), 2026-10-18).**
+The locator checks the current recipe's
 canonical deferred record before reserving its per-run slot. Cached completions and submitted
 handles do not consume new-work slots, even when episode metadata has not caught up; client-only
 deferrals still count as new submissions. This corrects the cap without changing its configured
@@ -1267,6 +1283,14 @@ by #2201, its CHANGELOG entry and ARCHITECTURE description; Slice 5 is not stamp
 Checked all 72 unique local Markdown link targets in VISION, ROADMAP, this index and review/48;
 none are missing. The status date is updated. This is a scoped change verification, not a new
 repository-wide completeness audit or permission to activate probes.
+
+**2026-10-18 verification record — pending-accounting hardening:** the maintainer explicitly
+requested debugging and correcting LLM submission accounting with minimal DO row writes. This
+is an operational correction within R10, not a roadmap reorder or quota increase. VISION,
+ROADMAP priorities, L3 gates, and frozen breakouts are unchanged. The proposed status above makes
+no live-recovery or Shipped claim. Architecture, changelog fragment, evidence, and bounded catch-up
+instructions agree; local Markdown link targets added by this change resolve. This records scoped
+verification rather than a new repository-wide catalog-completeness audit.
 
 **2026-10-15 verification record — P3 daily caller PR #2447:** VISION and the Phase-H roadmap
 ordering are unchanged. The P3 catalog narrative matches review/51: the Worker caller and separate
