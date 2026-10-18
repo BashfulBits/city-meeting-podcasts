@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Fix October 18 workflow failures.** Remedy feedback installs its policy-model dependencies
+  in both feedback jobs and the disposition/reopen commands. Stuck-job reconciliation accepts
+  zero as an explicit no-minimum-age threshold, retaining lane, in-flight lease, and write-budget
+  guards. Internal and external ASR workers requeue transient object-read outages as deferred
+  instead of marking the claim failed. No pipeline-version changes, artifact invalidation, or
+  catalog backfill.
+
 - **The claim's route-eligibility filter now applies the same learned size gate as pacing.** Both
   call one function (`inputSizeRefusal`): the admission ratio against the larger of the configured
   ceiling and the largest size the route has accepted. The filter had kept the catalog's 1.4 ratio,
