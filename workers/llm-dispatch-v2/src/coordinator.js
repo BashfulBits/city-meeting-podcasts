@@ -369,6 +369,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this.env = withTuning(env);
     this.sql = ctx?.storage?.sql || ctx?.sql;
     this._schemaReady = false;
+    // Per model: where the last stuck-head extended read stopped (see claimDispatchWindow). In
+    // memory only; a restart simply begins again just past the head.
+    this._claimFrontier = new Map();
 
     let readiness;
     try {
@@ -5135,17 +5138,44 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // filter in SQL: a static-ratio prefilter could disagree with the learned ratio and
         // re-create the stall it exists to prevent.
         const ceilingBound = this._modelIsCeilingBound(modelPlan, dispatchLimits);
-        const candidates = [...sql.exec(
-          `SELECT jobs.* FROM job_models
-           JOIN jobs ON jobs.id = job_models.job_id
-           WHERE job_models.model = ? AND jobs.state = 'queued'
-           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
-           LIMIT ?`,
-          modelPlan.model,
-          ceilingBound ? candidateLookahead : maxJobsPerModelClaim
-        )];
+        const headLimit = ceilingBound ? candidateLookahead : maxJobsPerModelClaim;
+        let candidateKeys = [];
+        const readCandidates = (after, limit) => {
+          const rows = [...sql.exec(
+            `SELECT jobs.*, job_models.priority AS jm_priority, job_models.created_at AS jm_created_at
+               FROM job_models
+               JOIN jobs ON jobs.id = job_models.job_id
+              WHERE job_models.model = ? AND jobs.state = 'queued'
+                ${after ? "AND (job_models.priority, job_models.created_at, job_models.job_id) > (?, ?, ?)" : ""}
+              ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+              LIMIT ?`,
+            modelPlan.model,
+            ...(after ? [after.priority, after.created_at, after.job_id] : []),
+            limit
+          )];
+          candidateKeys = rows.map((row) => ({
+            priority: row.jm_priority,
+            created_at: row.jm_created_at,
+            job_id: row.id,
+          }));
+          for (const row of rows) {
+            delete row.jm_priority;
+            delete row.jm_created_at;
+          }
+          return rows;
+        };
+        let candidates = readCandidates(null, headLimit);
         let acceptedForModel = 0;
+        let extended = false;
 
+        // A stuck head. The oldest rows can all be jobs this tick's free routes cannot take (too
+        // big for the idle routes, the roomy routes busy), which hid every placeable job behind
+        // them: the claim re-read the same four rows each tick and dispatched nothing while the
+        // Google Gemma routes idled (2026-10-18). When nothing from the head was accepted, read on
+        // from a per-model frontier that advances each stuck tick (a deterministic keyset over the
+        // queue order, so it walks the whole queue and wraps), up to the lookahead's worth of extra
+        // rows. The head is still read first every tick, so oldest-first service is unchanged.
+        for (;;) {
         for (const job of candidates) {
           if (chosen.length >= bundleJobLimit) break;
           if (acceptedForModel >= maxJobsPerModelClaim) break;
@@ -5282,6 +5312,36 @@ export class LLMSchedulerDO extends DurableObjectBase {
             oversizeJobs.push({ job, eligibleRoutes });
             oversizeJobIds.add(job.id);
           }
+        }
+        if (
+          extended ||
+          ceilingBound ||
+          acceptedForModel > 0 ||
+          chosen.length >= bundleJobLimit ||
+          candidates.length < headLimit
+        ) {
+          break;
+        }
+        const headEnd = candidateKeys[candidateKeys.length - 1];
+        const frontier = this._claimFrontier.get(modelPlan.model);
+        const startAfter =
+          frontier &&
+          (frontier.priority > headEnd.priority ||
+            (frontier.priority === headEnd.priority &&
+              (frontier.created_at > headEnd.created_at ||
+                (frontier.created_at === headEnd.created_at && frontier.job_id > headEnd.job_id))))
+            ? frontier
+            : headEnd;
+        const extra = readCandidates(startAfter, Math.max(0, candidateLookahead - headLimit));
+        extended = true;
+        diagnostics.extended_scans = (diagnostics.extended_scans || 0) + 1;
+        if (extra.length < candidateLookahead - headLimit) {
+          this._claimFrontier.delete(modelPlan.model); // reached the end: start over next time
+        } else {
+          this._claimFrontier.set(modelPlan.model, candidateKeys[candidateKeys.length - 1]);
+        }
+        if (extra.length === 0) break;
+        candidates = extra;
         }
       }
 

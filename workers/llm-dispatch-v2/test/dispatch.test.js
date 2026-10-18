@@ -3503,3 +3503,61 @@ test("an empty claim records which limit refused each route on capacity", async 
   assert.deepEqual(entry.gates, { "wait:input_minute_window": 1 });
   assert.ok(entry.max_wait_ms >= 58000 && entry.max_wait_ms <= 59000);
 });
+
+// A model with a roomy route that is busy (one call in flight, concurrency 1) and a tight Google
+// route that only fits small jobs. Jobs over the tight route's ceiling can only wait for the
+// roomy one.
+async function stuckHeadFixture(env) {
+  const catalog = {
+    model_routes_map: { "acme/m": ["roomy", "tight"] },
+    routes_by_id: {
+      roomy: { route_id: "roomy", provider: "acme", upstream_model: "m", free: true, rpm: 30,
+        rpd: 1000, tpm: 500000, concurrency: 1, input_context_limit: 100000,
+        output_context_limit: 2000 },
+      tight: { route_id: "tight", provider: "gemini", upstream_model: "m", free: true, rpm: 30,
+        rpd: 1000, tpm: 500000, hard_input_ceiling: 10000, input_token_ratio: 1,
+        input_context_limit: 100000, output_context_limit: 2000 },
+    },
+  };
+  const made = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, ...env });
+  const now = Date.now();
+  const policy = JSON.stringify({ allowed_models: ["acme/m"] });
+  // Occupy the roomy route: a pinned job that claims onto it and stays in flight.
+  await made.coordinator.enqueueBatch([makeJob("runner", {
+    input_token_estimate: 100,
+    policy_json: JSON.stringify({ allowed_models: ["acme/m"], allowed_route_ids: ["roomy"] }),
+    created_at: now - 200_000,
+  })]);
+  const first = await made.coordinator.claimDispatchWindow(now, 30);
+  assert.deepEqual(first.jobs.map((job) => job.route_id), ["roomy"]);
+  return { ...made, now, policy };
+}
+
+test("a head of jobs no free route can take does not hide placeable jobs behind it", async () => {
+  const { coordinator, now, policy } = await stuckHeadFixture({ MAX_JOBS_PER_MODEL_CLAIM: "4" });
+  const big = [0, 1, 2, 3, 4, 5].map((i) => makeJob(`big-${i}`, {
+    input_token_estimate: 12000, policy_json: policy, created_at: now - 100_000 + i }));
+  const small = [0, 1, 2].map((i) => makeJob(`small-${i}`, {
+    input_token_estimate: 4000, policy_json: policy, created_at: now - 50_000 + i }));
+  await coordinator.enqueueBatch([...big, ...small]);
+  const plan = await coordinator.claimDispatchWindow(now + 1, 30);
+  assert.ok(plan.jobs.length > 0, "a small job behind the stuck head is claimed");
+  assert.ok(plan.jobs.every((job) => job.id.startsWith("small-") && job.route_id === "tight"));
+});
+
+test("the stuck-head frontier advances each tick and wraps at the end of the queue", async () => {
+  const { coordinator, now, policy } = await stuckHeadFixture({
+    MAX_JOBS_PER_MODEL_CLAIM: "2", MAX_CANDIDATE_LOOKAHEAD: "5" });
+  // Ten stuck jobs, then a placeable one only a later extended window reaches.
+  const jobs = [...Array(10).keys()].map((i) => makeJob(`big-${i}`, {
+    input_token_estimate: 12000, policy_json: policy, created_at: now - 100_000 + i }));
+  jobs.push(makeJob("small-last", { input_token_estimate: 4000, policy_json: policy,
+    created_at: now - 1000 }));
+  await coordinator.enqueueBatch(jobs);
+  const claimed = [];
+  for (let tick = 1; tick <= 6 && claimed.length === 0; tick += 1) {
+    const plan = await coordinator.claimDispatchWindow(now + tick, 30);
+    claimed.push(...plan.jobs.map((job) => job.id));
+  }
+  assert.deepEqual(claimed, ["small-last"], "the frontier walks past the stuck jobs to reach it");
+});
