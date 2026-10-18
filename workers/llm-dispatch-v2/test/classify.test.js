@@ -773,3 +773,38 @@ test("explicit authentication error body classifies as route_unavailable", () =>
   assert.equal(result.scope, "account");
 });
 
+
+test("one request larger than the whole minute quota is a size rejection, not pacing", () => {
+  // Groq: no "Used" figure and Requested > Limit means no amount of waiting admits this request.
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large for model `x` on tokens per minute (TPM): " +
+      "Limit 8000, Requested 9500, please reduce your message size and try again." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "size-status-request-exceeds-tpm");
+});
+
+test("a request over the quota is a size rejection even when some of the bucket is used", () => {
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large on tokens per minute (TPM): " +
+      "Limit 8000, Used 1000, Requested 9500." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+});
+
+test("a minute bucket that is merely full stays own_tpm", () => {
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large on tokens per minute (TPM): " +
+      "Limit 8000, Used 7000, Requested 2000." } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
+});

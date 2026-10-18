@@ -27,6 +27,7 @@ import {
   routeFitsContext,
   routeIdsOutsideModelPool,
   routesEligibleFor,
+  sizeExcludedRoutes,
 } from "./routes.js";
 import {
   availableTokenBudget,
@@ -45,10 +46,14 @@ import {
   effectiveBufferSeconds,
 } from "./pacing.js";
 import {
+  CALIBRATION_FULL_SAMPLES,
   CALIBRATION_WINDOW,
   calibrationFor,
   hardInputCeilingLimit,
+  LEARNED_CEILING_TTL_MS,
+  learnedCeilings,
   outputReserveFor,
+  packingInputLimit,
   parseCalibrationSummary,
   recordCalibrationSample,
   routeInputTokenRatio,
@@ -250,6 +255,11 @@ const ROUTE_QUOTA_COLUMNS = {
   tpd_used: "INTEGER NOT NULL DEFAULT 0",
   prompt_cap_estimate: "INTEGER NOT NULL DEFAULT 0",
   input_window_json: "TEXT NOT NULL DEFAULT '[]'",
+  // Learned input sizes (review/55 piece 3), in the provider's tokens.
+  input_accepted_max: "INTEGER NOT NULL DEFAULT 0",
+  input_accepted_at: "INTEGER NOT NULL DEFAULT 0",
+  input_rejected_min: "INTEGER NOT NULL DEFAULT 0",
+  input_rejected_at: "INTEGER NOT NULL DEFAULT 0",
 };
 
 // Columns added after the initial table definitions. Keep this list aligned with the
@@ -299,6 +309,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "terminal_reason",
     "terminal_catalog_digest",
     "queue_models",
+    "size_excluded_routes",
     "token_reservation",
     "purpose",
     "schema_retry_count",
@@ -312,6 +323,10 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "queued_job_count",
     "queued_job_count_initialized",
     "claim_empty_count_today",
+    "completed_today",
+    "failed_today",
+    "retried_today",
+    "hourly_burndown_json",
     "lease_count_today",
     "rows_written_today",
     "claim_reason_counts_json",
@@ -906,6 +921,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         reservation_rpd_day_key     TEXT NOT NULL DEFAULT '',
         reservation_tpm_window_start INTEGER NOT NULL DEFAULT 0,
         queue_models                TEXT,
+        size_excluded_routes        TEXT,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -1012,6 +1028,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
         rows_written_today                  INTEGER NOT NULL DEFAULT 0,
         claim_empty_count_today             INTEGER NOT NULL DEFAULT 0,
+        completed_today                     INTEGER NOT NULL DEFAULT 0,
+        failed_today                         INTEGER NOT NULL DEFAULT 0,
+        retried_today                        INTEGER NOT NULL DEFAULT 0,
+        hourly_burndown_json                 TEXT NOT NULL DEFAULT '[]',
         claim_reason_counts_json            TEXT NOT NULL DEFAULT '{}',
         last_claim_at                       INTEGER,
         last_claim_result                   TEXT NOT NULL DEFAULT '',
@@ -1086,6 +1106,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Before the clustering migration and the trigger replacement below: both create the
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
+    // Routes that rejected this job for size (route_input_limit): a per-job exclusion, so the
+    // requeued job moves to a sibling route without standing the route down for other jobs.
+    this._ensureColumn("jobs", "size_excluded_routes", "TEXT");
     this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
     this._runSchemaInitStep("replace job priority trigger", () => {
       const [trigger] = [...sql.exec(
@@ -1157,6 +1180,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "queued_job_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "completed_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "failed_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "retried_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "hourly_burndown_json", "TEXT NOT NULL DEFAULT '[]'");
     this._ensureColumn("scheduler", "lease_count_today", "INTEGER NOT NULL DEFAULT 0");
     const addedRowCounter = this._ensureColumn(
       "scheduler",
@@ -1324,6 +1351,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["tpd_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["tpd_used", "INTEGER NOT NULL DEFAULT 0"],
       ["prompt_cap_estimate", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_accepted_max", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_accepted_at", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_rejected_min", "INTEGER NOT NULL DEFAULT 0"],
+      ["input_rejected_at", "INTEGER NOT NULL DEFAULT 0"],
       ["input_window_json", "TEXT NOT NULL DEFAULT '[]'"],
       ["rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
@@ -1340,6 +1371,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["queued_job_count", "INTEGER NOT NULL DEFAULT 0"],
       ["queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["completed_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["failed_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["retried_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["hourly_burndown_json", "TEXT NOT NULL DEFAULT '[]'"],
       ["lease_count_today", "INTEGER NOT NULL DEFAULT 0"],
       ["rows_written_today", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
@@ -1357,6 +1392,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["terminal_reason", "TEXT"],
       ["terminal_catalog_digest", "TEXT"],
       ["queue_models", "TEXT"],
+      ["size_excluded_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
@@ -1598,15 +1634,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** A structural learned-ceiling rejection, independent of pause or spent daily quota.
    * Every policy-permitted configured alternative is considered, including temporarily paused
    * routes. An uncapped fitting route prevents failure even when it must wait until tomorrow. */
-  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache) {
+  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache, now = Date.now()) {
     if (!eligibleRoutes || eligibleRoutes.length === 0) return false;
     for (const route of eligibleRoutes) {
       if (Number(route.prompt_cap_estimate) > 0 &&
           Number(job.input_token_estimate) > Number(route.prompt_cap_estimate)) continue;
-      const limit = hardInputCeilingLimit(route, { tolerant: true });
+      // The size admission uses: a route that has actually served an input larger than its
+      // configured ceiling is not one the job structurally exceeds (see pacing.js).
+      const limit = Math.max(
+        hardInputCeilingLimit(route, { tolerant: true }),
+        learnedCeilings(route, now).acceptedMax
+      );
       if (!Number.isFinite(limit)) return false;
-      const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
-      if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
+      // The ADMISSION ratio, like the claim's size gates (pacing.js): the structural check must
+      // never fail a job those gates would let through.
+      const { admitRatio } = this._calibration(route, job.prompt_family, calibrationCache);
+      if (scaledInputTokens(job.input_token_estimate, admitRatio) <= limit) return false;
     }
     return true;
   }
@@ -1671,11 +1714,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * gateway_limit -- factored out so authorizeRetry (mid-lease 429) and completeBatch (a final,
    * non-429 upstream_capacity outcome such as an empty 2xx) apply the identical backoff instead
    * of drifting apart. */
-  _upstreamCapacityBlockedUntil(streak, now) {
-    const baseCooldown = this._upstreamCapacityCooldownSeconds();
-    const maxCooldown = this._upstreamCapacityMaxCooldownSeconds();
-    const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, streak - 1));
-    return now + Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5));
+  _upstreamCapacityBlockedUntil(streak, now, saturated = false) {
+    // `saturated`: the provider itself said its pool is full (failure_class upstream_capacity), as
+    // opposed to a gateway limit or an unusable reply. Such a route that keeps failing is
+    // probed less and less, down to one call per day (2026-10-17: the OpenRouter free Gemma routes
+    // returned 116 upstream_capacity failures and no successes while every probe cost a call).
+    // The streak resets on the route's first success, so a route that recovers is back in use.
+    const baseCooldown = saturated
+      ? this._envInt("UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS", 60)
+      : this._upstreamCapacityCooldownSeconds();
+    const maxCooldown = saturated
+      ? this._envInt("UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS", 86400)
+      : this._upstreamCapacityMaxCooldownSeconds();
+    const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, Math.min(streak, 40) - 1));
+    // Jitter spreads probes but never lengthens the wait past the configured maximum.
+    return now + Math.min(maxCooldown * 1000, Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5)));
   }
 
   /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
@@ -2354,6 +2407,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sql.exec(
         `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
          ingress_write_units_today = 0, claim_empty_count_today = 0, lease_count_today = 0,
+         completed_today = 0, failed_today = 0, retried_today = 0,
          rows_written_today = 0, claim_reason_counts_json = '{}' WHERE id = 1`,
         today
       );
@@ -2603,7 +2657,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  result_key = NULL, terminal_reason = NULL, terminal_catalog_digest = NULL,
                  lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
-                 transient_retry_count = 0, queue_models = ?, created_at = ?, updated_at = ?
+                 transient_retry_count = 0, queue_models = ?, size_excluded_routes = NULL,
+                 created_at = ?, updated_at = ?
                WHERE id = ?`,
               job.request_digest,
               providerIdempotencyKey,
@@ -2984,7 +3039,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
          ingress_write_units_today = ingress_write_units_today + ?,
-         queued_job_count = queued_job_count + 1 WHERE id = 1`,
+         queued_job_count = queued_job_count + 1,
+         retried_today = retried_today + 1 WHERE id = 1`,
         writeUnits
       );
       sql.exec(
@@ -3036,9 +3092,38 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 ingress_write_units_today, queued_job_count, rows_written_today,
                 next_maintenance_alarm_at, last_claim_at, last_claim_result,
                 last_claim_reason, claim_empty_count_today, claim_reason_counts_json,
+                completed_today, failed_today, retried_today, hourly_burndown_json,
                 catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
            FROM scheduler WHERE id = 1`
       );
+      const reservationConfig = this._ingressPurposeReservations();
+      const reservations = reservationConfig?.purposes || reservationConfig?.reservations || {};
+      const ingressPurposes = [...sql.exec(
+        "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
+        scheduler.utc_day
+      )];
+      const ingressByPurpose = ingressPurposes.map((row) => {
+        const quotaInfo = reservations[row.purpose];
+        const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
+        const perJob = Number(quotaInfo?.write_units_per_job) || 1;
+        const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
+        const ingested = Number(row.jobs_ingested) || 0;
+        const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
+        return {
+          purpose: row.purpose,
+          jobs_ingested: ingested,
+          write_units: Number(row.write_units) || 0,
+          daily_quota: dailyQuota,
+          percent_used: pct,
+        };
+      });
+      let burndown = [];
+      try {
+        const parsed = JSON.parse(scheduler.hourly_burndown_json || "[]");
+        if (Array.isArray(parsed)) burndown = parsed;
+      } catch {
+        // Ignore malformed legacy/manual data rather than fail the lightweight endpoint.
+      }
       const activeBundles = [...this._activeBundles().values()];
       const activeCalls = activeBundles.reduce((sum, row) => sum + (row.active_call_count || 0), 0);
 
@@ -3050,6 +3135,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           active_call_count: activeCalls,
           active_expired: activeBundles.filter((row) => row.lease_expires_at <= now).length,
         },
+        ingress: {
+          enqueue_open: scheduler.rows_written_today < this._enqueueRowStop(),
+          by_purpose: ingressByPurpose,
+        },
+        burndown,
         // Leased jobs per route/provider (bounded by the in-flight caps) and any operator pause.
         in_flight: this._inFlightCounts(now),
         dispatch_pauses: this._activePauses(now),
@@ -3059,6 +3149,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           lease_count_today: scheduler.lease_count_today ?? 0,
           ingress_write_units_today: scheduler.ingress_write_units_today ?? 0,
           jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
+          completed_today: scheduler.completed_today ?? 0,
+          failed_today: scheduler.failed_today ?? 0,
+          retried_today: scheduler.retried_today ?? 0,
           next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
@@ -3214,6 +3307,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ORDER BY updated_at DESC LIMIT ?`,
       LLMSchedulerDO.CALIBRATION_STATS_LIMIT
     )) {
+      if (row.key.startsWith("pool:")) {
+        // Pooled ring (review/55 piece 1): `pool:<tokenizer family>:<prompt family>`. The
+        // tokenizer family can itself contain ":" (e.g. "...:free"); the prompt family does not.
+        const split = row.key.lastIndexOf(":");
+        const tokenizer = row.key.slice("pool:".length, split);
+        const family = row.key.slice(split + 1);
+        const match = Object.entries(routes).find(
+          ([id, candidate]) => (candidate.tokenizer_family || this._modelForRoute(id)) === tokenizer
+        );
+        if (!match) continue;
+        const representative = { ...match[1], route_id: match[0] };
+        const pooled = calibrationFor(representative, parseCalibrationSummary(row.recent_observed_summary));
+        cells.push({
+          route_id: null,
+          model: tokenizer,
+          prompt_family: family,
+          updated_at: row.updated_at,
+          input_ratio_samples: pooled.inputRatioSamples,
+          input_ratio_p95: pooled.inputRatioP95,
+          input_ratio_prior: routeInputTokenRatio(representative),
+          input_ratio_effective: pooled.inputRatio,
+          input_ratio_admit: pooled.admitRatio,
+          input_ratio_pack: pooled.packRatio,
+          output_samples: pooled.outputSamples,
+          output_reserve_forecast: pooled.outputForecast,
+        });
+        continue;
+      }
       const separator = row.key.indexOf(":");
       if (separator < 1) continue;
       const routeId = row.key.slice(0, separator);
@@ -3265,6 +3386,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
               last_provider_status, rpd_count, rpd_day_key, buffer_seconds, buffer_updated_at,
               provisional_reservation, settled_usage, tpd_used, tpd_updated_at, prompt_cap_estimate,
+              input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
               rpm_count, tpm_reserved, full_token_budget,
               token_budget_updated_at, tpm_window_start, rpm_window_start, rpd_window_start
          FROM routes`
@@ -3311,6 +3433,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         tpd_limit: catalogRoute?.tpd ?? null,
         tpd_used: catalogRoute ? dailyTokenDebt(merged, now) : row.tpd_used,
         prompt_cap_estimate: row.prompt_cap_estimate,
+        // Learned input sizes in the provider's tokens (review/55 piece 3); 0 = none/expired.
+        input_accepted_max: learnedCeilings(row, now).acceptedMax,
+        input_rejected_min: learnedCeilings(row, now).rejectedMin,
         provisional_reservation: row.provisional_reservation,
         in_catalog: Boolean(catalogRoute),
       };
@@ -3806,6 +3931,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const routesByModel = dispatchLimits?.model_routes_map || {};
     const catalog = dispatchLimits?.routes_by_id || {};
 
+    const sizeExcluded = sizeExcludedRoutes(job);
     const models = new Set();
     for (const rawModel of allowedModels) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -3815,6 +3941,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
         const route = catalog[routeId];
         if (!route) return false;
+        // A route that already rejected this job for size can no longer take it, so a model all of
+        // whose routes did is not an index entry for it.
+        if (sizeExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
         return routeFitsContext(route, inputTokens, outputTokens);
       });
@@ -4442,16 +4571,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * calibration.js). `cache` is an optional per-claim Map so a claim that weighs the same route
    * for several jobs of one family reads its estimates row once. */
   _calibration(route, promptFamily, cache = null) {
-    // Keyed by the route's PRIMARY model, exactly as _calibrateEstimate writes it: a route
-    // serving several pools (also_serves) is one tokenizer and one set of observations, whichever
-    // pool a given job reached it through.
-    const key = `${route.route_id}:${this._modelForRoute(route.route_id)}:${promptFamily}`;
-    if (cache?.has(key)) return cache.get(key);
+    // Pooled by (tokenizer family, prompt family), exactly as _calibrateEstimate writes it: every
+    // route serving a model shares one tokenizer, so its observations are pooled instead of split
+    // across routes (review/55 piece 1). The tokenizer family is the route's `tokenizer_family` if
+    // the catalog names one, else the route's PRIMARY model. Until the pooled ring has the
+    // percentile gate's worth of samples, the route's older per-route ring is used if it has more.
+    const model = this._modelForRoute(route.route_id);
+    const key = this._estimatesKey(route, model, promptFamily);
+    const cacheKey = `${key}|${route.route_id}`;
+    if (cache?.has(cacheKey)) return cache.get(cacheKey);
     const sql = this._getSql();
     const rows = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)];
-    const result = calibrationFor(route, parseCalibrationSummary(rows[0]?.recent_observed_summary));
-    cache?.set(key, result);
+    let summary = parseCalibrationSummary(rows[0]?.recent_observed_summary);
+    if (summary.r.length < CALIBRATION_FULL_SAMPLES) {
+      const legacy = [...sql.exec(
+        "SELECT recent_observed_summary FROM estimates WHERE key = ?",
+        `${route.route_id}:${model}:${promptFamily}`
+      )];
+      const older = parseCalibrationSummary(legacy[0]?.recent_observed_summary);
+      if (older.r.length > summary.r.length) summary = older;
+    }
+    const result = calibrationFor(route, summary);
+    cache?.set(cacheKey, result);
     return result;
+  }
+
+  /** The `estimates` key a route's observations for a prompt family are pooled under. */
+  _estimatesKey(route, model, promptFamily) {
+    const tokenizer = String(route?.tokenizer_family || model || route?.route_id || "");
+    return `pool:${tokenizer}:${promptFamily}`;
   }
 
   /**
@@ -4459,6 +4607,54 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * this route and prompt family, so a producer can size jobs to the Worker's own ceiling check.
    * One estimates row read; writes nothing. Null for a route the catalog does not know.
    */
+  /**
+   * Read-only producer preflight for PACKING (`GET /v2/calibration?model=`): the largest chars/4
+   * input estimate a packet may carry and still be admissible on the SMALLEST free route of the
+   * model, from each route's tightest size limit (configured ceiling, learned refusal, context
+   * window) over its p95 packing ratio. Null `pack_ceiling_input_estimate` when no route states a
+   * limit. Selects only (no ledger row is created for a route that has none).
+   */
+  async packingCeiling(model, promptFamily) {
+    const limits = this._dispatchLimits();
+    const canonical = canonicalModelName(String(model || ""), limits);
+    const routeIds = limits?.model_routes_map?.[canonical];
+    if (!Array.isArray(routeIds) || routeIds.length === 0) return null;
+    const sql = this._getSql();
+    const now = Date.now();
+    const family = String(promptFamily || "");
+    const routes = [];
+    let ceiling = null;
+    for (const routeId of routeIds) {
+      const stored = limits.routes_by_id?.[routeId];
+      // Only an explicit zero daily quota pauses a route; null means unspecified (unlimited).
+      if (!stored || !stored.free || (stored.rpd != null && Number(stored.rpd) === 0)) continue;
+      const row = [...sql.exec(
+        `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
+                prompt_cap_estimate
+           FROM routes WHERE route_id = ?`,
+        routeId
+      )][0] || {};
+      const route = { ...stored, ...row, route_id: routeId, model: canonical };
+      const calibration = this._calibration(route, family);
+      let limit = packingInputLimit(route, calibration.packRatio, now);
+      // A learned free-prompt cap is a RAW estimate limit (admission compares it before scaling).
+      const promptCap = Number(route.prompt_cap_estimate) || 0;
+      if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
+      routes.push({
+        route_id: routeId,
+        pack_ratio: calibration.packRatio,
+        input_estimate_limit: limit,
+      });
+      if (limit != null) ceiling = ceiling == null ? limit : Math.min(ceiling, limit);
+    }
+    return {
+      model: canonical,
+      prompt_family: family,
+      pack_ceiling_input_estimate: ceiling,
+      routes,
+    };
+  }
+
   async calibrationStatus(routeId, promptFamily) {
     const stored = this._dispatchLimits()?.routes_by_id?.[routeId];
     if (!stored) return null;
@@ -4473,6 +4669,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       input_ratio_p95: effective.inputRatioP95,
       input_ratio_samples: effective.inputRatioSamples,
       input_ratio_effective: effective.inputRatio,
+      input_ratio_admit: effective.admitRatio,
+      input_ratio_pack: effective.packRatio,
       hard_input_ceiling: Number(route.hard_input_ceiling) || null,
       hard_input_ceiling_tolerance: Number(route.hard_input_ceiling_tolerance) || 0,
     };
@@ -4863,7 +5061,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const providerLedger = route.provider
           ? getMergedProvider(route.provider, providerCfg)
           : null;
-        const { inputRatio, outputForecast } = this._calibration(
+        const { inputRatio, admitRatio, outputForecast } = this._calibration(
           route,
           job.prompt_family,
           calibrationCache
@@ -4871,6 +5069,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return {
           estimateFloor,
           inputRatio,
+          admitRatio,
           outputForecast,
           callDurationCeilingMs,
           providerConfig: providerCfg,
@@ -5177,7 +5376,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         let workingRoute = getMergedRoute(route);
         const providerCfg = dispatchLimits.providers?.[route.provider];
         for (const job of routeJobs) {
-          const { inputRatio, outputForecast } = this._calibration(
+          const { inputRatio, admitRatio, outputForecast } = this._calibration(
             route,
             job.prompt_family,
             calibrationCache
@@ -5188,6 +5387,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const waitResult = computeRouteLaneWait(workingRoute, job, laneTime, now, {
             estimateFloor,
             inputRatio,
+            admitRatio,
             outputForecast,
             providerConfig: providerCfg,
             providerLedger,
@@ -5409,7 +5609,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         case "upstream_capacity": {
           const streak = (ledger.upstream_capacity_streak || 0) + 1;
-          const blockedUntil = this._upstreamCapacityBlockedUntil(streak, now);
+          const blockedUntil = this._upstreamCapacityBlockedUntil(streak, now, true);
           // Clearing throttle_streak/buffer_seconds here is not housekeeping -- it is the
           // conclusion this classification licenses. The provider just told us its own pool is
           // saturated, which is positive evidence our pacing is NOT the problem, so any own-rate
@@ -5572,6 +5772,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const now = Date.now();
       let settledCount = 0;
       let requeuedCount = 0;
+      let completedCount = 0;
+      let failedCount = 0;
 
       // Success settlements, folded per route and written once (P1): a bundle whose jobs share a
       // route used to rewrite that routes row once per success. Any non-success write to a route
@@ -5600,7 +5802,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
              full_token_budget = full_token_budget + ?,
              throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
              payment_required_streak = 0, upstream_capacity_streak = 0,
-             last_failure_class = '', blocked_until = NULL, last_provider_status = ?
+             last_failure_class = '', blocked_until = NULL, last_provider_status = ?,
+             input_accepted_at = CASE
+               WHEN ? > 0 AND (? > input_accepted_max OR ? - input_accepted_at > ?) THEN ?
+               ELSE input_accepted_at END,
+             input_accepted_max = CASE
+               WHEN ? > 0 AND (? > input_accepted_max OR ? - input_accepted_at > ?) THEN ?
+               ELSE input_accepted_max END
            WHERE route_id = ?`,
           pending.reservation,
           pending.settledUsage,
@@ -5608,6 +5816,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
           windowDelta,
           pending.budgetDelta,
           pending.lastStatus,
+          // Raise-only high-water mark of accepted input (provider tokens); re-seeded from the
+          // current observation once the stored one is older than half the TTL, so a route that
+          // stops seeing large inputs does not keep an old maximum alive forever.
+          pending.maxObservedInput, pending.maxObservedInput, now, LEARNED_CEILING_TTL_MS / 2, now,
+          pending.maxObservedInput, pending.maxObservedInput, now, LEARNED_CEILING_TTL_MS / 2,
+          pending.maxObservedInput,
           routeId
         );
       };
@@ -5710,13 +5924,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const isPromptCap = result.failure_class === "free_prompt_cap";
-        const isRouteInputLimit = result.failure_class === "route_input_limit" || isPromptCap;
+        // A provider "input too long" answer is about THIS job's size against THIS route's limit.
+        // It excludes the route for the job (below) and requeues it onto a sibling route of the
+        // same model; it neither stands the route down for other (smaller) jobs nor spends the
+        // transient 5xx budget. The learned per-route ceiling that keeps similar jobs away is
+        // recorded by the route-ceiling tracker, not by quarantining the route.
+        const isSizeRejection = result.failure_class === "route_input_limit";
+        const isRouteInputLimit = isSizeRejection || isPromptCap;
         // The route's model is retired (410 -- classify.js rule 8). Not this job's fault, so it
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
-        const blockedUntil = isTransientRouteFailure || isRouteInputLimit
+        const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
+        const sizeExcluded = isSizeRejection
+          ? new Set([...sizeExcludedRoutes(job), job.lease_route_id].filter(Boolean))
+          : null;
+        const nextSizeExcludedRoutes = sizeExcluded
+          ? JSON.stringify([...sizeExcluded])
+          : (job.size_excluded_routes ?? null);
+        // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
+        // producer (terminal_reason input_too_large), which re-packs it smaller.
+        const sizeRoutesLeft = isSizeRejection
+          ? routesEligibleFor(
+              { ...job, size_excluded_routes: nextSizeExcludedRoutes },
+              this._dispatchLimits(),
+              this._dispatchLimits()
+            ).length
+          : 0;
         // An upstream/gateway failure is by definition not this job's fault and recurs on its own
         // schedule, so it gets its own, larger budget rather than sharing the single 5xx slot.
         // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
@@ -5731,10 +5966,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetry5xx =
           isTransientRouteFailure &&
           job.transient_retry_count < _retryCeiling(this._max5xxRetries());
-        const shouldRetryRouteInputLimit =
-          isRouteInputLimit &&
-          job.transient_retry_count < _retryCeiling(isPromptCap
-            ? this._maxUpstreamCapacityRetries() : this._max5xxRetries());
+        const shouldRetryRouteInputLimit = isSizeRejection
+          ? sizeRoutesLeft > 0
+          : isPromptCap &&
+            job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
@@ -5752,14 +5987,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
           job.transient_retry_count < (isSingleModelJob
             ? this._maxSingleModelOutputBudgetRetries()
             : _retryCeiling(this._maxUpstreamCapacityRetries()));
-        const shouldRequeue =
-          shouldRetryOutputBudget ||
-          shouldRetryRouteUnavailable ||
-          shouldRetry5xx ||
-          shouldRetryRouteInputLimit ||
-          isPaymentRequired ||
-          isRateLimitTerminal ||
-          isUpstreamRetryable;
+        // A classified size rejection is decided only by whether a sibling route is left: it may
+        // arrive as a retryable 4xx/5xx outcome, and the transient predicates must not requeue a
+        // job with no route left (or spend their budget on one that has).
+        const shouldRequeue = isSizeRejection
+          ? shouldRetryRouteInputLimit
+          : shouldRetryOutputBudget ||
+            shouldRetryRouteUnavailable ||
+            shouldRetry5xx ||
+            shouldRetryRouteInputLimit ||
+            isPaymentRequired ||
+            isRateLimitTerminal ||
+            isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -5828,14 +6067,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
           // with no index row and holding a stale lease -- claimDispatchWindow can never select it
           // again, stranding it silently.
-          const queueModels = this._modelsToIndex(job);
+          const queueModels = this._modelsToIndex({
+            ...job,
+            size_excluded_routes: nextSizeExcludedRoutes,
+          });
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
-                             queue_models=?, attempts = MAX(0, attempts - ?), updated_at=?
+                             queue_models=?, size_excluded_routes=?,
+                             attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
-            nextTransientRetryCount,
+            // A size rejection is not a transient failure: it leaves the 5xx budget untouched.
+            isSizeRejection ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
+            nextSizeExcludedRoutes,
             uncountedAttempt,
             now,
             result.job_id
@@ -5852,14 +6097,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
         } else {
           sql.exec(
-            "UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=? WHERE id=?",
+            `UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=?,
+                             terminal_reason = COALESCE(?, terminal_reason)
+             WHERE id=?`,
             newState,
             uncountedAttempt,
             now,
+            isSizeRejection && newState === "failed" ? "input_too_large" : null,
             result.job_id
           );
         }
         settledCount += 1;
+        if (newState === "completed") completedCount += 1;
+        if (newState === "failed") failedCount += 1;
 
         // Settle the route's provisional reservation and decay its throttle state on success.
         // Never touch rpm/rpd/tpm-window/full-token-budget bookkeeping here: those were already
@@ -5978,7 +6228,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             let pending = pendingSuccess.get(job.lease_route_id);
             if (!pending) {
               pending = { reservation: 0, settledUsage: 0, budgetDelta: 0,
-                windowDeltas: new Map(), dailyDelta: 0 };
+                windowDeltas: new Map(), dailyDelta: 0, maxObservedInput: 0 };
               pendingSuccess.set(job.lease_route_id, pending);
             }
             pending.reservation += reservation;
@@ -5986,6 +6236,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             pending.budgetDelta += delta;
             pending.dailyDelta += observedTotal != null ? reservation - observedTotal : 0;
             pending.lastStatus = result.provider_status_code ?? 200;
+            pending.maxObservedInput = Math.max(
+              pending.maxObservedInput,
+              Number(result.observed_input_tokens) || 0
+            );
             if (routeTpm > 0 && reservation <= routeTpm && delta !== 0) {
               const w = job.reservation_tpm_window_start;
               pending.windowDeltas.set(w, (pending.windowDeltas.get(w) ?? 0) + delta);
@@ -6066,14 +6320,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
               cap, cap, result.provider_status_code, result.failure_class, job.lease_route_id
             );
           } else if (isRouteInputLimit) {
-            // Quarantine a route that cannot serve this input shape, letting the requeued job
-            // select a longer-context sibling without a durable per-job exclusion list.
+            // The route stays selectable for every other job: this job carries its own exclusion
+            // (jobs.size_excluded_routes), so a rejection of one large packet no longer stands the
+            // route down for the small ones behind it.
+            const rejectedRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const rejectedInput = rejectedRoute
+              ? scaledInputTokens(
+                  job.input_token_estimate,
+                  this._calibration(
+                    { ...rejectedRoute, route_id: job.lease_route_id },
+                    job.prompt_family
+                  ).inputRatio
+                )
+              : Number(job.input_token_estimate) || 0;
             sql.exec(
-              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
-                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
-              blockedUntil,
+              `UPDATE routes SET last_provider_status = ?, last_failure_class = ?,
+                 input_rejected_min = CASE
+                   WHEN input_rejected_min > 0 AND ? - input_rejected_at <= ?
+                   THEN MIN(input_rejected_min, ?) ELSE ? END,
+                 input_rejected_at = ?
+               WHERE route_id = ?`,
               result.provider_status_code ?? null,
               result.failure_class,
+              now, LEARNED_CEILING_TTL_MS, rejectedInput, rejectedInput, now,
               job.lease_route_id
             );
           } else if (isTransientRouteFailure && !isUpstreamClass) {
@@ -6094,13 +6363,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // either saturated route could be reselected on the very next tick and burn through
             // the retry budget back to back instead of backing off between attempts.
             const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
-            const streak = (ledger.upstream_capacity_streak || 0) + 1;
+            // A saturated route already cooling down is not escalated again: authorizeRetry just
+            // advanced the ladder for this very call (it hands the declined 429 back here), and
+            // calls in flight when the cooldown began would otherwise each climb a rung too.
+            const alreadyCooling =
+              result.failure_class === "upstream_capacity" &&
+              Number(ledger.blocked_until) > now;
+            const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
             sql.exec(
               `UPDATE routes SET upstream_capacity_streak = ?,
                                  blocked_until = MAX(COALESCE(blocked_until, 0), ?),
                                  last_provider_status = ? WHERE route_id = ?`,
               streak,
-              this._upstreamCapacityBlockedUntil(streak, now),
+              alreadyCooling ? 0 : this._upstreamCapacityBlockedUntil(
+                streak,
+                now,
+                result.failure_class === "upstream_capacity"
+              ),
               result.provider_status_code ?? null,
               job.lease_route_id
             );
@@ -6128,10 +6407,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const routeId of [...pendingSuccess.keys()]) flushSuccess(routeId);
       this._writeAttemptUsage(usageCells, now);
 
-      if (requeuedCount > 0) {
+      if (requeuedCount > 0 || completedCount > 0 || failedCount > 0) {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter
         // note in _initSchema).
-        this._stageSchedulerSet("queued_job_count = queued_job_count + ?", requeuedCount);
+        this._stageSchedulerSet(
+          `queued_job_count = queued_job_count + ?,
+           completed_today = completed_today + ?, failed_today = failed_today + ?,
+           retried_today = retried_today + ?`,
+          requeuedCount,
+          completedCount,
+          failedCount,
+          requeuedCount
+        );
       }
 
       if (settledCount > 0) {
@@ -6155,7 +6442,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _calibrateEstimate(routeId, promptFamily, observedTotal, now, sample = {}) {
     const sql = this._getSql();
     const model = this._modelForRoute(routeId);
-    const key = `${routeId}:${model}:${promptFamily}`;
+    const key = this._estimatesKey(
+      { ...(this._dispatchLimits()?.routes_by_id?.[routeId] || {}), route_id: routeId },
+      model,
+      promptFamily
+    );
     const existing = [...sql.exec(
       "SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?",
       key
@@ -6233,12 +6524,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._ensureQueuedJobCounter();
       this._retireLegacyJobModelsIndex();
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
+      const scheduler = [...sql.exec(
+        `SELECT queued_job_count, jobs_ingested_today, completed_today, failed_today,
+                retried_today, hourly_burndown_json
+           FROM scheduler WHERE id = 1`
+      )][0] || {};
+      const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+      let history = [];
+      try {
+        const parsed = JSON.parse(scheduler.hourly_burndown_json || "[]");
+        if (Array.isArray(parsed)) history = parsed;
+      } catch {
+        history = [];
+      }
+      const point = {
+        timestamp: hour,
+        queued: actual,
+        completed: Number(scheduler.completed_today) || 0,
+        ingested: Number(scheduler.jobs_ingested_today) || 0,
+        failed: Number(scheduler.failed_today) || 0,
+        retried: Number(scheduler.retried_today) || 0,
+      };
+      const latest = history[history.length - 1];
+      let nextHistory = history;
+      if (latest?.timestamp !== hour) {
+        nextHistory = [...history, point].slice(-24);
+      }
+      const historyJson = JSON.stringify(nextHistory);
       sql.exec(
-        "UPDATE scheduler SET queued_job_count = ? WHERE id = 1 AND queued_job_count <> ?",
+        `UPDATE scheduler SET queued_job_count = ?,
+         hourly_burndown_json = ?
+         WHERE id = 1 AND (queued_job_count <> ? OR hourly_burndown_json <> ?)`,
         actual,
-        actual
+        historyJson,
+        actual,
+        historyJson
       );
-      return { queued: actual };
+      return { queued: actual, burndown_sampled: nextHistory !== history };
     });
   }
 

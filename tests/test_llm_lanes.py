@@ -586,3 +586,28 @@ class TestJudgePools:
         assert len(adjudicators) == 2 and not adjudicators & {
             families[m] for m in (*sibling.models, *sibling.eligible_models)
         }
+
+
+def test_load_families_parses_the_site_config_once_per_path(monkeypatch):
+    import yaml
+
+    clear_cache()
+    parsed = []
+    real = yaml.safe_load
+
+    def counting(stream, *args, **kwargs):
+        parsed.append(1)
+        return real(stream, *args, **kwargs)
+
+    monkeypatch.setattr(yaml, "safe_load", counting)
+    first = load_families()
+    after_first = len(parsed)
+    for _ in range(50):
+        again = load_families()
+    assert len(parsed) == after_first  # 50 more calls, no more parsing
+    assert again == first
+    again["acme/x"] = "mutated"  # callers get their own copy
+    assert "acme/x" not in load_families()
+    clear_cache()
+    load_families()
+    assert len(parsed) > after_first

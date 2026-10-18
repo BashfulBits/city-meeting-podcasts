@@ -66,8 +66,7 @@
       "daily_write_units": 8000,
       "models": [
         "google/gemma-4-31b-it",
-        "google/gemma-4-26b-a4b-it",
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
