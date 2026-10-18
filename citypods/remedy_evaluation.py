@@ -222,10 +222,20 @@ class RemedyConfig(StrictModel):
     policy_templates: list[PolicyTemplate] = Field(default_factory=list)
     version: Literal[1]
     mode: Literal["shadow", "manual", "qualified_alias"]
+    # Review/51 P4: `report_only` records the publication plan and keeps the publisher's earlier
+    # behaviour; `live` executes it (one isolated PR per unit, budgets, feedback). A person sets
+    # `live` after inspecting the plans. An operational switch, not policy: it is excluded from
+    # the config fingerprint so changing it never invalidates a recorded decision or observation.
+    publication_mode: Literal["report_only", "live"] = "report_only"
     admissions: list[AdmissionEntry]
     qualified_alias_types: list[dict[str, Any]]
     limits: Limits
     onboarding_exceptions: list[dict[str, Any]]
+
+
+def config_fingerprint(config: RemedyConfig) -> str:
+    """The hash decisions and observations bind to: the policy-bearing config, not the switches."""
+    return canonical_hash(config.model_dump(mode="json", exclude={"publication_mode"}))
 
 
 def load_cases(manifest_path, gold_path) -> EvaluationSet:

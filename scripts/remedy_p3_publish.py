@@ -7,22 +7,28 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import subprocess
+import tempfile
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
+from citypods import remedy_feedback as fb
+from citypods import remedy_publication as pub
 from citypods.audit_remedy import (
     SourceContext,
     apply_remedy_plan,
+    feed_paths_by_slug,
     verify_remedy_mutations,
 )
 from citypods.bodies import body_key
 from citypods.config import load_city_configs, load_site_config
 from citypods.ops.maintenance_leases import acquire
 from citypods.remedy_actions import _p3_generated_section
-from citypods.remedy_evaluation import RemedyConfig
+from citypods.remedy_evaluation import RemedyConfig, config_fingerprint
 from citypods.remedy_ledger import REMEDY_LEASE_KEY, decision_id, load_decisions
 from citypods.remedy_p3_publication import validated_p3_plan
 from citypods.remedy_p3_runner import admitted_p3_routes, p3_enabled, stable_finding_id
@@ -31,9 +37,12 @@ from citypods.remedy_queue import (
     Candidate,
     GitHubSnapshot,
     LedgerView,
+    parse_bindings,
     parse_snapshot,
     plan_publications,
     plan_report,
+    render_binding,
+    render_markers,
 )
 from citypods.storage import make_storage
 
@@ -53,8 +62,11 @@ MAX_OPEN_P3_ISSUES = 12
 MAX_ISSUE_BODY_CHARS = 55_000
 
 
-_REOPENS = "timelineItems(itemTypes: [REOPENED_EVENT], first: 50) {"
-_REOPEN_NODE = "nodes { ... on ReopenedEvent { createdAt } } }"
+_TIMELINE = (
+    "timelineItems(itemTypes: [REOPENED_EVENT, CLOSED_EVENT], first: 50) { nodes { __typename "
+    "... on ReopenedEvent { createdAt } "
+    "... on ClosedEvent { createdAt actor { __typename login } } } }"
+)
 SNAPSHOT_QUERY = f"""
 query($q: String!) {{
   search(query: $q, type: ISSUE, first: 100) {{
@@ -62,12 +74,13 @@ query($q: String!) {{
     pageInfo {{ hasNextPage }}
     nodes {{
       ... on PullRequest {{
-        number url state createdAt mergedAt body headRefName author {{ login }}
-        {_REOPENS} {_REOPEN_NODE}
+        number url state createdAt mergedAt body headRefName author {{ __typename login }}
+        headRepository {{ nameWithOwner }} mergedBy {{ __typename login }}
+        {_TIMELINE}
       }}
       ... on Issue {{
-        number url state createdAt body author {{ login }}
-        {_REOPENS} {_REOPEN_NODE}
+        number url state createdAt body author {{ __typename login }}
+        {_TIMELINE}
       }}
     }}
   }}
@@ -101,7 +114,13 @@ def _ledger_views(storage, source_keys) -> dict[str, LedgerView]:
             continue
         tip = next((e for e in history.events if e.event_id == history.tip_ids[0]), None)
         if tip is not None:
-            views[identity] = LedgerView(history.state, tip.disposition, tip.evidence_hash)
+            views[identity] = LedgerView(
+                history.state,
+                tip.disposition,
+                tip.evidence_hash,
+                reopened=fb.reopened(history),
+                artifact_ref=tip.artifact_ref,
+            )
     return views
 
 
@@ -150,6 +169,326 @@ def _publication_report(candidates, source_keys, storage, limits) -> dict:
         return {"mode": "report_only", **plan_report(plan)}
     except Exception as exc:  # noqa: BLE001 -- a report must never stop the publisher
         return {"mode": "report_only", "error": f"{type(exc).__name__}: {exc}"}
+
+
+class GhCli:
+    """The GitHub operations the live stage uses, through the authenticated ``gh`` CLI."""
+
+    def find_pr(self, branch: str) -> list[dict]:
+        rows = _gh(
+            "pr", "list", "--head", branch, "--state", "all", "--json", "number,url,state",
+            "--limit", "5",
+        )  # fmt: skip
+        return json.loads(rows or "[]")
+
+    def create_pr(self, branch: str, title: str, body: str) -> str:
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
+            handle.write(body)
+        try:
+            return _gh(
+                "pr", "create", "--base", "main", "--head", branch, "--title", title,
+                "--body-file", handle.name,
+            ).strip()  # fmt: skip
+        finally:
+            Path(handle.name).unlink(missing_ok=True)
+
+    def edit_body(self, kind: str, number: int, body: str) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
+            handle.write(body)
+        try:
+            _gh(kind if kind == "issue" else "pr", "edit", str(number), "--body-file", handle.name)
+        finally:
+            Path(handle.name).unlink(missing_ok=True)
+
+    def reopen(self, kind: str, number: int) -> None:
+        _gh("pr" if kind == "pr" else "issue", "reopen", str(number))
+
+    def create_issue(self, title: str, body: str) -> str:
+        _gh("label", "create", P3_ISSUE_LABEL, "--color", "5319E7", "--force", check=False)
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
+            handle.write(body)
+        try:
+            return _gh(
+                "issue", "create", "--title", title, "--body-file", handle.name,
+                "--label", P3_ISSUE_LABEL, "--label", "type:operations",
+            ).strip()  # fmt: skip
+        finally:
+            Path(handle.name).unlink(missing_ok=True)
+
+
+def _unit_detail(report: dict, binding: dict, plan, finding_id: str, evidence_hash: str):
+    """What a PR body says about one decision, from its P3 report and validated plan."""
+    decision = report.get("decision") or {}
+    routes = [
+        {
+            "route_id": vote.get("route_id"),
+            "upstream_model": vote.get("upstream_model"),
+            "reasoning_level": vote.get("reasoning_level"),
+        }
+        for vote in decision.get("initial_votes") or []
+    ]
+    adjudication = decision.get("adjudication") or {}
+    note = ""
+    if adjudication:
+        note = (
+            f"JEV `{adjudication.get('jev_upstream_model')}` chose "
+            f"{adjudication.get('choice')}; DeepSeek agreed on the full assignment."
+        )
+        deepseek = adjudication.get("deepseek") or {}
+        if deepseek:
+            routes.append(
+                {
+                    "route_id": deepseek.get("route_id"),
+                    "upstream_model": deepseek.get("upstream_model"),
+                    "reasoning_level": deepseek.get("reasoning_level"),
+                }
+            )
+    proposal = plan.accepted[0]
+    return pub.UnitDetail(
+        decision_id=binding["decision_id"],
+        binding=binding,
+        finding_id=finding_id,
+        evidence_hash=evidence_hash,
+        action=proposal.action,
+        target_feeds=list(proposal.target_feeds),
+        new_feed_slug=proposal.new_feed_slug,
+        routes=routes,
+        adjudication=note,
+        recording_count=len(binding.get("recording_refs") or []),
+    )
+
+
+def _refinement_candidate(identity: str, tip) -> Candidate:
+    return Candidate(
+        decision_id=identity,
+        city=tip.city,
+        family=tip.normalized_label,
+        outcome="refinement",
+        kind="issue",
+        eligible_since=_parse_time(tip.occurred_at),
+        evidence_hash=tip.evidence_hash,
+        refines=tip.artifact_ref,
+    )
+
+
+def _tip_binding(tip) -> dict:
+    return {
+        "city": tip.city,
+        "source_key": tip.source_key,
+        "policy_id": tip.policy_id,
+        "normalized_label": tip.normalized_label,
+        "evidence_hash": tip.evidence_hash,
+        "config_hash": tip.config_hash,
+        "policy_hash": tip.policy_hash,
+        "recording_refs": [
+            {"source_key": r.source_key, "uid": r.uid, "provider_guid": r.provider_guid}
+            for r in tip.recording_refs
+        ],
+    }
+
+
+def _publish_live(
+    *,
+    config,
+    candidates: list[Candidate],
+    pr_meta: dict,
+    issue_meta: dict,
+    storage,
+    repo_root: Path,
+    dry_run: bool,
+    deferred: list,
+    source_keys: set[str],
+    github=None,
+    git=None,
+    apply=None,
+    verify=None,
+    snapshot=None,
+    now: datetime | None = None,
+) -> dict:
+    """Execute the P4 plan: one isolated PR per unit, updates, reopenings and new issues."""
+    github = github or GhCli()
+    now = now or datetime.now(UTC)
+    histories = load_decisions(storage, source_keys=sorted(source_keys))
+    views: dict[str, LedgerView] = {}
+    for identity, history in histories.items():
+        if history.diagnostics or len(history.tip_ids) != 1:
+            continue
+        tip = next(e for e in history.events if e.event_id == history.tip_ids[0])
+        views[identity] = LedgerView(
+            history.state,
+            tip.disposition,
+            tip.evidence_hash,
+            reopened=fb.reopened(history),
+            artifact_ref=tip.artifact_ref,
+        )
+    refinements = {}
+    for identity, tip in fb.refinement_candidates(histories):
+        candidates.append(_refinement_candidate(identity, tip))
+        refinements[identity] = tip
+    candidates = [
+        replace(c, reopen_requested=views[c.decision_id].reopened) if c.decision_id in views else c
+        for c in candidates
+    ]
+    plan = plan_publications(
+        candidates,
+        views,
+        snapshot if snapshot is not None else _fetch_snapshot(),
+        limits=config.limits,
+        now=now,
+    )
+    report = {"mode": "live", **plan_report(plan)}
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "published": [],
+            "deferred": deferred,
+            "publication_plan": report,
+        }
+    published: list[dict] = []
+    failures: list[dict] = []
+    unchanged: dict[str, dict] = {}
+
+    def guarded(label: str, action) -> None:
+        """One step's failure of any kind is recorded; it never stops the rest of the pass."""
+        try:
+            action()
+        except Exception as exc:  # noqa: BLE001 -- isolate every unit of work
+            failures.append({"unit": label, "reason": f"{type(exc).__name__}: {exc}"[:400]})
+
+    for item in plan.reopens:
+
+        def reopen(item=item) -> None:
+            github.reopen(item.artifact.kind, item.artifact.number)
+            published.append({"type": "reopened", "url": item.artifact.url})
+
+        guarded(f"reopen {item.artifact.url}", reopen)
+    for item in plan.updates:
+        for identity in item.decision_ids:
+            if item.artifact.kind == "issue" and isinstance(issue_meta.get(identity), tuple):
+                p3_report, binding = issue_meta[identity]
+
+                def refresh(p3_report=p3_report, binding=binding) -> None:
+                    published.append(
+                        {
+                            "type": "issue_updated",
+                            "url": _reconcile_issue(p3_report, binding, dry_run=False),
+                        }
+                    )
+
+                guarded(f"update {item.artifact.url}", refresh)
+            elif item.artifact.kind == "pr":
+                # An open PR keeps its branch: its diff and body describe what was proposed. If the
+                # evidence has changed since, say so, and let a person close it to regenerate.
+                opened_with = parse_bindings(item.artifact.body).get(identity) or {}
+                current = (pr_meta.get(identity) or {}).get("evidence_hash")
+                entry = unchanged.setdefault(
+                    item.artifact.url,
+                    {"url": item.artifact.url, "kind": "pr", "evidence_changed": False},
+                )
+                entry["evidence_changed"] |= bool(
+                    opened_with and current and opened_with.get("evidence_hash") != current
+                )
+    git = git or pub.Git(repo_root)
+    if plan.prs:
+        git.run("fetch", "origin", "main")
+        if apply is None:
+            subprocess.run(["gh", "auth", "setup-git"], cwd=repo_root, check=True)
+    work_root = Path(tempfile.mkdtemp(prefix="remedy-worktrees-"))
+    try:
+        for unit in plan.prs:
+            metas = [pr_meta[i] for i in unit.decision_ids]
+            details = [
+                _unit_detail(
+                    m["report"], m["binding"], m["plan"], m["finding_id"], m["evidence_hash"]
+                )
+                for m in metas
+            ]
+
+            def apply_unit(worktree: Path, metas=metas) -> list[Path]:
+                changed: list[Path] = []
+                for meta in metas:
+                    changed += apply_remedy_plan(
+                        meta["plan"],
+                        feed_paths=feed_paths_by_slug(worktree),
+                        source_context=meta["context"],
+                        repo_root=worktree,
+                    )
+                return changed
+
+            def open_unit(unit=unit, details=details, apply_unit=apply_unit) -> None:
+                result = pub.publish_pr(
+                    unit,
+                    details,
+                    git=git,
+                    github=github,
+                    work_root=work_root,
+                    base="origin/main",
+                    apply=apply or apply_unit,
+                    verify=verify or verify_remedy_mutations,
+                )
+                published.append(
+                    {"type": "proposal_pr", "url": result.url, "created": result.created}
+                )
+
+            guarded(unit.branch, open_unit)
+    finally:
+        shutil.rmtree(work_root, ignore_errors=True)
+    for planned in plan.issues:
+
+        def open_issue(planned=planned) -> None:
+            meta = issue_meta.get(planned.decision_id)
+            if isinstance(meta, tuple):
+                p3_report, binding = meta
+                published.append(
+                    {
+                        "type": "manual_issue",
+                        "url": _reconcile_issue(p3_report, binding, dry_run=False),
+                    }
+                )
+            elif planned.decision_id in refinements:
+                tip = refinements[planned.decision_id]
+                body = pub.refinement_issue_body(
+                    planned.decision_id,
+                    _tip_binding(tip),
+                    rejected_pr=tip.artifact_ref or "",
+                    evidence_hash=tip.evidence_hash,
+                )
+                title = f"[Remedy refinement] {tip.normalized_label} ({tip.city})"
+                published.append(
+                    {"type": "refinement_issue", "url": github.create_issue(title, body)}
+                )
+
+        guarded(f"issue {planned.decision_id[:12]}", open_issue)
+    status = (
+        "published"
+        if published
+        else "deferred"
+        if (deferred or failures)
+        else "queued"
+        if plan.queued
+        else "no_candidates"
+    )
+    return {
+        "status": status,
+        "published": published,
+        "deferred": deferred,
+        "failures": failures,
+        "unchanged": sorted(unchanged.values(), key=lambda row: row["url"]),
+        "publication_plan": report,
+    }
+
+
+def _live_fail_closed(live: bool, plan_error: str, deferred: list) -> dict | None:
+    """In live mode an unplannable run publishes nothing; it never falls back to the legacy
+    single-PR path, which has no budgets and switches branches in the main checkout."""
+    if not (live and plan_error):
+        return None
+    return {
+        "status": "deferred",
+        "published": [],
+        "deferred": deferred,
+        "publication_plan": {"mode": "live", "error": plan_error},
+    }
 
 
 def _json(path: Path):
@@ -270,6 +609,8 @@ def _render_issue(report: dict, binding: dict, prior_body: str = "") -> str:
             "<!-- citypods:remedy-p3:binding="
             + json.dumps(binding, sort_keys=True, separators=(",", ":"))
             + " -->",
+            render_markers([key]),
+            render_binding(key, binding),
         ]
     )
     generated = f"{_GENERATED_START}\n{body}\n{_GENERATED_END}"
@@ -536,6 +877,9 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     deferred = []
     candidates: list[Candidate] = []
     candidate_sources: set[str] = set()
+    live = config.publication_mode == "live"
+    pr_meta: dict[str, dict] = {}
+    issue_meta: dict[str, object] = {}
     eligible_since, publication_plan_error = _eligibility(collected_at)
     findings_by_id = {}
     for source in sources:
@@ -553,7 +897,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
         source, finding = findings_by_id[decision["finding_id"]]
         evidence = {**source, "unexpected_findings": [finding]}
         if decision.get("disposition") == "pr_candidate":
-            if len(plans) >= MAX_PUBLISH_PER_RUN:
+            if not live and len(plans) >= MAX_PUBLISH_PER_RUN:
                 deferred.append(
                     {"finding_id": decision["finding_id"], "reason": "per-run proposal cap"}
                 )
@@ -588,28 +932,26 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 )
             )
             if eligible_since is not None:
-                candidates.append(
-                    _pr_candidate(
-                        plan,
-                        _binding_for(
-                            source,
-                            finding,
-                            p3_report,
-                            canonical_hash(config.model_dump(mode="json")),
-                            [],
-                            collected_at,
-                        ),
-                        eligible_since,
-                    )
+                pr_binding = _binding_for(
+                    source, finding, p3_report, config_fingerprint(config), [], collected_at
                 )
+                candidates.append(_pr_candidate(plan, pr_binding, eligible_since))
                 candidate_sources.add(source["source_key"])
+                pr_meta[pr_binding["decision_id"]] = {
+                    "report": p3_report,
+                    "binding": pr_binding,
+                    "plan": plan,
+                    "context": SourceContext.from_city(sibling),
+                    "finding_id": decision["finding_id"],
+                    "evidence_hash": decision["evidence_hash"],
+                }
         elif decision.get("disposition") == "issue_candidate":
-            if len(issue_rows) >= MAX_PUBLISH_PER_RUN:
+            if not live and len(issue_rows) >= MAX_PUBLISH_PER_RUN:
                 deferred.append(
                     {"finding_id": decision["finding_id"], "reason": "per-run issue cap"}
                 )
                 continue
-            config_hash = canonical_hash(config.model_dump(mode="json"))
+            config_hash = config_fingerprint(config)
             with acquire(storage, owner="remedy-p3-publish", key=REMEDY_LEASE_KEY) as lease:
                 binding = _binding_for(source, finding, p3_report, config_hash, [], collected_at)
                 states = load_decisions(storage, source_keys=[source["source_key"]])
@@ -628,10 +970,26 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                 # Refresh lease before using the just-read parent snapshot.
                 lease.assert_held()
             issue_rows.append((p3_report, binding))
+            issue_meta[binding["decision_id"]] = (p3_report, binding)
             if eligible_since is not None:
                 candidates.append(_issue_candidate(binding, eligible_since))
                 candidate_sources.add(source["source_key"])
 
+    closed = _live_fail_closed(live, publication_plan_error, deferred)
+    if closed is not None:
+        return closed
+    if live:
+        return _publish_live(
+            config=config,
+            candidates=candidates,
+            pr_meta=pr_meta,
+            issue_meta=issue_meta,
+            storage=storage,
+            repo_root=repo_root,
+            dry_run=dry_run,
+            deferred=deferred,
+            source_keys=candidate_sources | {source["source_key"] for source in sources},
+        )
     published = []
     if plans:
         digest = _proposal_digest(plans)

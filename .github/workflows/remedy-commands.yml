@@ -159,3 +159,89 @@ jobs:
         run: |
           gh workflow run remedy-unexpected-bodies.yml --repo "$GITHUB_REPOSITORY" \
             -f issue="$ISSUE_NUMBER" -f apply=true
+
+  reopen:
+    # `/remedy reopen <decision_id>` on a remedy PR or issue: a maintainer asks for a settled or
+    # rejected decision to be reconsidered. It records a P2 `proposed` event with the decision's own
+    # hashes; it cannot change policy, evidence or an alias grant, and the next publication pass
+    # reopens or updates the artifact within the weekly budget.
+    if: >-
+      ${{ startsWith(github.event.comment.body, '/remedy reopen ') &&
+        github.event.issue.user.login == 'github-actions[bot]' &&
+        contains(github.event.issue.body, '<!-- citypods:remedy:v1:') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: remedy-taxonomy-writes
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install storage dependencies
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Fetch the actor's permission and the artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          IS_PR: ${{ github.event.issue.pull_request != null }}
+        run: |
+          if ! gh api "repos/$REPOSITORY/collaborators/$ACTOR/permission" > actor-permission.json; then
+            echo '{"permission":"none"}' > actor-permission.json
+          fi
+          if [ "$IS_PR" = "true" ]; then
+            gh api "repos/$REPOSITORY/pulls/$ISSUE_NUMBER" > artifact.json
+          fi
+      - name: Record the reopening
+        id: reopen
+        env:
+          AUDIO_STORAGE_BACKEND: routing
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          REPOSITORY: ${{ github.repository }}
+          IS_PR: ${{ github.event.issue.pull_request != null }}
+        run: |
+          set +e
+          artifact=()
+          if [ "$IS_PR" = "true" ]; then artifact=(--artifact artifact.json); fi
+          PYTHONPATH=. python scripts/remedy_feedback.py reopen             --event "$GITHUB_EVENT_PATH" --permission actor-permission.json             --repository "$REPOSITORY" "${artifact[@]}" --result reopen-result.json
+          code=$?
+          set -e
+          if [ "$(jq -r '.accepted' reopen-result.json)" = "true" ]; then
+            echo "message=✅ Reopening recorded. The next publication pass will reopen or update this within the weekly budget." >> "$GITHUB_OUTPUT"
+          else
+            delimiter=$(uuidgen)
+            {
+              echo "message<<$delimiter"
+              printf '❌ %s\n' "$(jq -r '.error // "reopen rejected"' reopen-result.json)"
+              echo "$delimiter"
+            } >> "$GITHUB_OUTPUT"
+          fi
+          exit "$code"
+      - name: Reply with the result
+        if: always() && steps.reopen.outputs.message != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          MESSAGE: ${{ steps.reopen.outputs.message }}
+        run: gh issue comment "$ISSUE_NUMBER" --body "$MESSAGE"
