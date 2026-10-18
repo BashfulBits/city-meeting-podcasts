@@ -334,6 +334,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "last_claim_result",
     "last_claim_reason",
     "last_claim_diagnostics_json",
+    "last_empty_claim_diagnostics_json",
     "mistral_latest_migrated",
     "active_bundles_json",
     "catalog_digest",
@@ -1037,6 +1038,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         last_claim_result                   TEXT NOT NULL DEFAULT '',
         last_claim_reason                   TEXT NOT NULL DEFAULT '',
         last_claim_diagnostics_json         TEXT NOT NULL DEFAULT '{}',
+        last_empty_claim_diagnostics_json   TEXT NOT NULL DEFAULT '{}',
         catalog_digest                      TEXT,
         catalog_rescue_cursor               TEXT,
         catalog_rescue_complete             INTEGER NOT NULL DEFAULT 0,
@@ -1195,6 +1197,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("scheduler", "last_empty_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
     // The queued-job counter used to be maintained by three per-row triggers, which cost a billed
     // row on every insert, lease and requeue (~2 per job). It is now maintained explicitly inside
     // scheduler UPDATEs the hot paths already make (enqueue, claim, completion requeues, cancels,
@@ -1382,6 +1385,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["last_claim_result", "TEXT NOT NULL DEFAULT ''"],
       ["last_claim_reason", "TEXT NOT NULL DEFAULT ''"],
       ["last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["last_empty_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
@@ -3091,7 +3095,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
                 ingress_write_units_today, queued_job_count, rows_written_today,
                 next_maintenance_alarm_at, last_claim_at, last_claim_result,
-                last_claim_reason, claim_empty_count_today, claim_reason_counts_json,
+                last_claim_reason, last_empty_claim_diagnostics_json,
+                claim_empty_count_today, claim_reason_counts_json,
                 completed_today, failed_today, retried_today, hourly_burndown_json,
                 catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
            FROM scheduler WHERE id = 1`
@@ -4693,6 +4698,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       last_reason: scheduler.last_claim_reason || null,
       empty_count_today: (Number(scheduler.claim_empty_count_today) || 0) + (pending?.empty || 0),
       reason_counts_today: reasonCounts,
+      // Why the last empty claim found nothing to dispatch: rejection counts, and for the routes
+      // that refused on capacity, the limit that did it and how long its start was pushed out.
+      last_empty_diagnostics: parseJsonObject(scheduler.last_empty_claim_diagnostics_json),
     };
   }
 
@@ -4735,16 +4743,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
     reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + 1;
     const emptyCount = (Number(row.claim_empty_count_today) || 0) + (pending?.empty || 0);
     // Rides on this transaction's accounting UPDATE: the claim outcome costs no row of its own.
+    const diagnosticsJson = JSON.stringify(diagnostics);
     this._stageSchedulerSet(
       `last_claim_at=?, last_claim_result=?, last_claim_reason=?,
-       last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?,
+       last_claim_diagnostics_json=?,
+       last_empty_claim_diagnostics_json = CASE WHEN ? = 'empty' THEN ?
+         ELSE last_empty_claim_diagnostics_json END,
+       claim_empty_count_today=?, claim_reason_counts_json=?,
        bundle_count_today = bundle_count_today + ?,
        lease_count_today = lease_count_today + ?,
        queued_job_count = MAX(0, queued_job_count + ?)`,
       now,
       result,
       reason,
-      JSON.stringify(diagnostics),
+      diagnosticsJson,
+      result,
+      diagnosticsJson,
       result === "empty" ? emptyCount + 1 : emptyCount,
       JSON.stringify(reasonCounts),
       bundlesClaimed,
@@ -4814,6 +4828,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         routes: {
           route_concurrency: {},
           provider_concurrency: {},
+          route_capacity: {},
         },
       };
       // Expired leases this tick returns to queued (set below); folded into the claim snapshot's
@@ -5217,8 +5232,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
             const merged = getMergedRoute(route);
             const options = capacityOptions(route, job);
-            if (!routeHasCapacityFor(merged, job, now, windowSeconds, options)) {
+            const gate = {};
+            if (!routeHasCapacityFor(merged, job, now, windowSeconds, { ...options, gate })) {
               diagnostics.rejections.route_capacity += 1;
+              // Which limit refused (or pushed the start past the window), per route, so an
+              // empty claim says why an idle route took nothing.
+              const label = gate.reason || `wait:${gate.binding || "other"}`;
+              const byRoute = (diagnostics.routes.route_capacity[route.route_id] ||= {
+                gates: {},
+                max_wait_ms: 0,
+              });
+              byRoute.gates[label] = (byRoute.gates[label] || 0) + 1;
+              byRoute.max_wait_ms = Math.max(byRoute.max_wait_ms, gate.wait_ms || 0);
               // A near miss over the route's ceiling, within its tolerance: kept aside and tried
               // only if this claim finds nothing else to dispatch (see the drain pass below).
               if (
