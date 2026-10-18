@@ -38,9 +38,13 @@ MAX_CONCURRENT_ROUTE_LANES: 5
 # MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
 DISPATCH_WINDOW_SECONDS: 30
 CRON_TICK_SECONDS: 60
-# Raised from 2 on 2026-09-20 to let one additional slow bundle overlap. This changes
-# concurrency only; daily bundle/job/write caps remain unchanged.
-MAX_ACTIVE_BUNDLES: 3
+# Raised from 2 on 2026-09-20 to let one additional slow bundle overlap, and from 3 to 5 on
+# 2026-10-17: the claim counter `active_bundle_limit` grew from 8 to 42 in four hours while the
+# Gemma sibling backlog waited, because three slow bundles (NVIDIA calls take 35-170 s, JEV and
+# overflow routes minutes) filled every slot. This changes concurrency only; daily bundle/job/write
+# caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the per-provider/per-route concurrency
+# limits remain the admission safety boundaries.
+MAX_ACTIVE_BUNDLES: 5
 # Live telemetry exhausted the eight-call gate while only two of three bundles were active.
 # Per-provider and per-route limits remain the admission safety boundaries.
 MAX_IN_FLIGHT_LLM_CALLS: 12
@@ -100,6 +104,11 @@ MAX_429_RETRIES: 1
 MAX_429_BACKOFF_SECONDS: 60
 UPSTREAM_CAPACITY_COOLDOWN_SECONDS: 15
 UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
+# A route whose provider keeps answering upstream_capacity (its pool is full) doubles its cooldown
+# from 60 s up to one probe per day; its first success resets the ladder. Gateway limits and
+# unusable replies keep the 15 s to 300 s ladder above.
+UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS: 60
+UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS: 86400
 # AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
 # fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.

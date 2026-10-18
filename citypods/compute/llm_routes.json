@@ -8,10 +8,12 @@
   },
   "model_aliases": {
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+    "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "orcarouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
     "orcarouter/tencent-hy3": "tencent/hy3",
     "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
@@ -1103,10 +1105,10 @@
       "reset_timezone": "UTC"
     },
     {
-      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
-      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "route_id": "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "openrouter",
-      "upstream_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "upstream_model": "nvidia/nemotron-3.5-super-vl:free",
       "input_context_limit": 262144,
       "output_context_limit": 262144,
       "account_id": "primary",
@@ -1115,7 +1117,7 @@
       "rpd": 200,
       "concurrency": 1,
       "free": true,
-      "observed_on": "2026-09-12",
+      "observed_on": "2026-10-17",
       "observed_input_ceiling": 249027,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1128,7 +1130,7 @@
       "transports": [
         "direct"
       ],
-      "direct_model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "direct_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "api_base": "https://openrouter.ai/api/v1",
       "ai_gateway_slug": "openrouter",
       "ai_gateway_chat_path": "/chat/completions",
@@ -1248,7 +1250,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_deepseek_v4_1_flash_free",
@@ -1290,7 +1292,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_gemma_4_31b_it_free",
@@ -1304,7 +1306,7 @@
       "rpm": 4,
       "rpd": 800,
       "tpm": 36000,
-      "concurrency": 1,
+      "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1329,7 +1331,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1369,13 +1371,13 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
-      "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
-      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "route_id": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "nvidia",
-      "upstream_model": "nvidia/nemotron-3-super-120b-a12b",
+      "upstream_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "input_context_limit": 262144,
       "output_context_limit": 262144,
       "account_id": "primary",
@@ -1385,7 +1387,7 @@
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
-      "observed_on": "2026-09-12",
+      "observed_on": "2026-10-17",
       "observed_burst": 5,
       "hard_input_ceiling": 249027,
       "observed_input_ceiling": 249027,
@@ -1398,7 +1400,7 @@
       "transports": [
         "direct"
       ],
-      "direct_model": "openai/nvidia/nemotron-3-super-120b-a12b",
+      "direct_model": "openai/nvidia/nemotron-3.5-super-vl-120b-a12b",
       "api_base": "https://integrate.api.nvidia.com/v1",
       "ai_gateway_slug": "custom-nvidia",
       "ai_gateway_chat_path": "/chat/completions",
@@ -1407,7 +1409,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
@@ -1446,7 +1448,7 @@
       "reset_timezone": "UTC",
       "provider_rpm": 35,
       "provider_tpm": 90000,
-      "provider_concurrency": 3
+      "provider_concurrency": 4
     },
     {
       "route_id": "orcarouter_deepseek_v4_flash_free",

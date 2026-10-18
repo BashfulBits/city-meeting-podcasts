@@ -401,6 +401,13 @@ artifact make it possible to separate absent candidates, cached or already-pendi
 ingress deferrals, stage-budget exits, and Worker-side scheduling limits. This is observability only:
 it changes no pipeline version, job policy, route, or backfill behavior.
 
+**Locator producer accounting fix (2026-10-17; proposed).** The locator checks the current recipe's
+canonical deferred record before reserving its per-run slot. Cached completions and submitted
+handles do not consume new-work slots, even when episode metadata has not caught up; client-only
+deferrals still count as new submissions. This corrects the cap without changing its configured
+value, recipes, pipeline versions, or backfill policy. Worker-only replays whose client record is
+missing remain conservatively subject to the producer cap.
+
 **`chapter-agenda` repinned to Nemotron Ultra + generic backup-model infra (2026-09-13).** The
 `chapter-agenda` lane's model moved from `mistral/mistral-medium-latest` (blocked by an
 account-tier issue) to `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite`
@@ -1872,6 +1879,9 @@ manual-only sanitized error-body diagnostics follow-up precedes a repeat at the 
 manual artifact may include up to 4 KiB of HTTP error response text after redacting the active
 credential and generated probe prompt; scheduled artifacts remain body-free. This does not widen
 route/dimension authority or enable runtime updates.
+Since 2026-10-17 the dispatch Worker also *learns* each route's accepted and refused input sizes
+from production traffic ([review/55](55-adaptive-input-token-admission.md)); any probe-based
+maintenance designed under #2264 should treat those learned values as the primary evidence.
 
 The former automatic runtime request-ceiling design is now Deferred under
 [review/54](54-provider-limit-characterization.md) and [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).

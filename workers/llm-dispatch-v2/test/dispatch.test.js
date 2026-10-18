@@ -813,19 +813,20 @@ test("claim reserves input in the route's tokenizer units via its input_token_ra
 
 test("calibration follows recent output sizes instead of ratcheting on one large job", async () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
-  // A window of 16 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
+  const key = "pool:google/gemma-4-31b-it:tags";
+  // A full window of 64 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
   // high-water margin that the old calibration would have reserved for every later job.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 15000, 16, ?, 0)`,
+     VALUES (?, 15000, 64, ?, 0)`,
     key,
-    JSON.stringify({ r: Array(16).fill(1.0), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.0), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  // The learned ratio (1.0 * 1.2 gemma headroom) never drops below the 1.2 route prior, so
-  // 5000 * 1.2 input only; output forecast and the old 15000 margin do not apply.
+  // With a full window the learned tail stands alone (the prior is a seed, not a floor): the
+  // learned ratio is 1.0 x the 1.2 gemma headroom = 1.2, so 5000 * 1.2 input only; the output
+  // forecast and the old 15000 margin do not apply.
   assert.equal(plan.jobs[0].token_reservation, 6000);
 
   await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
@@ -945,9 +946,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   // "google/gemma-4-" gemma headroom, so the effective ratio is 1.4 * 1.2 = 1.68.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   // 7,500 raw fits the ceiling at the 1.2 prior (9,000) but not at the effective 1.68 (12,600).
   // A static-ratio SQL prefilter would return only these and stall the model.
@@ -961,7 +962,9 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
 test("near misses over the calibrated ceiling drain only when nothing else is dispatchable", async () => {
   // 2026-09-25: producer-sized 10,000-token Gemma batches (14,000 at the 1.4 prior) met a learned
   // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400,
-  // filling the claim lookahead while nothing else could run.
+  // filling the claim lookahead while nothing else could run. Since review/55 piece 2 the size gate
+  // uses the lower ADMISSION ratio (p75 x 1.05), so that exact case is simply admitted; the near
+  // miss below is a route whose traffic measures 1.45 (admission 1.52 -> 15,225 > 14,400).
   const coordinatorWith = (tolerance) => {
     const { coordinator, sql } = makeCoordinator({
       MAX_BUNDLE_JOBS: "4",
@@ -981,9 +984,9 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
     });
     sql.exec(
       `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-       VALUES (?, 0, 16, ?, 0)`,
+       VALUES (?, 0, 64, ?, 0)`,
       "gemma-ai-studio:google/gemma-4-31b-it:tags",
-      JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+      JSON.stringify({ r: Array(64).fill(1.45), o: Array(64).fill(200) })
     );
     return coordinator;
   };
@@ -1020,9 +1023,9 @@ test("jobs over every live route ceiling fail instead of holding the lookahead",
   // Learned 1.4 x 1.2 headroom = 1.68: 7,500 raw is 12,600, over the 10,000 ceiling.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("over-1", 7500), gemmaJob("over-2", 7500)]);
   await coordinator.enqueueBatch([gemmaJob("tail-fits", 5000)]); // 8,400 at 1.68; ids break created_at ties
@@ -1080,15 +1083,100 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   });
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]); // 12,600 at 1.68; 9,000 > 4,000 context
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   assert.deepEqual(plan.jobs, []);
   assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 1);
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
+});
+
+test("packingCeiling is the smallest free route's limit over the p95 packing ratio", async () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-roomy"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-roomy": {
+        provider: "sambanova",
+        upstream_model: "gemma-4-31b-it",
+        rpm: 20,
+        rpd: 20,
+        tpm: 90000,
+        input_token_ratio: 1.2,
+        free: true,
+        input_context_limit: 131072,
+        output_context_limit: 32768,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  // 16 samples at 1.2 -> packing ratio 1.2 x 1.05 = 1.26 on the ceilinged route.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:judge",
+    JSON.stringify({ r: Array(64).fill(1.2), o: Array(64).fill(200) })
+  );
+  const status = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  const ceilinged = status.routes.find((r) => r.route_id === "gemma-ai-studio");
+  const roomy = status.routes.find((r) => r.route_id === "gemma-roomy");
+  assert.equal(ceilinged.input_estimate_limit, Math.floor(10000 / 1.26));
+  assert.ok(roomy.input_estimate_limit > ceilinged.input_estimate_limit);
+  assert.equal(status.pack_ceiling_input_estimate, ceilinged.input_estimate_limit);
+  // It only reads: no ledger row is created for a route that has none.
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id='gemma-roomy'")][0].n, 0);
+  assert.equal(await coordinator.packingCeiling("no/such-model", "judge"), null);
+  // A learned free-prompt cap is a raw estimate limit and tightens the preflight further.
+  coordinator._getOrCreateRouteLedger("gemma-roomy", Date.now(), {});
+  sql.exec("UPDATE routes SET prompt_cap_estimate = 3000 WHERE route_id = 'gemma-roomy'");
+  const capped = await coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.equal(capped.routes.find((r) => r.route_id === "gemma-roomy").input_estimate_limit, 3000);
+  assert.equal(capped.pack_ceiling_input_estimate, 3000);
+  // A route with an unspecified (null) daily quota still counts.
+  const nullRpd = {
+    ...catalog,
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "gemma-roomy": { ...catalog.routes_by_id["gemma-roomy"], rpd: null },
+    },
+  };
+  const other = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: nullRpd });
+  const uncapped = await other.coordinator.packingCeiling("google/gemma-4-31b-it", "judge");
+  assert.ok(uncapped.routes.some((r) => r.route_id === "gemma-roomy"));
+});
+
+test("a job over a route's configured ceiling is not failed once the route has served that size", async () => {
+  // The learned accepted-input maximum (review/55 piece 3) lifts the conservative configured
+  // ceiling in the structural check as well as in admission.
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio"] },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
+  );
+  coordinator._getOrCreateRouteLedger("gemma-ai-studio", Date.now(), {});
+  sql.exec(
+    "UPDATE routes SET input_accepted_max = 20000, input_accepted_at = ? WHERE route_id = ?",
+    Date.now(),
+    "gemma-ai-studio"
+  );
+  await coordinator.enqueueBatch([gemmaJob("served-size", 7500)]); // 12,600 at 1.68
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.notEqual([...sql.exec("SELECT state FROM jobs WHERE id = 'served-size'")][0].state, "failed");
 });
 
 test("an oversized job stays queued while a fitting uncapped route has spent daily quota", async () => {
@@ -1120,9 +1208,9 @@ test("an oversized job stays queued while a fitting uncapped route has spent dai
   // learned 1.68 (12,600).
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-     VALUES (?, 0, 16, ?, 0)`,
+     VALUES (?, 0, 64, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
-    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+    JSON.stringify({ r: Array(64).fill(1.4), o: Array(64).fill(200) })
   );
   const now = Date.now();
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]);
@@ -2079,21 +2167,196 @@ test("a provider input-limit failure requeues for a sibling route", async () => 
   ]);
 
   const job = [...sql.exec(
-    "SELECT state, transient_retry_count FROM jobs WHERE id='j-input-limit'"
+    "SELECT state, transient_retry_count, size_excluded_routes FROM jobs WHERE id='j-input-limit'"
   )][0];
   assert.equal(job.state, "queued");
-  assert.equal(job.transient_retry_count, 1);
+  // A size rejection is not a transient failure: the 5xx retry budget is untouched.
+  assert.equal(job.transient_retry_count, 0);
+  assert.deepEqual(JSON.parse(job.size_excluded_routes), [claimed.route_id]);
   const route = [...sql.exec(
     "SELECT blocked_until, last_failure_class FROM routes WHERE route_id=?",
     claimed.route_id
   )][0];
-  assert.ok(route.blocked_until > now);
+  // The route is NOT stood down for other jobs; the rejection is only recorded.
+  assert.ok(!route.blocked_until);
   assert.equal(route.last_failure_class, "route_input_limit");
 
   const second = await coordinator.claimDispatchWindow(now + 1_000, 25);
   assert.equal(second.jobs.length, 1);
   assert.equal(second.jobs[0].id, "j-input-limit");
   assert.notEqual(second.jobs[0].route_id, claimed.route_id);
+});
+
+test("a size rejection leaves the route selectable for other jobs", async () => {
+  const { coordinator } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-big")]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const big = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: big.id,
+      lease_token: big.lease_token,
+      attempt_id: "attempt-big",
+      planned_at: big.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  // A small job enqueued right after can still be claimed on the very route that rejected the big
+  // one (the big job itself is excluded from that route, so it cannot take the slot).
+  // Pin the small job to the route that rejected the big one: it can only be claimed there if the
+  // route was not stood down.
+  await coordinator.enqueueBatch([
+    makeJob("j-small", {
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        allow_paid: false,
+        allowed_route_ids: [big.route_id],
+      }),
+    }),
+  ]);
+  const seen = new Map();
+  for (let i = 0; i < 4; i += 1) {
+    const plan = await coordinator.claimDispatchWindow(t + 1_000 + i * 90_000, 25);
+    for (const job of plan.jobs) seen.set(job.id, job.route_id);
+  }
+  assert.equal(seen.get("j-small"), big.route_id, "the small job runs on the rejecting route");
+  assert.ok(seen.has("j-big"), "the big job is dispatched to a sibling route");
+  assert.notEqual(seen.get("j-big"), big.route_id, "never back to the rejecting route");
+});
+
+test("a job rejected for size by every route fails to its producer as input_too_large", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-too-big")]);
+  let when = Date.now();
+  const tried = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    tried.push(claimed.route_id);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-too-big-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "terminal_error",
+        provider_status_code: 400,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  assert.equal(new Set(tried).size, tried.length, "no route is tried twice for the same job");
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason, transient_retry_count FROM jobs WHERE id='j-too-big'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
+  assert.equal(job.transient_retry_count, 0);
+});
+
+test("a size rejection reported as a retryable 5xx still fails when no route is left", async () => {
+  // The executor can map a classified size error to retryable_error; the 5xx retry predicates
+  // must not requeue a job that has no sibling route left.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-5xx-size")]);
+  let when = Date.now();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const plan = await coordinator.claimDispatchWindow(when, 25);
+    if (plan.jobs.length === 0) break;
+    const claimed = plan.jobs[0];
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-5xx-size-${attempt}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: when,
+        actual_end_at: when + 100,
+        outcome: "retryable_error",
+        provider_status_code: 500,
+        failure_class: "route_input_limit",
+      },
+    ]);
+    when += 90_000;
+  }
+  const job = [...sql.exec(
+    "SELECT state, terminal_reason FROM jobs WHERE id='j-5xx-size'"
+  )][0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.terminal_reason, "input_too_large");
+});
+
+test("a size rejection records the smallest refused input on the route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-learn-reject", { input_token_estimate: 4000 })]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = first.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-learn-reject",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  const row = [...sql.exec(
+    "SELECT input_rejected_min, input_rejected_at FROM routes WHERE route_id=?", claimed.route_id
+  )][0];
+  assert.ok(row.input_rejected_min >= 4000, "recorded in the provider's tokens (ratio >= 1)");
+  assert.ok(row.input_rejected_at >= t);
+});
+
+test("a success raises the route's accepted-input high-water mark and never lowers it", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  let pinned = null;
+  let turn = 0;
+  const complete = async (id, observedInput) => {
+    const policy = { allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false };
+    if (pinned) policy.allowed_route_ids = [pinned];
+    await coordinator.enqueueBatch([makeJob(id, { policy_json: JSON.stringify(policy) })]);
+    turn += 1;
+    const plan = await coordinator.claimDispatchWindow(Date.now() + turn * 120_000, 25);
+    const claimed = plan.jobs.find((j) => j.id === id);
+    assert.ok(claimed, `${id} was claimed`);
+    const t = Date.now();
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-${id}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: t,
+        actual_end_at: t + 100,
+        outcome: "success",
+        provider_status_code: 200,
+        observed_input_tokens: observedInput,
+        observed_output_tokens: 50,
+        result_key: `results/${id}.json`,
+      },
+    ]);
+    pinned ??= claimed.route_id;
+    return [...sql.exec(
+      "SELECT input_accepted_max FROM routes WHERE route_id=?", pinned
+    )][0].input_accepted_max;
+  };
+  assert.equal(await complete("j-acc-1", 3000), 3000);
+  assert.equal(await complete("j-acc-2", 1000), 3000, "a smaller success does not lower it");
+  assert.equal(await complete("j-acc-3", 5000), 5000, "a larger one raises it");
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
@@ -2597,7 +2860,7 @@ test("claimDispatchWindow enforces provider-level TPM across routes sharing a pr
 
 test("calibration persists every completion until its window is full, then a 1-in-4 sample", () => {
   const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
-  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
+  const key = "pool:google/gemma-4-31b-it:tags";
   const summary = () => {
     const row = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)][0];
     return row ? JSON.parse(row.recent_observed_summary) : { r: [], o: [] };
@@ -2613,12 +2876,63 @@ test("calibration persists every completion until its window is full, then a 1-i
     });
     writes.push(JSON.stringify(summary()) !== before);
   };
-  for (let i = 0; i < 32; i += 1) record(i);
+  for (let i = 0; i < 128; i += 1) record(i);
   assert.ok(writes.every(Boolean), "every completion is recorded while the window fills");
   writes.length = 0;
-  for (let i = 32; i < 432; i += 1) record(i);
+  for (let i = 128; i < 728; i += 1) record(i);
   const rate = writes.filter(Boolean).length / writes.length;
   assert.ok(rate > 0.15 && rate < 0.35, `sampled write rate ${rate}`);
+});
+
+test("routes serving the same model pool their observations under one key", () => {
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-b"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-b": { ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"], upstream_model: "gemma-4-31b-it" },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const sample = (route, i) =>
+    coordinator._calibrateEstimate(route, "tags", 1300, Date.now(), {
+      jobId: `job-${route}-${i}`,
+      inputEstimate: 1000,
+      observedInput: 1100,
+      observedOutput: 200,
+    });
+  for (let i = 0; i < 5; i += 1) {
+    sample("gemma-ai-studio", i);
+    sample("gemma-b", i);
+  }
+  const rows = [...sql.exec("SELECT key, recent_observed_summary FROM estimates")];
+  assert.deepEqual(rows.map((r) => r.key), ["pool:google/gemma-4-31b-it:tags"]);
+  assert.equal(JSON.parse(rows[0].recent_observed_summary).r.length, 10);
+});
+
+test("a sparse pooled ring falls back to the route's older per-route ring when that has more", () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.5), o: Array(64).fill(200) })
+  );
+  const route = {
+    ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
+    route_id: "gemma-ai-studio",
+    model: "google/gemma-4-31b-it",
+  };
+  // Only the legacy ring exists: it carries the learned ratio (1.5 x 1.2 gemma headroom).
+  assert.ok(Math.abs(coordinator._calibration(route, "tags").inputRatio - 1.8) < 1e-9);
+  // A pooled ring with a few samples does not shadow the fuller legacy one.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 3, ?, 0)`,
+    "pool:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: [1.0, 1.0, 1.0], o: [100, 100, 100] })
+  );
+  assert.ok(Math.abs(coordinator._calibration(route, "tags", new Map()).inputRatio - 1.8) < 1e-9);
 });
 
 test("retireConsumed deletes only completed jobs whose consumed result_key still matches", async () => {
@@ -3151,4 +3465,17 @@ test("learned Orca caps remove oversized queue heads so short work can drain", a
   assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 2);
   assert.deepEqual((await coordinator.claimDispatchWindow(now + 1, 25)).jobs.map((j) => j.id),
     ["orca-3"]);
+});
+
+test("a saturated route backs off from 60 s up to one probe a day; other upstream classes stay at 5 minutes", () => {
+  const { coordinator } = makeCoordinator({});
+  const now = 1_000_000;
+  const wait = (streak, saturated) => coordinator._upstreamCapacityBlockedUntil(streak, now, saturated) - now;
+  assert.ok(wait(1, true) >= 60_000 && wait(1, true) <= 90_000);
+  assert.ok(wait(4, true) >= 480_000 && wait(4, true) <= 720_000, "doubles each failure");
+  for (const streak of [12, 13, 200]) {
+    assert.equal(wait(streak, true) <= 86_400_000, true, "jitter never exceeds the day");
+  }
+  assert.ok(wait(20, true) > 43_200_000, "a long streak waits most of a day");
+  assert.ok(wait(20, false) <= 300_000, "gateway limits and bad replies keep the 5 minute ceiling");
 });

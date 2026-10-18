@@ -1629,6 +1629,12 @@ class MomentJudgeStage(LLMProducerStage):
         return stats
 
 
+# Seconds one pending-packet record read may take before it is reported unavailable. The records
+# are small JSON objects that normally read in a third of a second; the default client would wait
+# 60 s per socket read and retry several times, so a stalled connection cost minutes per record.
+JUDGE_RECORD_READ_SECONDS = 30
+
+
 class JudgeStage(LLMProducerStage):
     """Shadow judging of tag and moment candidates by JEV plus one sibling (review/53 PR3).
 
@@ -1735,7 +1741,11 @@ class JudgeStage(LLMProducerStage):
         sibling = lane_for("judge:sibling")
         # Size JEV packets with the Worker's own input ratio for the route (None when it cannot be
         # read: the packer then assumes the unmeasured default and errs small).
-        from citypods.compute.llm import dispatch_v2_learned_input_ratio, dispatch_v2_model_headroom
+        from citypods.compute.llm import (
+            dispatch_v2_learned_input_ratio,
+            dispatch_v2_model_headroom,
+            dispatch_v2_pack_ceilings,
+        )
         from citypods.judging.backends import JEV_ROUTE_ID
 
         anchor_ratio = dispatch_v2_learned_input_ratio(
@@ -1761,6 +1771,11 @@ class JudgeStage(LLMProducerStage):
             sibling.models, backend=getattr(backend, "_backend", backend)
         )
         print(f"[judge] sibling route headroom={sibling_headroom or 'unread'}", flush=True)
+        # Packet sizes follow what the Worker will admit on each model's smallest route.
+        sibling_pack_ceilings = dispatch_v2_pack_ceilings(
+            sibling.models, "judge", backend=getattr(backend, "_backend", backend)
+        )
+        print(f"[judge] sibling packing ceilings={sibling_pack_ceilings or 'unread'}", flush=True)
         with ctx.judge_run_caps_lock:
             ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
             ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
@@ -1774,7 +1789,11 @@ class JudgeStage(LLMProducerStage):
             sibling=sibling,
             families=load_families(),
             texts_for=texts_for,
-            look_up=lambda recipe: look_up_deferred(storage, recipe),
+            look_up=lambda recipe: look_up_deferred(
+                storage,
+                recipe,
+                deadline_at=datetime.now(UTC) + timedelta(seconds=JUDGE_RECORD_READ_SECONDS),
+            ),
             submit=submit,
             all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
             stop=ctx.stop,
@@ -1783,6 +1802,7 @@ class JudgeStage(LLMProducerStage):
             dry_run=dry_run,
             anchor_input_ratio=anchor_ratio,
             sibling_headroom=sibling_headroom,
+            sibling_pack_ceilings=sibling_pack_ceilings,
             max_outstanding={
                 f"judge:{role}": int(limit)
                 for role, limit in (config.get("max_outstanding_packets") or {}).items()
@@ -9660,7 +9680,6 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                 continue
 
             locator_recipe = raw_agenda.get("locator_recipe")
-            is_new_dispatch = True
             if locator_status == "pending" and isinstance(locator_recipe, str):
                 cached = look_up_deferred(ctx.storage, locator_recipe)
                 if isinstance(cached, JobHandle):
@@ -9672,28 +9691,16 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         work.defer("queued")
                     stats.defer("llm-pending")
                     continue
-                if isinstance(cached, JobResult):
-                    is_new_dispatch = False
-
-            if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
-                if work is not None:
-                    work.defer("ingress_limited")
-                stats.defer("producer-cap")
-                continue
 
             words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
             vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
             units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
             if not units:
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 if work is not None:
                     work.defer("blocked")
                 stats.defer("missing-timed-transcript")
                 continue
             if ctx.stop is not None and ctx.stop():
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 if work is not None:
                     work.defer("stopped")
                 stats.defer("stop-signal")
@@ -9715,8 +9722,6 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         raw_agenda.get("locator_retry_policy") == policy_fingerprint
                         and raw_agenda.get("locator_retry_input") == input_fingerprint
                     ):
-                        if is_new_dispatch:
-                            ctx.settle_chapter_locator_dispatch(dispatched=False)
                         if work is not None:
                             work.defer("blocked")
                         stats.defer("locator-repair-exhausted")
@@ -9752,18 +9757,21 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                 # build pass for every other episode
                 if work is not None:
                     work.defer("errored")
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
                 continue
-            # A completed pending recipe is a replay only for this exact current job.
-            if not is_new_dispatch and locator_recipe != job.recipe_hash:
-                is_new_dispatch = True
-                if not ctx.reserve_chapter_locator_dispatch():
-                    if work is not None:
-                        work.defer("ingress_limited")
-                    stats.defer("producer-cap")
-                    continue
+            # Episode metadata can lag the deferred registry. Check the current recipe before
+            # reserving a slot: consuming a cached result or replaying an existing handle must
+            # not displace new work, even when this run has already exhausted its producer cap.
+            cached = look_up_deferred(ctx.storage, job.recipe_hash)
+            is_new_dispatch = not (
+                isinstance(cached, JobResult)
+                or (isinstance(cached, JobHandle) and cached.deferred_request is None)
+            )
+            if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
+                stats.defer("producer-cap")
+                continue
             job = work.bind(job)
             prepared.append(
                 (
