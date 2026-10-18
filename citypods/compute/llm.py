@@ -79,6 +79,9 @@ from citypods.compute.llm_submission_telemetry import (
     record_enqueue_outcomes,
     record_producer_observations,
 )
+from citypods.compute.llm_submission_telemetry import (
+    record as record_submission_telemetry,
+)
 from citypods.compute.structured import ResponseModel, parse_structured_json, response_model
 from citypods.compute.structured_shaping import messages_with_schema, shape_for_route
 from citypods.storage.s3 import b2_from_env
@@ -305,6 +308,14 @@ class LLMDispatchTerminalError(LLMBackendError):
     @property
     def structural(self) -> bool:
         return self.terminal_reason is not None and self.terminal_catalog_digest is not None
+
+
+class LLMDispatchMissingError(LLMDispatchTerminalError):
+    """The coordinator explicitly confirmed a submitted job id no longer exists.
+
+    This is lost lifecycle bookkeeping, not a failed provider attempt. Reconciliation may drop
+    only the matching client handle; it must not spend a retry or remove a newer submission.
+    """
 
 
 class LLMUpstreamPassthroughError(LLMDispatchTerminalError):
@@ -590,6 +601,9 @@ def _emit_v2_dispatch_event(operation: str, *, batch_size: int, **counts: int | 
         **counts,
     }
     print(json.dumps(event, sort_keys=True), flush=True)
+    record_submission_telemetry(
+        "llm_dispatch_v2_batch", **{key: value for key, value in event.items() if key != "event"}
+    )
 
 
 def _is_rate_limited(exc: BaseException) -> bool:
@@ -2493,6 +2507,13 @@ class LiteLLMBackend(Backend):
                 )
                 error.__cause__ = exc
                 results.update({handle.ref: error for handle in chunk})
+                for task in sorted({handle.task for handle in chunk}):
+                    record_submission_telemetry(
+                        "llm_pending_poll",
+                        task=task,
+                        unknown=sum(handle.task == task for handle in chunk),
+                        error=type(exc).__name__,
+                    )
         return results
 
     def _poll_batch_chunk(
@@ -2561,6 +2582,17 @@ class LiteLLMBackend(Backend):
                 "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
             )
             raise LLMBackendError("LLM dispatch v2 poll-batch returned malformed outcomes") from exc
+        missing = data.get("missing", [])
+        if (
+            not isinstance(missing, list)
+            or any(not isinstance(ref, str) or ref not in ids for ref in missing)
+            or set(missing).intersection(statuses)
+        ):
+            _emit_v2_dispatch_event(
+                "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
+            )
+            raise LLMBackendError("LLM dispatch v2 poll-batch returned malformed absence proof")
+        missing = set(missing)
         results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
 
@@ -2586,6 +2618,11 @@ class LiteLLMBackend(Backend):
             ``h.model`` here would silently misattribute a backup's result to the primary model.
             """
             try:
+                # A concurrent consumer may have persisted this recipe and retired its B2
+                # result since our status read. Prefer the canonical completed record.
+                local = look_up_deferred(storage, h.recipe_hash)
+                if isinstance(local, JobResult):
+                    return "done", local
                 raw = storage.get_bytes(result_key) if storage is not None else None
                 body = raw[0] if raw else None
                 if not body:
@@ -2638,12 +2675,19 @@ class LiteLLMBackend(Backend):
         for h in v2_handles:
             st = statuses.get(h.ref)
             if not st:
-                # The v2 protocol deliberately omits unknown IDs. It is not safe to treat absence
-                # as an authoritative pending observation because doing so would strand a handle
-                # forever; return a per-handle error so the caller can isolate/reconcile it.
-                results[h.ref] = _LLMBatchItemError(
-                    f"LLM dispatch v2 poll-batch omitted job {h.ref}", retryable=True
-                )
+                # Only the new explicit absence list is authoritative. Old Workers and partial
+                # responses retain the existing unknown/retry path, never destructive recovery.
+                local = look_up_deferred(storage, h.recipe_hash) if h.ref in missing else None
+                if isinstance(local, JobResult):
+                    results[h.ref] = local
+                elif h.ref in missing:
+                    results[h.ref] = LLMDispatchMissingError(
+                        f"LLM dispatch v2 confirmed missing job {h.ref}"
+                    )
+                else:
+                    results[h.ref] = _LLMBatchItemError(
+                        f"LLM dispatch v2 poll-batch omitted job {h.ref}", retryable=True
+                    )
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
@@ -2708,11 +2752,30 @@ class LiteLLMBackend(Backend):
             completed=sum(isinstance(value, JobResult) for value in results.values()),
             pending=sum(value is None for value in results.values()),
             failed=sum(
-                isinstance(value, Exception) and not isinstance(value, _LLMBatchItemError)
+                isinstance(value, Exception)
+                and not isinstance(value, (_LLMBatchItemError, LLMDispatchMissingError))
                 for value in results.values()
             ),
+            missing=sum(isinstance(value, LLMDispatchMissingError) for value in results.values()),
             unknown=sum(isinstance(value, _LLMBatchItemError) for value in results.values()),
         )
+        by_task: dict[str, dict[str, int]] = {}
+        for handle in v2_handles:
+            value = results.get(handle.ref)
+            if handle.ref not in results or isinstance(value, _LLMBatchItemError):
+                outcome = "unknown"
+            elif isinstance(value, LLMDispatchMissingError):
+                outcome = "missing"
+            elif isinstance(value, Exception):
+                outcome = "failed"
+            elif isinstance(value, JobResult):
+                outcome = "completed"
+            else:
+                outcome = "pending"
+            counts = by_task.setdefault(handle.task, {})
+            counts[outcome] = counts.get(outcome, 0) + 1
+        for task, counts in sorted(by_task.items()):
+            record_submission_telemetry("llm_pending_poll", task=task, **counts)
 
         return results
 
@@ -3696,6 +3759,7 @@ __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
     "LLMDispatchTerminalError",
+    "LLMDispatchMissingError",
     "LLMStructuredOutputError",
     "LLMUpstreamPassthroughError",
     "LLM_TASKS",

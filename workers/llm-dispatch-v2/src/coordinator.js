@@ -3672,7 +3672,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   async pollBatch(ids) {
     this._ensureMigratedJobModels();
     if (!ids || ids.length === 0) {
-      return { statuses: [] };
+      return { statuses: [], missing: [] };
     }
 
     const sql = this._getSql();
@@ -3713,7 +3713,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
 
-    return { statuses };
+    // Explicit absence distinguishes a missing row from a partial/legacy response. This is
+    // computed from the same primary-key reads: no tombstones, counters, or row writes.
+    const found = new Set(statuses.map((status) => status.id));
+    return { statuses, missing: [...new Set(ids)].filter((id) => !found.has(id)) };
   }
 
   /** Return a bounded, keyset-paginated feed of v2 terminal work.

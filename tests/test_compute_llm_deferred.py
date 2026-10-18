@@ -1187,3 +1187,50 @@ def test_structural_submission_fence_outlives_audit_ttl_until_recipe_completes()
     assert storage.exists(deferred_failure_key("r1"))
     write_deferred(storage, "r1", JobResult(task="tag", recipe_hash="r1", output={}), now=later)
     assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 1
+
+
+def test_pending_audit_rotates_without_route_or_terminal_feed_dependency():
+    storage = MemStorage()
+    handles = [
+        JobHandle(
+            task="agenda-item-extract",
+            recipe_hash=f"recipe-{i}",
+            ref=f"job-{i}",
+            backend="llm-dispatch-v2",
+            model="gemini/gemini-3.1-flash-lite",
+        )
+        for i in range(3)
+    ]
+    for handle in handles:
+        write_deferred(storage, handle.recipe_hash, handle)
+        # Simulate a lost terminal-feed reverse pointer. The independent model pointer survives.
+        storage.delete(f"{DEFERRED_INDEX_V2_REF_PREFIX}{handle.ref}.json")
+    first, cursor = llm_deferred.load_pending_audit_snapshot(storage, limit=2)
+    assert {h.ref for h in first.pending()} == {"job-0", "job-1"}
+    llm_deferred.write_pending_audit_cursor(storage, cursor)
+    second, cursor = llm_deferred.load_pending_audit_snapshot(storage, limit=2)
+    assert [h.ref for h in second.pending()] == ["job-2"]
+    assert cursor == ""
+    llm_deferred.write_pending_audit_cursor(storage, cursor)
+    wrapped, _ = llm_deferred.load_pending_audit_snapshot(storage, limit=2)
+    assert {h.ref for h in wrapped.pending()} == {"job-0", "job-1"}
+
+
+def test_weekly_pointer_refresh_reaches_handles_with_no_remaining_index():
+    storage = MemStorage()
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="unindexed",
+        ref="lost",
+        backend="llm-dispatch-v2",
+        model="gemini/gemini-3.1-flash-lite",
+    )
+    write_deferred(storage, handle.recipe_hash, handle)
+    snapshot = load_deferred_snapshot(storage, include_ineligible=True)
+    for key, _ in list(storage.list_objects(llm_deferred.DEFERRED_INDEX_PREFIX)):
+        storage.delete(key)
+    assert not list(storage.list_objects(llm_deferred.DEFERRED_INDEX_PREFIX))
+    assert llm_deferred.refresh_pending_pointers(storage, snapshot) == 1
+    assert look_up_v2_deferred_ref(storage, handle.ref) == handle
+    audit, _ = llm_deferred.load_pending_audit_snapshot(storage)
+    assert list(audit.pending()) == [handle]

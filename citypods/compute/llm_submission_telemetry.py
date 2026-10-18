@@ -91,6 +91,49 @@ def record_stage_activity(
     )
 
 
+def record_producer_caps(ctx: Any) -> None:
+    """Observe final runner slot accounting without reading or writing the coordinator.
+
+    Slots describe producer work, not admitted DO rows. Ingress events separately distinguish
+    fresh admissions from replays and rejected/deferred prepared work.
+    """
+    for purpose, prefix, exhausted_name in (
+        ("topic-tags:tagger", "tag", "tag_llm_dispatch_exhausted"),
+        ("topic-tags:prelabeler", "tag_prelabeler", "tag_prelabeler_dispatch_exhausted"),
+        ("topic-tags:prelabeler-shadow", "tag_prelabeler_shadow", None),
+        ("chapter-agenda", "chapter_agenda", "chapter_agenda_dispatch_exhausted"),
+        ("chapter-locator", "chapter_locator", "chapter_locator_dispatch_exhausted"),
+        ("r6-shared-moments-and-judge", "moment", None),
+    ):
+        cap = getattr(ctx, f"{prefix}_max_dispatches", None)
+        used = getattr(ctx, f"{prefix}_dispatches_count", 0)
+        if prefix == "moment":
+            used = getattr(ctx, "moment_dispatches", 0)
+        reserved = getattr(ctx, f"{prefix}_dispatches_reserved", 0)
+        exhausted = getattr(ctx, exhausted_name, None) if exhausted_name else None
+        closed = bool(exhausted and exhausted.is_set())
+        anomalies = []
+        if reserved:
+            anomalies.append("unsettled_reservations")
+        if cap is not None and used > cap:
+            anomalies.append("producer_cap_exceeded")
+        if cap is not None and used < cap and closed:
+            # An explicit ingress closure can legitimately set this flag too. Surface it for
+            # correlation with ingress reasons, rather than declaring every such gate a bug.
+            anomalies.append("closed_below_cap_check_ingress_reason")
+        record(
+            "llm_producer_cap",
+            lane=getattr(ctx, "lane", None),
+            purpose=purpose,
+            unit="producer slots",
+            limit=cap,
+            used=used,
+            reserved=reserved,
+            closed=closed,
+            anomalies=anomalies,
+        )
+
+
 def record_producer_observations(
     observations: Mapping[tuple[str, str, str], Mapping[str, int]],
 ) -> None:
@@ -177,6 +220,7 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
     ]
     recovery = [event for event in events if event.get("event") == "llm_structural_recovery"]
     lines = ["## LLM submission telemetry", ""]
+    _render_accounting(events, lines)
     if producer:
         lines.extend(
             [
@@ -260,6 +304,9 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
             [
                 "",
                 "### Producer-stage gates",
+                "",
+                "Reused includes no-op or out-of-scope stage visits; "
+                "it does not count model outputs.",
                 "",
                 "| Lane | Stage | Ran | Reused | Deferred | Errors | Seconds |",
                 "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -357,7 +404,8 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                 lines.append(
                     "- **{phase}:** active bundles `{active_bundles}`, "
                     "active calls `{active_calls}`, "
-                    "queued `{queued}`, claimed today `{claimed}`, ingress today `{ingested}`; "
+                    "queued `{queued}`, claimed today `{claimed}`, ingress today `{ingested}` "
+                    "(UTC day `{utc_day}`); "
                     "last claim `{last_reason}`.".format(
                         phase=event.get("phase", "snapshot"),
                         active_bundles=summary.get("active_bundles", "?"),
@@ -365,10 +413,26 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                         queued=summary.get("queued", "?"),
                         claimed=summary.get("claimed", "?"),
                         ingested=summary.get("ingested", "?"),
+                        utc_day=summary.get("utc_day", "?"),
                         last_reason=summary.get("last_reason", "?"),
                     )
                 )
                 reason_counts = summary.get("reason_counts")
+                budget = summary.get("row_budget")
+                if isinstance(budget, Mapping):
+                    lines.append(
+                        f"  - DO rows written `{budget.get('rows_written_today')}` / safe stop "
+                        f"`{budget.get('account_safe_stop')}`; "
+                        f"enqueue open `{budget.get('enqueue_open')}`, "
+                        f"claims open `{budget.get('claims_open')}`."
+                    )
+                for purpose in summary.get("ingress_by_purpose") or []:
+                    if isinstance(purpose, Mapping):
+                        lines.append(
+                            f"  - `{purpose.get('purpose')}`: ingress today "
+                            f"`{purpose.get('jobs_ingested')}` / `{purpose.get('daily_quota')}`; "
+                            f"write units `{purpose.get('write_units')}`."
+                        )
                 rescue = summary.get("catalog_rescue")
                 if isinstance(rescue, Mapping):
                     lines.append(
@@ -393,3 +457,111 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                 lines.append(f"- **{phase}:** unavailable ({error}).")
     lines.append("")
     return "\n".join(lines)
+
+
+def _render_accounting(events: Sequence[Mapping[str, Any]], lines: list[str]) -> None:
+    """Keep gauges separate from observation counts; repeated polls are not distinct jobs."""
+    caps = [event for event in events if event.get("event") == "llm_producer_cap"]
+    judges = [event for event in events if event.get("event") == "llm_judge_backpressure"]
+    audits = [event for event in events if event.get("event") == "llm_pending_audit"]
+    sweeps = [event for event in events if event.get("event") == "llm_deferred_sweep_end"]
+    polls = [
+        event
+        for event in events
+        if event.get("event") == "llm_dispatch_v2_batch" and event.get("operation") == "poll-batch"
+    ]
+    task_polls = [event for event in events if event.get("event") == "llm_pending_poll"]
+    if caps:
+        lines.extend(
+            [
+                "### Runner accounting",
+                "",
+                "Producer slots are work prepared by the runner; they are not fresh DO rows.",
+                "",
+                "| Purpose | Slot cap | Used | Unsettled | Closed | Diagnostic |",
+                "| --- | ---: | ---: | ---: | --- | --- |",
+            ]
+        )
+        for event in caps:
+            diagnostic = ", ".join(event.get("anomalies") or []) or "none"
+            lines.append(
+                f"| {event.get('purpose')} | {event.get('limit')} | {event.get('used')} | "
+                f"{event.get('reserved')} | {event.get('closed')} | {diagnostic} |"
+            )
+        lines.append("")
+    elif any(event.get("event") == "llm_submission_stage" for event in events):
+        lines.extend(
+            ["Runner cap accounting was not observed; check whether finalization ran.", ""]
+        )
+    if judges:
+        lines.extend(
+            [
+                "### Judge outstanding gates",
+                "",
+                "Gauges at planning time, in packets. Each model has its own sibling limit.",
+                "",
+                "| Purpose | Model | Outstanding | Limit | Room | Remaining run cap |",
+                "| --- | --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for event in judges:
+            lines.append(
+                f"| {event.get('purpose')} | {event.get('model')} | "
+                f"{event.get('outstanding')} | {event.get('limit')} | {event.get('room')} | "
+                f"{event.get('run_cap')} |"
+            )
+        lines.append("")
+    if audits or sweeps or polls or task_polls:
+        lines.extend(["### Pending-handle reconciliation", ""])
+        for event in audits:
+            lines.append(
+                f"- Indexed audit: {event.get('loaded')} loaded / {event.get('listed')} selected; "
+                f"{event.get('unavailable')} unavailable; tasks "
+                f"`{json.dumps(event.get('by_task', {}), sort_keys=True)}`."
+            )
+        if polls:
+            totals = {
+                key: sum(int(event.get(key, 0) or 0) for event in polls)
+                for key in ("completed", "pending", "missing", "failed", "unknown")
+            }
+            lines.append(
+                "- Batch-poll observations (retries can repeat jobs): "
+                + ", ".join(f"{key}={value}" for key, value in totals.items())
+                + "."
+            )
+        for event in sweeps:
+            lines.append(
+                f"- Sweep: missing handles cleared={event.get('missing_cleared', 0)}, "
+                f"unobserved={event.get('v2_unobserved', 0)}, "
+                f"unavailable={event.get('unavailable', 0)}."
+            )
+        if (
+            any(event.get("v2_unobserved") or event.get("unavailable") for event in sweeps)
+            or any(event.get("unknown") for event in polls)
+            or any(event.get("unknown") for event in task_polls)
+            or any(event.get("unavailable") for event in audits)
+        ):
+            lines.append(
+                "- **Unresolved accounting:** some handles could not be observed; preserved "
+                "pending state is not proof of a live queued job. Inspect the retained artifact."
+            )
+        if task_polls:
+            lines.extend(
+                [
+                    "",
+                    "Poll observations by task (including repeated observations):",
+                    "",
+                    "| Task | Completed | Pending | Missing | Failed | Unknown |",
+                    "| --- | ---: | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            tasks: dict[str, Counter[str]] = defaultdict(Counter)
+            for event in task_polls:
+                for key in ("completed", "pending", "missing", "failed", "unknown"):
+                    tasks[str(event.get("task"))][key] += int(event.get(key, 0) or 0)
+            for task, counts in sorted(tasks.items()):
+                lines.append(
+                    f"| {task} | {counts['completed']} | {counts['pending']} | "
+                    f"{counts['missing']} | {counts['failed']} | {counts['unknown']} |"
+                )
+        lines.append("")

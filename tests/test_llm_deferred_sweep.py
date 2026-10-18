@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -1106,3 +1107,118 @@ def test_sweep_still_exits_zero_when_only_a_reconcile_fails(monkeypatch, capsys)
     assert '"failed": 1' in captured.out
     assert '"submit_failed": 0' in captured.out
     assert "failed to submit" not in captured.err
+
+
+@pytest.mark.parametrize("replace_during_poll", [False, True])
+def test_sweep_audits_stranded_handle_without_spending_retry(monkeypatch, replace_during_poll):
+    from citypods.compute.llm import LLMDispatchMissingError
+    from citypods.compute.llm_deferred import (
+        DEFERRED_INDEX_V2_REF_PREFIX,
+        deferred_failure_key,
+        look_up_deferred,
+        repair_deferred_index,
+        write_deferred,
+    )
+    from tests._cas_fake import MemStorage
+
+    storage = MemStorage()
+    read_file = storage.get_file
+    monkeypatch.setattr(storage, "get_file", lambda key, path, **_kw: read_file(key, path))
+    handle = JobHandle(
+        task="agenda-item-extract",
+        recipe_hash="stranded",
+        ref="old-ref",
+        backend="llm-dispatch-v2",
+        model="gemini/gemini-3.1-flash-lite",
+    )
+    write_deferred(storage, handle.recipe_hash, handle)
+    repair_deferred_index(storage)
+    # This terminal event was missed; the primary model index still names the pending recipe.
+    storage.delete(f"{DEFERRED_INDEX_V2_REF_PREFIX}{handle.ref}.json")
+    newer = replace(handle, ref="new-ref")
+    polled = []
+
+    class Backend:
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+        name = "litellm"
+
+        def terminal_feed(self, _cursor):
+            return {"terminals": []}
+
+        def poll_batch(self, handles):
+            polled.extend(h.ref for h in handles)
+            if replace_during_poll:
+                write_deferred(storage, handle.recipe_hash, newer)
+            return {h.ref: LLMDispatchMissingError("confirmed absent") for h in handles}
+
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: storage)
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_args, **_kwargs: Backend())
+    assert llm_deferred_sweep.main([]) == 0
+    assert polled == ["old-ref"]
+    assert look_up_deferred(storage, handle.recipe_hash) == (newer if replace_during_poll else None)
+    assert not storage.exists(deferred_failure_key(handle.recipe_hash))
+
+
+def test_sweep_does_not_convert_result_storage_failure_into_provider_failure(monkeypatch):
+    from citypods.compute.llm import LLMBackendError
+    from citypods.compute.llm_deferred import (
+        deferred_failure_key,
+        look_up_deferred,
+        repair_deferred_index,
+        write_deferred,
+    )
+    from tests._cas_fake import MemStorage
+
+    storage = MemStorage()
+    read_file = storage.get_file
+    monkeypatch.setattr(storage, "get_file", lambda key, path, **_kw: read_file(key, path))
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="unavailable-result",
+        ref="live-ref",
+        backend="llm-dispatch-v2",
+        model="gemini/gemini-3.1-flash-lite",
+    )
+    write_deferred(storage, handle.recipe_hash, handle)
+    repair_deferred_index(storage)
+
+    class Backend:
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+        name = "litellm"
+
+        def terminal_feed(self, _cursor):
+            return {"terminals": [{"id": handle.ref}], "next_cursor": {"updated_at": 1, "id": "x"}}
+
+        def poll_batch(self, handles):
+            return {h.ref: LLMBackendError("B2 temporarily unavailable") for h in handles}
+
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: storage)
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_args, **_kwargs: Backend())
+    assert llm_deferred_sweep.main([]) == 0
+    assert look_up_deferred(storage, handle.recipe_hash) == handle
+    assert not storage.exists(deferred_failure_key(handle.recipe_hash))
+
+
+def test_sweep_registers_judge_contracts_in_a_fresh_process():
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+from scripts.llm_deferred_sweep import _register_known_contracts
+from citypods.compute.structured import response_model
+_register_known_contracts()
+assert response_model('moment-judge') is not None
+assert response_model('judge-answers-v1') is not None
+assert response_model('tournament-tag-judge') is not None
+assert response_model('remedy-p3-body-decision-v1') is not None
+assert response_model('agenda-chapter-title-equivalence') is not None
+""",
+        ],
+        check=True,
+    )

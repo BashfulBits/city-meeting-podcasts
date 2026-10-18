@@ -21,6 +21,7 @@ from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_lanes import LaneConfig
+from citypods.compute.llm_submission_telemetry import record as record_submission_telemetry
 from citypods.judging import ledger
 from citypods.judging.adjudication import (
     adjudication_unbuildable_key,
@@ -714,6 +715,9 @@ def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
                     for model in ctx.sibling.models
                 }
             )
+            for model, available in ctx.sibling_room.items():
+                stats.counts[f"outstanding_model:{model}"] = len(ctx.sibling_recipes.get(model, ()))
+                stats.counts[f"outstanding_room:{model}"] = available
             room = sum(ctx.sibling_room.values())
         stats.counts[f"outstanding:{purpose}"] = outstanding
         if ctx.run_caps_lock is not None:
@@ -724,6 +728,31 @@ def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
         finally:
             if ctx.run_caps_lock is not None:
                 ctx.run_caps_lock.release()
+        gauges = (
+            [
+                (model, len(ctx.sibling_recipes.get(model, ())), available)
+                for model, available in sorted(
+                    {
+                        **dict.fromkeys(ctx.sibling_recipes, 0),
+                        **ctx.sibling_room,
+                    }.items()
+                )
+            ]
+            if purpose == SIBLING_PURPOSE
+            else [("(purpose total)", outstanding, room)]
+        )
+        for model, model_outstanding, model_room in gauges:
+            record_submission_telemetry(
+                "llm_judge_backpressure",
+                purpose=purpose,
+                model=model,
+                outstanding=model_outstanding,
+                limit=(
+                    int(limit) if purpose != SIBLING_PURPOSE or model in ctx.sibling_room else None
+                ),
+                room=model_room,
+                run_cap=ctx.run_caps.get(purpose),
+            )
         if room == 0:
             stats.counts[f"run_cap_outstanding:{purpose}"] += 1
 
