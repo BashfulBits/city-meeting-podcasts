@@ -451,6 +451,7 @@ test("the eligibility filter and the pacing check share one size gate", async ()
         { input_token_estimate: size, max_output_token_estimate: 100 }, now, now,
         { inputRatio: 1.27, admitRatio: 1.06, ceilingTolerance: true });
       if (!fits) assert.equal(paced, null, `size ${size}`);
+      if (paced !== null) assert.equal(fits, true, `size ${size}: pacing admits but the filter refuses`);
     }
   }
 });
