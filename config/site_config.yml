@@ -454,6 +454,9 @@ judging:
   max_outstanding_packets: {anchor: 240, sibling: 480, adjudicator: 66}
   # Review/53 PR5: the adjudicator judges contested items and the calibration sample; data only.
   adjudication: {enabled: true}
+  # Review/53 PR6: human-verified probes (evals/judge/<task>/gold.json, empty at first) mixed invisibly
+  # into each judge's live packets; reported per judge, non-gating until a task has about 20.
+  probes: {enabled: true, per_pass: 2}
 moments:
   enabled: true
   mode: "manual"  # manual | auto; global kill switch back to manual

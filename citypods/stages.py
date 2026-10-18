@@ -320,6 +320,8 @@ class StageContext:
     # review/53: the judge lane's dispatch backend and the site config `judging` block.
     judge_backend: object | None = None
     judging_config: dict = field(default_factory=dict)
+    # Finalized weekly-audit answers as ledger rows by subject id (review/53 PR6).
+    judge_audit_rows: dict = field(default_factory=dict)
     # Packets left this run per judge purpose, shared by every pass in the run (the judge lane runs
     # one pass across all sources); filled from the lanes' max_dispatches_per_run on first use.
     judge_run_caps: dict = field(default_factory=dict)
@@ -985,7 +987,11 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
     return False
 
 
-def judge_episode_dirty(ep: Episode, judging_config: Mapping[str, Any] | None) -> bool:
+def judge_episode_dirty(
+    ep: Episode,
+    judging_config: Mapping[str, Any] | None,
+    audit_rows: Mapping[str, Any] | None = None,
+) -> bool:
     """Whether the judge stage has work for ``ep`` under the given ``judging`` config."""
     config = judging_config or {}
     if not (config.get("enabled") or os.environ.get("CITYPODS_JUDGE_DRY_RUN") == "1"):
@@ -1006,6 +1012,7 @@ def judge_episode_dirty(ep: Episode, judging_config: Mapping[str, Any] | None) -
         adjudicator=lane_for("judge:adjudicator") if _adjudication_enabled(config) else None,
         calibration_sample_rate=float(config.get("calibration_sample_rate", 0.03)),
         stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),
+        audit_rows=audit_rows,
     )
 
 
@@ -1023,12 +1030,13 @@ def stage_is_dirty(
     speaker_config: Mapping[str, Any] | None = None,
     evaluation_config: Mapping[str, Any] | None = None,
     judging_config: Mapping[str, Any] | None = None,
+    judge_audit_rows: Mapping[str, Any] | None = None,
 ) -> bool:
     # review/53: the judge stage's state is its candidates' judgments, not an input fingerprint.
     # A completion marker would stop it after one visit and strand every in-flight answer, so it
     # is dirty exactly while an answer is pending or a judgment is missing (no transcript read).
     if stage.name == "judge":
-        return judge_episode_dirty(ep, judging_config)
+        return judge_episode_dirty(ep, judging_config, judge_audit_rows)
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
     # transcript/media mutation before it can take effect.
@@ -1694,15 +1702,11 @@ class JudgeStage(LLMProducerStage):
         from citypods.compute.llm_deferred import look_up_deferred
         from citypods.compute.llm_lanes import lane_for, load_families
         from citypods.judging import runner
-        from citypods.judging.tasks import EpisodeTexts, transcript_identity
-        from citypods.moments import parse_transcript_segments
-        from citypods.tags import chapter_id, load_taxonomy
+        from citypods.judging.probes import load_probes
+        from citypods.judging.tasks import EpisodeTexts
+        from citypods.judging.texts import build_episode_texts, tag_definitions
 
-        taxonomy = load_taxonomy()
-        definitions = {
-            tag_id: f"{tag.label}: {tag.description}".strip(": ")
-            for tag_id, tag in taxonomy.by_id.items()
-        }
+        definitions = tag_definitions()
 
         def texts_for(ep: Episode) -> EpisodeTexts:
             try:
@@ -1720,25 +1724,7 @@ class JudgeStage(LLMProducerStage):
                     flush=True,
                 )
                 raise runner.TextsUnavailable(str(exc)) from exc
-            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
-            chapters = []
-            served = [c for c in ep.chapters or [] if isinstance(c, dict)]
-            for index, chapter in enumerate(served):
-                start = float(chapter.get("start") or 0.0)
-                end = (
-                    float(served[index + 1].get("start") or 0.0)
-                    if index + 1 < len(served)
-                    else None
-                )
-                chapters.append(
-                    (chapter_id(ep, chapter, index), str(chapter.get("title") or ""), start, end)
-                )
-            return EpisodeTexts(
-                segments=segments,
-                chapters=tuple(chapters),
-                definitions=definitions,
-                identity=transcript_identity(ep),
-            )
+            return build_episode_texts(ep, raw, definitions)
 
         backend = ctx.judge_backend
         storage = getattr(getattr(backend, "_backend", backend), "storage", None) or ctx.storage
@@ -1774,6 +1760,11 @@ class JudgeStage(LLMProducerStage):
         )
         config = ctx.judging_config or {}
         adjudicator = lane_for("judge:adjudicator") if _adjudication_enabled(config) else None
+        probe_config = config.get("probes") if isinstance(config.get("probes"), Mapping) else {}
+        probes_per_pass = int(probe_config.get("per_pass", 2)) if probe_config.get("enabled") else 0
+        probes = (
+            [p for spec in self._tasks(ctx) for p in load_probes(spec)] if probes_per_pass else []
+        )
         # Which sibling takes a new subject is decided by load: packets waiting per model and the
         # Worker's usable route capacity (the cheap ?routes=1 view; empty when unreadable).
         sibling_headroom = dispatch_v2_model_headroom(
@@ -1820,6 +1811,9 @@ class JudgeStage(LLMProducerStage):
             adjudicator=adjudicator,
             calibration_sample_rate=float(config.get("calibration_sample_rate", 0.03)),
             stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),
+            probes=probes,
+            probes_per_pass=probes_per_pass,
+            audit_rows=ctx.judge_audit_rows,
         )
         result = runner.run(episodes, judging)
         for key, count in sorted(result.counts.items()):
@@ -10155,6 +10149,7 @@ def run_judge_across_sources(
                 city,
                 speaker_config=ctx.speaker_config,
                 judging_config=ctx.judging_config,
+                judge_audit_rows=ctx.judge_audit_rows,
             )
         ]
         clean += len(episodes) - len(dirty)
@@ -10212,6 +10207,7 @@ def run_stages(
                     ctx.llm_evaluation_config if ctx.tag_backend is not None else None
                 ),
                 judging_config=ctx.judging_config,
+                judge_audit_rows=ctx.judge_audit_rows,
             )
         ]
         clean = len(episodes) - len(dirty)

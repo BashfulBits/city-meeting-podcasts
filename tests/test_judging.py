@@ -1599,6 +1599,192 @@ def test_one_overlong_reason_does_not_discard_its_packets_other_answers():
     assert {r["quote_valid"] for r in rows} == {True}  # checked against the full reason
 
 
+# ---- review/53 PR6: the probe set --------------------------------------------------------------
+
+
+def _probes(*verdicts):
+    from citypods.judging.probes import Probe
+
+    return [
+        Probe(
+            id=f"tag-{i}",
+            task="tag",
+            question_id="supported",
+            tier="T1",
+            evidence=(
+                "Proposed tag: Zoning reform: a change to the zoning code\n"
+                f"Transcript: council approved case number {i} to rezone the corridor tonight"
+            ),
+            verdict=verdict,
+            source="audit:test",
+        )
+        for i, verdict in enumerate(verdicts)
+    ]
+
+
+def test_gold_lists_start_empty_and_validate_strictly():
+    from citypods.judging.probes import GATING_ITEMS, gating, load_probes, parse_probes
+
+    for name in ("tag", "moment"):
+        assert load_probes(task(name)) == []
+    spec = task("tag")
+    good = {
+        "id": "tag-1",
+        "question_id": "supported",
+        "tier": "T1",
+        "evidence": "Proposed tag: x\nTranscript: some words here",
+        "verdict": True,
+    }
+    assert parse_probes(spec, [good])[0].subject_id == "probe:tag-1"
+    for bad in (
+        {**good, "id": "Bad Id"},
+        {**good, "question_id": "nope"},
+        {**good, "tier": "T9"},
+        {**good, "evidence": " "},
+        {**good, "evidence": "x" * 13_000},
+        {**good, "verdict": "yes"},
+    ):
+        with pytest.raises(ValueError):
+            parse_probes(spec, [bad])
+    with pytest.raises(ValueError):
+        parse_probes(spec, [good, good])  # a repeated id
+    with pytest.raises(ValueError, match="must start with moment-"):
+        parse_probes(task("moment"), [{**good, "question_id": "supported"}])  # another task's id
+    with pytest.raises(ValueError):
+        parse_probes(task("moment"), [{**good, "question_id": "usefulness"}])  # not binary
+    assert not gating(_probes(*[True] * (GATING_ITEMS - 1))) and gating(_probes(*[True] * 20))
+
+
+def test_probes_ride_in_live_packets_and_their_answers_are_recorded_per_judge():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    probes = _probes(True, False, True)
+    ctx = lambda: _ctx(dispatch, probes=probes, probes_per_pass=2)  # noqa: E731
+    first = runner.run([ep], ctx())
+    asked = [i for p, _ in dispatch.submitted.values() for i in p.items if i.sample == "probe"]
+    # Each judge with live work is asked two probes, inside the packets it already sends.
+    assert first.counts["probes_asked:anchor"] == 2 and first.counts["probes_asked:sibling"] == 2
+    assert len(asked) == 4
+    assert first.counts["packets:anchor"] == 1 and first.counts["packets:sibling"] == 1
+    assert all(i.subjects[0].subject_id.startswith("probe:") for i in asked)
+    dispatch.answer(anchor_p=0.9, sibling=True)
+    runner.run([ep], ctx())
+    rows = [r for subject in ep.judging["subjects"].values() for r in subject.get("judgments", [])]
+    probe_rows = [r for r in rows if r["subject_id"].startswith("probe:")]
+    assert len(probe_rows) == 4 and {r["sample"] for r in probe_rows} == {"probe"}
+    assert {r["quote_valid"] for r in probe_rows if r["judge_role"] == "sibling"} == {True}
+
+    # Within one host a probe is asked of a judge once; across hosts the rotation reaches them all.
+    again = runner.run([ep], ctx())
+    assert not again.counts["probes_asked:anchor"]
+    reached: set[str] = set()
+    for n in range(8):
+        host = _episode(uid=f"host-{n}", llm=[])
+        flow = FakeDispatch()
+        runner.run([host], _ctx(flow, probes=probes, probes_per_pass=2))
+        reached |= {
+            i.subjects[0].subject_id
+            for p, _ in flow.submitted.values()
+            if p.role == "anchor"
+            for i in p.items
+            if i.sample == "probe"
+        }
+    assert reached == {"probe:tag-0", "probe:tag-1", "probe:tag-2"}
+
+
+def test_each_judge_meets_the_probes_in_its_own_order_and_only_when_it_has_live_work():
+    from citypods.judging.probes import order_key
+
+    probes = _probes(True, False, True, False, True, False)
+    orders = {
+        model: [p.id for p in sorted(probes, key=lambda p: order_key(p, f"{model}|subj-1"))]
+        for model in ("m-anchor", "m-sibling")
+    }
+    assert orders["m-anchor"] != orders["m-sibling"]
+    idle = FakeDispatch()
+    quiet = runner.run([], _ctx(idle, probes=probes, probes_per_pass=2))
+    assert not idle.submitted and not quiet.counts["probes_asked:anchor"]
+
+
+def test_a_probe_in_flight_keeps_its_episode_dirty_and_does_not_look_superseded():
+    ep = _episode(llm=[])
+    ep.transcript_key = "t.vtt"
+    dispatch = FakeDispatch()
+    runner.run([ep], _ctx(dispatch, probes=_probes(True), probes_per_pass=1))
+    dispatch.answer()
+    runner.run([ep], _ctx(dispatch))  # collect the live answers; the probe answers came too
+    # Re-open one probe marker by hand: the episode must be dirty on it alone.
+    entry = next(e for k, e in ep.judging["subjects"].items() if k.startswith("probe:"))
+    marker = dict(entry["judgments"][0])
+    entry["pending"] = [{**marker, "recipe_hash": "gone", "qid": "probe:tag-0:supported:T1"}]
+    kwargs = {
+        "anchor": LANES["judge:anchor"],
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert runner.episode_needs_judging(ep, [task("tag")], **kwargs)
+
+
+def test_the_report_scores_probes_per_judge_and_keeps_them_out_of_live_statistics():
+    from citypods.judging.report import summarize
+
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    probes = _probes(True, False)
+    runner.run([ep], _ctx(dispatch, probes=probes, probes_per_pass=2))
+    dispatch.answer(anchor_p=0.9, sibling=True)  # every judge says "supported" to everything
+    runner.run([ep], _ctx(dispatch, probes=probes))
+    record = {"published": "2026-10-01T00:00:00Z", "judging": ep.judging, "llm_tag_candidates": []}
+    report = summarize([record], probes={p.id: p.verdict for p in probes})
+    anchor = next(v for k, v in report["probes"].items() if "jev" in k)
+    assert anchor == {"asked": 2, "scored": 2, "correct": 1, "unsupported": 0, "accuracy": 0.5}
+    assert all(not k.startswith("probe") for k in report["agreement"])
+    # Unsupported (bad-quote) sibling answers are counted, not scored.
+    dispatch2 = FakeDispatch()
+    ep2 = _episode(uid="ep-2", llm=[])
+    runner.run([ep2], _ctx(dispatch2, probes=probes, probes_per_pass=2))
+    dispatch2.answer(bad_quotes=("sibling",))
+    runner.run([ep2], _ctx(dispatch2, probes=probes))
+    record2 = {"published": "2026-10-01T00:00:00Z", "judging": ep2.judging}
+    sibling = next(
+        v
+        for k, v in summarize([record2], probes={p.id: p.verdict for p in probes})["probes"].items()
+        if "gemma" in k
+    )
+    assert sibling["unsupported"] == 2 and sibling["scored"] == 0 and sibling["accuracy"] is None
+
+
+def test_the_stage_loads_probes_only_when_enabled(monkeypatch):
+    from citypods import stages
+
+    seen = []
+
+    def spy(episodes, judging):
+        seen.append(judging)
+        return runner.JudgingStats()
+
+    monkeypatch.setattr(runner, "run", spy)
+    monkeypatch.setattr(
+        "citypods.compute.llm.dispatch_v2_learned_input_ratio", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "citypods.judging.probes.load_probes", lambda spec, root=None: _probes(True)
+    )
+    for block in (None, {"enabled": False}, {"enabled": True, "per_pass": 3}):
+        ctx = _stage_ctx(enabled=True)
+        if block is not None:
+            ctx.judging_config["probes"] = block
+        ep = _episode()
+        ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+        stages.JudgeStage().process(None, SimpleNamespace(slug="x"), [ep], ctx)
+    assert [(bool(j.probes), j.probes_per_pass) for j in seen] == [
+        (False, 0),
+        (False, 0),
+        (True, 3),
+    ]
+
+
 # ---- sibling choice by load (review/53 PR4 follow-up, 2026-10-16) ---------------------------
 
 

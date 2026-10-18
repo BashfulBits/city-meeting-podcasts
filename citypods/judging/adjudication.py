@@ -98,15 +98,26 @@ def _awaiting_escalation(
 
 
 def _contested(
-    spec: TaskSpec, question: QuestionSpec, anchor: Mapping[str, Any], sibling: Mapping[str, Any]
+    spec: TaskSpec,
+    question: QuestionSpec,
+    anchor: Mapping[str, Any],
+    sibling: Mapping[str, Any],
+    audit: Mapping[str, Any] | None = None,
 ) -> bool:
-    """The anchor's final reading against the sibling's, or the anchor still in the band."""
+    """The anchor's final reading against the sibling's, or the anchor still in the band.
+
+    A person's audit answer is one vote: if it disagrees with either judge the question goes to
+    the adjudicator at full context; it flips nothing."""
     if not anchor or not sibling:
         return False
     a = _number(anchor[max(anchor, key=_tier_rank)])
     s = sibling[max(sibling, key=_tier_rank)]
     if a is None:
         return False
+    vote = audit[max(audit, key=_tier_rank)] if audit else None
+    if isinstance(vote, bool) and question.kind == "validate":
+        if (a >= 0.5) != vote or (isinstance(s, bool) and s != vote):
+            return True
     if question.kind in ("validate", "gate"):
         if isinstance(s, bool) and (a >= 0.5) != s:
             return True
@@ -135,7 +146,8 @@ def due_questions(
             continue  # nothing to compare yet
         if _awaiting_escalation(subject, spec, question, anchor, anchor_model):
             continue
-        if _contested(spec, question, anchor, sibling):
+        audit = _by_tier(subject, question.id, "audit", "human")
+        if _contested(spec, question, anchor, sibling, audit):
             due.append(Due(question, CONTESTED))
         elif in_sample(f"{subject.subject_id}:{question.id}:{CALIBRATION}", calibration_rate):
             due.append(Due(question, CALIBRATION))

@@ -434,6 +434,7 @@ class SourcePipeline:
                         self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
                     ),
                     judging_config=self.ctx.judging_config,
+                    judge_audit_rows=self.ctx.judge_audit_rows,
                 ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
@@ -3465,6 +3466,12 @@ def _build_impl(
     transcript_quality_routes = load_quality_routes(
         site_config, state_dir, storage=None if dry_run else storage
     )
+    # Review/53 PR6: finalized weekly-audit answers, imported into the ledgers by the judge lane.
+    judge_audit_rows: dict = {}
+    if lane == "judge" and judging_config.get("enabled") and not dry_run:
+        from citypods.judging.audit import AuditState, import_rows
+
+        judge_audit_rows = import_rows(AuditState.load(state_dir))
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -3475,6 +3482,7 @@ def _build_impl(
         moment_backend=moment_backend,
         judge_backend=judge_backend,
         judging_config=judging_config,
+        judge_audit_rows=judge_audit_rows,
         # A judge lane the Worker reports closed starts with no packets to send this run.
         judge_run_caps=judge_closed_caps,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
