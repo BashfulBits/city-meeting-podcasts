@@ -401,6 +401,13 @@ artifact make it possible to separate absent candidates, cached or already-pendi
 ingress deferrals, stage-budget exits, and Worker-side scheduling limits. This is observability only:
 it changes no pipeline version, job policy, route, or backfill behavior.
 
+**Locator producer accounting fix (2026-10-17; proposed).** The locator checks the current recipe's
+canonical deferred record before reserving its per-run slot. Cached completions and submitted
+handles do not consume new-work slots, even when episode metadata has not caught up; client-only
+deferrals still count as new submissions. This corrects the cap without changing its configured
+value, recipes, pipeline versions, or backfill policy. Worker-only replays whose client record is
+missing remain conservatively subject to the producer cap.
+
 **`chapter-agenda` repinned to Nemotron Ultra + generic backup-model infra (2026-09-13).** The
 `chapter-agenda` lane's model moved from `mistral/mistral-medium-latest` (blocked by an
 account-tier issue) to `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite`
