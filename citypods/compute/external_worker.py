@@ -125,7 +125,7 @@ from citypods.stages import (
 )
 from citypods.state import resolve_state_dir
 from citypods.statesync import TransientStateSyncError, pull_state, push_records_merged
-from citypods.storage import make_storage
+from citypods.storage import StorageReadUnavailable, make_storage
 from citypods.timeline import timeline_digest
 
 SUPPORTED_WORK_CLASSES = frozenset(
@@ -841,6 +841,13 @@ class ExternalTranscribeWorker:
                 return self._run_with_renewal(item, tracker, owner=owner)
             except ClaimDeferred:
                 raise
+            except StorageReadUnavailable as exc:
+                print(
+                    f"[{self.config.backend}-worker] deferred "
+                    f"{item.source_key}/{item.episode_uid}: transient storage read: {exc}",
+                    flush=True,
+                )
+                raise ClaimDeferred("transient-storage-read") from exc
             except TransientStateSyncError as exc:
                 print(
                     f"[{self.config.backend}-worker] deferred "
@@ -2052,6 +2059,13 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
     def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker, *, owner: str) -> bool:
         try:
             return self._run_with_renewal(item, tracker, owner=owner)
+        except StorageReadUnavailable as exc:
+            print(
+                f"[{self.config.backend}-worker] deferred "
+                f"{item.source_key}/{item.episode_uid}: transient storage read: {exc}",
+                flush=True,
+            )
+            raise ClaimDeferred("transient-storage-read") from exc
         except TransientStateSyncError as exc:
             print(
                 f"[{self.config.backend}-worker] deferred "

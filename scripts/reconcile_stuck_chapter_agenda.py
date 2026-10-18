@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import signal
 import sys
@@ -451,8 +452,8 @@ def run(
     instead of relying on the workflow's own step timeout to kill the process mid-operation with
     nothing captured at all.
     """
-    if older_than_hours <= 0:
-        raise ValueError("--older-than-hours must be greater than zero")
+    if not math.isfinite(older_than_hours) or older_than_hours < 0:
+        raise ValueError("--older-than-hours must be finite and non-negative")
     if max_row_writes < 0:
         raise ValueError("--max-row-writes must be non-negative")
     if run_time_budget_minutes <= 0:
@@ -573,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
         "--older-than-hours",
         type=float,
         default=24.0,
-        help="Treat a chapter-agenda handle this old as stuck (default: 24).",
+        help="Treat a handle this old as stuck; zero removes the minimum age (default: 24).",
     )
     parser.add_argument(
         "--max-row-writes",

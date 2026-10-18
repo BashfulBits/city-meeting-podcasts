@@ -1706,3 +1706,29 @@ def test_characterization_no_persist_skips_claims_even_without_targeting(tmp_pat
 
     assert summary["claimed"] == 2
     assert sorted(claimed) == ["a", "b"]
+
+
+@pytest.mark.parametrize("internal", [False, True])
+def test_storage_outage_defers_claim_and_requeues_without_failure(tmp_path, monkeypatch, internal):
+    worker = _internal_worker(tmp_path) if internal else _loop_worker(tmp_path, ["a"])
+    abandoned = []
+    monkeypatch.setattr(ew.work_leases, "claim", lambda *a, **k: object())
+    monkeypatch.setattr(ew.work_leases, "abandon", lambda *a, **k: abandoned.append((a, k)))
+    monkeypatch.setattr(worker, "_telemetry_metadata", lambda item: {"duration_hours": 1.0})
+    monkeypatch.setattr(worker, "_estimate_runtime_seconds", lambda *a, **k: 60.0)
+    monkeypatch.setattr(worker, "_append_telemetry_sample", lambda **k: None)
+    attempts = []
+
+    def unavailable(item, tracker, *, owner):
+        attempts.append(item)
+        raise ew.StorageReadUnavailable("transcripts/provider.txt", TimeoutError("storage outage"))
+
+    monkeypatch.setattr(worker, "_run_with_renewal", unavailable)
+    summary, claims = worker._run_claim_loop([_queued("a")], max_worked=1, should_stop=None)
+
+    assert len(attempts) == 1  # storage retries are already exhausted by the adapter
+    assert len(abandoned) == 1
+    assert abandoned[0][1]["update_index"] is True
+    assert summary.deferred == 1
+    assert summary.failed == summary.completed == 0
+    assert claims[0].outcome == "deferred"

@@ -710,3 +710,22 @@ def test_a_graphql_bot_login_is_normalized_so_actions_artifacts_are_recognized()
     impostor = {**nodes["nodes"][0], "author": {"__typename": "User", "login": "github-actions"}}
     [fake] = parse_snapshot({**nodes, "nodes": [impostor]}).artifacts
     assert fake.actor == "github-actions" and fb.signal_from_snapshot(fake, repository=REPO) is None
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [
+        ("remedy-feedback.yml", "feedback"),
+        ("remedy-feedback.yml", "reconcile"),
+        ("remedy-commands.yml", "disposition"),
+        ("remedy-commands.yml", "reopen"),
+    ],
+)
+def test_feedback_jobs_install_policy_dependencies(workflow, job_name):
+    flow = yaml.safe_load((WORKFLOWS / workflow).read_text())
+    installs = [
+        step["run"]
+        for step in flow["jobs"][job_name]["steps"]
+        if "pip install" in step.get("run", "")
+    ]
+    assert any('.[storage,llm]" -c constraints/prod.txt' in command for command in installs)
