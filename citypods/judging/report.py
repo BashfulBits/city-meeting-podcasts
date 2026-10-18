@@ -46,6 +46,9 @@ def summarize(records: Iterable[Mapping[str, Any]], *, now: datetime | None = No
     per_day: Counter = Counter()
     agreement: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
     escalated = first_tier_anchor = 0
+    quotes: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0, 0])
+    adjudicated: Counter = Counter()
+    stability: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     recent_total = recent_done = 0
     for record in records:
         published = _published(record)
@@ -67,6 +70,28 @@ def summarize(records: Iterable[Mapping[str, Any]], *, now: datetime | None = No
             for row in rows:
                 day = str(row.get("judged_at") or "")[:10]
                 per_day[(day, row.get("judge_role"), task, row.get("context_tier"))] += 1
+            for row in rows:
+                role = str(row.get("judge_role"))
+                if role in ("sibling", "adjudicator"):
+                    cell = quotes[(role, str(row.get("judge_model")))]
+                    cell[{True: 0, False: 1}.get(row.get("quote_valid"), 2)] += 1
+                if role == "adjudicator":
+                    adjudicated[(task, str(row.get("sample")), str(row.get("question_id")))] += 1
+            routine = {
+                (r.get("judge_model"), r.get("question_id"), r.get("context_tier")): _binary(r)
+                for r in rows
+                if r.get("sample") == "routine" and r.get("quote_valid") is not False
+            }
+            for row in rows:
+                if row.get("sample") != "stability" or row.get("quote_valid") is False:
+                    continue
+                base = str(row.get("question_id") or "").removesuffix("_s")
+                first = routine.get((row.get("judge_model"), base, row.get("context_tier")))
+                again = _binary(row)
+                if first is not None and again is not None:
+                    cell = stability[str(row.get("judge_model"))]
+                    cell[0] += 1
+                    cell[1] += first != again
             by_tier: dict[tuple[str, str], dict[str, bool]] = defaultdict(dict)
             for row in rows:
                 if row.get("kind") != "validate":
@@ -96,6 +121,20 @@ def summarize(records: Iterable[Mapping[str, Any]], *, now: datetime | None = No
         "agreement": {
             f"{task}:{cell}": {"agree": a, "pairs": n, "rate": round(a / n, 4) if n else None}
             for (task, cell), (a, n) in sorted(agreement.items())
+        },
+        # Chat answers by whether the quote in the reason is in the evidence (PR5).
+        "quote_check": {
+            f"{role}:{model}": {"valid": v, "invalid": bad, "unchecked": none}
+            for (role, model), (v, bad, none) in sorted(quotes.items())
+        },
+        "adjudicated": {
+            f"{task}:{sample}:{question}": n
+            for (task, sample, question), n in sorted(adjudicated.items())
+        },
+        # Stability re-asks: pairs compared and how many answers flipped, per judge.
+        "stability": {
+            model: {"pairs": pairs, "flips": flips}
+            for model, (pairs, flips) in sorted(stability.items())
         },
         "escalation_rate": round(escalated / first_tier_anchor, 4) if first_tier_anchor else None,
         "backfill_last_90_days": {

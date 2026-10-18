@@ -3173,7 +3173,7 @@ def test_judge_lanes_are_preflighted_and_a_closed_lane_starts_with_no_packets(
 
     _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="judge")
 
-    assert {"judge:anchor", "judge:sibling"} <= set(asked)
+    assert {"judge:anchor", "judge:sibling", "judge:adjudicator"} <= set(asked)
     assert seen["caps"] == {"judge:anchor": 0}
 
 

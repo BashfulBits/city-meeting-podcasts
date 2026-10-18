@@ -1003,7 +1003,16 @@ def judge_episode_dirty(ep: Episode, judging_config: Mapping[str, Any] | None) -
         sibling=lane_for("judge:sibling"),
         families=load_families(),
         all_tiers_sample_rate=float(config.get("all_tiers_sample_rate", 0.05)),
+        adjudicator=lane_for("judge:adjudicator") if _adjudication_enabled(config) else None,
+        calibration_sample_rate=float(config.get("calibration_sample_rate", 0.03)),
+        stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),
     )
+
+
+def _adjudication_enabled(config: Mapping[str, Any]) -> bool:
+    """The judging config's adjudication switch (review/53 PR5), off unless set."""
+    block = config.get("adjudication")
+    return bool(block.get("enabled")) if isinstance(block, Mapping) else False
 
 
 def stage_is_dirty(
@@ -1630,7 +1639,7 @@ class JudgeStage(LLMProducerStage):
 
     name = "judge"
     version = "1"
-    PURPOSES = ("judge:anchor", "judge:sibling")
+    PURPOSES = ("judge:anchor", "judge:sibling", "judge:adjudicator")
 
     @staticmethod
     def _dry_run() -> bool:
@@ -1763,6 +1772,8 @@ class JudgeStage(LLMProducerStage):
             f"packet ceiling={JevBackend(anchor_ratio).max_total_tokens} tokens",
             flush=True,
         )
+        config = ctx.judging_config or {}
+        adjudicator = lane_for("judge:adjudicator") if _adjudication_enabled(config) else None
         # Which sibling takes a new subject is decided by load: packets waiting per model and the
         # Worker's usable route capacity (the cheap ?routes=1 view; empty when unreadable).
         sibling_headroom = dispatch_v2_model_headroom(
@@ -1777,7 +1788,10 @@ class JudgeStage(LLMProducerStage):
         with ctx.judge_run_caps_lock:
             ctx.judge_run_caps.setdefault("judge:anchor", anchor.max_dispatches_per_run)
             ctx.judge_run_caps.setdefault("judge:sibling", sibling.max_dispatches_per_run)
-        config = ctx.judging_config or {}
+            if adjudicator is not None:
+                ctx.judge_run_caps.setdefault(
+                    "judge:adjudicator", adjudicator.max_dispatches_per_run
+                )
         judging = runner.JudgingContext(
             tasks=self._tasks(ctx),
             anchor=anchor,
@@ -1799,16 +1813,13 @@ class JudgeStage(LLMProducerStage):
             sibling_headroom=sibling_headroom,
             sibling_pack_ceilings=sibling_pack_ceilings,
             max_outstanding={
-                purpose: int(limit)
-                for purpose, limit in (
-                    ("judge:anchor", (config.get("max_outstanding_packets") or {}).get("anchor")),
-                    (
-                        "judge:sibling",
-                        (config.get("max_outstanding_packets") or {}).get("sibling"),
-                    ),
-                )
-                if limit is not None
+                f"judge:{role}": int(limit)
+                for role, limit in (config.get("max_outstanding_packets") or {}).items()
+                if role in ("anchor", "sibling", "adjudicator") and limit is not None
             },
+            adjudicator=adjudicator,
+            calibration_sample_rate=float(config.get("calibration_sample_rate", 0.03)),
+            stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),
         )
         result = runner.run(episodes, judging)
         for key, count in sorted(result.counts.items()):
@@ -1819,6 +1830,9 @@ class JudgeStage(LLMProducerStage):
                 "texts_unavailable",
                 "plan_stopped",
                 "plan_budget_reached",
+                "quote_check_deferred",
+                "adjudication_plan_stopped",
+                "adjudication_budget_reached",
             }:
                 stats.defer("llm-pending" if key == "still_pending" else f"judge-{key}", count)
             else:
