@@ -242,7 +242,14 @@ export function reservationFor(job, { estimateFloor = 0, inputRatio, outputForec
 export function earliestSafeStart(route, job, earliestCandidateTime, now, options = {}) {
   // rpd: 0 is an explicit paused route, not an unlimited quota. Keep this guard here as well as
   // in routesEligibleFor so any future caller of the pacing primitive fails closed.
-  if (route?.rpd != null && Number(route.rpd) === 0) return null;
+  // `options.gate` (diagnostics only): receives why the route cannot take the job (`reason`, for a
+  // permanent no) or which limit sets the start time (`binding`). It never changes the result.
+  const gate = options?.gate;
+  const refuse = (reason) => {
+    if (gate) gate.reason = reason;
+    return null;
+  };
+  if (route?.rpd != null && Number(route.rpd) === 0) return refuse("route_paused");
 
   const inputRatio = Number.isFinite(options?.inputRatio)
     ? options.inputRatio
@@ -276,27 +283,38 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // TTL. At or below the largest size it has accepted, a conservative configured ceiling is not
   // allowed to reject the job.
   const learned = options.contextProbe ? { acceptedMax: 0, rejectedMin: 0 } : learnedCeilings(route, now);
-  if (!tolerant && learned.rejectedMin > 0 && admitEstimate >= learned.rejectedMin) return null;
+  if (!tolerant && learned.rejectedMin > 0 && admitEstimate >= learned.rejectedMin) {
+    return refuse("learned_rejected_size");
+  }
   if (
     !options.contextProbe &&
     admitEstimate > Math.max(hardInputCeilingLimit(route, { tolerant }), learned.acceptedMax)
   ) {
-    return null;
+    return refuse("over_input_ceiling");
   }
 
   if (!options.contextProbe && Number(route?.prompt_cap_estimate) > 0 &&
-      Number(job?.input_token_estimate) > Number(route.prompt_cap_estimate)) return null;
+      Number(job?.input_token_estimate) > Number(route.prompt_cap_estimate)) {
+    return refuse("over_prompt_cap");
+  }
   const tpd = Number(route?.tpd);
-  if (tpd > 0 && reservation > tpd) return null;
+  if (tpd > 0 && reservation > tpd) return refuse("reservation_over_daily_tokens");
   let notBeforeAt = Math.max(earliestCandidateTime, now);
+  // Raise the start time to `at`, remembering which limit did it (diagnostics only).
+  const push = (name, at) => {
+    if (at > notBeforeAt) {
+      notBeforeAt = at;
+      if (gate) gate.binding = name;
+    }
+  };
   if (tpd > 0) {
     const deficit = dailyTokenDebt(route, now) + reservation - tpd;
-    if (deficit > 0) notBeforeAt = Math.max(notBeforeAt, now + Math.ceil(deficit * MS_PER_DAY / tpd));
+    if (deficit > 0) push("daily_tokens", now + Math.ceil(deficit * MS_PER_DAY / tpd));
   }
   // Google counts input tokens in a trailing minute. Idle bucket credit cannot buy a burst
   // beyond that window, and two fixed windows must not admit two minutes' tokens together.
   if (route?.provider === "gemini" && tpm > 0) {
-    if (admitEstimate > tpm) return null;
+    if (admitEstimate > tpm) return refuse("input_over_minute_quota");
     // A job admitted at the lower ratio but reserved at the conservative one occupies the whole
     // minute window at most.
     const windowTokens = Math.min(inputEstimate, tpm);
@@ -304,14 +322,14 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     let used = recent.reduce((sum, entry) => sum + entry.tokens, 0);
     for (const entry of recent) {
       if (used + windowTokens <= tpm) break;
-      notBeforeAt = Math.max(notBeforeAt, entry.at + MS_PER_MINUTE);
+      push("input_minute_window", entry.at + MS_PER_MINUTE);
       used -= entry.tokens;
     }
   }
 
   // RPM: a one-minute accounting window, with an optional provider-specific start-time margin.
-  notBeforeAt = Math.max(
-    notBeforeAt,
+  push(
+    "requests_per_minute",
     fixedWindowReadyAt(
       route?.rpm_window_start,
       route?.rpm_count,
@@ -322,7 +340,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   );
 
   // RPD: the provider's calendar day in its own reset timezone, not a rolling 24h window.
-  notBeforeAt = Math.max(notBeforeAt, dailyQuotaReadyAt(route, now));
+  push("requests_per_day", dailyQuotaReadyAt(route, now));
 
   // TPM: refillable token bucket. Reservations at or under one window's tpm allowance are also
   // gated by the ordinary rolling reservation (tpm_reserved/tpm_window_start) so a burst of
@@ -334,7 +352,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
       !Number.isFinite(route?.tpm_window_start) || now - route.tpm_window_start >= MS_PER_MINUTE;
     const effectiveWindowReserved = windowStale ? 0 : windowReserved;
     if (reservation <= tpm && effectiveWindowReserved + reservation > tpm) {
-      notBeforeAt = Math.max(notBeforeAt, (windowStale ? now : route.tpm_window_start) + MS_PER_MINUTE);
+      push("tpm_window", (windowStale ? now : route.tpm_window_start) + MS_PER_MINUTE);
     }
 
     const availableAtNotBefore =
@@ -342,7 +360,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     if (availableAtNotBefore < reservation) {
       const deficit = reservation - availableTokenBudget(route, now);
       const refillMs = Math.ceil((deficit * MS_PER_MINUTE) / tpm);
-      notBeforeAt = Math.max(notBeforeAt, now + Math.max(0, refillMs));
+      push("tpm_bucket", now + Math.max(0, refillMs));
     }
   }
 
@@ -351,7 +369,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   const providerLedger = options?.providerLedger;
   if (Number.isFinite(providerTpm) && providerTpm > 0 && providerLedger) {
     if (reservation > providerTpm * FULL_TOKEN_BUDGET_WINDOWS) {
-      return null;
+      return refuse("reservation_over_provider_tokens");
     }
     const pWindowReserved = Number(providerLedger?.tpm_reserved) || 0;
     const pWindowStale =
@@ -360,7 +378,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     const pEffectiveWindowReserved = pWindowStale ? 0 : pWindowReserved;
     if (reservation <= providerTpm && pEffectiveWindowReserved + reservation > providerTpm) {
       const pStart = pWindowStale ? now : providerLedger.tpm_window_start;
-      notBeforeAt = Math.max(notBeforeAt, pStart + MS_PER_MINUTE);
+      push("provider_tpm_window", pStart + MS_PER_MINUTE);
     }
 
     const pCap = providerTpm * FULL_TOKEN_BUDGET_WINDOWS;
@@ -374,7 +392,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     if (pAvailableAtNotBefore < reservation) {
       const pDeficit = reservation - pAvailableNow;
       const pRefillMs = Math.ceil((pDeficit * MS_PER_MINUTE) / providerTpm);
-      notBeforeAt = Math.max(notBeforeAt, now + Math.max(0, pRefillMs));
+      push("provider_tpm_bucket", now + Math.max(0, pRefillMs));
     }
   }
 
@@ -383,12 +401,10 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // a full buffer beyond `now` forever, which is the same permanent stall as the capacity check
   // and had to be fixed in both places to matter (see effectiveBufferSeconds).
   const bufferMs = effectiveBufferSeconds(route, now) * 1000;
-  if (bufferMs > 0) notBeforeAt = Math.max(notBeforeAt, now + bufferMs);
+  if (bufferMs > 0) push("penalty_buffer", now + bufferMs);
 
   // Explicit block from a severe/repeated throttle.
-  if (Number.isFinite(route?.blocked_until) && route.blocked_until > notBeforeAt) {
-    notBeforeAt = route.blocked_until;
-  }
+  if (Number.isFinite(route?.blocked_until)) push("route_blocked", route.blocked_until);
 
   return { notBeforeAt, reservation };
 }
@@ -404,7 +420,10 @@ export function routeHasCapacityFor(route, job, now, windowSeconds, options = {}
   const result = earliestSafeStart(route, job, now, now, options);
   if (result === null) return false;
   const callDurationCeilingMs = Math.max(0, options.callDurationCeilingMs || 0);
-  return result.notBeforeAt + callDurationCeilingMs <= now + windowSeconds * 1000;
+  const fits = result.notBeforeAt + callDurationCeilingMs <= now + windowSeconds * 1000;
+  // Diagnostics only: how long past `now` the route's start is, when it misses this window.
+  if (!fits && options.gate) options.gate.wait_ms = Math.max(0, result.notBeforeAt - now);
+  return fits;
 }
 
 /**

@@ -3479,3 +3479,27 @@ test("a saturated route backs off from 60 s up to one probe a day; other upstrea
   assert.ok(wait(20, true) > 43_200_000, "a long streak waits most of a day");
   assert.ok(wait(20, false) <= 300_000, "gateway limits and bad replies keep the 5 minute ceiling");
 });
+
+test("an empty claim records which limit refused each route on capacity", async () => {
+  const catalog = {
+    model_routes_map: { "acme/m": ["g"] },
+    routes_by_id: { g: { route_id: "g", provider: "gemini", upstream_model: "m", free: true,
+      rpm: 30, rpd: 1000, tpm: 10000, hard_input_ceiling: 10000, input_token_ratio: 1,
+      input_context_limit: 100000, output_context_limit: 2000 } },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const now = Date.now();
+  coordinator._getOrCreateRouteLedger("g", now, catalog.routes_by_id.g);
+  // 9,000 input tokens went out a second ago, so a 2,000-token job must wait most of a minute.
+  sql.exec("UPDATE routes SET input_window_json = ? WHERE route_id = 'g'",
+    JSON.stringify([{ at: now - 1000, tokens: 9000 }]));
+  await coordinator.enqueueBatch([makeJob("waits", {
+    input_token_estimate: 2000, policy_json: JSON.stringify({ allowed_models: ["acme/m"] }),
+  })]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.claim_result, "empty");
+  const stats = await coordinator.stats(now);
+  const entry = stats.claim.last_empty_diagnostics.routes.route_capacity.g;
+  assert.deepEqual(entry.gates, { "wait:input_minute_window": 1 });
+  assert.ok(entry.max_wait_ms >= 58000 && entry.max_wait_ms <= 59000);
+});

@@ -454,3 +454,23 @@ test("the size gates use the admission ratio while the reservation keeps the con
   // The admission ratio can never exceed the conservative one.
   assert.equal(earliestSafeStart(route, job, now, now, { inputRatio: 1.4, admitRatio: 2.0 }), null);
 });
+
+test("a gate object says which limit refused the job or set its start, and changes nothing else", () => {
+  const request = { input_token_estimate: 2000, max_output_token_estimate: 8192 };
+  // Held by the trailing-minute input window.
+  const busy = freshRoute({ provider: "gemini", tpm: 10000,
+    input_window_json: JSON.stringify([{ at: NOW - 1000, tokens: 9000 }]),
+    full_token_budget: 1000000 });
+  const gate = {};
+  const withGate = earliestSafeStart(busy, request, NOW, NOW, { gate });
+  assert.equal(gate.binding, "input_minute_window");
+  assert.deepEqual(withGate, earliestSafeStart(busy, request, NOW, NOW));
+  const window = {};
+  assert.equal(routeHasCapacityFor(busy, request, NOW, 30, { gate: window }), false);
+  assert.equal(window.wait_ms, 59000);
+  // Refused outright: over the configured input ceiling.
+  const small = freshRoute({ hard_input_ceiling: 1000, input_token_ratio: 1 });
+  const refused = {};
+  assert.equal(earliestSafeStart(small, request, NOW, NOW, { gate: refused }), null);
+  assert.equal(refused.reason, "over_input_ceiling");
+});
