@@ -3561,3 +3561,22 @@ test("the stuck-head frontier advances each tick and wraps at the end of the que
   }
   assert.deepEqual(claimed, ["small-last"], "the frontier walks past the stuck jobs to reach it");
 });
+
+test("a ceiling-bound model's full, unclaimable head also advances the frontier", async () => {
+  const { coordinator, sql, now, policy } = await stuckHeadFixture({
+    MAX_JOBS_PER_MODEL_CLAIM: "2", MAX_CANDIDATE_LOOKAHEAD: "3" });
+  // With the roomy route stood down only the tight, size-ceilinged route scores, so the model is
+  // ceiling-bound and its head is the whole lookahead (3 rows).
+  sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'roomy'", now + 3_600_000);
+  const jobs = [...Array(7).keys()].map((i) => makeJob(`big-${i}`, {
+    input_token_estimate: 12000, policy_json: policy, created_at: now - 100_000 + i }));
+  jobs.push(makeJob("small-last", { input_token_estimate: 4000, policy_json: policy,
+    created_at: now - 1000 }));
+  await coordinator.enqueueBatch(jobs);
+  const claimed = [];
+  for (let tick = 1; tick <= 6 && claimed.length === 0; tick += 1) {
+    const plan = await coordinator.claimDispatchWindow(now + tick, 30);
+    claimed.push(...plan.jobs.map((job) => job.id));
+  }
+  assert.deepEqual(claimed, ["small-last"]);
+});

@@ -5165,6 +5165,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           return rows;
         };
         let candidates = readCandidates(null, headLimit);
+        const oversizeAtStart = oversizeJobs.length;
         let acceptedForModel = 0;
         let extended = false;
 
@@ -5315,8 +5316,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         if (
           extended ||
-          ceilingBound ||
           acceptedForModel > 0 ||
+          // Jobs over every live route's ceiling leave the queue (failed below), so the next tick's
+          // head is fresh without reading on.
+          oversizeJobs.length > oversizeAtStart ||
           chosen.length >= bundleJobLimit ||
           candidates.length < headLimit
         ) {
@@ -5332,10 +5335,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 (frontier.created_at === headEnd.created_at && frontier.job_id > headEnd.job_id))))
             ? frontier
             : headEnd;
-        const extra = readCandidates(startAfter, Math.max(0, candidateLookahead - headLimit));
+        // A ceiling-bound model's head already spans the lookahead, so its extension is one more
+        // lookahead's worth; otherwise the extension tops the head up to the lookahead.
+        const extraLimit = ceilingBound ? candidateLookahead : Math.max(0, candidateLookahead - headLimit);
+        const extra = readCandidates(startAfter, extraLimit);
         extended = true;
         diagnostics.extended_scans = (diagnostics.extended_scans || 0) + 1;
-        if (extra.length < candidateLookahead - headLimit) {
+        if (extra.length < extraLimit) {
           this._claimFrontier.delete(modelPlan.model); // reached the end: start over next time
         } else {
           this._claimFrontier.set(modelPlan.model, candidateKeys[candidateKeys.length - 1]);
