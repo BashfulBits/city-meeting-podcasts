@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **`/v2/stats` says why an empty claim dispatched nothing.** `claim.last_empty_diagnostics` now
+  holds the last empty claim's rejection counts and, for each route that refused on capacity, which
+  limit did it (input ceiling, trailing-minute input window, requests per minute or day, token
+  bucket, penalty buffer, route block) and `max_wait_ms`, how long after the claim its safe start
+  is. Added after Google's idle Gemma routes took almost none of the queued packets they could run
+  (2026-10-18) and the existing counters could not say why. Diagnostics only; no admission change.
+
 - **Remedy publication, live stage (review/51 P4).** With `publication_mode: live` in
   `config/remedy.yml` (default `report_only`), the P3 publisher executes its plan: one isolated
   worktree and PR per unit of at most five decisions, manifest-limited staging, the repository
