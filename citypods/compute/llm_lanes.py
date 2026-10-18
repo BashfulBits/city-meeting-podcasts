@@ -475,6 +475,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
 
 
 _CACHE: dict[str, dict[str, LaneConfig]] = {}
+_FAMILIES_CACHE: dict[str, dict[str, str]] = {}
 _CACHE_LOCK = threading.Lock()
 
 
@@ -547,17 +548,32 @@ def lane_for(purpose: str, *, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> La
 
 
 def load_families(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, str]:
-    """The validated ``llm_families`` map from ``path`` (model -> family)."""
+    """The validated ``llm_families`` map from ``path`` (model -> family).
+
+    Cached per resolved path like :func:`load_lanes`: the judge's dirtiness check asks for it once
+    per candidate episode, and re-parsing the 60 KB site config each time (pure-Python YAML) cost
+    about 12 minutes of every judge run before it did any work (25,283 episodes, 2026-10-17).
+    Callers get their own copy."""
+    key = str(Path(path))
+    with _CACHE_LOCK:
+        cached = _FAMILIES_CACHE.get(key)
+        if cached is not None:
+            return dict(cached)
+
     import yaml
 
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    return parse_families(raw.get("llm_families"), load_lanes(path=path))
+    raw = yaml.safe_load(Path(key).read_text(encoding="utf-8")) or {}
+    families = parse_families(raw.get("llm_families"), load_lanes(path=key))
+    with _CACHE_LOCK:
+        _FAMILIES_CACHE[key] = families
+    return dict(families)
 
 
 def clear_cache() -> None:
     """Drop the parsed-config cache (tests that write temporary site configs)."""
     with _CACHE_LOCK:
         _CACHE.clear()
+        _FAMILIES_CACHE.clear()
 
 
 __all__ = [

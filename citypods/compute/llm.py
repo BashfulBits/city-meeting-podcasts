@@ -2980,6 +2980,38 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 route stats returned a malformed response")
         return data
 
+    def dispatch_v2_pack_ceiling(self, model: str, prompt_family: str) -> Mapping[str, Any]:
+        """Return the Worker's packing preflight for ``model`` and ``prompt_family``.
+
+        Read-only (``GET /v2/calibration?model=``): ``pack_ceiling_input_estimate`` is the largest
+        chars/4 input estimate a packet may carry and still be admissible on the smallest free
+        route of the model, from its tightest size limit over the p95 packing ratio (review/55).
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 packing ceiling requires LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        query = urlencode({"model": model, "prompt_family": prompt_family})
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/calibration?{query}")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 packing ceiling request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 packing ceiling returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError(
+                "LLM dispatch v2 packing ceiling returned malformed JSON"
+            ) from exc
+        if not isinstance(data, Mapping):
+            raise LLMBackendError("LLM dispatch v2 packing ceiling returned a malformed response")
+        return data
+
     def dispatch_v2_calibration(self, route_id: str, prompt_family: str) -> Mapping[str, Any]:
         """Return the input ratio the v2 claim applies to ``route_id`` and ``prompt_family``.
 
@@ -3698,6 +3730,37 @@ def dispatch_v2_ingress_open(
         print(f"llm ingress preflight for {purpose!r} failed ({exc}); closing lane", flush=True)
         return False, {"open": False, "purpose": purpose, "reasons": ["preflight_unavailable"]}
     return bool(status.get("open")), status
+
+
+def dispatch_v2_pack_ceilings(
+    models: Sequence[str], prompt_family: str, *, backend: Any = None
+) -> dict[str, int]:
+    """Per model, the largest chars/4 packet estimate the Worker will admit on its smallest route.
+
+    Empty when no Worker is configured or the read fails; a model the Worker states no limit for is
+    left out. Callers then keep their configured packet ceilings."""
+    client = backend if hasattr(backend, "dispatch_v2_pack_ceiling") else None
+    if client is None:
+        try:
+            client = LiteLLMBackend(LLMBackendConfig.from_env())
+        except ValueError:
+            return {}
+    if not client.config.dispatch_v2_url:
+        return {}
+    ceilings: dict[str, int] = {}
+    for model in models:
+        try:
+            data = client.dispatch_v2_pack_ceiling(model, prompt_family)
+        except LLMBackendError as exc:
+            print(
+                f"llm packing ceiling lookup for {model} failed ({exc}); using the default",
+                flush=True,
+            )
+            continue
+        value = data.get("pack_ceiling_input_estimate")
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            ceilings[model] = int(value)
+    return ceilings
 
 
 def dispatch_v2_model_headroom(models: Sequence[str], *, backend: Any = None) -> dict[str, float]:

@@ -61,7 +61,7 @@ RETRY_DELAY_SECONDS = 1
 # first listed Kimi K3 route has twice exceeded the contract's 60-second read timeout while the
 # Nemotron Super URL canary stayed responsive.
 PREFERRED_FREE_PROBE_ROUTE_IDS = {
-    "nvidia": "nvidia_nemotron_3_super_120b_a12b_free",
+    "nvidia": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
 }
 
 
@@ -320,7 +320,7 @@ def test_gateway_honors_the_base_url_path_for_nvidia():
         f"{base}/custom-nvidia/chat/completions",
         api_key,
         {
-            "model": "nvidia/nemotron-3-super-120b-a12b",
+            "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
             "messages": [{"role": "user", "content": "Say OK"}],
             "max_tokens": 8,
         },

@@ -493,6 +493,17 @@ genuine cancellations, the Worker's queued count not rising day over day, a per-
 judgment count each day, the before/after display comparison, and the Durable Object rows read under 2
 million on every one of those days.
 
+**PR4 accepted with exceptions (2026-10-18, maintainer decision).** Accepted before the three days
+elapsed. Evidence at acceptance (monitoring 2026-10-17 08:34 to 23:47 UTC): the Worker's queued count
+fell every report (8,009 to 7,476); `outstanding:judge:sibling` fell from 2,823 to 2,384 once Gemma 4
+26B (under 40% usable replies, removed in PR #2476) was dropped from the lane; no JEV `job_unroutable`
+or `input_over_route_ceiling` in the day's failures; `active_bundle_limit` stopped rising after PR
+#2475; no NVIDIA `upstream_capacity` 429s. **Exceptions:** fewer than three observed days; `replanned`
+is not near zero (3,458 and 3,702 in the last two collecting runs, stranded packets being re-planned
+after the sizing fixes); the display before/after comparison and a per-task, per-judge count were not
+produced. These are tracked against the next observation, not waived. Details:
+[the acceptance record](evidence/2026-10-18-judge-pr4-acceptance.md).
+
 
 ### PR5 — Adjudication, calibration sample, quote check, stability (review/49 P2)
 

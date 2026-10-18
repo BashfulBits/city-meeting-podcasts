@@ -15,6 +15,119 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Remedy publication planner, report-only (review/51 P4, first stage).**
+  `citypods/remedy_queue.py` plans what the P3 publisher would open, update, reopen or leave
+  queued within `config/remedy.yml`'s limits: at most five decisions of one city and feed per
+  PR, eight PRs opened or reopened in a rolling week and eight open at once counting every
+  marked PR whoever opened it, twelve directional issues, oldest-first round-robin by city,
+  stable `<!-- citypods:remedy:v1:<decision_id> -->` markers and
+  `fix/remedy-<city>-<family>-<hash>` branches, and no regeneration of a rejected or settled
+  decision. The publication report carries it as `publication_plan` (`mode: report_only`);
+  nothing is written from it yet and the publisher's behaviour is unchanged.
+
+- **PR4 evidence gate accepted with exceptions.** Accepted on 2026-10-18 before the three-day
+  observation ended; `replanned` is still high and the display comparison is owed. See
+  `review/evidence/2026-10-18-judge-pr4-acceptance.md`.
+
+- **Judge stack PR5: adjudication, quote check, calibration sample and stability probes (data
+  only).** The third judge (`judge:adjudicator`, reservation 920 units, per-run cap 33 packets)
+  now answers the questions the anchor and sibling contest, plus a 3% sample of those they agree
+  on, at the largest context tier and from a family independent of the producer and the sibling.
+  A chat judge's or adjudicator's reason must quote the evidence verbatim: the quote is checked
+  mechanically and the row stored with `quote_valid` (false rows are kept, ignored as votes). 2%
+  of subjects are asked again, worded differently, so the report can count each judge's flips.
+  Nothing reads these judgments to decide; the calibration report (PR7) is their first consumer.
+
+Fix chapter-locator producer accounting: check the current recipe's deferred record before
+reserving a new-work slot, so cached completions and already-submitted handles do not exhaust
+the per-run allowance or get blocked behind it when episode metadata is stale. Client-only
+requests that have not reached the Worker still require a slot. Worker-side admission limits
+remain authoritative; Worker-only replays without a client record still count conservatively.
+No pipeline-version bump, recipe change, automatic invalidation, or backfill is introduced.
+
+`/v2/stats` exposes purpose-level ingress usage and the latest 24 hourly queue/throughput
+snapshots. Purpose usage reads the small `(utc_day, purpose)` primary-key ledger; hourly points
+live in the scheduler singleton and are written only by hourly maintenance. Completion, failure,
+and retry totals are maintained in existing scheduler writes, without scanning job history.
+
+Consumer contract: burndown starts empty and fills at hourly maintenance. Timestamps are UTC epoch
+milliseconds. Queue depth is point-in-time; ingested, completed, failed, and retried are cumulative
+for the current UTC day. Outcome counters start at deployment, with no historical backfill.
+
+- **A route whose provider keeps saying its pool is full now backs off to one call a day.** After
+  an `upstream_capacity` failure the route's cooldown doubles from 60 s up to 24 hours (it was
+  15 s up to 5 minutes, about 288 probes a day). On 2026-10-17 the OpenRouter free Gemma routes
+  returned 116 such failures and no successes. The first success resets the ladder; gateway limits
+  and unusable replies keep the 5 minute ceiling (`UPSTREAM_CAPACITY_SATURATED_*` in
+  `config/dispatch_tuning.yml`).
+
+- **NVIDIA Nemotron 3.5 Super VL routes and Nemotron 3 aliases.** Configured direct NVIDIA and
+  OpenRouter routes for `nvidia/nemotron-3.5-super-vl-120b-a12b` and
+  `openrouter/nvidia/nemotron-3.5-super-vl:free`, pooling under the canonical 3.5 Super key with
+  inherited limits. Aliased legacy Nemotron 3 Super selectors to the 3.5 pool, upgraded the
+  `judge:sibling` lane slot to 3.5 Super VL, and updated the AI Gateway probe route.
+
+- **Gemma 4 26B is removed from the judge sibling lane.** On 2026-10-17 fewer than 40% of its
+  AI Studio judge replies were usable: it falls into a repetition loop on mixed-kind packets and
+  runs to the 32,768-token limit (a direct replay reproduced it in 2 of 2 replies, and a capped
+  4,096-token reply still failed to parse), holding a key slot up to 12 minutes. It stays eligible
+  (not dispatched) and the Google slot is Gemma 4 31B alone. Packets already queued for 26B
+  still run.
+
+- **More concurrent bundles and a second NVIDIA slot for Gemma.** `MAX_ACTIVE_BUNDLES` goes from
+  3 to 5 (the `active_bundle_limit` claim counter rose from 8 to 42 in four hours while slow NVIDIA
+  and overflow calls held every slot), NVIDIA's provider concurrency from 3 to 4, and the NVIDIA
+  Gemma 4 31B route from 1 to 2, which leaves two shared slots for Ultra, V4.1 and overflow. Three
+  overlapping NVIDIA calls all returned 200 in a 2026-10-17 test; a fourth was not testable.
+
+- **Input-ratio estimator pooled across routes, with a longer window and no prior floor.**
+  Observations are pooled per (tokenizer family, prompt family) so every route serving a model
+  shares one ring of 128 samples, not 32 per route. Percentiles are used from 64 samples; from 16
+  to 63 they are blended with the route prior, and from 64 the prior is a seed, not a floor
+  (reservation = max(p95 x headroom, p99); admission p75; packing p95). Output reserve gets the
+  same treatment. Review/55 piece 1.
+
+- **Admission and packing use different percentiles.** The size gates (configured ceiling, learned
+  bounds, Gemini minute quota, structural check) now use an admission ratio, p75 x 1.05 and no
+  longer floored by the route prior; reservation and TPM accounting keep the conservative ratio.
+  `GET /v2/calibration?model=` publishes the largest packet the smallest route of a model will
+  admit (p95 packing ratio) and the judge sizes sibling packets to it. Review/55 piece 2.
+
+- **Routes learn their real input limits from traffic.** Each route now keeps the largest input
+  it accepted (from `usage.prompt_tokens`) and the smallest it refused for size, in provider
+  tokens, expiring after 7 days. Admission skips a route for jobs at or above its refusal point
+  (the drain pass re-tests it) and no longer lets a conservative configured ceiling reject a
+  size the route has already served. Both show in `/v2/stats?routes=1`. Review/55 piece 3.
+
+- **Size rejections overflow per job, not per route.** A provider "input too long" answer (or one
+  request larger than the whole minute quota) now records the rejecting route on the job
+  (`size_excluded_routes`) and requeues it onto a sibling route of the same model without spending
+  the 5xx retry or standing the route down for other jobs. If every route rejects it, it fails
+  with `input_too_large` for the producer to re-pack. Review/55 piece 4.
+
+- **Judge no longer spends its first 12 minutes re-parsing the site config.** The dirtiness check
+  asked `load_families()` for the family map once per candidate episode and each call re-parsed
+  the 60 KB site config (25,283 episodes, about 0.06 s each locally, ten-plus minutes on the
+  runner) before any judging began. It is now cached per path like `load_lanes()`.
+
+- **Judge reads pending-packet records in parallel, with a bounded wait.** Collecting about 2,800
+  pending records one at a time took 14 minutes on a healthy store (0.3 s each) and stalled for
+  hours when runner reads to storage hung (2026-10-17). Records are now fetched by 8 workers within
+  a 10-minute budget (unread ones stay pending for a later pass), each read gets a 30 s deadline so
+  a stalled connection fails fast instead of waiting out 60 s socket timeouts and retries, and the
+  pass logs progress and failed or timed-out reads.
+
+- **Judge waits out a storage blip.** After three unreadable pending-packet records in a row, the
+  judge pass now probes the same record every 30 seconds (at most 300 seconds per pass) instead of
+  skipping every remaining record. Run 38984100770 lost a whole pass of collection (2,449 of
+  2,452 markers skipped, 27 judgments) to a blip of about five minutes. If storage is still down
+  after the budget, the rest keep their markers and the pass goes on.
+
+- **Judge survives a storage read outage.** A `StorageReadUnavailable` while reading a pending
+  packet's record no longer aborts the judge lane (run 38971148564 failed 29 minutes in this way,
+  before it could plan or submit). The marker stays, the packet counts as outstanding, and a later
+  pass collects it; after three unreadable records in one pass the rest are not tried.
+
 - **Judge sibling Gemma capacity.** Gemma sibling packets shrink from 10,000 to 8,500 estimated
   tokens so the Worker's reservation (ratio 1.4 plus forecast output) fits AI Studio's 14,400-token
   minute budget; 10,000 never fit and stranded about 2,600 queued packets on idle keys. New

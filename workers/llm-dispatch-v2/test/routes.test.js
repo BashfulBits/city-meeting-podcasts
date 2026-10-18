@@ -249,13 +249,15 @@ test("Gemma routes enforce hard_input_ceiling while reopened legs remain eligibl
 
 test("the reopened Gemma legs keep their allowances and admit a small free-policy job", () => {
   // OpenRouter's two legs stay at 20 RPD. NVIDIA's 31B leg was raised to 800 RPD on 2026-10-16
-  // and holds one of the provider's three shared slots, so slow Gemma calls cannot starve Ultra.
+  // and holds at most two of the provider's four shared slots (2026-10-17), so slow Gemma calls
+  // cannot starve Ultra.
   const rpd = {
     openrouter_google_gemma_4_31b_it_free: 20,
     openrouter_google_gemma_4_26b_a4b_it_free: 20,
     nvidia_gemma_4_31b_it_free: 800,
   };
-  assert.equal(DISPATCH_LIMITS.routes_by_id.nvidia_gemma_4_31b_it_free.concurrency, 1);
+  assert.equal(DISPATCH_LIMITS.routes_by_id.nvidia_gemma_4_31b_it_free.concurrency, 2);
+  assert.equal(DISPATCH_LIMITS.providers.nvidia.concurrency, 4);
   for (const id of Object.keys(rpd)) {
     assert.equal(DISPATCH_LIMITS.routes_by_id[id].rpd, rpd[id]);
     const job = { policy_json: JSON.stringify({
