@@ -1,5 +1,9 @@
 # LLM pending accounting investigation — 2026-10-18
 
+Supporting evidence for the R10 bounded-dispatch plan in
+[review/44](../44-bounded-bundled-llm-dispatch.md) and the current
+[review/11 pending-accounting follow-up](../11-technical-design-roadmap.md).
+
 ## Evidence and limits
 
 The producer's `llm-pending` count measures client handles, not live coordinator rows.
