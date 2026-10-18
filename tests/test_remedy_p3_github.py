@@ -319,3 +319,74 @@ def test_publisher_holds_before_github_or_storage_when_routes_are_not_admitted(t
     evidence.write_text(json.dumps({"sources": []}), encoding="utf-8")
     result = remedy_p3_publish.publish(report, evidence, Path.cwd())
     assert result == {"status": "policy_hold", "published": []}
+
+
+def _plan_with(action, targets=(), slug=""):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        accepted=[SimpleNamespace(action=action, target_feeds=list(targets), new_feed_slug=slug)]
+    )
+
+
+def test_publication_candidates_group_by_the_feed_they_edit_and_mark_new_bodies():
+    binding = {
+        "decision_id": "a" * 64,
+        "city": "dallas-tx",
+        "normalized_label": "trinity metro board",
+        "evidence_hash": "e" * 64,
+    }
+    when = datetime(2026, 10, 15, tzinfo=UTC)
+    union = remedy_p3_publish._pr_candidate(
+        _plan_with("union", ["dallas-tx-b", "dallas-tx-a"]), binding, when
+    )
+    assert (union.family, union.outcome, union.new_body) == ("dallas-tx-a", "union", False)
+    new = remedy_p3_publish._pr_candidate(_plan_with("new_feed", slug="trinity"), binding, when)
+    assert (new.family, new.new_body) == ("new-trinity", True)
+    issue = remedy_p3_publish._issue_candidate(binding, when)
+    assert (issue.kind, issue.outcome, issue.family) == ("issue", "manual", "trinity metro board")
+
+
+def test_the_publication_plan_is_report_only_and_never_stops_the_publisher(monkeypatch):
+    from types import SimpleNamespace
+
+    from citypods.remedy_queue import Candidate, GitHubSnapshot
+
+    limits = SimpleNamespace(
+        decisions_per_pr=5, prs_per_rolling_week=8, open_prs=8, active_directional_issues=12
+    )
+    candidate = Candidate(
+        "b" * 64, "dallas-tx", "dallas-tx-a", "union", "pr", datetime(2026, 10, 14, tzinfo=UTC), "e"
+    )
+    monkeypatch.setattr(remedy_p3_publish, "_fetch_snapshot", lambda: GitHubSnapshot((), True))
+    monkeypatch.setattr(remedy_p3_publish, "_ledger_views", lambda _storage, _keys: {})
+    report = remedy_p3_publish._publication_report([candidate], {"s"}, object(), limits)
+    assert report["mode"] == "report_only"
+    assert [pr["decisions"] for pr in report["new_prs"]] == [["b" * 64]]
+    assert report["budget"]["pr_slots_before"] == 8
+
+    def broken(_storage, _keys):
+        raise ValueError("P2 history is damaged")
+
+    monkeypatch.setattr(remedy_p3_publish, "_ledger_views", broken)
+    failed = remedy_p3_publish._publication_report([candidate], {"s"}, object(), limits)
+    assert failed["mode"] == "report_only" and "damaged" in failed["error"]
+    assert "new_prs" not in failed
+
+
+def test_an_unreadable_github_listing_is_an_incomplete_snapshot(monkeypatch):
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("gh api failed")
+
+    monkeypatch.setattr(remedy_p3_publish, "_gh", refuse)
+    snapshot = remedy_p3_publish._fetch_snapshot()
+    assert snapshot.complete is False and not snapshot.artifacts
+
+
+def test_an_unreadable_collection_time_drops_the_plan_and_not_the_publisher():
+    """CodeRabbit review: parsing the evidence timestamp sat outside the report's guard."""
+    moment, error = remedy_p3_publish._eligibility("2026-10-15T06:30:00Z")
+    assert moment == datetime(2026, 10, 15, 6, 30, tzinfo=UTC) and error == ""
+    for bad in ("yesterday", "", None, 12):
+        moment, error = remedy_p3_publish._eligibility(bad)
+        assert moment is None and error.startswith("unreadable evidence collection time")
