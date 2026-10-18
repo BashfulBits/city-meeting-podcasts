@@ -11,7 +11,7 @@
  * build-time dependency on v1's directory continuing to exist past its Phase 3 retirement.
  */
 
-import { hardInputCeilingLimit, routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+import { inputSizeRefusal, routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 
 /** Follow model_aliases until a non-aliased (canonical) model name is reached. */
 export function canonicalModelName(model, dispatchLimits) {
@@ -75,16 +75,35 @@ export function modelForRouteId(routeId, dispatchLimits) {
  * `hard_input_ceiling` is an optional, measured per-request input ceiling (e.g. Google Gemma's
  * 16k TPM token bucket). Requests exceeding it must never be admitted to this route and must fall
  * through to alternative routes (e.g. NVIDIA NIM).
+ *
+ * The size test is `inputSizeRefusal` (calibration.js), the same gate the pacing check applies.
+ * `sizing` carries the live inputs of that gate -- `{ inputRatio, admitRatio, route, now }` (or
+ * `{ skipSizeGate: true }` for a context-window-only check): the
+ * calibrated ratios and the route as merged with its ledger (learned accepted/rejected sizes). A
+ * caller with no live data (enqueue-time indexing, structural checks) omits it and gets the
+ * catalog's configured ceiling and prior ratio, as before.
  */
-export function routeFitsContext(route, inputTokens, outputTokens) {
+export function routeFitsContext(route, inputTokens, outputTokens, sizing = null) {
   // The caller passes the job's raw chars/4 estimate; every limit below is in the provider's own
   // tokenizer units, so scale by the route's measured ratio first (calibration.js).
-  inputTokens = scaledInputTokens(inputTokens, routeInputTokenRatio(route));
+  const inputRatio = Number.isFinite(sizing?.inputRatio)
+    ? sizing.inputRatio
+    : routeInputTokenRatio(route);
+  const rawEstimate = inputTokens;
+  inputTokens = scaledInputTokens(inputTokens, inputRatio);
   const contextLimit = route.input_context_limit || 32768;
   const outputLimit = route.output_context_limit || 1024;
   // Tolerant here: this coarse filter only decides which routes a claim may consider. Whether
   // a near miss is actually tried is the claim's drain-pass decision (earliestSafeStart).
-  if (inputTokens > hardInputCeilingLimit(route, { tolerant: true })) {
+  if (
+    !sizing?.skipSizeGate &&
+    inputSizeRefusal(sizing?.route || route, rawEstimate, {
+      inputRatio,
+      admitRatio: sizing?.admitRatio,
+      now: sizing?.now,
+      tolerant: true,
+    })
+  ) {
     return false;
   }
   return (
@@ -193,8 +212,17 @@ export function modelsForJob(job, policy, structuralCatalog = null) {
  * admission passes take the first route with capacity, so catalog order alone determines
  * preference among otherwise-equal candidates. This intentionally does not replicate v1's
  * rankRoutes(): v1 ranks against its own R2-based ledger, which v2 does not share.
+ *
+ * `sizingFor(route, job)` (optional) supplies the live size-gate inputs for a route -- see
+ * routeFitsContext -- so the claim filters on the same calibrated, learned sizes as the pacing
+ * check. Without it the filter uses the catalog's configured values.
  */
-export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispatchLimits) {
+export function routesEligibleFor(
+  job,
+  dispatchLimits,
+  structuralCatalog = dispatchLimits,
+  sizingFor = null
+) {
   const policy = jobPolicy(job);
   const modelsToConsider = modelsForJob(job, policy, structuralCatalog);
   const allowPaid = Boolean(policy?.allow_paid);
@@ -225,7 +253,7 @@ export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispa
       // and the final pacing check treats zero as immediately ready.
       if (route.rpd != null && Number(route.rpd) === 0) continue;
       if (!allowPaid && !route.free) continue;
-      if (!routeFitsContext(route, inputTokens, outputTokens)) continue;
+      if (!routeFitsContext(route, inputTokens, outputTokens, sizingFor?.(route, job))) continue;
       seenRouteIds.add(routeId);
       eligible.push(route);
     }

@@ -416,3 +416,42 @@ test("paused or quota-exhausted primary never triggers structural backup activat
   const pausedAdmission = { ...catalog, model_routes_map: { backup: ["b"] } };
   assert.deepEqual(routesEligibleFor(job, pausedAdmission, catalog), []);
 });
+
+test("the eligibility filter and the pacing check share one size gate", async () => {
+  const { routeFitsContext } = await import("../src/routes.js");
+  const { earliestSafeStart } = await import("../src/pacing.js");
+  const now = Date.now();
+  const base = { provider: "gemini", rpm: 30, rpd: 14400, tpm: 16000, hard_input_ceiling: 14400,
+    input_token_ratio: 1.4, input_context_limit: 262144, output_context_limit: 32768 };
+  // Catalog values only (no live data): 11,000 x 1.4 = 15,400 is over the 14,400 ceiling.
+  assert.equal(routeFitsContext(base, 11000, 100), false);
+  // Calibrated: the admission ratio 1.06 puts it at 11,660, inside the ceiling.
+  const calibrated = { inputRatio: 1.27, admitRatio: 1.06, route: base, now };
+  assert.equal(routeFitsContext(base, 11000, 100, calibrated), true);
+  // A size the route has actually served lifts the configured ceiling, in both places.
+  const served = { ...base, hard_input_ceiling: 10000, input_accepted_max: 12000,
+    input_accepted_at: now };
+  const live = { inputRatio: 1.27, admitRatio: 1.06, route: served, now };
+  assert.equal(routeFitsContext(served, 11000, 100, live), true);
+  // ...and a size it refused is not skipped by the coarse filter (tolerant), only by pacing.
+  const refused = { ...base, input_rejected_min: 9000, input_rejected_at: now };
+  const seen = { inputRatio: 1.27, admitRatio: 1.06, route: refused, now };
+  assert.equal(routeFitsContext(refused, 11000, 100, seen), true);
+  assert.equal(
+    earliestSafeStart(refused, { input_token_estimate: 11000, max_output_token_estimate: 100 },
+      now, now, { inputRatio: 1.27, admitRatio: 1.06 }),
+    null
+  );
+  // The two agree across sizes: whatever the filter refuses, pacing refuses too.
+  for (const size of [4000, 9000, 11000, 12500, 14000, 16000]) {
+    for (const route of [base, served, refused]) {
+      const fits = routeFitsContext(route, size, 100,
+        { inputRatio: 1.27, admitRatio: 1.06, route, now });
+      const paced = earliestSafeStart(route,
+        { input_token_estimate: size, max_output_token_estimate: 100 }, now, now,
+        { inputRatio: 1.27, admitRatio: 1.06, ceilingTolerance: true });
+      if (!fits) assert.equal(paced, null, `size ${size}`);
+      if (paced !== null) assert.equal(fits, true, `size ${size}: pacing admits but the filter refuses`);
+    }
+  }
+});
