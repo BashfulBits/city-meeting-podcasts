@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Fix chapter-locator producer accounting: check the current recipe's deferred record before
+reserving a new-work slot, so cached completions and already-submitted handles do not exhaust
+the per-run allowance or get blocked behind it when episode metadata is stale. Client-only
+requests that have not reached the Worker still require a slot. Worker-side admission limits
+remain authoritative; Worker-only replays without a client record still count conservatively.
+No pipeline-version bump, recipe change, automatic invalidation, or backfill is introduced.
+
 `/v2/stats` exposes purpose-level ingress usage and the latest 24 hourly queue/throughput
 snapshots. Purpose usage reads the small `(utc_day, purpose)` primary-key ledger; hourly points
 live in the scheduler singleton and are written only by hourly maintenance. Completion, failure,
