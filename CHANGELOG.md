@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Remedy publication, live stage (review/51 P4).** With `publication_mode: live` in
+  `config/remedy.yml` (default `report_only`), the P3 publisher executes its plan: one isolated
+  worktree and PR per unit of at most five decisions, manifest-limited staging, the repository
+  gate on the exact tree, and stable decision markers and bindings in every body.
+  `remedy-feedback.yml` turns a human merge, close or reopen into a P2 decision event (a
+  rejected PR gets one refinement issue and is never regenerated on the same evidence), a daily
+  reconciliation recovers missed events, and `/remedy reopen <decision_id>` lets a maintainer
+  ask for reconsideration. The switch is excluded from the config fingerprint, so flipping it
+  re-asks no model.
+
 - **Judge stack PR6: probe set and weekly blind audit (data only).** Human-verified probes
   (`evals/judge/<task>/gold.json`, empty at first) are mixed invisibly into each judge's live
   packets and scored per judge, non-gating until a task has 20. A weekly audit
