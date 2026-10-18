@@ -9672,7 +9672,6 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                 continue
 
             locator_recipe = raw_agenda.get("locator_recipe")
-            is_new_dispatch = True
             if locator_status == "pending" and isinstance(locator_recipe, str):
                 cached = look_up_deferred(ctx.storage, locator_recipe)
                 if isinstance(cached, JobHandle):
@@ -9684,28 +9683,16 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         work.defer("queued")
                     stats.defer("llm-pending")
                     continue
-                if isinstance(cached, JobResult):
-                    is_new_dispatch = False
-
-            if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
-                if work is not None:
-                    work.defer("ingress_limited")
-                stats.defer("producer-cap")
-                continue
 
             words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
             vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
             units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
             if not units:
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 if work is not None:
                     work.defer("blocked")
                 stats.defer("missing-timed-transcript")
                 continue
             if ctx.stop is not None and ctx.stop():
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 if work is not None:
                     work.defer("stopped")
                 stats.defer("stop-signal")
@@ -9727,8 +9714,6 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         raw_agenda.get("locator_retry_policy") == policy_fingerprint
                         and raw_agenda.get("locator_retry_input") == input_fingerprint
                     ):
-                        if is_new_dispatch:
-                            ctx.settle_chapter_locator_dispatch(dispatched=False)
                         if work is not None:
                             work.defer("blocked")
                         stats.defer("locator-repair-exhausted")
@@ -9764,18 +9749,21 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                 # build pass for every other episode
                 if work is not None:
                     work.defer("errored")
-                if is_new_dispatch:
-                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
                 continue
-            # A completed pending recipe is a replay only for this exact current job.
-            if not is_new_dispatch and locator_recipe != job.recipe_hash:
-                is_new_dispatch = True
-                if not ctx.reserve_chapter_locator_dispatch():
-                    if work is not None:
-                        work.defer("ingress_limited")
-                    stats.defer("producer-cap")
-                    continue
+            # Episode metadata can lag the deferred registry. Check the current recipe before
+            # reserving a slot: consuming a cached result or replaying an existing handle must
+            # not displace new work, even when this run has already exhausted its producer cap.
+            cached = look_up_deferred(ctx.storage, job.recipe_hash)
+            is_new_dispatch = not (
+                isinstance(cached, JobResult)
+                or (isinstance(cached, JobHandle) and cached.deferred_request is None)
+            )
+            if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
+                stats.defer("producer-cap")
+                continue
             job = work.bind(job)
             prepared.append(
                 (

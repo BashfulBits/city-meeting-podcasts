@@ -68,6 +68,9 @@ change requeues generated locator work gradually under the lane's 800-jobs-per-d
 Flash and DeepSeek V4.1 Flash remain documented optional capacity and are not production routes.
 Provider-supplied chapters remain canonical; the locator runs only for episodes without them and
 does not alter audio bytes.
+The locator checks its current recipe in the deferred registry before reserving a producer slot.
+Cached completions and already-submitted handles can replay even after the new-work cap is reached;
+client-only deferred requests still need a slot. Worker-side daily admission gates remain authoritative.
 
 The production deploy **splits render from enrich** into **separate workflows** (separate CLI commands,
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state, makes no
