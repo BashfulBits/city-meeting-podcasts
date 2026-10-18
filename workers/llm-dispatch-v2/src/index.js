@@ -463,6 +463,23 @@ export async function handleRequest(request, env) {
   }
 
   // Producer preflight: the input ratio the claim applies to a route and prompt family.
+  if (request.method === "GET" && path === "/v2/calibration" && url.searchParams.has("model")) {
+    // Packing preflight: the largest input a packet may carry for the smallest route of a model.
+    const model = url.searchParams.get("model") || "";
+    const promptFamily = url.searchParams.get("prompt_family") || "";
+    if (!/^[A-Za-z0-9_.:\/-]{1,128}$/.test(model) || promptFamily.length > 128) {
+      return errorResponse(400, "bad_request", "model and prompt_family are required");
+    }
+    try {
+      const status = await coordinator.packingCeiling(model, promptFamily);
+      if (!status) return errorResponse(404, "unknown_model", `Unknown model ${model}`);
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`packing ceiling failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
   if (request.method === "GET" && path === "/v2/calibration") {
     const routeId = url.searchParams.get("route_id") || "";
     const promptFamily = url.searchParams.get("prompt_family") || "";

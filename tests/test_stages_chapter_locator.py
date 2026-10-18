@@ -780,3 +780,76 @@ def test_old_completed_pending_recipe_consumes_current_dispatch_slot(tmp_path):
     stats = ChapterBoundaryLocatorStage().process(None, _make_city(), episodes, ctx)
     assert len(backend.submitted_jobs) == 1
     assert stats.defer_reasons["producer-cap"] == 1
+
+
+@pytest.mark.parametrize("cached_kind", ["completed", "pending"])
+@pytest.mark.parametrize("cached_first", [True, False])
+def test_current_recipe_cache_does_not_spend_locator_cap(tmp_path, cached_kind, cached_first):
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    cached_ep = _make_episode("cached-without-locator-metadata")
+    fresh_ep = _make_episode("fresh-locator")
+    units, _ = build_locator_units(words_data=None, vtt_data=SAMPLE_VTT)
+    job = build_locator_job(
+        episode_uid=cached_ep.uid,
+        agenda=AgendaCandidatesArtifact.from_dict(cached_ep.generated_agenda_candidates),
+        transcript_hash=hashlib.sha256(SAMPLE_VTT).hexdigest(),
+        units=units,
+    )
+    if cached_kind == "completed":
+        cached = JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={"choices": [{"message": {"content": '{"anchors": []}'}}]},
+        )
+    else:
+        cached = JobHandle(
+            task=job.task, recipe_hash=job.recipe_hash, ref="already-queued", backend="fake"
+        )
+    write_deferred(storage, job.recipe_hash, cached)
+    fresh = JobHandle(task=job.task, recipe_hash="fresh", ref="newly-queued", backend="fake")
+    episodes = [cached_ep, fresh_ep] if cached_first else [fresh_ep, cached_ep]
+    outcomes = [cached, fresh] if cached_first else [fresh, cached]
+    for ep in episodes:
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    backend = FakeBackend(outcomes=outcomes)
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    ctx.chapter_locator_max_dispatches = 1
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), episodes, ctx)
+
+    assert len(backend.submitted_jobs) == 2
+    assert not stats.errors
+    assert not stats.defer_reasons.get("producer-cap")
+    assert ctx.chapter_locator_dispatches_count == 1
+    assert ctx.chapter_locator_dispatches_reserved == 0
+    assert fresh_ep.generated_agenda_candidates["locator_status"] == "pending"
+    assert cached_ep.generated_agenda_candidates["locator_status"] == (
+        "completed" if cached_kind == "completed" else "pending"
+    )
+
+
+def test_client_only_deferred_locator_still_requires_dispatch_slot(tmp_path, monkeypatch):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("client-deferred")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    deferred = JobHandle(
+        task="agenda-chapter-locate",
+        recipe_hash="client-deferred",
+        ref="not-submitted",
+        backend="fake",
+        deferred_request=object(),
+    )
+    monkeypatch.setattr("citypods.compute.llm_deferred.look_up_deferred", lambda *_: deferred)
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = FakeBackend()
+    ctx.chapter_locator_max_dispatches = 0
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert not ctx.chapter_llm_backend.submitted_jobs
+    assert stats.defer_reasons["producer-cap"] == 1
+    assert ctx.chapter_locator_dispatches_count == 0
+    assert ctx.chapter_locator_dispatches_reserved == 0

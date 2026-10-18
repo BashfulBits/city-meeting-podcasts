@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,9 +40,25 @@ from citypods.judging.tasks import (
     registered,
     task,
 )
+from citypods.storage.base import StorageReadUnavailable
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jev" / "answers_2026_09_30.json"
 LANES = load_lanes()
+# The pool mechanics (headroom, per-model room, no switching) are tested against a two-model Google
+# slot whatever the repository config dispatches; Gemma 4 26B was removed from it on 2026-10-17.
+_SIBLING = LANES["judge:sibling"]
+LANES["judge:sibling"] = dataclasses.replace(
+    _SIBLING,
+    models=(
+        "google/gemma-4-31b-it",
+        "google/gemma-4-26b-a4b-it",
+        *[m for m in _SIBLING.models if m != "google/gemma-4-31b-it"],
+    ),
+    slots=tuple(
+        (name, (*members, "google/gemma-4-26b-a4b-it") if name == "google" else members)
+        for name, members in _SIBLING.slots
+    ),
+)
 FAMILIES = load_families()
 GEMINI = "gemini/gemini-3.1-flash-lite"
 
@@ -208,7 +225,7 @@ def test_sibling_and_adjudicator_are_chosen_per_entry():
     assert family_of("rule:7", FAMILIES) == RULE_FAMILY
     assert FAMILIES[sibling_for(None, sibling, FAMILIES)] == "google"
     gemini_sibling = sibling_for(GEMINI, sibling, FAMILIES)
-    assert gemini_sibling == "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    assert gemini_sibling == "openrouter/nvidia/nemotron-3.5-super-vl:free"
     # Qwen is eligible, never active, so it is never chosen.
     assert "qwen/qwen3.8-27b" not in {sibling_for(m, sibling, FAMILIES) for m in FAMILIES}
     chosen = adjudicator_for("zai/glm-5.3-flash", gemini_sibling, adjudicator, FAMILIES)
@@ -512,7 +529,7 @@ def test_a_judge_pass_records_anchor_and_independent_sibling_judgments():
     [llm_subject] = [x for x in _subjects(ep) if x.payload.get("source_kind") == "llm"]
     llm_rows = ledger.judgments(llm_subject)
     assert {r["judge_model"] for r in llm_rows if r["judge_role"] == "sibling"} == {
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     }
     assert ep.uid in second.episodes_complete
     # Shadow: every candidate is byte-for-byte unchanged; judgments live in ep.judging only.
@@ -582,7 +599,7 @@ def test_moments_are_judged_per_meeting_with_both_choose_orders():
     assert question_ids == ["best", "best_r", "publishable", "supported", "usefulness"]
     # Gemini-produced moments get the non-Google sibling for every question, choose included.
     assert {p.judge_model for p, _ in dispatch.submitted.values() if p.role == "sibling"} == {
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     }
     dispatch.answer()
     runner.run([ep], _ctx(dispatch, tasks=("moment",)))
@@ -819,7 +836,7 @@ def test_two_run_stages_passes_submit_then_keep_collecting(monkeypatch):
     ctx.lane = "judge"
     monkeypatch.setattr(
         "citypods.compute.llm_deferred.look_up_deferred",
-        lambda storage, recipe: ctx.judge_backend.records.get(recipe),
+        lambda storage, recipe, **_: ctx.judge_backend.records.get(recipe),
     )
     run_stages(None, _city(), [ep], [JudgeStage()], ctx, quiet=True)
     first = len(ctx.judge_backend.jobs)
@@ -942,7 +959,7 @@ def test_stored_producer_identities_are_normalized_and_unknown_ones_fail_safe():
     prefixed = "litellm:" + GEMINI
     assert family_of(prefixed, FAMILIES) == "google"
     assert sibling_for(prefixed, sibling, FAMILIES) == (
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free"
     )
     # Route-specific aliases resolve to the logical key.
     assert family_of("nvidia/deepseek-v4.1-flash", FAMILIES) == "deepseek"
@@ -1589,7 +1606,7 @@ def test_the_sibling_slot_is_a_pool_of_independent_candidates():
     sibling = LANES["judge:sibling"]
     assert sibling_candidates(None, sibling, FAMILIES) == (GEMMA_31B, GEMMA_26B)
     assert sibling_candidates(GEMINI, sibling, FAMILIES) == (
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
     )
     assert sibling_candidates("acme/new-model", sibling, FAMILIES) == ()
     assert sibling_for(None, sibling, FAMILIES) == GEMMA_31B
@@ -1640,3 +1657,228 @@ def test_a_pass_sends_new_work_to_the_candidate_with_headroom_and_never_switches
     runner.run([ep], _ctx(dispatch, sibling_headroom={GEMMA_31B: 3.0, GEMMA_26B: 0.0}))
     models = {r["judge_model"] for r in _tag_judgments(ep) if r["judge_role"] == "sibling"}
     assert models == {GEMMA_26B}
+
+
+# ---- a storage outage while collecting must not abort the lane (run 38971148564, 2026-10-16) ----
+
+
+def _unavailable_dispatch(dispatch, down):
+    """A look_up that raises StorageReadUnavailable while ``down`` is truthy."""
+
+    def look_up(recipe):
+        if down["on"]:
+            raise StorageReadUnavailable(f"state/llm_deferred/judge-{recipe}.json", OSError("x"))
+        return dispatch.records.get(recipe)
+
+    return look_up
+
+
+def test_an_unreadable_record_keeps_its_marker_and_never_aborts_the_pass():
+    dispatch = FakeDispatch()
+    down = {"on": False}
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch, max_outstanding={"judge:sibling": 5}))
+    assert _all_pending(ep)
+    dispatch.answer(anchor_p=0.9)
+    down["on"] = True
+    ctx = _ctx(dispatch, max_outstanding={"judge:anchor": 5, "judge:sibling": 5})
+    ctx.look_up = _unavailable_dispatch(dispatch, down)
+    stats = runner.run([ep], ctx)  # does not raise
+    assert stats.counts["lookup_unavailable"] >= 1
+    assert _all_pending(ep)  # the markers stay for a later pass
+    assert not _tag_judgments(ep)
+    # The unreadable packets still count against the outstanding limits.
+    assert stats.counts["outstanding:judge:anchor"] >= 1
+    assert stats.counts["outstanding:judge:sibling"] >= 1
+    # Storage recovers: the answers are collected.
+    down["on"] = False
+    ctx2 = _ctx(dispatch)
+    ctx2.look_up = _unavailable_dispatch(dispatch, down)
+    recovered = runner.run([ep], ctx2)
+    assert (
+        recovered.counts["judgments_appended"] >= 1 and not recovered.counts["lookup_unavailable"]
+    )
+
+
+class _FakeClock:
+    """A clock the runner's sleeps and the (slow, failing) reads advance together."""
+
+    def __init__(self, monkeypatch):
+        self.now = 0.0
+        monkeypatch.setattr(runner, "_monotonic", lambda: self.now)
+        monkeypatch.setattr(runner, "_sleep", self.sleep)
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def test_a_permanent_outage_waits_a_bounded_time_then_skips_the_rest(monkeypatch):
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch))
+    clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_prefetch_records", lambda *a, **k: {})  # the sequential path
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
+    calls = []
+
+    def look_up(recipe):
+        calls.append(recipe)
+        clock.now += 40.0  # a failed read waits out its own retries
+        raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("down"))
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run([ep], ctx)  # does not raise
+    first_reads = runner._MAX_UNREADABLE_STREAK * 40.0
+    # Wall-clock bound: the budget plus at most the one probe that was already running.
+    assert clock.now - first_reads <= runner._RECOVERY_WAIT_SECONDS + 40.0
+    assert stats.lookup_gave_up and stats.counts["lookup_probe_failed"] >= 1
+    assert len(calls) < runner._MAX_UNREADABLE_STREAK + 20
+    assert _all_pending(ep)
+
+
+def test_a_short_outage_is_waited_out_and_the_pass_still_collects(monkeypatch):
+    dispatch = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(dispatch))
+    dispatch.answer(anchor_p=0.9)
+    clock = _FakeClock(monkeypatch)
+    monkeypatch.setattr(runner, "_prefetch_records", lambda *a, **k: {})  # the sequential path
+    monkeypatch.setattr(runner, "_MAX_UNREADABLE_STREAK", 2)  # two packets are in flight
+    failures = {"left": runner._MAX_UNREADABLE_STREAK + 2}  # the trip, then two failed probes
+
+    def look_up(recipe):
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run([ep], ctx)
+    assert stats.counts["lookup_recovered"] == 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["judgments_appended"] >= 1
+    # Two failed probes, then a third that reads: three probe intervals of waiting.
+    assert stats.counts["lookup_probe_failed"] == 2
+    assert clock.now == 3 * runner._RECOVERY_PROBE_SECONDS
+
+
+# ---- pending records are read in parallel, within a budget (slow runner storage, 2026-10-17) ----
+
+
+def _pending_episodes(count):
+    dispatch = FakeDispatch()
+    episodes = [_episode(uid=f"ep-{i}") for i in range(count)]
+    runner.run(episodes, _ctx(dispatch))
+    return dispatch, episodes
+
+
+def test_pending_records_are_read_concurrently_and_collected():
+    import threading
+
+    dispatch, episodes = _pending_episodes(6)
+    dispatch.answer(anchor_p=0.9)
+    threads: set[int] = set()
+    gate = threading.Barrier(2, timeout=5)
+
+    def look_up(recipe):
+        threads.add(threading.get_ident())
+        try:
+            gate.wait()  # two reads must be in flight together for this to pass
+        except threading.BrokenBarrierError:
+            pass
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)
+    assert len(threads) >= 2
+    assert stats.counts["prefetch_records"] >= 2 and not stats.counts["prefetch_failed"]
+    assert stats.counts["judgments_appended"] >= 1
+
+
+def test_a_blip_during_the_prefetch_is_waited_out_and_the_rest_retried(monkeypatch):
+    dispatch, episodes = _pending_episodes(4)
+    dispatch.answer(anchor_p=0.9)
+    clock = _FakeClock(monkeypatch)
+    calls = {"n": 0}
+
+    def look_up(recipe):
+        calls["n"] += 1
+        if calls["n"] <= runner._MAX_UNREADABLE_STREAK + 1:  # the trip, then one failed probe
+            raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("blip"))
+        return dispatch.records.get(recipe)
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)
+    assert stats.counts["prefetch_failed"] >= runner._MAX_UNREADABLE_STREAK
+    assert stats.counts["lookup_recovered"] == 1 and not stats.counts["lookup_skipped"]
+    assert stats.counts["judgments_appended"] >= 1
+    # Reads already in flight when it tripped may absorb the extra failure, so one or two probes.
+    assert runner._RECOVERY_PROBE_SECONDS <= clock.now <= 2 * runner._RECOVERY_PROBE_SECONDS
+
+
+def test_a_prefetch_during_a_full_outage_gives_up_after_the_recovery_wait(monkeypatch):
+    dispatch, episodes = _pending_episodes(4)
+    clock = _FakeClock(monkeypatch)
+    calls = []
+
+    def look_up(recipe):
+        calls.append(recipe)
+        raise StorageReadUnavailable("state/llm_deferred/x.json", OSError("down"))
+
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    stats = runner.run(episodes, ctx)  # does not raise
+    # A few failed reads trip it, the bounded wait probes, and the rest are never read one by one.
+    probes = int(runner._RECOVERY_WAIT_SECONDS / runner._RECOVERY_PROBE_SECONDS)
+    assert len(calls) <= runner._PREFETCH_WORKERS + probes + runner._MAX_UNREADABLE_STREAK
+    assert clock.now == runner._RECOVERY_WAIT_SECONDS
+    assert stats.counts["lookup_unavailable"] >= 2 and stats.counts["judgments_appended"] == 0
+    assert all(_all_pending(ep) for ep in episodes)
+
+
+def test_reads_still_running_at_the_budget_leave_their_markers_pending(monkeypatch):
+    import threading
+
+    dispatch, episodes = _pending_episodes(4)
+    release = threading.Event()
+
+    def look_up(recipe):
+        release.wait(timeout=10)  # a stalled connection
+        return dispatch.records.get(recipe)
+
+    monkeypatch.setattr(runner, "_PREFETCH_BUDGET_SECONDS", 0.2)
+    ctx = _ctx(dispatch)
+    ctx.look_up = look_up
+    try:
+        stats = runner.run(episodes, ctx)  # returns at the budget, does not wait for the reads
+    finally:
+        release.set()
+    assert stats.counts["prefetch_timed_out"] >= 1
+    assert all(_all_pending(ep) for ep in episodes)
+    assert stats.counts["still_pending"] >= len(episodes)
+
+
+# ---- packet ceilings follow what the Worker will admit (review/55 piece 2) --------------------
+
+
+def test_sibling_packets_track_the_workers_packing_ceiling():
+    default = runner.SIBLING_CEILINGS[GEMMA_31B][0]
+    # No Worker figure: the configured safe default.
+    assert runner._sibling_backend(GEMMA_31B).max_total_tokens == default
+    assert runner._sibling_backend(GEMMA_31B, {}).max_total_tokens == default
+    # A tighter Worker ceiling shrinks packets (90% of it)...
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_total_tokens == 5_400
+    # ...a roomier one grows them, but never past 1.5x the default...
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 20_000}).max_total_tokens == int(
+        default * runner.PACK_CEILING_GROWTH
+    )
+    # ...and never above the safe share of what the Worker admits, however small.
+    assert runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 500}).max_total_tokens == 450
+    # The item cap is untouched.
+    assert (
+        runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_items
+        == (runner.SIBLING_CEILINGS[GEMMA_31B][1])
+    )

@@ -894,9 +894,15 @@ def write_deferred(
         _delete_pointer_keys(storage, old_keys - new_keys)
 
 
-def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
-    """The registry's current record for ``recipe_hash``, or ``None`` if it has none."""
-    return _decode_record(_read_json(storage, deferred_key(recipe_hash)))
+def look_up_deferred(
+    storage, recipe_hash: str, *, deadline_at: datetime | None = None
+) -> JobResult | JobHandle | None:
+    """The registry's current record for ``recipe_hash``, or ``None`` if it has none.
+
+    ``deadline_at`` bounds the read: the storage adapter then uses short socket timeouts and no
+    SDK-level retries, so a stalled connection fails in seconds (``StorageReadUnavailable``)
+    instead of waiting out the default 60 s timeouts and several retries."""
+    return _decode_record(_read_json(storage, deferred_key(recipe_hash), deadline_at=deadline_at))
 
 
 def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = None) -> bool:

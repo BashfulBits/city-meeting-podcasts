@@ -12,8 +12,10 @@ themselves are never written, in shadow mode or otherwise.
 
 from __future__ import annotations
 
+import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,6 +58,7 @@ from citypods.judging.tasks import (
     make_evidence,
     transcript_identity,
 )
+from citypods.storage.base import StorageReadUnavailable
 
 ANCHOR_PURPOSE = "judge:anchor"
 SIBLING_PURPOSE = "judge:sibling"
@@ -78,6 +81,7 @@ SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
     "google/gemma-4-31b-it": (8_500, 25),
     "google/gemma-4-26b-a4b-it": (8_500, 25),
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": (24_000, 25),
+    "openrouter/nvidia/nemotron-3.5-super-vl:free": (24_000, 25),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
 
@@ -126,6 +130,8 @@ class JudgingContext:
     # model -> packets it may still take this pass under the sibling outstanding limit, which
     # applies to each judge model separately (set by _apply_backpressure; empty: unlimited).
     sibling_room: dict[str, int] = field(default_factory=dict)
+    # model -> the Worker's packing ceiling (chars/4 estimate) for the model's smallest route.
+    sibling_pack_ceilings: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -139,6 +145,10 @@ class JudgingStats:
     episodes_planned: set[str] = field(default_factory=set)
     # purpose -> recipes of packets still waiting at the Worker (read while collecting).
     outstanding: dict[str, set[str]] = field(default_factory=dict)
+    # Consecutive unreadable record reads, and whether this pass has stopped trying to read them.
+    lookup_streak: int = 0
+    lookup_gave_up: bool = False
+    lookup_waited: float = 0.0
 
 
 class TextsUnavailable(Exception):
@@ -180,8 +190,29 @@ def _return_run_slot(ctx: JudgingContext, purpose: str) -> None:
             give()
 
 
-def _sibling_backend(model: str) -> ChatJudgeBackend:
+# Share of the Worker's packing ceiling a packet may use: the ceiling is for the request as the
+# Worker sizes it (system prompt and JSON framing included); the packer sizes items.
+PACK_CEILING_SAFETY = 0.9
+# The configured ceiling is the safe default used when the Worker cannot be read. When it can, the
+# Worker's figure decides, up to this multiple of the default.
+PACK_CEILING_GROWTH = 1.5
+
+
+def _sibling_backend(
+    model: str, pack_ceilings: Mapping[str, int] | None = None
+) -> ChatJudgeBackend:
+    """The packer for a sibling model (review/55 piece 2).
+
+    Without a Worker figure: the configured ceiling. With one: 90% of the largest packet the Worker
+    will admit on the model's smallest route (its tightest size limit over the p95 packing ratio),
+    at most 1.5x the configured ceiling, so packets track admission instead of a hard-coded guess in
+    both directions."""
     total, items = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)
+    worker = (pack_ceilings or {}).get(model)
+    if worker:
+        # Never above the safe share of what the Worker will admit, however small; an item too big
+        # for it is reported as payload_too_large by the packer instead of being sent to fail.
+        total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
     return ChatJudgeBackend(max_total_tokens=total, max_items=items)
 
 
@@ -214,7 +245,7 @@ def _backend_for(role: str, model: str, ctx: JudgingContext | None = None):
         return JevBackend(ctx.anchor_input_ratio if ctx is not None else None)
     if role == "adjudicator":
         return _adjudicator_backend()
-    return _sibling_backend(model)
+    return _sibling_backend(model, ctx.sibling_pack_ceilings if ctx is not None else None)
 
 
 def _base_question_id(question_id: str) -> str:
@@ -283,6 +314,165 @@ def _evidence_text(
     return evidence.text
 
 
+# A pending packet whose record could not be read this pass (storage outage). Its marker stays and
+# it counts as outstanding, exactly like a packet still waiting at the Worker.
+_UNREADABLE = object()
+# This many unreadable reads in a row means storage itself is down, not one bad object. A down store
+# would make each of thousands of markers wait out its own retry budget, so the pass instead waits
+# for it to recover (probing the same record), for at most _RECOVERY_WAIT_SECONDS in total. If it
+# does not recover in that time the rest are not tried this pass and keep their markers: giving up
+# on the first blip (3 reads, 2026-10-17 run 38984100770) threw away a whole pass of collection.
+_MAX_UNREADABLE_STREAK = 3
+_RECOVERY_WAIT_SECONDS = 300.0
+_RECOVERY_PROBE_SECONDS = 30.0
+_sleep = time.sleep
+_monotonic = time.monotonic
+
+
+def _wait_for_storage(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
+    """Probe ``recipe`` until it reads or the pass's recovery budget is spent.
+
+    The budget is wall-clock time, probes included: a failing read can itself take tens of
+    seconds, so only the time actually spent here counts against ``_RECOVERY_WAIT_SECONDS``."""
+    started = _monotonic()
+    deadline = started + (_RECOVERY_WAIT_SECONDS - stats.lookup_waited)
+    try:
+        while (remaining := deadline - _monotonic()) > 0:
+            _sleep(min(_RECOVERY_PROBE_SECONDS, remaining))
+            try:
+                record = ctx.look_up(recipe)
+            except StorageReadUnavailable:
+                stats.counts["lookup_probe_failed"] += 1
+                continue
+            stats.lookup_streak = 0
+            stats.counts["lookup_recovered"] += 1
+            waited = stats.lookup_waited + _monotonic() - started
+            print(f"[judge] storage readable again after {waited:.0f}s", flush=True)
+            return record
+    finally:
+        stats.lookup_waited += _monotonic() - started
+    stats.lookup_gave_up = True
+    print("[judge] storage still unavailable; skipping record reads for this pass", flush=True)
+    return _UNREADABLE
+
+
+# Pending-packet records are independent small reads, so they are fetched concurrently before the
+# sequential collect below. Sequentially, ~2,800 records at ~0.3 s each is 14 minutes on a healthy
+# store and unbounded on a slow one (runner reads stalled 2026-10-17). The whole prefetch is
+# bounded: records not read by then stay pending and are collected on a later pass.
+_PREFETCH_WORKERS = 8
+_PREFETCH_BUDGET_SECONDS = 600.0
+
+
+def _read_batch(
+    recipes: Sequence[str],
+    ctx: JudgingContext,
+    deadline: float,
+    records: dict[str, Any],
+    stats: JudgingStats,
+) -> bool:
+    """Read ``recipes`` in parallel into ``records``; True when storage looks down.
+
+    Stops as soon as ``_MAX_UNREADABLE_STREAK`` reads in a row fail with nothing read in between
+    (a store that is down fails every read, each after its own deadline). Reads still running at
+    ``deadline`` are stored as ``_UNREADABLE``; reads cancelled by a trip are left out."""
+    executor = ThreadPoolExecutor(max_workers=min(_PREFETCH_WORKERS, len(recipes)))
+    futures = {executor.submit(ctx.look_up, recipe): recipe for recipe in recipes}
+    pending = set(futures)
+    streak = 0
+    tripped = False
+    started = _monotonic()
+    try:
+        while pending and not tripped and (remaining := deadline - _monotonic()) > 0:
+            done, pending = wait(pending, timeout=min(remaining, 30.0), return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    records[futures[future]] = future.result()
+                    streak = 0
+                except Exception:  # noqa: BLE001 -- retried later, where a real error surfaces
+                    stats.counts["prefetch_failed"] += 1
+                    streak += 1
+                    tripped = tripped or streak >= _MAX_UNREADABLE_STREAK
+            if done and len(records) % 500 < len(done):
+                print(
+                    f"[judge] read {len(records)}/{len(futures)} pending records "
+                    f"in {_monotonic() - started:.0f}s "
+                    f"({stats.counts['prefetch_failed']} unavailable)",
+                    flush=True,
+                )
+    finally:
+        for future in pending:
+            future.cancel()
+            if not tripped:
+                records[futures[future]] = _UNREADABLE
+        executor.shutdown(wait=False, cancel_futures=True)
+    if pending and not tripped:
+        stats.counts["prefetch_timed_out"] += len(pending)
+        print(
+            f"[judge] record reads still running at the budget: {len(pending)} left pending "
+            "for a later pass",
+            flush=True,
+        )
+    return tripped
+
+
+def _prefetch_records(
+    subjects: Sequence[Subject], ctx: JudgingContext, stats: JudgingStats
+) -> dict[str, Any]:
+    """Records for every pending packet of ``subjects``, read in parallel within a time budget.
+
+    Holds records that were read (a result, a handle, or ``None`` for a missing one) and
+    ``_UNREADABLE`` for those that could not be. When consecutive reads fail the store is treated
+    as down: the pass waits (bounded, ``_wait_for_storage``) for it to come back and retries the
+    rest once in parallel; if it does not come back the rest keep their markers this pass."""
+    recipes = list(
+        dict.fromkeys(
+            str(marker.get("recipe_hash") or "")
+            for subject in subjects
+            for marker in ledger.pending(subject)
+            if marker.get("recipe_hash")
+        )
+    )
+    if len(recipes) < 2:
+        return {}
+    stats.counts["prefetch_records"] = len(recipes)
+    records: dict[str, Any] = {}
+    deadline = _monotonic() + _PREFETCH_BUDGET_SECONDS
+    for attempt in range(2):
+        todo = [recipe for recipe in recipes if recipe not in records]
+        if not todo or not _read_batch(todo, ctx, deadline, records, stats):
+            break
+        recovered = _wait_for_storage(ctx, todo[0], stats) if attempt == 0 else _UNREADABLE
+        if recovered is _UNREADABLE:
+            stats.lookup_gave_up = True
+            break
+        records[todo[0]] = recovered
+    unread = [recipe for recipe in recipes if recipe not in records]
+    for recipe in unread:
+        records[recipe] = _UNREADABLE
+    stats.counts["lookup_unavailable"] += len(unread)
+    return records
+
+
+def _look_up(ctx: JudgingContext, recipe: str, stats: JudgingStats) -> Any:
+    """The packet's record, or ``_UNREADABLE`` when storage is unavailable for it (never raises)."""
+    if stats.lookup_gave_up:
+        stats.counts["lookup_unavailable"] += 1
+        stats.counts["lookup_skipped"] += 1
+        return _UNREADABLE
+    try:
+        record = ctx.look_up(recipe)
+    except StorageReadUnavailable as exc:
+        stats.counts["lookup_unavailable"] += 1
+        stats.lookup_streak += 1
+        print(f"[judge] record read unavailable for {exc.key}; keeping its marker", flush=True)
+        if stats.lookup_streak >= _MAX_UNREADABLE_STREAK:
+            return _wait_for_storage(ctx, recipe, stats)
+        return _UNREADABLE
+    stats.lookup_streak = 0
+    return record
+
+
 def _collect(
     subjects: Sequence[Subject],
     ctx: JudgingContext,
@@ -291,20 +481,25 @@ def _collect(
 ) -> None:
     """Turn finished in-flight questions into judgments; drop markers that can never finish.
 
+    A record that cannot be read right now (``StorageReadUnavailable``, a transient storage outage)
+    is not a missing record: its marker stays and counts as outstanding, and a later pass collects
+    it. One unreadable object must never abort the whole lane.
+
     A chat judge's or adjudicator's answer is stored with ``quote_valid``: whether the quote in its
-    reason occurs in the evidence it was sent (review/53 PR5)."""
+    reason occurs in the evidence it was sent (review/53 PR5).
+    """
     from citypods.judging.tasks import task as task_spec
 
     episodes = episodes or {}
-    outputs: dict[str, Any] = {}
+    outputs: dict[str, Any] = _prefetch_records(subjects, ctx, stats)
     read: set[str] = set()
     for subject in subjects:
         for marker in ledger.pending(subject):
             recipe = str(marker.get("recipe_hash") or "")
             if recipe not in outputs:
-                outputs[recipe] = ctx.look_up(recipe) if recipe else None
+                outputs[recipe] = _look_up(ctx, recipe, stats) if recipe else None
             record = outputs[recipe]
-            if isinstance(record, JobHandle):
+            if record is _UNREADABLE or isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
                 purpose = str(marker.get("purpose") or "")
                 stats.outstanding.setdefault(purpose, set()).add(recipe)
@@ -389,8 +584,8 @@ def _count_superseded_outstanding(
                 if not recipe:
                     continue
                 if recipe not in outputs:
-                    outputs[recipe] = ctx.look_up(recipe)
-                if isinstance(outputs[recipe], JobHandle):
+                    outputs[recipe] = _look_up(ctx, recipe, stats)
+                if outputs[recipe] is _UNREADABLE or isinstance(outputs[recipe], JobHandle):
                     purpose = str(marker.get("purpose") or "")
                     stats.outstanding.setdefault(purpose, set()).add(recipe)
                     if purpose == SIBLING_PURPOSE:

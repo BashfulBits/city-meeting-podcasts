@@ -37,6 +37,7 @@
 
 import {
   hardInputCeilingLimit,
+  learnedCeilings,
   outputReserveFor,
   routeInputTokenRatio,
   scaledInputTokens,
@@ -261,8 +262,25 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // Compared in the provider's units: the ceiling was measured against real provider token
   // counts, while the job carries a tokenizer-agnostic chars/4 estimate (see calibration.js).
   const inputEstimate = scaledInputTokens(job?.input_token_estimate, inputRatio);
+  // The size gates (configured ceiling, learned bounds, the per-minute input quota) use the lower
+  // ADMISSION ratio; the reservation, the rolling input window and TPM accounting keep the
+  // conservative one (review/55 piece 2). Never above the conservative estimate.
+  const admitRatio = Number.isFinite(options?.admitRatio)
+    ? Math.min(options.admitRatio, inputRatio)
+    : inputRatio;
+  const admitEstimate = scaledInputTokens(job?.input_token_estimate, admitRatio);
   const tolerant = Boolean(options?.ceilingTolerance);
-  if (!options.contextProbe && inputEstimate > hardInputCeilingLimit(route, { tolerant })) {
+  // Observed provider behavior (review/55 piece 3). At or above the smallest size this route has
+  // refused, skip it -- except in the claim's drain pass (`ceilingTolerance`, only when nothing
+  // else is dispatchable), which re-tests it so a refusal can never strand a job for the whole
+  // TTL. At or below the largest size it has accepted, a conservative configured ceiling is not
+  // allowed to reject the job.
+  const learned = options.contextProbe ? { acceptedMax: 0, rejectedMin: 0 } : learnedCeilings(route, now);
+  if (!tolerant && learned.rejectedMin > 0 && admitEstimate >= learned.rejectedMin) return null;
+  if (
+    !options.contextProbe &&
+    admitEstimate > Math.max(hardInputCeilingLimit(route, { tolerant }), learned.acceptedMax)
+  ) {
     return null;
   }
 
@@ -278,11 +296,14 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // Google counts input tokens in a trailing minute. Idle bucket credit cannot buy a burst
   // beyond that window, and two fixed windows must not admit two minutes' tokens together.
   if (route?.provider === "gemini" && tpm > 0) {
-    if (inputEstimate > tpm) return null;
+    if (admitEstimate > tpm) return null;
+    // A job admitted at the lower ratio but reserved at the conservative one occupies the whole
+    // minute window at most.
+    const windowTokens = Math.min(inputEstimate, tpm);
     const recent = inputWindow(route).filter((entry) => entry.at > notBeforeAt - MS_PER_MINUTE);
     let used = recent.reduce((sum, entry) => sum + entry.tokens, 0);
     for (const entry of recent) {
-      if (used + inputEstimate <= tpm) break;
+      if (used + windowTokens <= tpm) break;
       notBeforeAt = Math.max(notBeforeAt, entry.at + MS_PER_MINUTE);
       used -= entry.tokens;
     }
