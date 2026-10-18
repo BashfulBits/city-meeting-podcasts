@@ -98,6 +98,19 @@ from a statistical ratio. Today only `free_prompt_cap` writes anything like it
   monitor; reservations on routes whose full-window learned ratio is below their prior drop, which
   is the point, but is the one behavior change that touches every route. Revert is a single PR.
 
+## One size gate (follow-up, 2026-10-18)
+
+Pieces 1 to 4 changed the pacing check (`earliestSafeStart`) but left the claim's coarse eligibility
+filter (`routesEligibleFor` -> `routeFitsContext`) on the catalog's configured ratio. A packet over
+about 10,285 estimated tokens (14,400 / 1.4) was therefore dropped from the AI Studio routes before
+the learned check ever ran, although their calibrated limit was 13,605 and they had completed 10,281.
+Both now call `inputSizeRefusal` (calibration.js): the admission ratio against the larger of the
+configured ceiling and the largest size the route has accepted, and a learned refusal skipped only
+by the strict check (the filter and the drain pass are tolerant). The claim passes the filter the
+same calibrated ratios and the route merged with its ledger; callers with no live data (enqueue-time
+indexing, the structural unroutable checks) keep the catalog values, and the oversize check
+(`_exceedsEveryLiveCeiling`) filters routes by context window alone and applies the learned gate.
+
 ## Additional goals
 
 Per-key observability (n, p50/p95/p99, size rejections, near-edge admissions) in `/v2/calibration`

@@ -109,6 +109,34 @@ export function learnedCeilings(route, now = Date.now(), ttlMs = LEARNED_CEILING
 }
 
 /**
+ * The ONE input-size gate (review/55): why this route will not take an input of `rawEstimate`
+ * (chars/4), or null when it will. The claim's eligibility filter (routes.js) and the pacing check
+ * (pacing.js) both call it, so they cannot drift apart. It compares the size at the ADMISSION ratio
+ * (never above the conservative `inputRatio`) with the larger of the configured ceiling and the
+ * largest size the route has actually accepted, and (unless `tolerant`) refuses a size at or above
+ * the smallest it has refused. `tolerant` is the coarse filter and the drain pass: a near miss is
+ * allowed through to be tried. A catalog route carries no learned fields, so a caller without live
+ * data gets the configured ceiling alone.
+ */
+export function inputSizeRefusal(
+  route,
+  rawEstimate,
+  { inputRatio, admitRatio, now = Date.now(), tolerant = false } = {}
+) {
+  const conservative = Number.isFinite(inputRatio) ? inputRatio : routeInputTokenRatio(route);
+  const admit = Number.isFinite(admitRatio) ? Math.min(admitRatio, conservative) : conservative;
+  const admitEstimate = scaledInputTokens(rawEstimate, admit);
+  const learned = learnedCeilings(route, now);
+  if (!tolerant && learned.rejectedMin > 0 && admitEstimate >= learned.rejectedMin) {
+    return "learned_rejected_size";
+  }
+  if (admitEstimate > Math.max(hardInputCeilingLimit(route, { tolerant }), learned.acceptedMax)) {
+    return "over_input_ceiling";
+  }
+  return null;
+}
+
+/**
  * The largest chars/4 input estimate a packet may carry and still be admissible on this route,
  * from the route's tightest known size limit (configured ceiling, a learned refusal, the Gemini
  * per-minute input quota, the context window) divided by the PACKING ratio. Null when the route

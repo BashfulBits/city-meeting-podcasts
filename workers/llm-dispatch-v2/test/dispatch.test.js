@@ -3580,3 +3580,33 @@ test("a ceiling-bound model's full, unclaimable head also advances the frontier"
   }
   assert.deepEqual(claimed, ["small-last"]);
 });
+
+test("the claim's eligibility filter uses the learned admission ratio, not the catalog prior", async () => {
+  // Catalog prior 1.4: an 11,000-token estimate is 15,400, over the 14,400 ceiling. The route's
+  // own measurements say its ratio is 1.0, so it is admissible (admission 1.05 -> 11,550). A
+  // roomy route that fits by the catalog (and is stood down) keeps the job indexed and queued.
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "roomy"] },
+    routes_by_id: {
+      "gemma-ai-studio": { provider: "gemini", upstream_model: "gemma-4-31b-it",
+        rpm: 30, rpd: 14400, tpm: 16000, hard_input_ceiling: 14400, input_token_ratio: 1.4,
+        free: true, input_context_limit: 262144, output_context_limit: 32768 },
+      roomy: { provider: "acme", upstream_model: "gemma-4-31b-it", rpm: 30, rpd: 1000,
+        tpm: 500000, free: true, input_context_limit: 262144, output_context_limit: 32768 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const now = Date.now();
+  coordinator._getOrCreateRouteLedger("roomy", now, catalog.routes_by_id.roomy);
+  sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'roomy'", now + 3_600_000);
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 64, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(64).fill(1.0), o: Array(64).fill(200) })
+  );
+  await coordinator.enqueueBatch([gemmaJob("fits-learned", 11000)]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.deepEqual(plan.jobs.map((job) => [job.id, job.route_id]), [["fits-learned", "gemma-ai-studio"]]);
+});

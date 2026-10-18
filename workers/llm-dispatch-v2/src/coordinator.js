@@ -1638,6 +1638,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return live > 0;
   }
 
+  /** Live size-gate inputs for routesEligibleFor (routeFitsContext): the calibrated ratios and the
+   * route merged with its ledger, so the claim's eligibility filter applies the same learned
+   * admission as the pacing check (review/55) instead of the catalog's prior ratio. */
+  _sizingResolver(now, mergeRoute, calibrationCache) {
+    return (route, job) => {
+      const { inputRatio, admitRatio } = this._calibration(route, job.prompt_family, calibrationCache);
+      return { inputRatio, admitRatio, route: mergeRoute(route), now };
+    };
+  }
+
   /** A structural learned-ceiling rejection, independent of pause or spent daily quota.
    * Every policy-permitted configured alternative is considered, including temporarily paused
    * routes. An uncapped fitting route prevents failure even when it must wait until tomorrow. */
@@ -5074,6 +5084,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
 
       const calibrationCache = new Map();
+      const sizingFor = this._sizingResolver(now, getMergedRoute, calibrationCache);
       const capacityOptions = (route, job) => {
         const providerCfg = dispatchLimits.providers?.[route.provider];
         const providerLedger = route.provider
@@ -5188,7 +5199,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // model alphabetically (usually Gemini) claims the whole bundle and a later Llama
           // alternate is never considered, even when fewer than maxBundleJobs are available.
           // Stable sort preserves the caller's allowed_models order when live capacity ties.
-          const eligibleRoutes = routesEligibleFor(job, dispatchLimits, this._dispatchLimits()).sort((left, right) => {
+          const eligibleRoutes = routesEligibleFor(
+            job,
+            dispatchLimits,
+            this._dispatchLimits(),
+            sizingFor
+          ).sort((left, right) => {
             const leftPlan = modelPlansByModel.get(left.model);
             const rightPlan = modelPlansByModel.get(right.model);
             return (
@@ -5300,18 +5316,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
           if (
             !chosenJobIds.has(job.id) &&
             !drainJobIds.has(job.id) &&
-            !oversizeJobIds.has(job.id) &&
-            this._exceedsEveryLiveCeiling(
-              job, this._routesForUnroutableJob(job, structuralCatalog)
-                .map(routeId => ({ ...structuralCatalog.routes_by_id[routeId], route_id: routeId }))
-                .filter(route => route.route_id && (jobPolicy(job).allow_paid || route.free) &&
-                  routeFitsContext(route, job.input_token_estimate, job.max_output_token_estimate))
-                .map(getMergedRoute), calibrationCache
-            )
+            !oversizeJobIds.has(job.id)
           ) {
-            // A job indexed under several models can be read once per model; fail it once.
-            oversizeJobs.push({ job, eligibleRoutes });
-            oversizeJobIds.add(job.id);
+            // The routes the job fits by context window alone (the size gate is what
+            // _exceedsEveryLiveCeiling then applies, with learned values), merged with their ledgers.
+            const structuralRoutes = this._routesForUnroutableJob(job, structuralCatalog)
+              .map(routeId => ({ ...structuralCatalog.routes_by_id[routeId], route_id: routeId }))
+              .filter(route => route.route_id && (jobPolicy(job).allow_paid || route.free) &&
+                routeFitsContext(route, job.input_token_estimate, job.max_output_token_estimate,
+                  { skipSizeGate: true }))
+              .map(getMergedRoute);
+            if (this._exceedsEveryLiveCeiling(job, structuralRoutes, calibrationCache)) {
+              // A job indexed under several models can be read once per model; fail it once.
+              oversizeJobs.push({ job, eligibleRoutes: structuralRoutes });
+              oversizeJobIds.add(job.id);
+            }
           }
         }
         if (
@@ -6040,7 +6059,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ? routesEligibleFor(
               { ...job, size_excluded_routes: nextSizeExcludedRoutes },
               this._dispatchLimits(),
-              this._dispatchLimits()
+              this._dispatchLimits(),
+              this._sizingResolver(
+                now,
+                (route) => ({ ...route, ...this._getOrCreateRouteLedger(route.route_id, now, route) }),
+                new Map()
+              )
             ).length
           : 0;
         // An upstream/gateway failure is by definition not this job's fault and recurs on its own

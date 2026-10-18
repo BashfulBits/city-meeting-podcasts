@@ -36,8 +36,7 @@
  */
 
 import {
-  hardInputCeilingLimit,
-  learnedCeilings,
+  inputSizeRefusal,
   outputReserveFor,
   routeInputTokenRatio,
   scaledInputTokens,
@@ -282,15 +281,14 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // else is dispatchable), which re-tests it so a refusal can never strand a job for the whole
   // TTL. At or below the largest size it has accepted, a conservative configured ceiling is not
   // allowed to reject the job.
-  const learned = options.contextProbe ? { acceptedMax: 0, rejectedMin: 0 } : learnedCeilings(route, now);
-  if (!tolerant && learned.rejectedMin > 0 && admitEstimate >= learned.rejectedMin) {
-    return refuse("learned_rejected_size");
-  }
-  if (
-    !options.contextProbe &&
-    admitEstimate > Math.max(hardInputCeilingLimit(route, { tolerant }), learned.acceptedMax)
-  ) {
-    return refuse("over_input_ceiling");
+  if (!options.contextProbe) {
+    const refusal = inputSizeRefusal(route, job?.input_token_estimate, {
+      inputRatio,
+      admitRatio: options?.admitRatio,
+      now,
+      tolerant,
+    });
+    if (refusal) return refuse(refusal);
   }
 
   if (!options.contextProbe && Number(route?.prompt_cap_estimate) > 0 &&
