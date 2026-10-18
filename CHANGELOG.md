@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The claim's route-eligibility filter now applies the same learned size gate as pacing.** Both
+  call one function (`inputSizeRefusal`): the admission ratio against the larger of the configured
+  ceiling and the largest size the route has accepted. The filter had kept the catalog's 1.4 ratio,
+  so packets over about 10,285 estimated tokens never reached the AI Studio Gemma routes, whose
+  calibrated limit was 13,605 (review/55). Enqueue-time indexing and the structural checks still
+  use catalog values.
+
 - **A claim now reads past a stuck head of the queue.** When the oldest few queued jobs for a model
   (`MAX_JOBS_PER_MODEL_CLAIM`, 4) are ones no free route can take this tick, the claim reads on
   from a per-model frontier that advances each tick, up to `MAX_CANDIDATE_LOOKAHEAD` rows in all,
