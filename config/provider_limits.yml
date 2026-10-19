@@ -1135,9 +1135,12 @@ routes:
     # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
     # one -- up to 2 in flight while both transports are live, the same
     # coexistence caveat as split_cap_multiplier. Held at 1 on 2026-10-16 (with the 800 RPD raise),
-    # then 2 on 2026-10-17: at the 172 s median one slot is ~20 calls/hour, and the judge sibling
-    # backlog needs more. Two of the provider's four shared slots at most.
-    concurrency: 2
+    # 2 on 2026-10-17 to drain the judge sibling backlog, and back to 1 on 2026-10-19: with two
+    # slots the share of this route's calls that ran into the 720 s limit rose from 3% (2026-10-17
+    # morning) to 14% (10-18 09:47), 26% (19:45) and 28% (23:33), and 40 to 70% in the later
+    # intervals, each hung call holding half of the route for 12 minutes. Normal calls run under
+    # a minute (median output ~700 tokens).
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

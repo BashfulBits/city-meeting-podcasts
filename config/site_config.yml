@@ -61,8 +61,10 @@ tagging:
     # schedules fresh work for every active candidate whose stored assessment predates it.
     llm_schema_version: "2"
     # Run the `topic-tags:prelabeler-shadow` lane's evaluator (gemma-4-26b) on candidates that
-    # already carry a current production assessment. Shadow-only: never changes display.
-    shadow_enabled: true
+    # already carry a current production assessment. Shadow-only: never changes display. Off
+    # since 2026-10-19: the lane is retired by review/53 PR11, and on 2026-10-18 it produced
+    # ~160 `output_budget_exhausted` failures and empty replies on the AI Studio 26B quota.
+    shadow_enabled: false
 # Optional read-only per-verb backlog report parameters (review/50); absent keys use defaults.
 # llm_backlog:
 #   window_days: 7

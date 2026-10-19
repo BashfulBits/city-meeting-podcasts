@@ -214,7 +214,10 @@ test("rate failure snapshot uses bounded primary-key reads and survives exhauste
   for (const [date, route, cls] of [[day, "route-a", "own_rpm"],
     ["2026-10-08", "route-a", "own_rpm"], [day, "retired", "own_rpm"],
     [day, "route-a", "auth"]]) {
-    f.sql.exec("INSERT INTO route_failures VALUES (?,?,?,?,?,?)", date, route, cls, 3, 429, 1);
+    f.sql.exec(
+      "INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at) VALUES (?,?,?,?,?,?)",
+      date, route, cls, 3, 429, 1
+    );
   }
   f.coordinator = f.make(); // Persisted counters survive object recreation.
   f.coordinator._dispatchLimits = () => ({ routes_by_id: { "route-a": {} } });

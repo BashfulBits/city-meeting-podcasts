@@ -318,6 +318,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "reservation_rpd_day_key",
     "reservation_tpm_window_start",
   ],
+  route_failures: ["last_max_tokens_sent", "last_output_tokens", "max_output_tokens"],
   scheduler: [
     "ingress_write_units_today",
     "queued_job_count",
@@ -1074,6 +1075,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         count         INTEGER NOT NULL DEFAULT 0,
         last_status   INTEGER,
         last_seen_at  INTEGER NOT NULL,
+        -- output_budget_exhausted only: the output cap the last cut-off request carried, the
+        -- tokens that reply held, and the largest such reply of the day.
+        last_max_tokens_sent INTEGER,
+        last_output_tokens   INTEGER,
+        max_output_tokens    INTEGER,
         PRIMARY KEY (utc_day, route_id, failure_class)
       );
 
@@ -1201,6 +1207,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
     this._ensureColumn("scheduler", "last_empty_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("route_failures", "last_max_tokens_sent", "INTEGER");
+    this._ensureColumn("route_failures", "last_output_tokens", "INTEGER");
+    this._ensureColumn("route_failures", "max_output_tokens", "INTEGER");
     // The queued-job counter used to be maintained by three per-row triggers, which cost a billed
     // row on every insert, lease and requeue (~2 per job). It is now maintained explicitly inside
     // scheduler UPDATEs the hot paths already make (enqueue, claim, completion requeues, cancels,
@@ -1401,6 +1410,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["queue_models", "TEXT"],
       ["size_excluded_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["last_max_tokens_sent", "INTEGER"],
+      ["last_output_tokens", "INTEGER"],
+      ["max_output_tokens", "INTEGER"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -3613,7 +3625,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // up to FILTERED_FAILURE_LIMIT, so unrelated high-count rows cannot push them past `limit`.
     const classes = Array.isArray(failureClasses) && failureClasses.length ? failureClasses : null;
     const routeFailures = [...sql.exec(
-      `SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at
+      `SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at,
+              last_max_tokens_sent, last_output_tokens, max_output_tokens
          FROM route_failures
         WHERE utc_day = ?${classes ? ` AND failure_class IN (${classes.map(() => "?").join(",")})` : ""}
         ORDER BY count DESC
@@ -3845,22 +3858,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * Increment bounded per-class failure telemetry (Initiative 20 / review/45 §20.7).
    * Keyed by (utc_day, route_id, failure_class) so it can never grow with traffic.
    */
-  _recordRouteFailure(sql, now, routeId, failureClass, lastStatus) {
+  _recordRouteFailure(sql, now, routeId, failureClass, lastStatus, detail = null) {
     if (!routeId || !failureClass) return;
     const utcDay = new Date(now).toISOString().slice(0, 10);
+    const sent = Number(detail?.sentMaxTokens);
+    const output = Number(detail?.outputTokens);
     sql.exec(
       `INSERT INTO route_failures (
-         utc_day, route_id, failure_class, count, last_status, last_seen_at
-       ) VALUES (?, ?, ?, 1, ?, ?)
+         utc_day, route_id, failure_class, count, last_status, last_seen_at,
+         last_max_tokens_sent, last_output_tokens, max_output_tokens
+       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
        ON CONFLICT(utc_day, route_id, failure_class) DO UPDATE SET
          count = count + 1,
          last_status = excluded.last_status,
-         last_seen_at = excluded.last_seen_at`,
+         last_seen_at = excluded.last_seen_at,
+         last_max_tokens_sent = COALESCE(excluded.last_max_tokens_sent, last_max_tokens_sent),
+         last_output_tokens = COALESCE(excluded.last_output_tokens, last_output_tokens),
+         max_output_tokens = MAX(COALESCE(max_output_tokens, 0), COALESCE(excluded.max_output_tokens, 0))`,
       utcDay,
       routeId,
       failureClass,
       lastStatus != null ? Number(lastStatus) : null,
-      now
+      now,
+      Number.isFinite(sent) && sent > 0 ? sent : null,
+      Number.isFinite(output) && output >= 0 && detail?.outputTokens != null ? output : null,
+      Number.isFinite(output) && output >= 0 && detail?.outputTokens != null ? output : null
     );
   }
 
@@ -6138,7 +6160,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
               now,
               job.lease_route_id || attemptRouteId,
               failureClass,
-              result.provider_status_code
+              result.provider_status_code,
+              isOutputBudgetExhausted
+                ? {
+                    sentMaxTokens: result.requested_max_tokens,
+                    outputTokens: result.observed_output_tokens,
+                  }
+                : null
             );
           }
         }

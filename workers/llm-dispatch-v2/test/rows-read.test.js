@@ -329,7 +329,9 @@ test("counter-only telemetry remains bounded as retired route and daily history 
   for (const history of [100, 1000]) {
     const f = seed(history);
     const day = new Date(f.now).toISOString().slice(0, 10);
-    const insert = f.db.prepare("INSERT INTO route_failures VALUES (?,?,?,?,?,?)");
+    const insert = f.db.prepare(
+      "INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at) VALUES (?,?,?,?,?,?)"
+    );
     for (let i = 0; i < history; i++) {
       insert.run(day, `retired-${i}`, "own_rpm", 3, 429, f.now);
       insert.run("2020-01-01", `retired-${i}`, "own_tpm", 3, 429, f.now);
