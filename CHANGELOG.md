@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The R5 pre-labeler and R6 judge panel are switched off.** `tagging.prelabeler.enabled` and
+  `moments.judges.enabled` are `false`, and the weekly R5/R6 review workflows (`llm-tag-review`,
+  `llm-tournament`, `tournament-tag-backfill`, `r6-moment-review`) no longer run on a schedule
+  (manual dispatch remains until review/53 PR10 and PR11 delete them). Display is unchanged:
+  none of the 115 R5 calibration rows has ever qualified and the R6 policy has never admitted a
+  moment, checked by `scripts/check_retirement_display.py` over all 172,526 stored tag candidates.
+  Queued R6 jobs (4,835) are cancelled with PR10.
+
 - **Correct ingress quotas in v2 stats.** Read the normalized purpose reservation map directly
   instead of unwrapping it again, restoring configured job-equivalent quotas and utilization.
   Legacy overrides without a per-job estimate use admission's four-unit minimum. Fresh ingress
