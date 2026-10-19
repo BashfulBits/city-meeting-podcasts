@@ -1,8 +1,9 @@
 name: R6 Moment Calibration Review
 
 on:
-  schedule:
-    - cron: "0 12 * * 1"
+  # Scheduled runs stopped 2026-10-19 (review/53 PR10/PR11 retire this flow); manual dispatch remains.
+  # schedule:
+  #   - cron: "0 12 * * 1"
   workflow_dispatch:
 
 concurrency:

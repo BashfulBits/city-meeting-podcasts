@@ -9,8 +9,9 @@ on:
       model:
         required: true
         type: string
-  schedule:
-    - cron: "0 19 * * *"
+  # Scheduled runs stopped 2026-10-19 (review/53 PR10/PR11 retire this flow); manual dispatch remains.
+  # schedule:
+  #   - cron: "0 19 * * *"
 
 permissions:
   contents: read
