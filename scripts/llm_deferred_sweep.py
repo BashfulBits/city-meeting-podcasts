@@ -194,10 +194,9 @@ def _register_known_contracts() -> None:
     friends) happen to be installed, rather than requiring every feature's dependencies at once.
     """
     try:
-        from citypods.tags import ensure_llm_contract, ensure_prelabeler_contract
+        from citypods.tags import ensure_llm_contract
 
         ensure_llm_contract()
-        ensure_prelabeler_contract()
     except ImportError:
         pass
     try:

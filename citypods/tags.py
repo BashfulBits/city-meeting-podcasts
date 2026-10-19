@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 import tempfile
 from dataclasses import dataclass
@@ -26,27 +25,13 @@ from citypods.compute.structured import parse_structured_json
 TAGGER_VERSION = "2"
 CHAPTER_PIPELINE_VERSION = "1"
 LLM_CONTRACT = "topic-tags"
-PRELABELER_CONTRACT = "topic-tags-prelabeler"
 TAG_PROMPT_VERSION = "3"
 # Bump when the serialized structured-output request schema changes in a way that must create
 # fresh durable dispatch requests. This is intentionally separate from the prompt version: the
 # current migration changes provider-compatible schema keywords, not task instructions.
 TAG_LLM_SCHEMA_VERSION = "2"
-PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
 TAGGER_PURPOSE = "topic-tags:tagger"
-PRELABELER_PURPOSE = "topic-tags:prelabeler"
-# Shadow evaluator lane: same prompt, second model, audit-only (see site_config.yml llm_lanes).
-PRELABELER_SHADOW_PURPOSE = "topic-tags:prelabeler-shadow"
-PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
-# Assessment.reason alone allows up to 500 chars (~150 tokens); candidate_id/decision/confidence/
-# evidence_supported plus JSON punctuation add a modest fixed cost per item. A flat 1024-token
-# output budget was previously used for every batch regardless of size, even though a batch may
-# hold up to 100 assessments (Response.assessments' max_length) -- any batch past roughly six
-# items could no longer fit its own response and was silently cut off mid-JSON, which is exactly
-# the "not valid JSON"/multi-field Pydantic validation failures seen in production. Sized so a
-# full 100-item batch (100 * 200 + 200 = 20,200) comfortably fits under every prelabeler route's
-# configured output_context_limit.
 # The SCHEDULING RESERVATION for one tagger call (TPM admission and batch fitting), not a cap on
 # the answer: the job is sent with ``max_tokens_mode: "route_max"``, so the route's own output
 # limit (bounded by MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at
@@ -54,9 +39,6 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 # the largest observed tagger output (Gemini 3.1 Flash Lite ~8.4k, AI Gateway 2026-09-25) with
 # about 45% headroom; the budget monitor flags a lane whose calls outgrow their reservation.
 TAG_OUTPUT_TOKEN_BUDGET = 12_288
-PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
-PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
-PRELABELER_LEARNED_RATIO_MARGIN = 1.05
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
 # schema and future envelope fields. This is a transport guard, separate from model context.
 TAGGER_MAX_REQUEST_BYTES = 7 * 1024 * 1024
@@ -397,81 +379,6 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
-_PRELABELER_DECISION_SET = frozenset(PRELABELER_DECISIONS)
-
-
-def needs_shadow_prelabel(
-    candidate: dict[str, Any],
-    *,
-    model: str,
-    shadow_model: str,
-    prompt_version: str,
-    llm_schema_version: str,
-) -> bool:
-    """A projectable subject with a current production assessment but no current shadow one.
-
-    Shared by the tag lane's run-level pre-filter (``episode_needs_tagging``) and ``TagsStage``:
-    if the two disagreed, the pre-filter would drop an episode whose shadow job is still in flight
-    and its deferred result would never be read back.
-    """
-    if candidate.get("candidate_state") == "historical":
-        return False
-    if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
-        return False
-    production_current = (
-        candidate.get("prelabeler_model") == model
-        and candidate.get("prelabeler_prompt_version") == prompt_version
-        and candidate.get("prelabeler_llm_schema_version") == llm_schema_version
-        and candidate.get("prelabeler_decision") in _PRELABELER_DECISION_SET
-    )
-    shadow_current = (
-        candidate.get("prelabeler_shadow_model") == shadow_model
-        and candidate.get("prelabeler_shadow_prompt_version") == prompt_version
-        and candidate.get("prelabeler_shadow_llm_schema_version") == llm_schema_version
-        and candidate.get("prelabeler_shadow_decision") in _PRELABELER_DECISION_SET
-    )
-    return production_current and not shadow_current
-
-
-def episode_evaluator_work_pending(ep: Any, prelabeler_config: dict[str, Any] | None) -> bool:
-    """Whether the production or shadow pre-labeler still owes this episode an assessment.
-
-    The tags stage's completion marker fingerprints tag INPUTS only, so without this an episode
-    marked complete before an evaluator change (a new prelabeler model/schema, or a shadow
-    evaluator being enabled) would be skipped by the completion cache forever.
-    """
-    config = prelabeler_config or {}
-    model = str(config.get("model") or "")
-    if not config.get("enabled", False) or not model:
-        return False
-    prompt_version = str(config.get("prompt_version") or "1")
-    schema_version = str(config.get("llm_schema_version") or "1")
-    shadow_model = str(config.get("shadow_model") or "")
-    if not config.get("shadow_enabled", False) or shadow_model == model:
-        shadow_model = ""
-    for candidate in ep.llm_tag_candidates or []:
-        if not isinstance(candidate, dict) or candidate.get("candidate_state") == "historical":
-            continue
-        if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
-            continue
-        if (
-            candidate.get("prelabeler_model") != model
-            or candidate.get("prelabeler_prompt_version") != prompt_version
-            or candidate.get("prelabeler_llm_schema_version") != schema_version
-            or candidate.get("prelabeler_decision") not in _PRELABELER_DECISION_SET
-        ):
-            return True
-        if shadow_model and needs_shadow_prelabel(
-            candidate,
-            model=model,
-            shadow_model=shadow_model,
-            prompt_version=prompt_version,
-            llm_schema_version=schema_version,
-        ):
-            return True
-    return False
-
-
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -480,20 +387,13 @@ def episode_needs_tagging(
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
     admission_policy: str = "",
-    prelabeler_enabled: bool = False,
-    prelabeler_model: str = "",
-    prelabeler_prompt_version: str = "1",
-    prelabeler_llm_schema_version: str = "1",
-    prelabeler_shadow_model: str = "",
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
 
     An episode is fully current (returns False) when its cached tags_input_fingerprint matches
     the current inputs, its tags_spec_hash is populated, chapter tags exist if chapters are present,
-    and (if LLM is enabled) its tags_llm_recipe_hash is populated. When the pre-labeler is
-    enabled, active rule/chapter candidates must also carry the current pre-labeler metadata,
-    and -- when ``prelabeler_shadow_model`` is passed -- the current shadow assessment too.
+    and (if LLM is enabled) its tags_llm_recipe_hash is populated.
     """
     has_chapters = bool(episode_served_chapters(ep))
     cheap_fingerprint = tag_input_fingerprint(
@@ -511,37 +411,7 @@ def episode_needs_tagging(
         and (not has_chapters or ep.chapter_tags)
     )
     llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
-    prelabeler_pending = prelabeler_enabled and any(
-        candidate.get("candidate_state") != "historical"
-        and (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id"))
-        and (
-            candidate.get("prelabeler_model") != prelabeler_model
-            or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
-            or candidate.get("prelabeler_llm_schema_version") != prelabeler_llm_schema_version
-            or candidate.get("prelabeler_decision")
-            not in {"likely_correct", "needs_human_review", "likely_incorrect"}
-        )
-        for candidate in (ep.llm_tag_candidates or [])
-        if isinstance(candidate, dict)
-    )
-    shadow_pending = (
-        prelabeler_enabled
-        and bool(prelabeler_shadow_model)
-        and any(
-            needs_shadow_prelabel(
-                candidate,
-                model=prelabeler_model,
-                shadow_model=prelabeler_shadow_model,
-                prompt_version=prelabeler_prompt_version,
-                llm_schema_version=prelabeler_llm_schema_version,
-            )
-            for candidate in (ep.llm_tag_candidates or [])
-            if isinstance(candidate, dict)
-        )
-    )
-    return not (
-        inputs_unchanged and not llm_pending and not prelabeler_pending and not shadow_pending
-    )
+    return not (inputs_unchanged and not llm_pending)
 
 
 def _read_storage_bytes(storage: Any, key: str | None) -> bytes | None:
@@ -882,78 +752,6 @@ def _excerpt_around(text: str, quote: str, *, limit: int) -> str:
     return text[start:end]
 
 
-def _prelabel_source_excerpt(
-    candidate: dict[str, Any],
-    chapter: dict[str, Any] | None,
-    *,
-    fallback_agenda: str,
-    fallback_transcript: str,
-) -> str:
-    """Build reduced, evidence-centered context for the independent evaluator."""
-    evidence = candidate.get("evidence") or []
-    chapter = chapter or {}
-    title = str(chapter.get("title") or "")
-    agenda = str(chapter.get("agenda_text") or fallback_agenda or "")
-    transcript = str(chapter.get("transcript_text") or fallback_transcript or "")
-    segments = [item for item in chapter.get("transcript_segments") or [] if isinstance(item, dict)]
-    parts = [f"Chapter title: {title}" if title else ""]
-    agenda_quotes = [
-        str(item.get("quote") or item.get("span") or "")
-        for item in evidence
-        if item.get("where") == "agenda"
-    ]
-    transcript_quotes = [
-        str(item.get("quote") or item.get("span") or "")
-        for item in evidence
-        if item.get("where") == "transcript"
-    ]
-    if agenda:
-        quote = next((item for item in agenda_quotes if item), "")
-        parts.append("Agenda evidence:\n" + _excerpt_around(agenda, quote, limit=4000))
-    if transcript:
-        chosen_segments: list[dict[str, Any]] = []
-        for item in evidence:
-            if item.get("where") != "transcript":
-                continue
-            start = item.get("start")
-            end = item.get("end") if item.get("end") is not None else start
-            if isinstance(start, (int, float)) and segments:
-                matching = [
-                    index
-                    for index, segment in enumerate(segments)
-                    if isinstance(segment.get("start"), (int, float))
-                    and isinstance(segment.get("end", segment.get("start")), (int, float))
-                    and float(segment.get("start")) <= float(end or start)
-                    and float(segment.get("end", segment.get("start"))) >= float(start)
-                ]
-                for index in matching:
-                    chosen_segments.extend(segments[max(0, index - 1) : index + 2])
-        if chosen_segments:
-            seen: set[int] = set()
-            selected_text: list[str] = []
-            for item in chosen_segments:
-                item_id = id(item)
-                if item_id in seen:
-                    continue
-                seen.add(item_id)
-                selected_text.append(str(item.get("text") or ""))
-            text = "\n".join(selected_text)
-        else:
-            quote = next((item for item in transcript_quotes if item), "")
-            text = _excerpt_around(transcript, quote, limit=7000)
-        parts.append("Transcript evidence:\n" + text)
-    if len(parts) == 1 and (fallback_agenda or fallback_transcript):
-        parts.append(
-            "Source context:\n"
-            + _excerpt_around(
-                f"{fallback_agenda}\n{fallback_transcript}",
-                next((str(item.get("quote") or item.get("span") or "") for item in evidence), ""),
-                limit=11000,
-            )
-        )
-    return "\n\n".join(item for item in parts if item)[:12_000]
-
-
 def _transcript_region(
     quote: str, segments: list[dict[str, Any]]
 ) -> tuple[float | None, float | None]:
@@ -1051,42 +849,6 @@ def ensure_llm_contract():
 
     model = register_response_model(LLM_CONTRACT, Response)
     ensure_llm_contract.model = model
-    return model
-
-
-def ensure_prelabeler_contract():
-    """Register the independent, discrete candidate-review response contract."""
-    cached = getattr(ensure_prelabeler_contract, "model", None)
-    if cached is not None:
-        return cached
-
-    from citypods.compute.structured import register_response_model, response_model
-
-    try:
-        model = response_model(PRELABELER_CONTRACT)
-        ensure_prelabeler_contract.model = model
-        return model
-    except ValueError:
-        pass
-
-    from typing import Literal as _Literal
-
-    from pydantic import BaseModel, ConfigDict, Field
-
-    class Assessment(BaseModel):
-        model_config = ConfigDict(extra="forbid")
-        candidate_id: str = Field(min_length=1, max_length=100)
-        decision: _Literal[PRELABELER_DECISIONS]
-        confidence: float = Field(ge=0.0, le=1.0)
-        reason: str = Field(min_length=1, max_length=500)
-        evidence_supported: bool
-
-    class Response(BaseModel):
-        model_config = ConfigDict(extra="forbid")
-        assessments: list[Assessment] = Field(default_factory=list, max_length=100)
-
-    model = register_response_model(PRELABELER_CONTRACT, Response)
-    ensure_prelabeler_contract.model = model
     return model
 
 
@@ -1494,363 +1256,95 @@ def llm_tag_suggestions(
     return suggestions, chapter_suggestions, False, outcome.model
 
 
-PRELABELER_MAX_CANDIDATES_PER_BATCH = 100
+# The tag admission policy that every stored tag fingerprint was computed under. It was the
+# digest of the R5 calibration config and matrix (`llm_evaluation.policy_fingerprint`), whose 115
+# rows never qualified, so it never changed. It is frozen here when R5 is retired (review/53 PR11):
+# changing it would change `tag_input_fingerprint` and re-open every episode in the catalog.
+TAG_ADMISSION_POLICY = "624ceafe8f6480c1"
 
 
-def prelabeler_sizing_route(model: str, *, allow_paid: bool = False) -> Any:
-    """The route prelabeler batches are sized to fit: the model's highest-daily-quota live route.
+def _json_hash(value: Any) -> str:
+    # An identity digest of public tag fields, not a security control; SHA1 stays so existing
+    # persisted `candidate_id`s keep their value.
+    return hashlib.sha1(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(),
+        usedforsecurity=False,
+    ).hexdigest()[:16]
 
-    Batches used to be sized to ``tpm - 1024`` of the model's first catalog route, ignoring that
-    route's ``hard_input_ceiling``. For ``google/gemma-4-31b-it`` that produced 10-14k-token jobs
-    just over the 10,000-token ceiling of the two 14,400-RPD Google AI Studio routes, so ~85% of
-    prelabeler work could only reach small or slow legs (2026-09-23 review). Sizing to the largest
-    live pool instead keeps every batch admissible there. Paused (``rpd: 0``) and, unless
-    ``allow_paid``, paid routes are ignored.
+
+def candidate_id(candidate: dict[str, Any]) -> str:
+    """Stable identity of one tag candidate; source text and model recipe are part of it.
+
+    The formula is the R5 ledger's and must not change: persisted rows carry the ids it produced,
+    and a rule candidate re-decorated on every run is matched to its stored row by this value. The
+    ``prelabeler_*`` terms are always ``None`` for rows created after the pre-labeler was retired.
     """
-    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
-
-    live = [
-        route
-        for route in ROUTE_CANDIDATES.get(canonical_model(model), ())
-        if route.quota.rpd != 0 and (allow_paid or route.free)
-    ]
-    if not live:
-        return None
-    return max(live, key=lambda route: (route.quota.rpd or 0, route.route_id))
-
-
-@dataclass(frozen=True)
-class PrelabelerBatchLimits:
-    """Per-batch size limits for one sizing route.
-
-    ``max_raw_input_tokens`` is in ``estimate_tokens`` (chars/4) units: the route's real
-    ceiling divided by its measured ``input_token_ratio``. ``max_reserved_tokens`` bounds the
-    Worker's pessimistic claim-time reservation (scaled input + the batch's full output budget)
-    to one minute of the route's TPM, so a batch is always admissible without waiting on a
-    multi-minute token-bucket refill.
-    """
-
-    max_raw_input_tokens: int
-    max_reserved_tokens: int | None
-    input_token_ratio: float
-    context_limit: int | None = None
-    output_limit: int | None = None
-
-    def fits_reservation(self, raw_input_tokens: int, candidate_count: int) -> bool:
-        scaled = math.ceil(raw_input_tokens * self.input_token_ratio)
-        output = (
-            PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
-        )
-        if self.output_limit is not None and output > self.output_limit:
-            return False
-        if self.context_limit is not None and scaled + output > self.context_limit:
-            return False
-        return self.max_reserved_tokens is None or scaled + output <= self.max_reserved_tokens
-
-
-def prelabeler_batch_limits(
-    route: Any, learned_input_ratio: float | None = None
-) -> PrelabelerBatchLimits:
-    """Batch limits for ``route``, at the v2 Worker's learned input ratio when one is known.
-
-    The Worker checks the ceiling with its learned ratio, which can sit above the catalog prior;
-    sizing with the prior alone produced batches the Worker then refused on every ceilinged route
-    (2026-09-25). A learned ratio is taken with PRELABELER_LEARNED_RATIO_MARGIN of slack, since it
-    keeps moving between sizing and claim.
-    """
-    ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
-    if learned_input_ratio is not None and learned_input_ratio > 0:
-        ratio = max(ratio, float(learned_input_ratio)) * PRELABELER_LEARNED_RATIO_MARGIN
-    context = int(getattr(route, "input_context_limit", 32768))
-    ceiling = getattr(route, "hard_input_ceiling", None)
-    provider_cap = min(context, int(ceiling)) if ceiling else context
-    quota = getattr(route, "quota", None)
-    tpm = int(quota.tpm) if quota is not None and quota.tpm else None
-    if tpm is not None:
-        # The single-candidate output budget must still fit beside the input.
-        provider_cap = min(
-            provider_cap, tpm - PRELABELER_OUTPUT_TOKEN_OVERHEAD - PRELABELER_OUTPUT_TOKENS_PER_ITEM
-        )
-    max_raw_input_tokens = math.floor(provider_cap / ratio)
-    if max_raw_input_tokens < 1:
-        # A clamp to 1 would make every batch "payload-too-large" and read as ordinary backlog
-        # forever; a route this small is a catalog error and must surface as one.
-        raise ValueError(
-            f"pre-labeler route {getattr(route, 'route_id', '') or '<unknown>'!r} leaves no "
-            f"input budget (context/ceiling/tpm allow {provider_cap} provider tokens after the "
-            "output reserve); fix its limits in config/provider_limits.yml"
-        )
-    return PrelabelerBatchLimits(
-        max_raw_input_tokens=max_raw_input_tokens,
-        max_reserved_tokens=tpm,
-        input_token_ratio=ratio,
-        context_limit=context,
-        output_limit=int(getattr(route, "output_context_limit", 1024)),
-    )
-
-
-def llm_prelabel_candidates(
-    backend: Any,
-    *,
-    candidates: list[dict[str, Any]],
-    taxonomy: Taxonomy,
-    chapters: list[dict[str, Any]] | None,
-    agenda_text: str = "",
-    transcript_text: str = "",
-    recipe_hash: str,
-    model: str,
-    prompt_version: str = PRELABELER_PROMPT_VERSION,
-    llm_schema_version: str = "1",
-    allow_paid: bool = False,
-    deadline_at: Any | None = None,
-    call_metadata_out: dict[str, Any] | None = None,
-    purpose: str = PRELABELER_PURPOSE,
-) -> tuple[dict[str, dict[str, Any]], bool, str | None]:
-    """Run the independent discrete evaluator over persisted candidate subjects.
-
-    The evaluator receives only the proposed tag, its evidence, and the smallest reliable source
-    context. It deliberately has a different structured contract and route allowlist from the
-    production tagger. ``({}, True, None)`` means deferred; ``({}, True, "payload-too-large")``
-    is reserved for a future token-aware split/defer implementation.
-
-    ``purpose`` names the ``llm_lanes`` entry these jobs are charged to at ingress. It defaults to
-    the production lane, but the R5 benchmark runs the same evaluator over its own frozen sample
-    and passes ``r5-benchmark:judge``: a shadow benchmark must not spend the catalog's prelabel
-    budget, which is exactly what a hard-coded purpose made it do.
-    """
-    if not candidates or not model:
-        return {}, False, None
-    response_model_type = ensure_prelabeler_contract()
-    from citypods.compute.base import InferenceJob, JobHandle, JobResult
-    from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
-
-    taxonomy_by_id = taxonomy.by_id
-    chapter_by_id = {item.get("chapter_id"): item for item in (chapters or [])}
-    context: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for candidate in candidates:
-        tag = taxonomy_by_id.get(str(candidate.get("id") or ""))
-        chapter = chapter_by_id.get(candidate.get("chapter_id"))
-        context.append(
-            (
-                candidate,
-                {
-                    "candidate_id": candidate.get("candidate_id"),
-                    "source_kind": candidate.get("source_kind", "llm"),
-                    "tag": {
-                        "id": candidate.get("id"),
-                        "label": tag.label if tag else candidate.get("id"),
-                        "description": tag.description if tag else "",
-                    },
-                    "scope": candidate.get("scope"),
-                    "chapter_id": candidate.get("chapter_id"),
-                    "chapter_title": (chapter or {}).get("title", ""),
-                    "evidence": (candidate.get("evidence") or [])[:6],
-                    "tagger_explanation": candidate.get("explanation", ""),
-                    "source_excerpt": _prelabel_source_excerpt(
-                        candidate,
-                        chapter,
-                        fallback_agenda=agenda_text,
-                        fallback_transcript=transcript_text,
-                    ),
-                },
-            )
-        )
-    backend_storage = getattr(backend, "storage", None)
-    route = prelabeler_sizing_route(model, allow_paid=allow_paid) or ROUTES.get(model)
-    from citypods.compute.llm import dispatch_v2_learned_input_ratio
-
-    learned_ratio = (
-        dispatch_v2_learned_input_ratio(route.route_id, "tag", backend=backend)
-        if getattr(route, "hard_input_ceiling", None)
-        else None
-    )
-    limits = prelabeler_batch_limits(route, learned_ratio)
-    input_context_limit = limits.max_raw_input_tokens
-    output_context_limit = int(getattr(route, "output_context_limit", 1024))
-    # Keep a response/output reserve. The evaluator may receive many candidates, but it must
-    # never silently drop the tail or rely on a provider-specific implicit truncation.
-    max_input_tokens = max(1, input_context_limit)
-    system_content = (
-        "Audit each proposed topic-tag candidate independently. Return one assessment "
-        "for each candidate_id. likely_correct means the proposed tag is supported by "
-        "the supplied source and the evidence quote is faithful. likely_incorrect means "
-        "the tag should not be displayed. Use needs_human_review when the evidence is "
-        "insufficient, ambiguous, or the proposal cannot be confidently judged. Do not "
-        "add or remove candidates."
-    )
-    taxonomy_payload = [
-        {"id": tag.id, "label": tag.label, "description": tag.description} for tag in taxonomy.tags
-    ]
-
-    def make_messages(items: list[dict[str, Any]]) -> list[dict[str, str]]:
-        return [
-            {"role": "system", "content": system_content},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {"taxonomy": taxonomy_payload, "candidates": items}, ensure_ascii=False
-                ),
-            },
-        ]
-
-    batches: list[list[tuple[dict[str, Any], dict[str, Any]]]] = []
-    current: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for pair in context:
-        proposed = current + [pair]
-        estimate = estimate_tokens(make_messages([item for _, item in proposed]))
-        if current and (
-            estimate > max_input_tokens
-            or len(current) >= PRELABELER_MAX_CANDIDATES_PER_BATCH
-            or not limits.fits_reservation(estimate, len(proposed))
-        ):
-            batches.append(current)
-            current = [pair]
-        else:
-            current = proposed
-    if current:
-        batches.append(current)
-
-    result: dict[str, dict[str, Any]] = {}
-    pending = False
-    payload_too_large = False
-    total_estimate = 0
-    max_estimate = 0
-    truncation = False
-    batch_count = 0
-    batch_metadata: list[dict[str, Any]] = []
-    for batch_index, batch in enumerate(batches):
-        batch_context = [item for _, item in batch]
-        messages = make_messages(batch_context)
-        input_tokens_estimate = estimate_tokens(messages)
-        total_estimate += input_tokens_estimate
-        max_estimate = max(max_estimate, input_tokens_estimate)
-        # The fixed excerpt caps are an intentional pre-labeler reduction; record it rather than
-        # pretending the evaluator saw the whole transcript.
-        batch_truncated = any(
-            len(str(item.get("source_excerpt") or "")) >= 12_000 for item in batch_context
-        )
-        truncation = truncation or batch_truncated
-        input_digest = hashlib.sha1(
-            json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-        ).hexdigest()[:16]
-        required_output_tokens = (
-            PRELABELER_OUTPUT_TOKEN_OVERHEAD
-            + PRELABELER_OUTPUT_TOKENS_PER_ITEM * len(batch_context)
-        )
-        output_token_budget = min(required_output_tokens, output_context_limit)
-        call_metadata = {
-            "prelabeler_sizing_route": getattr(route, "route_id", "") or "",
-            "prelabeler_model": model,
-            "prelabeler_prompt_version": prompt_version,
-            "prelabeler_llm_schema_version": llm_schema_version,
-            "prelabeler_input_tokens_estimate": input_tokens_estimate,
-            "prelabeler_output_token_budget": output_token_budget,
-            "prelabeler_route_input_context_limit": input_context_limit,
-            "prelabeler_route_output_context_limit": output_context_limit,
-            "prelabeler_truncation_occurred": batch_truncated,
-            "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
-            "prelabeler_input_digest": input_digest,
-            "prelabeler_batch_index": batch_index,
-        }
-        batch_metadata.append(dict(call_metadata))
-        if (
-            input_tokens_estimate > input_context_limit
-            or output_token_budget < required_output_tokens
-            or not limits.fits_reservation(input_tokens_estimate, len(batch_context))
-        ):
-            pending = True
-            payload_too_large = True
-            continue
-        inputs: dict[str, Any] = {
-            "messages": messages,
-            "structured_output": PRELABELER_CONTRACT,
-            "max_tokens": output_token_budget,
-        }
-        if getattr(backend_storage, "cas_capable", False):
-            inputs["llm_policy"] = LLMRequestPolicy(
-                allowed_models=(model,),
-                allow_paid=allow_paid,
-                purpose=purpose,
-                deadline_at=None,
-                queue_only=True,
-                timeout_class="fast",
-            )
-        batch_recipe = hashlib.sha1(
-            json.dumps(
-                {
-                    "recipe": recipe_hash,
-                    "batch": batch_index,
-                    "llm_schema_version": llm_schema_version,
-                    "ids": [c.get("candidate_id") for c, _ in batch],
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()[:16]
-        outcome = backend.run_inference(
-            InferenceJob(task="tag", inputs=inputs, recipe_hash=f"{recipe_hash}-{batch_recipe}")
-        )
-        batch_count += 1
-        if isinstance(outcome, JobHandle):
-            pending = True
-            continue
-        if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
-            raise ValueError("LLM pre-labeler backend returned an invalid result")
-        choices = outcome.output.get("choices")
-        content = (
-            choices[0].get("message", {}).get("content")
-            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
-            else None
-        )
-        if not isinstance(content, str):
-            raise ValueError("LLM pre-labeler backend returned no structured content")
-        parsed = parse_structured_json(content, context="LLM pre-labeler response")
-        # A few JSON-capable routes honor the item schema but omit the enclosing object and return
-        # the assessment list directly. This adapter is intentionally contract-specific: other
-        # verbs must not start accepting arbitrary list/object shape changes.
-        if isinstance(parsed, list):
-            parsed = {"assessments": parsed}
-        response = response_model_type.model_validate(parsed)
-        known = {str(candidate.get("candidate_id")): candidate for candidate, _ in batch}
-        for assessment in response.assessments:
-            candidate_id_value = str(assessment.candidate_id)
-            if candidate_id_value not in known or candidate_id_value in result:
-                continue
-            result[candidate_id_value] = {
-                **call_metadata,
-                "prelabeler_model": outcome.model or model,
-                "evaluator_model": outcome.model or model,
-                "prelabeler_decision": str(assessment.decision),
-                "prelabeler_confidence": float(assessment.confidence),
-                "prelabeler_reason": assessment.reason,
-                "prelabeler_evidence_supported": bool(assessment.evidence_supported),
-            }
-    metadata = {
-        "prelabeler_model": model,
-        "prelabeler_prompt_version": prompt_version,
-        "prelabeler_llm_schema_version": llm_schema_version,
-        "prelabeler_input_tokens_estimate": total_estimate,
-        "prelabeler_max_batch_input_tokens": max_estimate,
-        "prelabeler_batches": batch_count,
-        "prelabeler_route_input_context_limit": input_context_limit,
-        "prelabeler_route_output_context_limit": output_context_limit,
-        "prelabeler_truncation_occurred": truncation,
-        "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
-        "prelabeler_batches_metadata": batch_metadata,
-        "prelabeler_input_digests": [
-            str(item.get("prelabeler_input_digest"))
-            for item in batch_metadata
-            if item.get("prelabeler_input_digest")
-        ],
+    assessment = str(candidate.get("assessment_kind") or "")
+    key: dict[str, Any] = {
+        "feature": str(candidate.get("feature") or ""),
+        "provider_model": str(candidate.get("provider_model") or ""),
+        "prompt_version": str(candidate.get("prompt_version") or ""),
+        "taxonomy_version": candidate.get("taxonomy_version"),
+        "label": str(candidate.get("id") or candidate.get("label") or ""),
+        "scope": str(
+            candidate.get("scope") or ("chapter" if candidate.get("chapter_id") else "episode")
+        ),
     }
-    if call_metadata_out is not None:
-        call_metadata_out.clear()
-        call_metadata_out.update(metadata)
-    return (
-        result,
-        pending,
-        ("payload-too-large" if payload_too_large else (None if pending else model)),
-    )
+    if "source_kind" in candidate:
+        key["source_kind"] = str(candidate.get("source_kind") or "llm")
+    if "assessment_kind" in candidate or assessment not in {"", "tagger-admission"}:
+        key["assessment_kind"] = assessment or "tagger-admission"
+        if candidate.get("evaluator_model"):
+            key["evaluator_model"] = str(candidate["evaluator_model"])
+    if candidate.get("chapter_pipeline_version") is not None:
+        key["chapter_pipeline_version"] = str(candidate["chapter_pipeline_version"])
+    identity = {
+        **key,
+        "episode_uid": candidate.get("episode_uid"),
+        "chapter_id": candidate.get("chapter_id"),
+        "recipe_hash": candidate.get("recipe_hash"),
+        "confidence": candidate.get("confidence"),
+        "source_kind": candidate.get("source_kind", "llm"),
+        "assessment_kind": candidate.get("assessment_kind", "tagger-admission"),
+        "prelabeler_decision": candidate.get("prelabeler_decision"),
+        "prelabeler_reason": candidate.get("prelabeler_reason"),
+        "prelabeler_input_digest": candidate.get("prelabeler_input_digest"),
+    }
+    return f"llm-{_json_hash(identity)}"
+
+
+def apply_admission(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Project one candidate onto the public display rule.
+
+    Until the judge stack graduates (review/53 PR8) an LLM tag is a hidden shadow and a
+    deterministic rule tag is shown. This is what the R5 calibration matrix computed while none of
+    its rows ever qualified: an LLM candidate's confidence never exceeded the 1.0 fallback.
+    Historical rows stay in the ledger for audit and are never displayed.
+    """
+    value = dict(candidate)
+    value["candidate_id"] = str(candidate.get("candidate_id") or candidate_id(candidate))
+    value.setdefault("source_kind", "llm")
+    if value.get("candidate_state") == "historical":
+        value["admission"] = "shadow"
+        value["display"] = False
+        return value
+    if value["source_kind"] == "rule":
+        value["tagger_admission"] = "not_applicable"
+        value["admission"] = "admitted"
+    else:
+        value.setdefault("tagger_admission", "shadow")
+        value["admission"] = "shadow"
+    value["display"] = value["admission"] == "admitted"
+    return value
+
+
+def visible_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        applied
+        for candidate in candidates
+        if candidate.get("candidate_state") != "historical"
+        if (applied := apply_admission(candidate))["admission"] == "admitted"
+    ]
 
 
 def decorate_llm_candidates(
@@ -1865,8 +1359,6 @@ def decorate_llm_candidates(
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> list[dict[str, Any]]:
     """Attach generic evaluator dimensions to validated feature-specific suggestions."""
-    from citypods.llm_evaluation import candidate_id
-
     result: list[dict[str, Any]] = []
     for candidate in candidates:
         value = {
@@ -1899,8 +1391,6 @@ def decorate_rule_candidates(
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> list[dict[str, Any]]:
     """Put deterministic matches into the same persisted ledger as LLM candidates."""
-    from citypods.llm_evaluation import candidate_id
-
     result: list[dict[str, Any]] = []
     for candidate in candidates:
         evidence = []
@@ -2023,14 +1513,12 @@ def rollup_tags(
 __all__ = [
     "LLM_CONTRACT",
     "TAG_LLM_SCHEMA_VERSION",
-    "PRELABELER_CONTRACT",
-    "PRELABELER_PROMPT_VERSION",
     "TAG_FEATURE",
     "TAGGER_PURPOSE",
-    "PRELABELER_PURPOSE",
-    "PRELABELER_SHADOW_PURPOSE",
-    "episode_evaluator_work_pending",
-    "needs_shadow_prelabel",
+    "apply_admission",
+    "candidate_id",
+    "visible_candidates",
+    "TAG_ADMISSION_POLICY",
     "TAG_PROMPT_VERSION",
     "TAGGER_VERSION",
     "CHAPTER_PIPELINE_VERSION",
@@ -2044,8 +1532,6 @@ __all__ = [
     "decorate_rule_candidates",
     "agenda_document_context",
     "ensure_llm_contract",
-    "ensure_prelabeler_contract",
-    "llm_prelabel_candidates",
     "load_taxonomy",
     "merge_tag_sources",
     "rollup_tags",

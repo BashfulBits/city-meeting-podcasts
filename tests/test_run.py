@@ -3483,7 +3483,6 @@ def test_tag_lane_candidate_window_with_caps_and_zero_caps(tmp_path, monkeypatch
         tag_backend=object(),
     )
     ctx_zero.tag_max_dispatches = 0
-    ctx_zero.tag_prelabeler_max_dispatches = 0
 
     pipeline_zero = SourcePipeline(
         state_dir=tmp_path / "state",
@@ -3510,7 +3509,6 @@ def test_tag_lane_candidate_window_with_caps_and_zero_caps(tmp_path, monkeypatch
         tag_backend=object(),
     )
     ctx_pos.tag_max_dispatches = 2
-    ctx_pos.tag_prelabeler_max_dispatches = 2
 
     pipeline_pos = SourcePipeline(
         state_dir=tmp_path / "state",
@@ -3867,142 +3865,6 @@ def test_global_queue_audio_lane_marks_permanent_provider_404_error(monkeypatch)
     assert res_by_slug["good-city"].status == "built"
     assert res_by_slug["drift-city"].status == "error"
     assert "404" in res_by_slug["drift-city"].detail
-
-
-def test_tag_lane_pre_filter_keeps_episodes_with_pending_shadow_prelabels(tmp_path):
-    """The run-level tag pre-filter shares `needs_shadow_prelabel` with TagsStage: an episode
-    whose only outstanding work is the shadow evaluator must reach the stage (or its deferred
-    shadow result is never read back), and must be dropped once the shadow is current, disabled,
-    or out of per-run allowance."""
-    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
-    from citypods.run import SourcePipeline, _run_enrich_global_queue
-    from citypods.stages import StageContext, StageStats
-    from citypods.tags import TAG_PROMPT_VERSION, load_taxonomy, tag_input_fingerprint
-
-    taxonomy_file = tmp_path / "taxonomy.yml"
-    taxonomy_file.write_text(
-        "version: 1\nreviewed_at: '2026-01-01'\nsource_refs: {x: 'https://example.test'}\n"
-        "tags:\n  - id: housing\n    label: Housing\n    description: desc\n    group: land-use\n"
-        "    source_refs: [x]\n    rules: {include: [housing]}\n"
-    )
-    taxonomy = load_taxonomy(taxonomy_file)
-
-    class _Backend:
-        name = "litellm"
-
-        class config:  # noqa: N801
-            model = "gemini/gemini-3.1-flash-lite"
-
-    evaluation_config = {
-        "prelabeler": {
-            "enabled": True,
-            "model": "prod-evaluator",
-            "shadow_model": "shadow-evaluator",
-            "shadow_enabled": True,
-            "prompt_version": "1",
-            "llm_schema_version": "2",
-        }
-    }
-    production = {
-        "prelabeler_model": "prod-evaluator",
-        "prelabeler_prompt_version": "1",
-        "prelabeler_llm_schema_version": "2",
-        "prelabeler_decision": "likely_correct",
-    }
-    shadow = {
-        "prelabeler_shadow_model": "shadow-evaluator",
-        "prelabeler_shadow_prompt_version": "1",
-        "prelabeler_shadow_llm_schema_version": "2",
-        "prelabeler_shadow_decision": "likely_incorrect",
-    }
-
-    def episode(guid, candidate_fields):
-        ep = Episode(
-            guid=guid,
-            uid=f"uid-{guid}",
-            title=f"Meeting {guid}",
-            published=_NOW,
-            video_url=f"https://x/{guid}.mp4",
-            media_kind="hls",
-            body="Council",
-        )
-        ep.tags_input_fingerprint = tag_input_fingerprint(
-            ep,
-            taxonomy,
-            llm_enabled=True,
-            llm_route="litellm:gemini/gemini-3.1-flash-lite",
-            prompt_version=TAG_PROMPT_VERSION,
-            admission_policy=policy_fingerprint(
-                config_from_mapping(evaluation_config),
-                {"version": 1, "reviews": {}, "matrix": [], "trend": []},
-            ),
-        )
-        ep.tags_spec_hash = "current"
-        ep.tags_llm_recipe_hash = "resolved"
-        ep.llm_tag_candidates = [
-            {"candidate_id": f"rule-{guid}", "source_kind": "rule", **candidate_fields}
-        ]
-        return ep
-
-    shadow_pending = episode("shadow-pending", production)
-    all_current = episode("all-current", {**production, **shadow})
-
-    def processed(**ctx_overrides):
-        class _CountingStage:
-            name = "tags"
-
-            def census(self, *_args):
-                """No LLM work in this queue-only test double."""
-                pass
-
-            version = "1"
-
-            def __init__(self):
-                self.processed = []
-
-            def process(self, provider, city, episodes, ctx):
-                self.processed.extend(ep.guid for ep in episodes)
-                return StageStats(self.name)
-
-        stage = _CountingStage()
-        ctx = StageContext(
-            storage=None,
-            ffmpeg=None,
-            max_kbps=96,
-            dry_run=True,
-            lane="tag",
-            taxonomy_path=taxonomy_file,
-        )
-        ctx.tag_backend = _Backend()
-        ctx.llm_evaluation_config = ctx_overrides.pop("config", evaluation_config)
-        for key, value in ctx_overrides.items():
-            setattr(ctx, key, value)
-        pipeline = SourcePipeline(
-            state_dir=tmp_path / "state",
-            stages=[stage],
-            ctx=ctx,
-            full_artifact_episodes=2000,
-            metadata_retention_episodes=10000,
-        )
-        pipeline.fetch_merge_from_records = lambda city, key: (
-            None,
-            [shadow_pending, all_current],
-            {},
-            0,
-        )
-        pipeline.persist_source = lambda key, eps, persisted, notes=None: None
-        _run_enrich_global_queue(
-            pipeline, [_bare_city("test-city")], source_cache=None, max_workers=1, policy=None
-        )
-        return stage.processed
-
-    assert processed() == ["shadow-pending"]
-    disabled = {"prelabeler": {**evaluation_config["prelabeler"], "shadow_enabled": False}}
-    assert processed(config=disabled) == []
-    assert (
-        processed(tag_prelabeler_shadow_max_dispatches=1, tag_prelabeler_shadow_dispatches_count=1)
-        == []
-    )
 
 
 def test_closed_llm_lanes_checks_only_enabled_lanes(monkeypatch):
@@ -4471,33 +4333,6 @@ def test_archive_only_identity_conflict_is_a_city_error_without_writes(tmp_path)
     assert "GUID mismatch" in result.detail
     assert entry is None
     assert (target / "audio_feed.xml").read_text() == "previous output"
-
-
-@pytest.mark.parametrize("enabled", [False, True])
-def test_build_only_requires_shadow_lane_when_enabled(
-    tmp_path, fake_provider, monkeypatch, enabled
-):
-    from citypods.compute.llm_lanes import UnregisteredLaneError
-
-    cities = _setup(tmp_path)
-    with (tmp_path / "site_config.yml").open("a") as config:
-        config.write(f"tagging:\n  prelabeler:\n    shadow_enabled: {str(enabled).lower()}\n")
-    original_lane_for = run.lane_for
-    lookups = []
-
-    def without_shadow(purpose):
-        lookups.append(purpose)
-        if purpose == "topic-tags:prelabeler-shadow":
-            raise UnregisteredLaneError(purpose)
-        return original_lane_for(purpose)
-
-    monkeypatch.setattr(run, "lane_for", without_shadow)
-    if enabled:
-        with pytest.raises(UnregisteredLaneError, match="prelabeler-shadow"):
-            _build(tmp_path, cities)
-    else:
-        assert _build(tmp_path, cities)
-        assert "topic-tags:prelabeler-shadow" not in lookups
 
 
 def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout():

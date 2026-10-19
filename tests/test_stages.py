@@ -1293,24 +1293,20 @@ def test_audio_stage_skips_withheld_availability(tmp_path):
 def test_cached_tags_census_initializes_inputs_before_completion_skip(tmp_path):
     from types import SimpleNamespace
 
-    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
     from citypods.stages import TagsStage
-    from citypods.tags import load_taxonomy, tag_input_fingerprint
+    from citypods.tags import TAG_ADMISSION_POLICY, load_taxonomy, tag_input_fingerprint
 
     ctx = _ctx(tmp_path)
     ctx.tag_backend = SimpleNamespace(name="litellm", config=SimpleNamespace(model="model"))
     episode = _ep("cached")
     episode.chapters = [{"start": 0, "title": "Budget"}]
     episode.tags_llm_recipe_hash = "resolved-recipe"
-    evaluation_state = {"version": 1, "reviews": {}, "matrix": [], "trend": []}
     episode.tags_input_fingerprint = tag_input_fingerprint(
         episode,
         load_taxonomy(ctx.taxonomy_path),
         llm_enabled=True,
         llm_route="litellm:model",
-        admission_policy=policy_fingerprint(
-            config_from_mapping(ctx.llm_evaluation_config), evaluation_state
-        ),
+        admission_policy=TAG_ADMISSION_POLICY,
     )
     stage = TagsStage()
     city = _city()
@@ -1920,14 +1916,10 @@ def _mark_pending(ep, ctx, taxonomy):
     leaves behind: a cached input fingerprint that matches the current inputs, a set spec hash, and
     no resolved LLM recipe hash. Computed with the exact inputs TagsStage.process derives so the
     triage's cheap pre-check recognises the episode as unchanged."""
-    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
-    from citypods.tags import TAG_PROMPT_VERSION, tag_input_fingerprint
+    from citypods.tags import TAG_ADMISSION_POLICY, TAG_PROMPT_VERSION, tag_input_fingerprint
 
     route = f"{ctx.tag_backend.name}:{ctx.tag_backend.config.model}"
-    admission = policy_fingerprint(
-        config_from_mapping(ctx.llm_evaluation_config),
-        {"version": 1, "reviews": {}, "matrix": [], "trend": []},
-    )
+    admission = TAG_ADMISSION_POLICY
     ep.tags_input_fingerprint = tag_input_fingerprint(
         ep,
         taxonomy,
@@ -1954,7 +1946,7 @@ class _CountingStorage:
         return self._inner.get_file(key, local_path)
 
 
-def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeypatch):
+def test_tags_stage_loads_taxonomy_once_per_run(tmp_path, monkeypatch):
     """A real scheduled tag run showed only 2 live LLM calls across a 13k-episode backlog before
     exhausting its wall-clock budget. Root cause: TagsStage.process() is invoked once PER EPISODE
     by the global queue, and it re-read + re-parsed the taxonomy YAML and calibration-state JSON
@@ -1962,9 +1954,6 @@ def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeyp
     of pure YAML parsing across the backlog before dispatch logic ever ran. Both are read-only for
     the whole run, so they must load at most once per `ctx` (the same object across every
     per-episode call in one build), cached on `ctx.tag_taxonomy_cache`."""
-    import json
-
-    import citypods.llm_evaluation as eval_mod
     import citypods.tags as tags_mod
     from citypods.stages import TagsStage
 
@@ -1977,20 +1966,7 @@ def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeyp
 
     monkeypatch.setattr(tags_mod, "load_taxonomy", _counting_load_taxonomy)
 
-    load_state_calls = {"n": 0}
-    real_load_state = eval_mod.load_state
-
-    def _counting_load_state(*a, **k):
-        load_state_calls["n"] += 1
-        return real_load_state(*a, **k)
-
-    monkeypatch.setattr(eval_mod, "load_state", _counting_load_state)
-
-    eval_state_path = tmp_path / "llm_evaluation.json"
-    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
-
     ctx = _ctx(tmp_path)
-    ctx.llm_evaluation_state_path = eval_state_path
     stage = TagsStage()  # one instance, one ctx -- mirrors the global queue reusing both
 
     eps = [_ep("g1"), _ep("g2"), _ep("g3")]
@@ -1998,38 +1974,13 @@ def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeyp
         stage.process(None, _city(), [ep], ctx)
 
     assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
-    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
 
     # A fresh ctx (a different run/build) must NOT share the cache -- the cache lives on ctx, and
     # ctx is constructed fresh per build, so this is the natural boundary, not a special case to
     # maintain by hand.
     ctx2 = _ctx(tmp_path)
-    ctx2.llm_evaluation_state_path = eval_state_path
     stage.process(None, _city(), [_ep("g4")], ctx2)
     assert load_taxonomy_calls["n"] == 2
-    assert load_state_calls["n"] == 2
-
-
-def test_tags_stage_caches_malformed_evaluation_config_as_eval_error(tmp_path):
-    """`config_from_mapping()` and `policy_fingerprint()` run inside the same cache-populate block
-    as `load_state()`, so a malformed `tagging.evaluation` config (e.g. a non-numeric
-    `minimum_reviews`) must degrade the same way a corrupt state file already does: cached once as
-    `eval_error` and reported cheaply on every subsequent call, not re-raised uncaught out of every
-    one of this run's per-episode process() calls."""
-    from citypods.stages import TagsStage
-
-    ctx = _ctx(tmp_path)
-    ctx.llm_evaluation_config = {"minimum_reviews": "not-a-number"}
-
-    stats = TagsStage().process(None, _city(), [_ep("g1")], ctx)
-
-    assert "eval_error" in ctx.tag_taxonomy_cache
-    assert stats.errors and "LLM evaluation state unavailable" in stats.errors[0]
-
-    # Cached, not re-raised: a second call with the same broken ctx reports the same error again
-    # instead of blowing up.
-    stats2 = TagsStage().process(None, _city(), [_ep("g2")], ctx)
-    assert stats2.errors and "LLM evaluation state unavailable" in stats2.errors[0]
 
 
 def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path, monkeypatch):
@@ -2041,11 +1992,9 @@ def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path
     initialization entirely, and KeyError reading `cache["admission_policy"]`. An injected delay
     between those two writes widens that window so the race would be near-certain to reproduce
     without `tag_taxonomy_cache_lock` serializing the whole check-then-populate sequence."""
-    import json
     import threading
     import time
 
-    import citypods.llm_evaluation as eval_mod
     import citypods.tags as tags_mod
     from citypods.stages import TagsStage
 
@@ -2060,22 +2009,7 @@ def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path
 
     monkeypatch.setattr(tags_mod, "load_taxonomy", _slow_load_taxonomy)
 
-    load_state_calls = {"n": 0}
-    real_load_state = eval_mod.load_state
-
-    def _slow_load_state(*a, **k):
-        load_state_calls["n"] += 1
-        result = real_load_state(*a, **k)
-        time.sleep(0.02)  # widen the window between the eval-state and admission-policy writes
-        return result
-
-    monkeypatch.setattr(eval_mod, "load_state", _slow_load_state)
-
-    eval_state_path = tmp_path / "llm_evaluation.json"
-    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
-
     ctx = _ctx(tmp_path)
-    ctx.llm_evaluation_state_path = eval_state_path
     stage = TagsStage()
 
     n_threads = 12
@@ -2099,7 +2033,6 @@ def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path
 
     assert not errors, f"worker thread(s) raised: {errors}"
     assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
-    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
 
 
 def test_tags_stage_pending_episode_rechecks_durable_worker_job(tmp_path):
@@ -2233,79 +2166,6 @@ def test_tag_no_quota_preserves_rule_tags_and_candidate_ledger(tmp_path):
     snapshot = ctx.llm_work.snapshot()["purposes"]["topic-tags:tagger"]
     assert snapshot["states"] == {"ingress_limited": 1}
     assert snapshot["consumed"] == 0  # Rules alone are not LLM consumption.
-
-
-def test_tag_prelabeler_quota_defers_before_storage_fetch(tmp_path):
-    """A spent evaluator allowance must stop the pass before it re-reads the backlog."""
-    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
-    from citypods.stages import TagsStage
-    from citypods.tags import TAG_PROMPT_VERSION, load_taxonomy, tag_input_fingerprint
-
-    class _CountingStorage:
-        def __init__(self, inner):
-            self._inner = inner
-            self.reads = 0
-
-        def exists(self, key):
-            self.reads += 1
-            return self._inner.exists(key)
-
-        def get_file(self, key, local_path):
-            self.reads += 1
-            return self._inner.get_file(key, local_path)
-
-    ep = _ep("prelabeler-quota")
-    ep.tags_llm_recipe_hash = "already-resolved"
-    ep.llm_tag_candidates = [
-        {
-            "candidate_id": "rule-candidate",
-            "source_kind": "rule",
-            "candidate_state": "active",
-        }
-    ]
-    ctx = _ctx(tmp_path)
-    ctx.tag_backend = object()
-    ctx.llm_evaluation_config = {
-        "prelabeler": {
-            "enabled": True,
-            "model": "gemini/gemini-3.1-flash-lite",
-            "prompt_version": "1",
-            "llm_schema_version": "1",
-        }
-    }
-    taxonomy = load_taxonomy(ctx.taxonomy_path)
-    evaluation_state = {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-    ep.tags_input_fingerprint = tag_input_fingerprint(
-        ep,
-        taxonomy,
-        llm_enabled=True,
-        llm_route="litellm:",
-        prompt_version=TAG_PROMPT_VERSION,
-        admission_policy=policy_fingerprint(
-            config_from_mapping(ctx.llm_evaluation_config), evaluation_state
-        ),
-    )
-    ep.tags_spec_hash = "current"
-    ctx.tag_prelabeler_dispatch_exhausted.set()
-    ctx.storage = _CountingStorage(ctx.storage)
-
-    stats = TagsStage().process(None, _city(), [ep], ctx)
-
-    assert stats.defer_reasons.get("tag-prelabeler-no-quota") == 1
-    assert ctx.storage.reads == 0
-
-
-def test_tag_prelabeler_dispatch_cap_tracks_queued_work(tmp_path):
-    """The evaluator has an independent per-run producer allowance."""
-    ctx = _ctx(tmp_path)
-    ctx.tag_prelabeler_max_dispatches = 1
-
-    assert ctx.reserve_tag_prelabeler_dispatch()
-    ctx.settle_tag_prelabeler_dispatch(True)
-
-    assert ctx.tag_prelabeler_dispatches_count == 1
-    assert ctx.tag_prelabeler_dispatch_exhausted.is_set()
-    assert not ctx.reserve_tag_prelabeler_dispatch()
 
 
 def test_tag_dispatch_cap_is_reserved_across_concurrent_workers(tmp_path, monkeypatch):
@@ -2538,88 +2398,6 @@ class _EvaluatorBackend:
             output={"choices": [{"message": {"content": content}}]},
             model=model,
         )
-
-
-def test_tag_shadow_prelabeler_records_beside_production_without_changing_display(tmp_path):
-    """The shadow evaluator runs after production on the same subjects, is stored only under
-    `prelabeler_shadow_*`, and never changes what is displayed."""
-    from citypods.stages import TagsStage
-    from citypods.tags import load_taxonomy
-
-    taxonomy_path = tmp_path / "taxonomy.yml"
-    taxonomy_path.write_text(
-        "version: 1\n"
-        "source_refs: {x: 'https://example.test'}\n"
-        "tags:\n"
-        "  - id: housing\n"
-        "    label: Housing\n"
-        "    description: Housing\n"
-        "    group: land-use\n"
-        "    source_refs: [x]\n"
-        "    rules: {include: [housing]}\n"
-    )
-    ep = _ep("shadow")
-    ep.source_chapters = [{"start": 0, "title": "Housing"}]
-    ep.links = {"agenda_text_artifact_key": "agenda-shadow"}
-    ctx = _ctx(tmp_path)
-    ctx.taxonomy_path = taxonomy_path
-    backend = _EvaluatorBackend(
-        {"prod-evaluator": "likely_correct", "shadow-evaluator": "likely_incorrect"}
-    )
-    ctx.tag_backend = backend
-    ctx.tag_llm_dispatch_exhausted.set()  # no new LLM tagging; rule candidates only
-    ctx.llm_evaluation_config = {
-        "prelabeler": {
-            "enabled": True,
-            "model": "prod-evaluator",
-            "shadow_model": "shadow-evaluator",
-            "shadow_enabled": True,
-            "prompt_version": "1",
-            "llm_schema_version": "2",
-        }
-    }
-    ctx.tag_prelabeler_shadow_max_dispatches = 5
-    ctx.storage.put_file(
-        "agenda-shadow",
-        _write_temp(tmp_path, "agenda-shadow.txt", b"Housing plan"),
-        "text/plain",
-    )
-    _mark_pending(ep, ctx, load_taxonomy(taxonomy_path))
-
-    def run():
-        TagsStage().process(None, _city(), [ep], ctx)
-        return next(c for c in ep.llm_tag_candidates if c.get("source_kind") == "rule")
-
-    # Run 1: production is queued (deferred), so there is nothing for the shadow to follow yet.
-    rule = run()
-    assert backend.calls == [("prod-evaluator", "topic-tags:prelabeler", "deferred")]
-    assert "prelabeler_shadow_model" not in rule
-    # Run 2: production result collected; shadow queued under its own ingress purpose.
-    rule = run()
-    assert backend.calls[1:] == [
-        ("prod-evaluator", "topic-tags:prelabeler", "result"),
-        ("shadow-evaluator", "topic-tags:prelabeler-shadow", "deferred"),
-    ]
-    assert rule["prelabeler_decision"] == "likely_correct"
-    # Run 3: the deferred shadow result is read back beside production.
-    rule = run()
-    assert backend.calls[3:] == [("shadow-evaluator", "topic-tags:prelabeler-shadow", "result")]
-    assert rule["prelabeler_model"] == "prod-evaluator"
-    assert rule["prelabeler_decision"] == "likely_correct"
-    assert rule["prelabeler_shadow_model"] == "shadow-evaluator"
-    assert rule["prelabeler_shadow_decision"] == "likely_incorrect"
-    # A shadow `likely_incorrect` must not suppress the production-admitted rule tag.
-    assert any(tag.get("id") == "housing" for tag in ep.tags)
-
-    # Run 4: both assessments current -- no further evaluator call.
-    run()
-    assert len(backend.calls) == 4
-
-    snapshot = ctx.llm_work.snapshot()["purposes"]
-    assert snapshot["topic-tags:tagger"]["consumed"] == 0
-    assert snapshot["topic-tags:prelabeler"]["consumed"] == 1
-    assert snapshot["topic-tags:prelabeler-shadow"]["consumed"] == 1
-    assert snapshot["topic-tags:prelabeler-shadow"]["backlog"] == 0
 
 
 def test_all_stage_classes_satisfy_runtime_checkable_protocol():

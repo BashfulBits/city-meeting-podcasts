@@ -243,15 +243,12 @@ def test_registered_stage_requires_census_even_with_no_dirty_work(tmp_path):
 def test_two_purposes_in_one_stage_keep_work_and_consumption_separate():
     work = LLMWorkTracker()
     tag = work.item("topic-tags:tagger", "same-episode", producer="tags")
-    prelabel = work.item("topic-tags:prelabeler", "same-episode", producer="tags")
-    shadow = work.item("topic-tags:prelabeler-shadow", "same-episode", producer="tags")
+    moment = work.item("r6-moments", "same-episode", producer="moments")
     tag.consumed(reused=True)
-    prelabel.consumed()
-    shadow.defer("ingress_limited")
+    moment.defer("ingress_limited")
     snapshot = work.snapshot()["purposes"]
     assert snapshot["topic-tags:tagger"]["consumed"] == 0
-    assert snapshot["topic-tags:prelabeler"]["consumed"] == 1
-    assert snapshot["topic-tags:prelabeler-shadow"]["backlog"] == 1
+    assert snapshot["r6-moments"]["backlog"] == 1
 
 
 def test_existing_run_event_channel_preserves_purpose_snapshot(tmp_path):

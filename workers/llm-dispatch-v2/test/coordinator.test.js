@@ -1073,7 +1073,7 @@ test("authorizeRetry throttles only the specific route_id, keeping providers iso
 // --- Ingress purpose registry (llm_lanes) -----------------------------------------------------
 // Before this gate, a purpose absent from the reservation map fell through to unreserved shared
 // headroom. That is how the deployed map came to reserve capacity under "topic-tags" and "moments"
-// while the client sent "topic-tags:tagger", "topic-tags:prelabeler", "r6-moments" and "r6-judge":
+// while the client sent "topic-tags:tagger", "r6-moments" and others:
 // 10,000 of 30,000 daily write units were withheld from every real lane on behalf of two keys no
 // job could ever match, and nothing failed. The reservation map is now compiled from
 // config/site_config.yml's `llm_lanes` block, and an unregistered purpose is rejected outright.
@@ -1173,7 +1173,6 @@ test("every purpose the Python client can dispatch has a compiled lane", async (
     "chapter-agenda",
     "chapter-locator",
     "topic-tags:tagger",
-    "topic-tags:prelabeler",
     "r6-moments",
   ];
   for (const purpose of dispatchingPurposes) {

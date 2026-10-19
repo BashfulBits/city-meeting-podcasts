@@ -510,28 +510,6 @@ def _tag_handle(recipe_hash: str, *, model: str | None = "google/gemma-4-31b-it"
 PRELABEL_RECIPE = "0123456789abcdef-fedcba9876543210"
 
 
-def test_prelabeler_lane_selects_only_aged_gemma_prelabeler_batches():
-    model = reconcile_module.prelabeler_model_for("config/site_config.yml")
-    assert model == "google/gemma-4-31b-it"
-
-    def classify(handle, age):
-        return _classify_entry(
-            _entry(handle, age_hours=age),
-            now=NOW,
-            older_than_hours=24,
-            lane="topic-tags:prelabeler",
-            prelabeler_model=model,
-        )
-
-    aged = classify(_tag_handle(PRELABEL_RECIPE), 30)
-    assert aged is not None and aged["reasons"] == ["age"] and aged["remote_v2"]
-    # Too young, a tournament judge (single-digest recipe), another model, or another task.
-    assert classify(_tag_handle(PRELABEL_RECIPE), 2) is None
-    assert classify(_tag_handle("0123456789abcdef0123456789abcdef"), 30) is None
-    assert classify(_tag_handle(PRELABEL_RECIPE, model="gemini/gemini-3.1-flash-lite"), 30) is None
-    assert classify(_handle(PRELABEL_RECIPE, model="google/gemma-4-31b-it", ref="x"), 30) is None
-
-
 def test_chapter_agenda_lane_ignores_prelabeler_handles():
     assert (
         _classify_entry(
@@ -541,30 +519,8 @@ def test_chapter_agenda_lane_ignores_prelabeler_handles():
     )
 
 
-def test_prelabeler_model_comes_from_the_selected_site_config(tmp_path):
-    import yaml
-
-    site = yaml.safe_load(open("config/site_config.yml").read())
-    site["llm_lanes"]["topic-tags:prelabeler"]["models"] = ["google/gemma-4-26b-a4b-it"]
-    alternate = tmp_path / "site_config.yml"
-    alternate.write_text(yaml.safe_dump(site))
-    model = reconcile_module.prelabeler_model_for(str(alternate))
-    assert model == "google/gemma-4-26b-a4b-it"
-    handle = _tag_handle(PRELABEL_RECIPE, model="google/gemma-4-31b-it")
-    assert (
-        _classify_entry(
-            _entry(handle, age_hours=30),
-            now=NOW,
-            older_than_hours=24,
-            lane="topic-tags:prelabeler",
-            prelabeler_model=model,
-        )
-        is None
-    )
-
-
 def _judge_handle(recipe_hash: str, *, model: str, ref: str = "ref", age_hours: float = 1):
-    """An r6-judge handle: a task/purpose no scoped lane (chapter-agenda, prelabeler) recognizes."""
+    """An r6-judge handle: a task/purpose the chapter-agenda lane does not recognize."""
     return _entry(
         JobHandle(
             task="moment-judge",

@@ -46,8 +46,6 @@ DISPATCHING_PURPOSES = frozenset(
         "chapter-agenda",
         "chapter-locator",
         "topic-tags:tagger",
-        "topic-tags:prelabeler",
-        "topic-tags:prelabeler-shadow",
         "r6-moments",
         # review/53: registered in PR2; anchor and sibling dispatched by the judge stage since PR4,
         # the adjudicator by PR5; only remedy:p3 is pending -- see PENDING_DISPATCH_PURPOSES below.
@@ -354,7 +352,8 @@ class TestRepositoryConfig:
         assert "llm_models" not in site["tagging"]
         assert "llm_model" not in site["tagging"]
         assert "judges" not in site["moments"]
-        assert "model" not in site["tagging"]["prelabeler"]
+        assert "prelabeler" not in site["tagging"]
+        assert "evaluation" not in site["tagging"]
 
 
 class TestRecipeAffectingModelPins:
@@ -371,7 +370,6 @@ class TestRecipeAffectingModelPins:
             ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
             ("chapter-locator", "deepseek/deepseek-v4-flash"),
             ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
-            ("topic-tags:prelabeler", "google/gemma-4-31b-it"),
         ],
     )
     def test_production_route_is_pinned(self, purpose, expected):

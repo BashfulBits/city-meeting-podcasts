@@ -342,8 +342,6 @@ class StageContext:
     diarize_runtime_log_path: Path | None = None
     speaker_config: dict = field(default_factory=dict)
     taxonomy_path: Path = Path("config/taxonomy.yml")
-    llm_evaluation_state_path: Path | None = None
-    llm_evaluation_config: dict = field(default_factory=dict)
     # Run-scoped cache for TagsStage's taxonomy + calibration state (populated lazily on its first
     # call). The global queue invokes TagsStage.process() once PER EPISODE, and both are read-only,
     # unchanged local-disk loads for the whole run -- yaml.safe_load on a real ~17KB taxonomy.yml
@@ -507,20 +505,6 @@ class StageContext:
     tag_dispatches_count: int = 0
     tag_dispatches_reserved: int = 0
     tag_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
-    # The evaluator is a separately budgeted ingress purpose. It must have its own producer cap:
-    # sharing the tagger cap lets rule-candidate evaluation keep traversing the catalog after the
-    # tagger quota has filled, which was enough to prevent the run-level batch flush from ever
-    # reaching the Worker.
-    tag_prelabeler_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
-    tag_prelabeler_max_dispatches: int | None = None
-    tag_prelabeler_dispatches_count: int = 0
-    tag_prelabeler_dispatches_reserved: int = 0
-    tag_prelabeler_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
-    # The shadow evaluator (`topic-tags:prelabeler-shadow`) is a third, independently budgeted
-    # purpose. Counted at reservation, then returned if no new work was prepared.
-    tag_prelabeler_shadow_max_dispatches: int | None = None
-    tag_prelabeler_shadow_dispatches_count: int = 0
-    tag_prelabeler_shadow_lock: threading.Lock = field(default_factory=threading.Lock)
     # Per-run producer cap for chapter agenda candidate extraction to bound runner submissions
     # to what the Worker's daily write budget funds (site_config.yml llm_lanes: chapter-agenda).
     chapter_agenda_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
@@ -569,67 +553,6 @@ class StageContext:
                 and self.tag_dispatches_count >= self.tag_max_dispatches
             ):
                 self.tag_llm_dispatch_exhausted.set()
-
-    def reserve_tag_prelabeler_dispatch(self) -> bool:
-        """Atomically reserve one per-run pre-labeler dispatch slot before submitting work."""
-        with self.tag_prelabeler_dispatches_lock:
-            if self.tag_prelabeler_dispatch_exhausted.is_set():
-                return False
-            if (
-                self.tag_prelabeler_max_dispatches is not None
-                and self.tag_prelabeler_dispatches_count + self.tag_prelabeler_dispatches_reserved
-                >= self.tag_prelabeler_max_dispatches
-            ):
-                # In-flight reservations can fail or resolve from cache. Only committed
-                # dispatches may latch exhaustion for the rest of the run.
-                if self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches:
-                    self.tag_prelabeler_dispatch_exhausted.set()
-                return False
-            self.tag_prelabeler_dispatches_reserved += 1
-            return True
-
-    def settle_tag_prelabeler_dispatch(self, dispatched: bool) -> None:
-        """Release a pre-labeler reservation and count it only when work was queued."""
-        with self.tag_prelabeler_dispatches_lock:
-            self.tag_prelabeler_dispatches_reserved = max(
-                0, self.tag_prelabeler_dispatches_reserved - 1
-            )
-            if not dispatched:
-                return
-            self.tag_prelabeler_dispatches_count += 1
-            if (
-                self.tag_prelabeler_max_dispatches is not None
-                and self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches
-            ):
-                self.tag_prelabeler_dispatch_exhausted.set()
-
-    def tag_prelabeler_shadow_exhausted(self) -> bool:
-        with self.tag_prelabeler_shadow_lock:
-            return (
-                self.tag_prelabeler_shadow_max_dispatches is not None
-                and self.tag_prelabeler_shadow_dispatches_count
-                >= self.tag_prelabeler_shadow_max_dispatches
-            )
-
-    def reserve_tag_prelabeler_shadow_dispatch(self) -> bool:
-        """Reserve one per-run shadow-evaluator dispatch slot; False once the cap is reached."""
-        with self.tag_prelabeler_shadow_lock:
-            if (
-                self.tag_prelabeler_shadow_max_dispatches is not None
-                and self.tag_prelabeler_shadow_dispatches_count
-                >= self.tag_prelabeler_shadow_max_dispatches
-            ):
-                return False
-            self.tag_prelabeler_shadow_dispatches_count += 1
-            return True
-
-    def settle_tag_prelabeler_shadow_dispatch(self, dispatched: bool) -> None:
-        """Release a shadow slot when no new work was prepared (cache, pending, or failure)."""
-        if not dispatched:
-            with self.tag_prelabeler_shadow_lock:
-                self.tag_prelabeler_shadow_dispatches_count = max(
-                    0, self.tag_prelabeler_shadow_dispatches_count - 1
-                )
 
     def reserve_chapter_agenda_dispatch(self) -> bool:
         """Atomically reserve one per-run chapter-agenda dispatch slot before submitting work."""
@@ -1046,7 +969,6 @@ def stage_is_dirty(
     city: City,
     *,
     speaker_config: Mapping[str, Any] | None = None,
-    evaluation_config: Mapping[str, Any] | None = None,
     judging_config: Mapping[str, Any] | None = None,
     judge_audit_rows: Mapping[str, Any] | None = None,
 ) -> bool:
@@ -1067,13 +989,6 @@ def stage_is_dirty(
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if stage.name in {"chapter_locator", "generated_chapters"} and ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
-    # The tags marker fingerprints tag inputs only. Evaluator work (a production pre-labeler
-    # model/schema change, or an enabled shadow evaluator) keeps the episode dirty until done.
-    if stage.name == "tags" and evaluation_config is not None:
-        from citypods.tags import episode_evaluator_work_pending
-
-        if episode_evaluator_work_pending(ep, dict(evaluation_config.get("prelabeler") or {})):
-            return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
     if stage.name == "native_diarize" and isinstance(marker, dict):
         # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
@@ -1861,22 +1776,15 @@ class TagsStage(LLMProducerStage):
     def telemetry_purposes(self, ctx):
         if ctx.tag_backend is None:
             return ()
-        purposes = ["topic-tags:tagger"]
-        config = ctx.llm_evaluation_config.get("prelabeler") or {}
-        if config.get("enabled") and config.get("model"):
-            purposes.append("topic-tags:prelabeler")
-            if config.get("shadow_enabled") and config.get("shadow_model") != config.get("model"):
-                purposes.append("topic-tags:prelabeler-shadow")
-        return tuple(purposes)
+        return ("topic-tags:tagger",)
 
     def _load_cache(self, ctx):
         """Initialize taxonomy and evaluation inputs before census or processing."""
         import yaml
 
-        from citypods.llm_evaluation import config_from_mapping, load_state, policy_fingerprint
-        from citypods.tags import load_taxonomy
+        from citypods.tags import TAG_ADMISSION_POLICY, load_taxonomy
 
-        # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
+        # Load the taxonomy at most ONCE for the whole run (cached on `ctx`,
         # which is the same object across every one of this lane's per-episode process() calls --
         # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
         # too (as an error string) so a broken taxonomy/state file reports itself on every call
@@ -1893,8 +1801,6 @@ class TagsStage(LLMProducerStage):
             cache = ctx.tag_taxonomy_cache
             if "taxonomy_error" in cache:
                 return cache
-            if "eval_error" in cache:
-                return cache
             if "taxonomy" not in cache:
                 try:
                     cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
@@ -1907,47 +1813,21 @@ class TagsStage(LLMProducerStage):
                     # propagate uncaught out of every one of this run's per-episode calls.
                     cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
                     return cache
-            if "evaluation_state" not in cache:
-                try:
-                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-                    evaluation_state = (
-                        load_state(ctx.llm_evaluation_state_path)
-                        if ctx.llm_evaluation_state_path is not None
-                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-                    )
-                    cache["evaluation_config"] = evaluation_config
-                    cache["evaluation_state"] = evaluation_state
-                    cache["admission_policy"] = policy_fingerprint(
-                        evaluation_config, evaluation_state
-                    )
-                except (ValueError, TypeError) as exc:
-                    # load_state() fails closed on a corrupted (not merely missing) state file
-                    # rather than silently resetting it -- that protects against this stage's
-                    # caller later clobbering real review history via save_state(), but this stage
-                    # itself only ever *reads* the file, so degrading tagging for this run (retried
-                    # next run once the file is fixed) is the right response here, not crashing the
-                    # whole city's enrich pass. config_from_mapping()/policy_fingerprint() are
-                    # covered too: a malformed tagging.evaluation config (e.g. non-numeric
-                    # minimum_reviews) must degrade the same way, not re-raise on every episode.
-                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
-                    return cache
+            cache.setdefault("admission_policy", TAG_ADMISSION_POLICY)
+
+        return cache
 
         return cache
 
     def work_items(self, city, episodes, ctx):
         from citypods.chapters import episode_served_chapters
-        from citypods.tags import needs_shadow_prelabel, tag_input_fingerprint
+        from citypods.tags import tag_input_fingerprint
 
         purposes = self.telemetry_purposes(ctx)
         if not purposes:
             return
-        config = ctx.llm_evaluation_config.get("prelabeler") or {}
-        model = str(config.get("model") or "")
-        shadow = str(config.get("shadow_model") or "")
-        prompt = str(config.get("prompt_version") or "1")
-        schema = str(config.get("llm_schema_version") or "1")
         cache = self._load_cache(ctx)
-        if "taxonomy_error" in cache or "eval_error" in cache:
+        if "taxonomy_error" in cache:
             ctx.llm_work.partial(self.name)
         taxonomy = cache.get("taxonomy")
         route = (
@@ -1973,38 +1853,6 @@ class TagsStage(LLMProducerStage):
                     uid,
                     ("reused" if current_inputs and ep.tags_llm_recipe_hash else "ready"),
                 )
-            candidates = [
-                row
-                for row in ep.llm_tag_candidates or []
-                if isinstance(row, dict)
-                and row.get("candidate_state") != "historical"
-                and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
-            ]
-            if candidates and "topic-tags:prelabeler" in purposes:
-                current = all(
-                    row.get("prelabeler_model") == model
-                    and row.get("prelabeler_prompt_version") == prompt
-                    and row.get("prelabeler_llm_schema_version") == schema
-                    and row.get("prelabeler_decision")
-                    in {"likely_correct", "needs_human_review", "likely_incorrect"}
-                    for row in candidates
-                )
-                yield "topic-tags:prelabeler", uid, "reused" if current else "ready"
-            if "topic-tags:prelabeler-shadow" in purposes and any(
-                needs_shadow_prelabel(
-                    row,
-                    model=model,
-                    shadow_model=shadow,
-                    prompt_version=prompt,
-                    llm_schema_version=schema,
-                )
-                for row in candidates
-            ):
-                yield (
-                    "topic-tags:prelabeler-shadow",
-                    uid,
-                    ("ingress_limited" if ctx.tag_prelabeler_shadow_exhausted() else "ready"),
-                )
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -2012,31 +1860,25 @@ class TagsStage(LLMProducerStage):
 
         from citypods.chapters import episode_served_chapters
         from citypods.compute.llm import BatchingDispatchBackend
-        from citypods.llm_evaluation import (
-            apply_admission,
-            shadow_prelabel_fields,
-            visible_candidates,
-        )
         from citypods.tags import (
-            PRELABELER_PURPOSE,
-            PRELABELER_SHADOW_PURPOSE,
             TAG_PROMPT_VERSION,
             TAGGER_PURPOSE,
             TAGGER_VERSION,
             agenda_document_context,
+            apply_admission,
+            candidate_id,
             chapter_tag_inputs,
             decorate_llm_candidates,
             decorate_rule_candidates,
             episode_tag_inputs,
-            llm_prelabel_candidates,
             llm_tag_suggestions,
             merge_tag_sources,
-            needs_shadow_prelabel,
             rollup_tags,
             rule_phrase_audit,
             tag_episode,
             tag_input_fingerprint,
             tag_recipe_hash,
+            visible_candidates,
         )
 
         stats = StageStats(self.name)
@@ -2063,7 +1905,7 @@ class TagsStage(LLMProducerStage):
                     "purpose": purpose,
                     "recipe_hash": recipe_hash,
                     "status": status,
-                    "model": model or payload.get("prelabeler_model") or "",
+                    "model": model or "",
                     "reason": reason,
                     "attempted_at": datetime.now(UTC).isoformat(),
                 }
@@ -2094,30 +1936,13 @@ class TagsStage(LLMProducerStage):
             ][-200:]
 
         cache = self._load_cache(ctx)
-        for key in ("taxonomy_error", "eval_error"):
-            if key in cache:
-                ctx.llm_work.partial(self.name)
-                stats.errors.append(cache[key])
-                return stats
+        if "taxonomy_error" in cache:
+            ctx.llm_work.partial(self.name)
+            stats.errors.append(cache["taxonomy_error"])
+            return stats
         with ctx.tag_taxonomy_cache_lock:
             taxonomy = cache["taxonomy"]
-            evaluation_config = cache["evaluation_config"]
-            evaluation_state = cache["evaluation_state"]
             admission_policy = cache["admission_policy"]
-            prelabeler_config = ctx.llm_evaluation_config.get("prelabeler") or {}
-            prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
-                ctx.tag_backend is not None
-            )
-            prelabeler_model = str(prelabeler_config.get("model") or "")
-            prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
-            prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
-            prelabeler_shadow_model = str(prelabeler_config.get("shadow_model") or "")
-            prelabeler_shadow_enabled = (
-                prelabeler_enabled
-                and bool(prelabeler_config.get("shadow_enabled", False))
-                and bool(prelabeler_shadow_model)
-                and prelabeler_shadow_model != prelabeler_model
-            )
 
         for ep in _materialize_set(
             episodes,
@@ -2133,8 +1958,6 @@ class TagsStage(LLMProducerStage):
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
-            from citypods.llm_evaluation import candidate_id
-
             persisted_candidates: list[dict[str, Any]] = []
             for raw_candidate in ep.llm_tag_candidates or []:
                 if not isinstance(raw_candidate, dict):
@@ -2149,41 +1972,6 @@ class TagsStage(LLMProducerStage):
                     candidate.get("candidate_id") or candidate_id(candidate)
                 )
                 persisted_candidates.append(candidate)
-            prelabeler_pending = prelabeler_enabled and any(
-                candidate.get("candidate_state") != "historical"
-                and (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id"))
-                and (
-                    candidate.get("prelabeler_model") != prelabeler_model
-                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
-                    or candidate.get("prelabeler_llm_schema_version")
-                    != prelabeler_llm_schema_version
-                    or candidate.get("prelabeler_decision")
-                    not in {
-                        "likely_correct",
-                        "needs_human_review",
-                        "likely_incorrect",
-                    }
-                )
-                for candidate in persisted_candidates
-            )
-            # Shadow evaluator backlog: subjects whose PRODUCTION assessment is current but whose
-            # shadow assessment is missing or stale. Once this run's shadow allowance is spent it
-            # no longer forces the storage fetch below -- shadow work is audit-only.
-            shadow_pending = (
-                prelabeler_shadow_enabled
-                and not ctx.tag_prelabeler_shadow_exhausted()
-                and any(
-                    candidate.get("candidate_state") != "historical"
-                    and needs_shadow_prelabel(
-                        candidate,
-                        model=prelabeler_model,
-                        shadow_model=prelabeler_shadow_model,
-                        prompt_version=prelabeler_prompt_version,
-                        llm_schema_version=prelabeler_llm_schema_version,
-                    )
-                    for candidate in persisted_candidates
-                )
-            )
             self.census(city, [ep], ctx)
             tag_work = (
                 ctx.llm_work.item(TAGGER_PURPOSE, ep.uid or ep.guid, producer=self.name)
@@ -2191,26 +1979,6 @@ class TagsStage(LLMProducerStage):
                 else None
             )
             tag_resolved = False
-            production_work = (
-                ctx.llm_work.item(PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name)
-                if prelabeler_pending
-                else None
-            )
-            shadow_owed = prelabeler_shadow_enabled and any(
-                needs_shadow_prelabel(
-                    row,
-                    model=prelabeler_model,
-                    shadow_model=prelabeler_shadow_model,
-                    prompt_version=prelabeler_prompt_version,
-                    llm_schema_version=prelabeler_llm_schema_version,
-                )
-                for row in persisted_candidates
-            )
-            shadow_work = (
-                ctx.llm_work.item(PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name)
-                if shadow_owed
-                else None
-            )
             ledger_missing = bool(ep.tags or ep.chapter_tags) and not persisted_candidates
             cheap_fingerprint = tag_input_fingerprint(
                 ep,
@@ -2239,13 +2007,7 @@ class TagsStage(LLMProducerStage):
             if tag_work is not None and inputs_unchanged and not llm_pending:
                 tag_work.consumed(reused=True)
 
-            if (
-                inputs_unchanged
-                and not llm_pending
-                and not prelabeler_pending
-                and not shadow_pending
-                and not ledger_missing
-            ):
+            if inputs_unchanged and not llm_pending and not ledger_missing:
                 # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
                 # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
                 # to stay an in-memory O(1) check, never a storage round trip.
@@ -2258,18 +2020,9 @@ class TagsStage(LLMProducerStage):
                 # Wall-clock budget spent: defer everything still outstanding WITHOUT fetching
                 # (untouched, retried next run) so the pass drains cheaply to its end-of-run
                 # persist instead of grinding the backlog's fetches into GitHub's hard job timeout.
-                for work in (tag_work, production_work, shadow_work):
-                    if work is not None:
-                        work.defer("stopped")
+                if tag_work is not None:
+                    tag_work.defer("stopped")
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
-                continue
-
-            prelabeler_unavailable = (
-                prelabeler_pending and ctx.tag_prelabeler_dispatch_exhausted.is_set()
-            )
-            if inputs_unchanged and prelabeler_unavailable and not llm_pending:
-                production_work.defer("ingress_limited")
-                stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                 continue
 
             (
@@ -2326,8 +2079,6 @@ class TagsStage(LLMProducerStage):
             if (
                 ep.tags_spec_hash == projection_hash
                 and (not chapters or ep.chapter_tags)
-                and not prelabeler_pending
-                and not shadow_pending
                 and not ledger_missing
             ):
                 # Backfill the cheap fingerprint so the pre-check above can short-circuit this
@@ -2353,13 +2104,7 @@ class TagsStage(LLMProducerStage):
                     for candidate in candidates
                     if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
                 ]
-                visible = (
-                    visible_candidates(
-                        projectable, config=evaluation_config, state=evaluation_state
-                    )
-                    if projectable
-                    else []
-                )
+                visible = visible_candidates(projectable) if projectable else []
                 episode_tags = merge_tag_sources(
                     [], [tag for tag in visible if not tag.get("chapter_id")]
                 )
@@ -2483,36 +2228,12 @@ class TagsStage(LLMProducerStage):
                 for candidate in persisted_rule_candidates
                 if candidate.get("candidate_id")
             }
-            # A deterministic match with the same recipe identity keeps its evaluator result and
-            # review provenance when the stage re-projects it. New rule candidates still receive
-            # fresh source evidence, while old identities remain available for the historical lane.
+            # A deterministic match with the same recipe identity keeps the retired pre-labeler's
+            # stored assessment: it is audit evidence and nothing reads it for display any more.
             for current in rule_candidates:
                 prior = prior_by_id.get(str(current.get("candidate_id")))
                 if prior is not None:
-                    for field in (
-                        "prelabeler_model",
-                        "prelabeler_prompt_version",
-                        "prelabeler_llm_schema_version",
-                        "prelabeler_decision",
-                        "prelabeler_confidence",
-                        "prelabeler_reason",
-                        "prelabeler_evidence_supported",
-                        "prelabeler_input_digest",
-                        "prelabeler_batch_index",
-                        # The shadow evaluator's result is kept the same way, or every re-project
-                        # would re-dispatch it.
-                        "prelabeler_shadow_model",
-                        "prelabeler_shadow_prompt_version",
-                        "prelabeler_shadow_llm_schema_version",
-                        "prelabeler_shadow_decision",
-                        "prelabeler_shadow_confidence",
-                        "prelabeler_shadow_reason",
-                        "prelabeler_shadow_evidence_supported",
-                        "prelabeler_shadow_input_digest",
-                        "prelabeler_shadow_batch_index",
-                    ):
-                        if field in prior:
-                            current[field] = prior[field]
+                    current.update({k: v for k, v in prior.items() if k.startswith("prelabeler_")})
             active_candidate_ids: set[str] = set()
             if llm_enabled:
                 active_cached = [
@@ -2732,270 +2453,11 @@ class TagsStage(LLMProducerStage):
                 completed_llm_recipe = llm_recipe
                 final_hash = projection_hash
 
-            if prelabeler_enabled and prelabeler_model and candidate_tags:
-                projectable_candidates = [
-                    candidate
-                    for candidate in candidate_tags
-                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
-                ]
-                pending_prelabels = [
-                    candidate
-                    for candidate in projectable_candidates
-                    if candidate.get("prelabeler_model") != prelabeler_model
-                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
-                    or candidate.get("prelabeler_llm_schema_version")
-                    != prelabeler_llm_schema_version
-                    or candidate.get("prelabeler_decision")
-                    not in {
-                        "likely_correct",
-                        "needs_human_review",
-                        "likely_incorrect",
-                    }
-                ]
-                if pending_prelabels:
-                    production_work = ctx.llm_work.item(
-                        PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name
-                    )
-                    production_work.defer("ready")
-                    if ctx.stop is not None and ctx.stop():
-                        production_work.defer("stopped")
-                        stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
-                    elif ctx.tag_prelabeler_dispatch_exhausted.is_set():
-                        production_work.defer("ingress_limited")
-                        stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
-                    elif not ctx.reserve_tag_prelabeler_dispatch():
-                        production_work.defer("ingress_limited")
-                        stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
-                    else:
-                        prelabel_recipe = hashlib.sha1(
-                            json.dumps(
-                                {
-                                    "llm_recipe": llm_recipe,
-                                    "model": prelabeler_model,
-                                    "prompt_version": prelabeler_prompt_version,
-                                    "llm_schema_version": prelabeler_llm_schema_version,
-                                    "candidates": sorted(
-                                        str(item.get("candidate_id")) for item in pending_prelabels
-                                    ),
-                                },
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ).encode()
-                        ).hexdigest()[:16]
-                        dispatch_settled = False
-                        try:
-                            prelabel_call_metadata: dict[str, Any] = {}
-                            with PROGRESS.track(
-                                source=city.slug,
-                                uid=str(ep.uid or ep.guid),
-                                phase="tag-prelabeler-dispatch",
-                            ):
-                                (
-                                    prelabels,
-                                    prelabel_dispatched,
-                                    _prelabel_resolved_model,
-                                ) = llm_prelabel_candidates(
-                                    production_work.backend(ctx.tag_backend),
-                                    candidates=pending_prelabels,
-                                    taxonomy=taxonomy,
-                                    chapters=chapters,
-                                    agenda_text=agenda_text,
-                                    transcript_text=transcript_text,
-                                    recipe_hash=prelabel_recipe,
-                                    model=prelabeler_model,
-                                    prompt_version=prelabeler_prompt_version,
-                                    llm_schema_version=prelabeler_llm_schema_version,
-                                    call_metadata_out=prelabel_call_metadata,
-                                )
-                            queued_prelabel = bool(
-                                prelabel_dispatched
-                                and _prelabel_resolved_model != "payload-too-large"
-                                and (
-                                    not isinstance(ctx.tag_backend, BatchingDispatchBackend)
-                                    or production_work.has_prepared_jobs()
-                                )
-                            )
-                            ctx.settle_tag_prelabeler_dispatch(queued_prelabel)
-                            dispatch_settled = True
-                            remember_call_attempt(
-                                ep,
-                                purpose=PRELABELER_PURPOSE,
-                                recipe_hash=prelabel_recipe,
-                                status="deferred" if prelabel_dispatched else "resolved",
-                                metadata=prelabel_call_metadata,
-                                model=_prelabel_resolved_model or prelabeler_model,
-                                reason=(
-                                    _prelabel_resolved_model
-                                    if prelabel_dispatched and _prelabel_resolved_model
-                                    else ""
-                                ),
-                            )
-                            if prelabels:
-                                candidate_tags = [
-                                    {
-                                        **candidate,
-                                        **prelabels.get(str(candidate.get("candidate_id")), {}),
-                                    }
-                                    for candidate in candidate_tags
-                                ]
-                            if prelabel_dispatched:
-                                production_work.defer(
-                                    "blocked"
-                                    if _prelabel_resolved_model == "payload-too-large"
-                                    else "queued"
-                                )
-                                stats.defer(
-                                    "tag-prelabeler-oversized"
-                                    if _prelabel_resolved_model == "payload-too-large"
-                                    else "tag-prelabeler-dispatch",
-                                    sample=ep.uid or ep.guid,
-                                )
-                        except Exception as exc:  # noqa: BLE001 — evaluator is item-local
-                            if not dispatch_settled:
-                                ctx.settle_tag_prelabeler_dispatch(False)
-                            remember_call_attempt(
-                                ep,
-                                purpose=PRELABELER_PURPOSE,
-                                recipe_hash=prelabel_recipe,
-                                status="error",
-                                metadata=prelabel_call_metadata,
-                                model=prelabeler_model,
-                                reason=str(exc)[:500],
-                            )
-                            production_work.defer("errored")
-                            stats.errors.append(
-                                f"{ep.uid or ep.guid}: pre-labeler model={prelabeler_model} "
-                                f"failed: {exc}"
-                            )
-
-            # Shadow evaluator: the same prompt on a second model, for candidates whose production
-            # assessment is already current. Stored under `prelabeler_shadow_*` only, so it can
-            # never change admission or display; human reviews of these subjects are mirrored into
-            # its own calibration row (llm_evaluation.mirror_shadow_prelabeler_review).
-            if prelabeler_shadow_enabled and candidate_tags:
-                pending_shadow = [
-                    candidate
-                    for candidate in candidate_tags
-                    if needs_shadow_prelabel(
-                        candidate,
-                        model=prelabeler_model,
-                        shadow_model=prelabeler_shadow_model,
-                        prompt_version=prelabeler_prompt_version,
-                        llm_schema_version=prelabeler_llm_schema_version,
-                    )
-                ]
-                if pending_shadow:
-                    shadow_work = ctx.llm_work.item(
-                        PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name
-                    )
-                    if ctx.stop is not None and ctx.stop():
-                        shadow_work.defer("stopped")
-                if pending_shadow and not (ctx.stop is not None and ctx.stop()):
-                    if not ctx.reserve_tag_prelabeler_shadow_dispatch():
-                        shadow_work.defer("ingress_limited")
-                        stats.defer("tag-prelabeler-shadow-no-quota", sample=ep.uid or ep.guid)
-                    else:
-                        shadow_recipe = hashlib.sha1(
-                            json.dumps(
-                                {
-                                    "llm_recipe": llm_recipe,
-                                    "model": prelabeler_shadow_model,
-                                    "role": "shadow",
-                                    "prompt_version": prelabeler_prompt_version,
-                                    "llm_schema_version": prelabeler_llm_schema_version,
-                                    "candidates": sorted(
-                                        str(item.get("candidate_id")) for item in pending_shadow
-                                    ),
-                                },
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ).encode()
-                        ).hexdigest()[:16]
-                        shadow_call_metadata: dict[str, Any] = {}
-                        shadow_queued = False
-                        try:
-                            (
-                                shadow_prelabels,
-                                shadow_dispatched,
-                                shadow_resolved_model,
-                            ) = llm_prelabel_candidates(
-                                shadow_work.backend(ctx.tag_backend),
-                                candidates=pending_shadow,
-                                taxonomy=taxonomy,
-                                chapters=chapters,
-                                agenda_text=agenda_text,
-                                transcript_text=transcript_text,
-                                recipe_hash=shadow_recipe,
-                                model=prelabeler_shadow_model,
-                                prompt_version=prelabeler_prompt_version,
-                                llm_schema_version=prelabeler_llm_schema_version,
-                                call_metadata_out=shadow_call_metadata,
-                                purpose=PRELABELER_SHADOW_PURPOSE,
-                            )
-                            shadow_queued = bool(
-                                shadow_dispatched
-                                and shadow_resolved_model != "payload-too-large"
-                                and (
-                                    not isinstance(ctx.tag_backend, BatchingDispatchBackend)
-                                    or shadow_work.has_prepared_jobs()
-                                )
-                            )
-                            remember_call_attempt(
-                                ep,
-                                purpose=PRELABELER_SHADOW_PURPOSE,
-                                recipe_hash=shadow_recipe,
-                                status="deferred" if shadow_dispatched else "resolved",
-                                metadata=shadow_call_metadata,
-                                model=shadow_resolved_model or prelabeler_shadow_model,
-                            )
-                            if shadow_prelabels:
-                                candidate_tags = [
-                                    {
-                                        **candidate,
-                                        **shadow_prelabel_fields(
-                                            shadow_prelabels.get(
-                                                str(candidate.get("candidate_id")), {}
-                                            )
-                                        ),
-                                    }
-                                    for candidate in candidate_tags
-                                ]
-                            if shadow_dispatched:
-                                shadow_work.defer(
-                                    "blocked"
-                                    if shadow_resolved_model == "payload-too-large"
-                                    else "queued"
-                                )
-                                stats.defer(
-                                    "tag-prelabeler-shadow-dispatch", sample=ep.uid or ep.guid
-                                )
-                        except Exception as exc:  # noqa: BLE001 -- shadow is audit-only
-                            remember_call_attempt(
-                                ep,
-                                purpose=PRELABELER_SHADOW_PURPOSE,
-                                recipe_hash=shadow_recipe,
-                                status="error",
-                                metadata=shadow_call_metadata,
-                                model=prelabeler_shadow_model,
-                                reason=str(exc)[:500],
-                            )
-                            # Deferred, not an error: a shadow failure changes nothing visible
-                            # and must not read as a production tagging failure.
-                            shadow_work.defer("errored")
-                            stats.defer("tag-prelabeler-shadow-error", sample=ep.uid or ep.guid)
-                        finally:
-                            ctx.settle_tag_prelabeler_shadow_dispatch(shadow_queued)
-
-            # Re-project after the evaluator attempt. This is intentionally cheap and makes the
-            # overlay a pure function of the persisted ledger + calibration state; a deferred or
-            # failed evaluator therefore leaves the previous display decision intact.
+            # Re-project from the persisted ledger: display is a pure function of the candidates.
             final_tags = project_visible_tags(candidate_tags, chapter_annotations)
 
             if llm_enabled and completed_llm_recipe == llm_recipe:
-                candidate_tags = [
-                    apply_admission(tag, config=evaluation_config, state=evaluation_state)
-                    for tag in candidate_tags
-                ]
+                candidate_tags = [apply_admission(tag) for tag in candidate_tags]
                 final_hash = projection_hash
 
             # Keep superseded/legacy LLM rows in the canonical append-oriented ledger. They are
@@ -3007,8 +2469,6 @@ class TagsStage(LLMProducerStage):
             for candidate in historical_candidates + candidate_tags:
                 key = str(candidate.get("candidate_id") or "")
                 if not key:
-                    from citypods.llm_evaluation import candidate_id
-
                     key = candidate_id(candidate)
                     candidate = {**candidate, "candidate_id": key}
                 ledger_by_id[key] = candidate
@@ -3043,38 +2503,6 @@ class TagsStage(LLMProducerStage):
                 stats.reused += 1
             if tag_work is not None and completed_llm_recipe == llm_recipe:
                 tag_work.consumed(reused=not tag_resolved)
-            if (
-                production_work is not None
-                and candidate_tags
-                and not any(
-                    row.get("candidate_state") != "historical"
-                    and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
-                    and (
-                        row.get("prelabeler_model") != prelabeler_model
-                        or row.get("prelabeler_prompt_version") != prelabeler_prompt_version
-                        or row.get("prelabeler_llm_schema_version") != prelabeler_llm_schema_version
-                        or row.get("prelabeler_decision")
-                        not in {"likely_correct", "needs_human_review", "likely_incorrect"}
-                    )
-                    for row in candidate_tags
-                )
-            ):
-                production_work.consumed()
-            if (
-                shadow_work is not None
-                and candidate_tags
-                and not any(
-                    needs_shadow_prelabel(
-                        row,
-                        model=prelabeler_model,
-                        shadow_model=prelabeler_shadow_model,
-                        prompt_version=prelabeler_prompt_version,
-                        llm_schema_version=prelabeler_llm_schema_version,
-                    )
-                    for row in candidate_tags
-                )
-            ):
-                shadow_work.consumed()
         return stats
 
 
@@ -10051,10 +9479,6 @@ def run_stages(
                 ep,
                 city,
                 speaker_config=ctx.speaker_config,
-                # Evaluator work only counts when a tag backend could actually perform it.
-                evaluation_config=(
-                    ctx.llm_evaluation_config if ctx.tag_backend is not None else None
-                ),
                 judging_config=ctx.judging_config,
                 judge_audit_rows=ctx.judge_audit_rows,
             )

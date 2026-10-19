@@ -37,37 +37,6 @@ tagging:
   # secrets.
   llm_mode: "dispatch"
   taxonomy_path: "config/taxonomy.yml"
-  evaluation:
-    state_path: "llm_evaluation.json"
-    fallback_confidence: 1.0
-    required_precision: 0.90
-    minimum_reviews: 12
-    prelabeler_required_precision: 0.95
-    prelabeler_minimum_reviews: 50
-    # Both actionable evaluator branches need independent support before overlay automation is
-    # enabled; this prevents a single likely-incorrect example from enabling suppression.
-    prelabeler_minimum_decision_reviews: 5
-    review_batch_size: 80
-    max_reviews_per_subject_stratum: 8
-    fallbacks:
-      topic-tags:
-        "litellm:gemini/gemini-3.1-flash-lite": 1.0
-  prelabeler:
-    # Off since 2026-10-19 (review/53 PR11 retires the R5 flows). No calibration row has ever
-    # qualified (0 of 115, 289 human reviews), so the overlay changes no display; the weekly
-    # digest and review tickets stop with it.
-    enabled: false
-    # Route lives in `llm_lanes["topic-tags:prelabeler"]` -- a separate verb with its own ingress
-    # budget, which deliberately does not inherit from the `topic-tags` prefix.
-    prompt_version: "1"
-    # Version the serialized response contract independently of task instructions. Bumping this
-    # schedules fresh work for every active candidate whose stored assessment predates it.
-    llm_schema_version: "2"
-    # Run the `topic-tags:prelabeler-shadow` lane's evaluator (gemma-4-26b) on candidates that
-    # already carry a current production assessment. Shadow-only: never changes display. Off
-    # since 2026-10-19: the lane is retired by review/53 PR11, and on 2026-10-18 it produced
-    # ~160 `output_budget_exhausted` failures and empty replies on the AI Studio 26B quota.
-    shadow_enabled: false
 # Optional read-only per-verb backlog report parameters (review/50); absent keys use defaults.
 # llm_backlog:
 #   window_days: 7
@@ -101,7 +70,7 @@ tagging:
 # ENTRY HERE. That is deliberate: an unregistered purpose is rejected at three points -- the
 # client refuses to build the job, `compile_llm_lanes.py` refuses to compile, and the Worker
 # rejects the job at ingress with `purpose_not_registered`. Sub-purposes are NOT inherited from
-# a prefix: `topic-tags:prelabeler` does not draw on `topic-tags:tagger`'s budget.
+# a prefix: a `topic-tags:` sub-purpose would not draw on `topic-tags:tagger`'s budget.
 #
 # `models` is the ordered allowed-model set handed to `LLMRequestPolicy.allowed_models`. The
 # first entry is the stable recipe/calibration route; the rest exist only so a lane can spill
@@ -124,10 +93,10 @@ tagging:
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
 # Lane daily ceilings are independent ceilings, not additive reservations. The shared ingress
 # guard targets 4,000 jobs / 25,600 write units per UTC day: 800 meetings through five core
-# one-job-per-meeting tasks (agenda, locator, tagger, prelabeler, moments). Live row headroom may
+# one-job-per-meeting tasks (agenda, locator, tagger, moments). Live row headroom may
 # defer work before any lane reaches 800. Reserved capacity is protected for its lane; all
-# reservations must fit the shared write-unit guard. Prelabel batches and per-candidate judges may
-# use multiple jobs for one meeting; shadow and judge work shares the same global budget.
+# reservations must fit the shared write-unit guard. Judge packets may use multiple jobs for one
+# meeting and share the same global budget.
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
@@ -202,31 +171,6 @@ llm_lanes:
     reserved_write_units: 1860
     # Planning allowance: 800 meetings x two chapter batches x six units = 9,600.
     # The per-run cap counts episode reservations, while each episode can enqueue many batches.
-    daily_write_units: 9600
-  topic-tags:prelabeler:
-    telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
-    # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
-    # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
-    models: ["google/gemma-4-31b-it"]
-    max_dispatches_per_run: 267
-    reserved_write_units: 1860
-    # Planning allowance: 800 meetings x three candidate batches x four units = 9,600.
-    # Batch count depends on candidates and the 10k-token route ceiling; not a measured mean.
-    daily_write_units: 9600
-  topic-tags:prelabeler-shadow:
-    telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
-    # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
-    # same candidates as production, on its own free Gemini quota (a separate per-model pool from
-    # 31b on both AI Studio projects). Its decisions are stored as `prelabeler_shadow_*` fields and
-    # never affect display; human review decisions on the same subjects are mirrored into its own
-    # calibration row (llm_evaluation.mirror_shadow_prelabeler_review), so its precision is
-    # measured against 31b at no extra reviewer cost before anyone considers it as a backup.
-    # No reservation: it only draws on shared headroom and can never displace a production lane.
-    models: ["google/gemma-4-26b-a4b-it"]
-    max_dispatches_per_run: 267
-    reserved_write_units: 0
-    # Same three-batch planning allowance as production: 2,400 jobs / 9,600 units.
-    # Optional calibration work draws shared headroom; this is not reserved capacity.
     daily_write_units: 9600
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}

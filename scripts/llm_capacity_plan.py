@@ -42,8 +42,6 @@ def project(
     tag_fraction: float = 1,
     moment_fraction: float = 1,
     tag_batches: float = 2,
-    prelabel_batches: float = 3,
-    shadow: bool = True,
     retry_fraction: float = 0.1,
 ) -> dict:
     """Project job/index demand and approximate billed lifecycle rows from the saved benchmark.
@@ -64,8 +62,6 @@ def project(
         "chapter-agenda": chapter_fraction,
         "chapter-locator": chapter_fraction,
         "topic-tags:tagger": tag_fraction * tag_batches,
-        "topic-tags:prelabeler": tag_fraction * prelabel_batches,
-        "topic-tags:prelabeler-shadow": tag_fraction * prelabel_batches if shadow else 0,
         "r6-moments": moment_fraction,
     }
     arms = []
@@ -102,8 +98,6 @@ def project(
             "tag_fraction": tag_fraction,
             "moment_fraction": moment_fraction,
             "tag_batches": tag_batches,
-            "prelabel_batches": prelabel_batches,
-            "shadow": shadow,
             "retry_fraction": retry_fraction,
             "new_repair_jobs": 0,
         },
@@ -256,11 +250,9 @@ def main() -> None:
         ("tag-fraction", 1),
         ("moment-fraction", 1),
         ("tag-batches", 2),
-        ("prelabel-batches", 3),
         ("retry-fraction", 0.1),
     ):
         parser.add_argument("--" + name, type=float, default=default)
-    parser.add_argument("--no-shadow", action="store_true")
     parser.add_argument(
         "--judging",
         action="store_true",
@@ -274,10 +266,9 @@ def main() -> None:
     for name in ("chapter_fraction", "tag_fraction", "moment_fraction", "retry_fraction"):
         if not 0 <= values[name] <= 1:
             parser.error(f"{name} must be between zero and one")
-    if args.meetings < 1 or min(args.tag_batches, args.prelabel_batches) < 0:
+    if args.meetings < 1 or args.tag_batches < 0:
         parser.error("meetings must be positive; batches must be non-negative")
     consensus = values.pop("consensus")
-    values["shadow"] = not values.pop("no_shadow")
     report = (
         consensus_plan(meetings=args.meetings, packed=consensus == "packed")
         if consensus

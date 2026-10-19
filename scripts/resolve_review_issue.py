@@ -14,7 +14,6 @@ from citypods.review_issues import decode_envelope
 
 COMMANDS = {
     "h15": ("transcript-quality", "ingest-review"),
-    "r5": ("llm-evaluation", "ingest"),
     "judge-audit": ("judge-audit", "ingest"),
     "r7": ("speaker-review", "ingest"),
     "h16": ("availability-review", "ingest"),
@@ -62,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         "--actor",
         args.actor,
     ]
-    if family in {"h15", "r5", "h16"}:
+    if family in {"h15", "h16"}:
         invocation.extend(("--issue-url", args.issue_url))
     completed = subprocess.run(invocation, text=True, capture_output=True, check=False)
     if completed.stdout:
