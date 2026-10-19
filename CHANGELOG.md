@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The tag tournament and R5 benchmark are retired (review/53 PR11a).** `citypods/tournament.py`,
+  `tournament_backfill.py`, `r5_benchmark.py`, `scripts/tournament_route_proposal.py`, their five
+  workflows (`llm-tournament`, `r5-benchmark`, `tournament-tag-backfill`,
+  `tournament-ticket-approve`, `tournament-route-merged`), the `tournament` config block, and the
+  `tournament:tag`, `tournament:tag-judge`, `r5-benchmark:tag` and `r5-benchmark:judge` lanes are
+  removed; `ingress_reservations.json` is now 10 lanes. The pre-labeler and R5 evaluation matrix
+  are PR11b.
+
 - **The R6 human-calibration path is retired (review/53 PR10b).** `moment_evaluation.py` (review
   ledger, 30-day warm-up, precision policy, judge observations), `moment_review.py`, the
   `r6-review` command and its issue handler, and the `moments.evaluation` and `moments.mode`
