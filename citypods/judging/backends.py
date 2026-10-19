@@ -273,6 +273,9 @@ class JevBackend:
         return rows
 
 
+ANSWER_FIELD = {"validate": "verdict", "gate": "verdict", "grade": "level", "choose": "choice"}
+
+
 class ChatJudgeBackend:
     role = "sibling"
 
@@ -287,8 +290,11 @@ class ChatJudgeBackend:
         "Never rewrite or create a candidate. For each item return its id and exactly the field "
         "its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it "
         "must be held back); grade -> level (0 = lowest listed level); choose -> choice (the "
-        "option letter). Always give a reason (at most 300 characters): copy a short passage "
-        'from the evidence word for word and put it in double quotes ("..."); an answer with no '
+        "option letter). Fill only the field named in the item's answer_with; for choose, "
+        "choice must be exactly one of the item's options. Always give a reason (at most 300 "
+        "characters): copy a short passage "
+        'from the evidence word for word and put it in double quotes ("..."), also when you '
+        "find nothing to flag; an answer with no "
         "passage from the evidence, or with a quote that is not in it, is discarded."
     )
 
@@ -299,10 +305,16 @@ class ChatJudgeBackend:
             entry: dict[str, Any] = {
                 "id": item.qid,
                 "kind": item.question.kind,
+                # The one field this item is answered in. Left to the system prompt alone, Gemma
+                # wrote the option letter inside `reason` and left `choice` null on every choose
+                # item (265 of 265, 2026-10-13/14), so no choose answer was ever recorded.
+                "answer_with": ANSWER_FIELD[item.question.kind],
                 "item": item.text(),
             }
             if item.question.kind == "grade":
                 entry["levels"] = list(item.question.levels)
+            if item.question.kind == "choose":
+                entry["options"] = [letter for letter, _value in item.options]
             items.append(entry)
         return InferenceJob(
             task="judge",
@@ -373,10 +385,12 @@ class AdjudicatorBackend(ChatJudgeBackend):
         "no reasonable way to read it otherwise. Never rewrite or create a candidate. For each "
         "item return its id and exactly the field its kind asks for: validate -> verdict (true if "
         "supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest "
-        "listed level); choose -> choice (the option letter). Always give a reason (at most 300 "
+        "listed level); choose -> choice (the option letter). Fill only the field named in the "
+        "item's answer_with; for choose, choice must be exactly one of the item's options. "
+        "Always give a reason (at most 300 "
         "characters): copy the short passage that decides the item from the evidence word for "
-        'word and put it in double quotes ("..."); an answer with no passage from the evidence, '
-        "or with a quote that is not in it, is discarded."
+        'word and put it in double quotes ("..."), also when you find nothing to flag; an answer '
+        "with no passage from the evidence, or with a quote that is not in it, is discarded."
     )
 
 
