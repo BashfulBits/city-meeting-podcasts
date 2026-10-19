@@ -401,11 +401,13 @@ artifact make it possible to separate absent candidates, cached or already-pendi
 ingress deferrals, stage-budget exits, and Worker-side scheduling limits. This is observability only:
 it changes no pipeline version, job policy, route, or backfill behavior.
 
-**Pending-accounting hardening (2026-10-18; proposed).** Maintainer-directed debugging separates
+**Pending-accounting hardening (Shipped in
+[PR #2487](https://github.com/BashfulBits/city-meeting-podcasts/pull/2487), 2026-10-18).**
+Maintainer-directed debugging separates
 client pending handles from actual coordinator occupancy. Fresh-process judge contract registration,
 non-terminal treatment of local result-read failures, a bounded rotating pending audit alongside the
 terminal feed, authoritative missing-id recovery, and corrected producer reservation/cache accounting
-are under implementation. The audit uses existing batch primary-key reads and a B2 cursor, adding
+shipped in PR #2487. The audit uses existing batch primary-key reads and a B2 cursor, adding
 no DO counters or pending-poll row writes. No producer/provider ceiling or pipeline version changes.
 Retained Actions artifacts and summaries expose cap/reservation diagnostics, per-model judge room,
 per-task poll outcomes, audit coverage and unresolved reads, plus existing UTC-day ingress and row
@@ -414,6 +416,14 @@ Live classification found 667 submitted agenda handles dating from September 25â
 individual DO states still need authoritative reconciliation, rather than cancellation by age.
 Evidence, cost contract, and post-deployment checks:
 [October 18 investigation](evidence/2026-10-18-llm-pending-accounting.md).
+
+**Ingress-stat accuracy follow-up (2026-10-18; proposed).** Post-deployment Actions telemetry
+matches the fresh-row ingress counter, including replays and the UTC midnight reset. The stats
+reader incorrectly unwraps an already-normalized reservation map, displaying zero per-purpose
+quotas and utilization. Read that map directly and use admission's four-unit legacy default;
+no counters, admission budgets, row writes, or pipeline versions change. Regression coverage
+includes compiled and overridden maps, fresh/replay batches, cancellation, and UTC rollover.
+[Recorded comparisons](evidence/2026-10-18-llm-ingress-accuracy.md).
 
 **Locator producer accounting fix (Shipped in
 [PR #2482](https://github.com/BashfulBits/city-meeting-podcasts/pull/2482), 2026-10-18).**
