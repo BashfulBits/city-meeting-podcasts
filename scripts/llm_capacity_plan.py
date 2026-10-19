@@ -43,7 +43,6 @@ def project(
     moment_fraction: float = 1,
     tag_batches: float = 2,
     prelabel_batches: float = 3,
-    quotes: float = 5,
     shadow: bool = True,
     retry_fraction: float = 0.1,
 ) -> dict:
@@ -61,7 +60,6 @@ def project(
     site = yaml.safe_load((ROOT / "config/site_config.yml").read_text())
     tuning = yaml.safe_load((ROOT / "config/dispatch_tuning.yml").read_text())
     lanes = site["llm_lanes"]
-    judges = len(lanes["r6-judge"]["models"])
     factors = {
         "chapter-agenda": chapter_fraction,
         "chapter-locator": chapter_fraction,
@@ -69,7 +67,6 @@ def project(
         "topic-tags:prelabeler": tag_fraction * prelabel_batches,
         "topic-tags:prelabeler-shadow": tag_fraction * prelabel_batches if shadow else 0,
         "r6-moments": moment_fraction,
-        "r6-judge": moment_fraction * quotes * judges,
     }
     arms = []
     for purpose, jobs_per_meeting in factors.items():
@@ -106,8 +103,6 @@ def project(
             "moment_fraction": moment_fraction,
             "tag_batches": tag_batches,
             "prelabel_batches": prelabel_batches,
-            "quotes": quotes,
-            "judges": judges,
             "shadow": shadow,
             "retry_fraction": retry_fraction,
             "new_repair_jobs": 0,
@@ -262,7 +257,6 @@ def main() -> None:
         ("moment-fraction", 1),
         ("tag-batches", 2),
         ("prelabel-batches", 3),
-        ("quotes", 5),
         ("retry-fraction", 0.1),
     ):
         parser.add_argument("--" + name, type=float, default=default)
@@ -280,8 +274,8 @@ def main() -> None:
     for name in ("chapter_fraction", "tag_fraction", "moment_fraction", "retry_fraction"):
         if not 0 <= values[name] <= 1:
             parser.error(f"{name} must be between zero and one")
-    if args.meetings < 1 or min(args.tag_batches, args.prelabel_batches, args.quotes) < 0:
-        parser.error("meetings must be positive; batches and quotes must be non-negative")
+    if args.meetings < 1 or min(args.tag_batches, args.prelabel_batches) < 0:
+        parser.error("meetings must be positive; batches must be non-negative")
     consensus = values.pop("consensus")
     values["shadow"] = not values.pop("no_shadow")
     report = (

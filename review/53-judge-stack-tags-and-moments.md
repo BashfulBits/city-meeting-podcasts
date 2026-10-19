@@ -663,6 +663,14 @@ them cannot change what is shown, and keeping them only spends LLM calls and man
 
 ### PR10 — Retire the R6 judge and human calibration (moved ahead of PR9, 2026-10-19)
 
+**Status (2026-10-19):** split. PR10a (judge stage, panel, lane, workflow, `moments.judges`) is
+in review; the 5,075 queued jobs are already cancelled. PR10b (the human-calibrated policy path in
+`moment_evaluation.py`, `moments.evaluation`, the archive file) remains. **Merge gate (met 2026-10-19 08:50 UTC):** the
+15,044 `moment-judge` deferred handles (no failure markers) were archived to
+`state/archive/r6-judge-deferred-handles-2026-10-19/` (31 parts) and deleted before merging PR10a.
+Left in place, the sweep's ingress rejects each leftover handle (`purpose_not_registered`) and exits 1 on
+every run while they stay pending once the lane is gone.
+
 - Remove lane `r6-judge`, `MomentJudgeStage`, `citypods/moment_judging.py`'s panel and its
   telemetry purpose; remove the human-calibrated policy path in `citypods/moment_evaluation.py`
   (30-day warm-up, 30 reviews, 90% precision, learned score threshold) and its use in

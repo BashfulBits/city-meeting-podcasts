@@ -1175,7 +1175,6 @@ test("every purpose the Python client can dispatch has a compiled lane", async (
     "topic-tags:tagger",
     "topic-tags:prelabeler",
     "r6-moments",
-    "r6-judge",
     "tournament:tag",
     "tournament:tag-judge",
     "r5-benchmark:tag",

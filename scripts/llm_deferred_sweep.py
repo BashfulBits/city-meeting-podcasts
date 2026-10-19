@@ -231,12 +231,6 @@ def _register_known_contracts() -> None:
     except ImportError:
         pass
     try:
-        from citypods.moment_judging import ensure_judge_contract
-
-        ensure_judge_contract()
-    except ImportError:
-        pass
-    try:
         from citypods.judging.backends import ensure_contract
 
         ensure_contract()

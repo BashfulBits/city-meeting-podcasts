@@ -1896,7 +1896,7 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "diarize": frozenset({"native_diarize"}),
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
-    "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
+    "moments": frozenset({"moments", "moment-admission", "video-clips"}),
     "judge": frozenset({"judge"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),

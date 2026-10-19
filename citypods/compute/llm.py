@@ -95,7 +95,6 @@ LLM_TASKS: frozenset[Task] = frozenset(
         "agenda-item-extract",
         "agenda-chapter-locate",
         "moment-extraction",
-        "moment-judge",
         "judge",
     }
 )
@@ -107,7 +106,6 @@ TASK_VERSIONS: dict[Task, str] = {
     "agenda-item-extract": "1",
     "agenda-chapter-locate": "1",
     "moment-extraction": "1",
-    "moment-judge": "1",
     "judge": "1",
 }
 
@@ -132,9 +130,6 @@ TASK_PROMPTS: dict[Task, str] = {
         "Extract grounded chapter summaries, pull quotes, and discussion directions from the "
         "supplied "
         "meeting material. Never invent transcript quotes or official outcomes."
-    ),
-    "moment-judge": (
-        "Score a supplied grounded candidate only. Never rewrite, repair, or create a candidate."
     ),
     # review/53: judge packets always carry their own messages (sibling) or systemone questions
     # (JEV); this default is never sent.

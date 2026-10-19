@@ -3,7 +3,7 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 25600,
-  "reserved_total": 19556,
+  "reserved_total": 18906,
   "reservations": {
     "chapter-agenda": {
       "reserved_write_units": 4800,
@@ -92,20 +92,6 @@
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "zai/glm-4.7-flash"
-      ],
-      "backup_models": [],
-      "backup_after_attempts": null,
-      "dispatch_shape": "per_model",
-      "reasoning": {},
-      "write_units_per_job": 4
-    },
-    "r6-judge": {
-      "reserved_write_units": 650,
-      "daily_write_units": 16000,
-      "models": [
-        "qwen/qwen3.8-27b",
-        "gemini/gemini-3.6-flash",
-        "google/gemma-4-26b-a4b-it"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

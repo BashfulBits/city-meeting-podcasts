@@ -773,7 +773,6 @@ _STAGE_EMPTY_OK = frozenset(
         "chapter_locator",
         "generated_chapters",
         "moments",
-        "moment-judge",
         "moment-admission",
         "video-clips",
     }
@@ -792,7 +791,7 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return ep.speakers_key or ep.speakers_url
     if name == "moments":
         return ep.moments_llm_recipe_hash or (ep.moment_pullquote_candidates and "moments")
-    if name in {"moment-judge", "moment-admission"}:
+    if name == "moment-admission":
         return hashlib.sha256(
             json.dumps(ep.moment_pullquote_candidates, sort_keys=True, default=str).encode()
         ).hexdigest()
@@ -939,7 +938,7 @@ def stage_input_fingerprint(
                 "default_models": DEFAULT_MOMENT_MODELS,
             },
         }
-    elif name in {"moment-admission", "moment-judge"}:
+    elif name == "moment-admission":
         payload = {**common, "candidates": ep.moment_pullquote_candidates}
     elif name == "video-clips":
         payload = {
@@ -1057,10 +1056,10 @@ def stage_is_dirty(
     # is dirty exactly while an answer is pending or a judgment is missing (no transcript read).
     if stage.name == "judge":
         return judge_episode_dirty(ep, judging_config, judge_audit_rows)
-    # Admission state and asynchronous judge results are external to episode inputs. Both stages
-    # are cheap projections, so always revisit them rather than making a human decision wait for a
-    # transcript/media mutation before it can take effect.
-    if stage.name in {"moment-admission", "moment-judge", "speaker_identity"}:
+    # Admission state is external to episode inputs. The stage is a cheap projection, so always
+    # revisit it rather than making a human decision wait for a transcript/media mutation before
+    # it can take effect.
+    if stage.name in {"moment-admission", "speaker_identity"}:
         return True
     # Provider chapter markers are canonical.  A one-time visit converts any historical
     # generated-chapter state into an explicit fallback exclusion (and, where possible, cancels
@@ -1465,188 +1464,6 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
             return "cap"
         ctx.moment_dispatches += 1
     return "admitted"
-
-
-class MomentJudgeStage(LLMProducerStage):
-    """Run independent, candidate-only judges in the background without candidate authority."""
-
-    name = "moment-judge"
-    version = "1"
-
-    def telemetry_purposes(self, ctx):
-        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
-        return (
-            ("r6-judge",)
-            if config.get("enabled") and ctx.moment_backend is not None and ctx.storage is not None
-            else ()
-        )
-
-    def work_items(self, city, episodes, ctx):
-        from citypods.moment_judging import JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION, judge_models
-
-        if not self.telemetry_purposes(ctx):
-            return
-        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
-        models = judge_models(tuple(str(model) for model in config.get("models") or ()))
-        for ep in episodes:
-            candidates = [row for row in ep.moment_pullquote_candidates if isinstance(row, dict)]
-            if not candidates or not models or not (ep.uid or ep.guid):
-                continue
-            current = all(
-                any(
-                    row.get("provider_model") == model
-                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
-                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
-                    for row in candidate.get("judge_assessments") or []
-                    if isinstance(row, dict)
-                )
-                for candidate in candidates
-                for model in models
-            )
-            yield "r6-judge", ep.uid or ep.guid, "reused" if current else "ready"
-
-    def process(
-        self, provider, city: City, episodes: list[Episode], ctx: StageContext
-    ) -> StageStats:
-        from citypods.compute.base import JobHandle, JobResult
-        from citypods.moment_judging import (
-            JUDGE_CONTRACT,
-            JUDGE_PROMPT_VERSION,
-            JUDGE_SCHEMA_VERSION,
-            JUDGE_SYSTEM_PROMPT,
-            ensure_judge_contract,
-            judge_input,
-            judge_models,
-            judge_policy,
-        )
-        from citypods.moments import parse_transcript_segments
-
-        stats = StageStats(self.name)
-        self.census(city, episodes, ctx)
-        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
-        if not config.get("enabled") or ctx.moment_backend is None or ctx.storage is None:
-            return stats
-        configured = tuple(str(model) for model in config.get("models") or ())
-        models = judge_models(configured)
-        if not models:
-            return stats
-        ensure_judge_contract()
-        for ep in episodes:
-            if not (ep.uid or ep.guid):
-                continue
-            if not any(isinstance(row, dict) for row in ep.moment_pullquote_candidates):
-                continue
-            work = ctx.llm_work.item("r6-judge", ep.uid or ep.guid, producer=self.name)
-            consumed_before = stats.ran
-            raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
-            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
-            for candidate in ep.moment_pullquote_candidates:
-                if not isinstance(candidate, dict):
-                    continue
-                existing = [
-                    row for row in candidate.get("judge_assessments") or [] if isinstance(row, dict)
-                ]
-                evidence = " ".join(
-                    str(row.get("text") or "")
-                    for row in segments
-                    if float(row.get("end") or 0) > float(candidate.get("start") or 0)
-                    and float(row.get("start") or 0) < float(candidate.get("end") or 0)
-                )
-                for model in models:
-                    if any(
-                        row.get("provider_model") == model
-                        and row.get("prompt_version") == JUDGE_PROMPT_VERSION
-                        and row.get("schema_version") == JUDGE_SCHEMA_VERSION
-                        for row in existing
-                    ):
-                        continue
-                    if ctx.stop is not None and ctx.stop():
-                        work.defer("stopped")
-                        stats.defer("stop")
-                        break
-                    judge_recipe = f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}"
-                    admission = _admit_r6_dispatch(ctx, stats, judge_recipe, ep.uid or ep.guid)
-                    if admission == "pending":
-                        work.defer("queued")
-                        continue
-                    if admission == "cap":
-                        ctx.llm_work.defer_remaining("r6-judge", "policy_held")
-                        work.defer("policy_held")
-                        return stats
-                    inputs: dict[str, Any] = {
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": JUDGE_SYSTEM_PROMPT,
-                            },
-                            {
-                                "role": "user",
-                                "content": json.dumps(judge_input(candidate, evidence)),
-                            },
-                        ],
-                        "structured_output": JUDGE_CONTRACT,
-                        "llm_policy": judge_policy((model,)),
-                        "max_tokens": 700,
-                    }
-                    outcome = work.backend(ctx.moment_backend).run_inference(
-                        InferenceJob(
-                            task="moment-judge",
-                            inputs=inputs,
-                            recipe_hash=judge_recipe,
-                        )
-                    )
-                    if isinstance(outcome, JobHandle):
-                        stats.defer("llm-pending", sample=ep.uid or ep.guid)
-                        continue
-                    if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
-                        work.defer("errored")
-                        stats.quality("judge-invalid-response")
-                        continue
-                    try:
-                        content = outcome.output["choices"][0]["message"]["content"]
-                        from citypods.compute.structured import parse_structured_json
-
-                        payload = (
-                            ensure_judge_contract()
-                            .model_validate(
-                                parse_structured_json(content, context="moment judge response")
-                            )
-                            .model_dump()
-                        )
-                    except (KeyError, IndexError, TypeError, ValueError):
-                        work.defer("errored")
-                        stats.quality("judge-invalid-response")
-                        continue
-                    existing.append(
-                        {
-                            **payload,
-                            "provider_model": str(outcome.model or model),
-                            "prompt_version": JUDGE_PROMPT_VERSION,
-                            "schema_version": JUDGE_SCHEMA_VERSION,
-                        }
-                    )
-                    if ctx.moment_evaluation_state_path:
-                        from citypods.moment_evaluation import append_judge_observation
-
-                        append_judge_observation(
-                            ctx.moment_evaluation_state_path, candidate, existing[-1]
-                        )
-                    stats.ran += 1
-                candidate["judge_assessments"] = existing
-            if ep.moment_pullquote_candidates and all(
-                any(
-                    row.get("provider_model") == model
-                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
-                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
-                    for row in candidate.get("judge_assessments") or []
-                    if isinstance(row, dict)
-                )
-                for candidate in ep.moment_pullquote_candidates
-                if isinstance(candidate, dict)
-                for model in models
-            ):
-                work.consumed(reused=stats.ran == consumed_before)
-        return stats
 
 
 # Seconds one pending-packet record read may take before it is reported unavailable. The records
@@ -10122,7 +9939,7 @@ def judge_stages() -> list[EnrichmentStage]:
 
 def r6_stages() -> list[EnrichmentStage]:
     """R6's opt-in stages, kept separate so legacy stage ordering remains stable."""
-    return [MomentsStage(), MomentJudgeStage(), MomentAdmissionStage(), VideoClipsStage()]
+    return [MomentsStage(), MomentAdmissionStage(), VideoClipsStage()]
 
 
 def r7_stages() -> list[EnrichmentStage]:
@@ -10156,7 +9973,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "diarize": frozenset({"native_diarize"}),
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
-    "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
+    "moments": frozenset({"moments", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),

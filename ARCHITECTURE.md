@@ -909,8 +909,7 @@ scheduler change a transaction makes (claim outcome, bundles, the requeue counte
 transaction's one accounting UPDATE. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
-override: a `--site-config` chooses site content and may *narrow* a lane
-(`moments.judges.models` selects a subset of `llm_lanes["r6-judge"]`), but never which purposes
+override: a `--site-config` chooses site content, but never which purposes
 exist or what each may spend, because the deployed Worker's reservation map is compiled from the
 committed file alone. `llm_lanes` chooses *among* the catalog below; the catalog itself — physical
 routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.

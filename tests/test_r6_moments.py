@@ -14,7 +14,6 @@ from citypods.moment_evaluation import (
     refresh_policies,
     save_state,
 )
-from citypods.moment_judging import judge_policy
 from citypods.moments import normalize_quote_candidate, parse_transcript_segments, transcript_region
 from citypods.stages import StageContext, StageStats, _admit_r6_dispatch
 from citypods.video_clips import caption_text, render_video_clip, video_clip_key
@@ -51,7 +50,7 @@ def test_r6_admission_budget_ignores_pending_and_cached_jobs():
     write_deferred(
         storage,
         "pending",
-        JobHandle(task="moment-judge", recipe_hash="pending", backend="v2", ref="remote"),
+        JobHandle(task="moment-extraction", recipe_hash="pending", backend="v2", ref="remote"),
     )
     write_deferred(
         storage,
@@ -199,10 +198,7 @@ def test_vtt_parser_accepts_cue_settings_and_quote_padding():
     assert candidate["end"] == 20.0
 
 
-def test_judges_are_free_only_and_clips_are_recipe_addressed():
-    policy = judge_policy(["qwen/qwen3.8-27b"])
-    assert policy.allow_paid is False
-    assert policy.allowed_models == ("qwen/qwen3.8-27b",)
+def test_clips_are_recipe_addressed():
     source_a = video_clip_key("episode", 10, 20, "timeline", source_identity="source-a")
     assert source_a != video_clip_key(
         "episode", 10, 20, "changed-timeline", source_identity="source-a"
@@ -311,7 +307,6 @@ def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):
 
 # --- pull-quote criteria and word-accurate timing (2026-09-24) ---------------------------------
 
-from citypods import moment_judging as _judging  # noqa: E402
 from citypods import moments as _moments  # noqa: E402
 
 _SEGMENTS = [
@@ -391,13 +386,12 @@ def test_decisions_carry_word_accurate_timing():
     )
 
 
-def test_extraction_and_judge_share_the_pull_quote_criteria():
-    for prompt in (_moments.MOMENTS_SYSTEM_PROMPT, _judging.JUDGE_SYSTEM_PROMPT):
-        assert _moments.PULL_QUOTE_CRITERIA in prompt
+def test_extraction_prompt_carries_the_pull_quote_criteria():
+    assert _moments.PULL_QUOTE_CRITERIA in _moments.MOMENTS_SYSTEM_PROMPT
     criteria = _moments.PULL_QUOTE_CRITERIA
     assert "Any civic topic qualifies" in criteria  # emphasis, not a restriction
     assert "never name a member of the public" in criteria
-    assert (_moments.MOMENTS_PROMPT_VERSION, _judging.JUDGE_PROMPT_VERSION) == ("2", "2")
+    assert _moments.MOMENTS_PROMPT_VERSION == "2"
 
 
 def test_a_word_match_outside_the_matched_cue_falls_back_to_the_cue():

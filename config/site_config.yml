@@ -96,7 +96,7 @@ tournament:
 #      `ingress_reservations.json` by `scripts/compile_llm_lanes.py`. The Worker previously
 #      carried a hand-maintained `INGRESS_PURPOSE_RESERVATIONS` var whose keys (`topic-tags`,
 #      `moments`) matched NO purpose the client actually sends (`topic-tags:tagger`,
-#      `topic-tags:prelabeler`, `r6-moments`, `r6-judge`) -- so those two lanes' 10,000 reserved
+#      `topic-tags:prelabeler`, `r6-moments`, `r6-judge`, since retired) -- so those two lanes' 10,000 reserved
 #      write units were subtracted from everyone else's headroom while being unusable by the
 #      lanes they were reserved for. Keys here are the exact purpose strings, and both the
 #      compiler and the Worker reject a purpose with no entry rather than letting it fall
@@ -119,8 +119,8 @@ tournament:
 # committed file and never from a config passed with `--site-config`, because the Worker's
 # reservation map is compiled from this file alone -- lanes resolved from anywhere else would
 # look like they applied in the producer and simply not exist at ingress. A selected site config
-# still NARROWS a lane where that is meaningful (`moments.judges.models` picks a subset of
-# `r6-judge` below); it never decides which purposes exist or what each may spend.
+# may NARROW a lane where that is meaningful; it never decides which purposes exist or what each
+# may spend.
 #
 # Ingress write units are the Worker's own pessimistic admission currency, not requests:
 # `3 + len(models)` per admitted job (job row + model-index rows + purpose ledger + scheduler
@@ -260,31 +260,12 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    # Nine passes: ceil(800 / 9). The runner sums this and the judge cap into one R6 counter.
+    # Nine passes: ceil(800 / 9).
     # Daily lane/global/row gates still bound actual admission.
     max_dispatches_per_run: 89
     reserved_write_units: 916
     # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
     daily_write_units: 9600
-  r6-judge:
-    telemetry: {producer: moment-judge, unit: episode, completion: consumed, scope: retained_catalog}
-    # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
-    # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and
-    # gpt-oss-120b (AA 11.6) removed; gemma-4-26b-a4b-it (AA 16.7, ~0.5k-token inputs, two 14,400/day
-    # AI Studio pools) joins as its own judge. A new judge admits nothing until calibrated.
-    models:
-      - "qwen/qwen3.8-27b"
-      - "gemini/gemini-3.6-flash"
-      - "google/gemma-4-26b-a4b-it"
-    dispatch_shape: per_model
-    # Free global ingress permits at most 4,000 total jobs; ceil(4,000 / 9) judge slots/pass.
-    # The runner adds this to extraction slots; this allowance is not reserved capacity.
-    max_dispatches_per_run: 445
-    reserved_write_units: 650
-    # Desired demand is 800 x five quotes x three judges x four units = 48,000.
-    # Cap at 4,000 pinned jobs under the shared free envelope, not 800 fully judged meetings.
-    # Gemini 3.6 also has only forty configured free calls/day. See the capacity analysis.
-    daily_write_units: 16000
   # --- Judge stack (review/49, review/53) ----------------------------------------------------
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
@@ -475,13 +456,6 @@ moments:
     minimum_days: 30
     minimum_reviews: 30
     required_precision: 0.90
-  judges:
-    # Off since 2026-10-19 (review/53 PR10 retires the R6 panel). The panel is candidate-only and
-    # has never admitted anything (no r6_moment_evaluation.json exists); its queued jobs are
-    # cancelled separately.
-    enabled: false
-    allow_paid: false
-    # Routes live in `llm_lanes["r6-judge"]`.
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

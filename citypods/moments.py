@@ -52,7 +52,7 @@ DEFAULT_MOMENT_MODELS = ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flas
 # Derived from the project's goals (VISION: legible, shareable civic process; quote-driven, never
 # editorialized; "national highlights" of strong public comment, officials doing the work well, and
 # transparently quoted opposition). Pull quotes become captioned 9:16 share clips, so each must
-# stand alone. The judge scores against the same criteria (moment_judging.JUDGE_SYSTEM_PROMPT).
+# stand alone.
 PULL_QUOTE_CRITERIA = (
     "Pull quotes are short exact transcript excerpts that help a resident who missed the meeting "
     "understand what was at stake and how people argued it. They are published as captioned, "
