@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Google AI Studio Gemma 31B routes no longer retry a saturated token minute exactly 60s after the
+  last scheduled start. A new per-route `tpm_window_margin_seconds` (15 on `gemma_4_31b_primary`
+  and `gemma_4_31b_secondary`) ages reservations out of the trailing-minute ledger, and out of the
+  `own_tpm` cooldown, a little later, so arrival jitter cannot put two ~11k-token packets less than
+  a minute apart at Google. Absent or 0 leaves every other route unchanged.
+- The Worker now logs an `own_tpm_observed` event (reservation, ledger window tokens, entry ages)
+  on each Google `own_tpm` 429, with no Durable Object rows, to size the margin from real data.
+
 - **The remedy P3 chat jobs now reserve the evaluated 16,384 output tokens.** `_chat_job` sent
   8,192, which would have cut off the longest scored answers (13,455 completion tokens on
   DeepSeek). The cap is now part of each job's recipe hash; no P3 job existed yet, so no handle
