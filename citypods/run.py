@@ -1840,7 +1840,7 @@ def _order_global_candidates(
         if family_priority is not None:
             candidates.sort(
                 key=lambda ke: (
-                    family_priority(prepared[ke[0]]["city"]),
+                    family_priority(prepared[ke[0]]["city"])[0],
                     keyfn(workitem_from_episode(ke[1], city_slug=prepared[ke[0]]["city"].slug)),
                 )
             )
@@ -2679,7 +2679,8 @@ def _run_enrich_global_queue(
                 CityResult(c.slug, "skipped", detail=f"provider fetch deferred: {deferred[key]}")
             )
         else:
-            episodes = prepared.get(key, {}).get("episodes", [])
+            result_key = c.slug if ctx.lane == "moments" else key
+            episodes = prepared.get(result_key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
     results.extend(
         CityResult(c.slug, "skipped", detail="policy_held: non-rollout family")

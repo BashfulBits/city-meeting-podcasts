@@ -3666,3 +3666,12 @@ test("the claim's eligibility filter uses the learned admission ratio, not the c
   const plan = await coordinator.claimDispatchWindow(now, 30);
   assert.deepEqual(plan.jobs.map((job) => [job.id, job.route_id]), [["fits-learned", "gemma-ai-studio"]]);
 });
+
+test("purpose queue counts seek the queued-purpose index instead of scanning other lanes", () => {
+  const { sql } = makeCoordinator();
+  const plan = sql.exec(
+    "EXPLAIN QUERY PLAN SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+    "unspecified", 2
+  );
+  assert.ok(plan.some(row => /SEARCH jobs USING.*idx_jobs_queued_purpose/.test(row.detail)));
+});

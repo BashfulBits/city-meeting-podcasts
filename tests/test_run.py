@@ -4494,3 +4494,41 @@ def test_order_global_candidates_prioritizes_moments_families():
     assert candidates[0][1].guid == "ep-council"
     assert candidates[1][0] == "addison-pz"
     assert candidates[1][1].guid == "ep-pz"
+
+
+def test_moments_family_priority_preserves_backlog_order_within_family():
+    from citypods.ops.workqueue import BacklogPolicy
+
+    prepared = {}
+    for slug, day in [("a-council", 1), ("z-council", 19)]:
+        city = _bare_city(slug)
+        city.extra["meeting_family"] = "council"
+        ep = _ep(slug)
+        ep.published = datetime(2026, 10, day, tzinfo=UTC)
+        prepared[slug] = {"city": city, "episodes": [ep]}
+    policy = BacklogPolicy.from_site_config({"backlog_priority": [{"recency": {"order": "desc"}}]})
+    candidates = run._order_global_candidates(
+        prepared, policy, family_priority=run.moments_family_priority
+    )
+    assert [key for key, _ in candidates] == ["z-council", "a-council"]
+
+
+def test_moments_results_count_feed_view_episodes(tmp_path):
+    city = _bare_city("council-feed")
+    city.extra["meeting_family"] = "council"
+    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=True, lane="moments")
+    pipeline = run.SourcePipeline(
+        state_dir=tmp_path,
+        stages=[],
+        ctx=ctx,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    ep = _ep()
+    ep.published = datetime.now(UTC)
+    pipeline.fetch_merge_from_records = lambda city, key: (None, [ep], {}, 0)
+    pipeline.persist_source = lambda *args, **kwargs: None
+    results = run._run_enrich_global_queue(
+        pipeline, [city], source_cache=None, max_workers=1, policy=None
+    )
+    assert results[0].episode_count == 1

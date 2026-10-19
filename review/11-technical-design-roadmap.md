@@ -22,6 +22,11 @@ This roadmap also folds in and supersedes the standing parts of the **Codex revi
 ([`review/10`](10-codex-architecture-throughput-roadmap-review.md)); see §8 for the appraisal and the
 post-review code queue.
 
+PR #2508 (under review) moves producer caps to Worker daily and per-purpose queue admission.
+Its review fixes use a queued-only purpose index with conservative row-write reservations,
+preserve backlog policy within moments families, and count results by feed view. No artifact
+version or backfill identity changes are introduced by these fixes.
+
 ---
 
 ## §1. How to use this document

@@ -347,6 +347,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
 
 const CURRENT_SCHEMA_OBJECTS = [
   ["index", "idx_jobs_state_updated_id"],
+  ["index", "idx_jobs_queued_purpose"],
   ["trigger", "trg_jobs_priority_sync"],
 ];
 
@@ -952,7 +953,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- jobs, the 2026-08-27 rows-read overage) -- and the queued/leased lookups by state alone.
       --
       -- Each index on jobs is a billed row written on every insert and every state change, and a
-      -- job changes state ~4 times, so jobs deliberately carries no other secondary index beyond
+      -- job changes state ~4 times. Except for the queued-only purpose index, jobs carries none beyond
       -- its id/idempotency_key uniqueness. Three were dropped on 2026-09-23 (see _initSchema):
       -- (state, updated_at), an exact prefix of this one; (state, priority, created_at), obsolete
       -- since job_models took over admission ordering; and (purpose, state, created_at), which no
@@ -1163,6 +1164,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "purpose", "TEXT NOT NULL DEFAULT ''");
+    // Purpose counts must seek a covering index, including on upgrades from older schemas.
+    sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_queued_purpose ON jobs (purpose) WHERE state = 'queued'");
     // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
     // already-provisioned DO's existing rows get 0, same as a freshly-created job.
     this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
