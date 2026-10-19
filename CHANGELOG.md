@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The R5 pre-labelers and calibration matrix are retired (review/53 PR11b).**
+  `llm_evaluation.py`, `llm_tag_review.py`, the `llm-evaluation` command, the `r5` issue handler,
+  the `llm-tag-review` workflow, the pre-labeler batching/prompt in `tags.py`, its stage code,
+  per-run caps and telemetry, the `topic-tags:prelabeler` and `-shadow` lanes (reservations now 8
+  lanes), `tagging.evaluation` and `tagging.prelabeler` config, and the reconcile script's
+  pre-labeler lane are removed. Display is unchanged: an LLM tag stays hidden and a rule tag
+  shown (`tags.apply_admission`), checked against the old code on all 172,526 stored candidates
+  with 0 differences in display, admission and `candidate_id`. `TAG_ADMISSION_POLICY` freezes the
+  old matrix digest so no episode's tag fingerprint changes and nothing is re-opened.
+
 - **The tag tournament and R5 benchmark are retired (review/53 PR11a).** `citypods/tournament.py`,
   `tournament_backfill.py`, `r5_benchmark.py`, `scripts/tournament_route_proposal.py`, their five
   workflows (`llm-tournament`, `r5-benchmark`, `tournament-tag-backfill`,
