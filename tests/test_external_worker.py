@@ -1822,17 +1822,21 @@ def test_internal_scan_without_actions_metadata_retains_owner_rotation(tmp_path,
 
 
 @pytest.mark.parametrize(
-    ("argument", "environment", "policy_cap", "expected"),
+    ("argument", "environment", "policy_cap", "expected", "error"),
     [
-        (None, None, None, 256),
-        (None, None, 128, 128),
-        (None, "64", 128, 64),
-        (7, "64", 128, 7),
-        (0, "64", 128, 0),
+        (None, None, None, 256, None),
+        (None, None, 128, 128, None),
+        (None, "64", 128, 64, None),
+        (7, "64", 128, 7, None),
+        (0, "64", 128, 0, None),
+        (None, "0", 128, 0, None),
+        (None, "abc", 128, None, "CITYPODS_WORKER_MAX_SCAN must be an integer"),
+        (None, "-1", 128, None, "must be a non-negative integer"),
+        (-1, "64", 128, None, "must be a non-negative integer"),
     ],
 )
 def test_internal_entrypoint_resolves_scan_budget(
-    tmp_path, monkeypatch, argument, environment, policy_cap, expected
+    tmp_path, monkeypatch, argument, environment, policy_cap, expected, error
 ):
     if environment is None:
         monkeypatch.delenv("CITYPODS_WORKER_MAX_SCAN", raising=False)
@@ -1860,8 +1864,13 @@ def test_internal_entrypoint_resolves_scan_budget(
             pass
 
     monkeypatch.setattr(ew, "InternalTranscribeWorker", Worker)
-    ew.run_internal_worker(max_scan=argument)
-    assert captured["config"].max_scan == expected
+    if error is not None:
+        with pytest.raises(ValueError, match=error):
+            ew.run_internal_worker(max_scan=argument)
+        assert captured == {}  # fail before creating a worker, not a successful no-op
+    else:
+        ew.run_internal_worker(max_scan=argument)
+        assert captured["config"].max_scan == expected
 
 
 def test_internal_scan_exhaustion_flushes_partial_transcript_batch(tmp_path, monkeypatch):
@@ -1904,3 +1913,16 @@ def test_internal_close_releases_inference_process_even_when_final_flush_fails(
     assert events == ["close"]
     assert worker._pending_transcript_records == {"src": {"a": {"uid": "a"}}}
     assert "end-of-run transcript batch flush failed" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", [-1, "abc", 1.5, True])
+def test_worker_config_rejects_invalid_scan_budget(value):
+    with pytest.raises(ValueError, match="max_scan.*must be a non-negative integer"):
+        ExternalWorkerConfig(backend="modal", owner="modal:test", max_scan=value)
+
+
+@pytest.mark.parametrize("value", ["-1", "abc"])
+def test_external_worker_env_scan_errors_are_actionable(monkeypatch, value):
+    monkeypatch.setenv("CITYPODS_WORKER_MAX_SCAN", value)
+    with pytest.raises(ValueError, match="CITYPODS_WORKER_MAX_SCAN"):
+        config_from_env("modal", site_config={})

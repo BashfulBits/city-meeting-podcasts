@@ -189,3 +189,22 @@ inference; cheap final flushing/settlement remains outside the scan admission ga
 The earlier 3.76M/month reduction remains an estimate pending deployment and live metrics.
 This follow-up does not implement terminal suppression, report census changes, provider backoff,
 or budget telemetry. No production settings or schedules were changed during preparation.
+
+
+## CodeRabbit CLI review — 2026-10-18
+
+CodeRabbit CLI 0.9.0 reviewed the committed branch against `origin/main` with `--agent`.
+Both findings were verified against current code:
+
+- **Minor: invalid scan configuration can silently disable work. Fixed and expanded.** Negative
+  scan settings now fail validation in the shared worker configuration, covering direct callers,
+  internal CLI/environment overrides, and external workers. Malformed environment integers report
+  the setting name. Startup tests assert invalid settings fail before constructing a worker.
+  The suggestion to reject zero is not adopted: zero is an explicit, documented no-probe setting,
+  covered by tests; it must not be confused with silently accepting a negative typo.
+- **Trivial: coverage depends on queue/configuration stability. Clarified.** The ordering comment
+  and architecture text now explicitly require a stable queue and worker configuration. Runtime
+  ordering is unchanged; overlap/churn limitations remain documented rather than hidden.
+
+No second CLI review was needed for these bounded validation/comment changes. The raw structured
+CLI output was retained locally for the maintainer's review. Focused regression tests passed.

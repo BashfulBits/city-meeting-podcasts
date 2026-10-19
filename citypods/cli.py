@@ -356,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
         "--max-scan",
         type=int,
         metavar="N",
-        help="maximum lease probes, including denied claims (default: 256; env/policy overridable)",
+        help="maximum lease probes, including denials (default: 256; env/policy override; 0: none)",
     )
 
     tq = sub.add_parser(

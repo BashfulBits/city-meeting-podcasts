@@ -200,6 +200,17 @@ class ExternalWorkerConfig:
     provider_run_id: str | None = None
     provider_input_id: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.max_scan is not None and (
+            isinstance(self.max_scan, bool)
+            or not isinstance(self.max_scan, int)
+            or self.max_scan < 0
+        ):
+            raise ValueError(
+                "max_scan/CITYPODS_WORKER_MAX_SCAN must be a non-negative integer "
+                "(0 disables lease probes)"
+            )
+
 
 @dataclass(frozen=True)
 class InternalJobTiming:
@@ -443,7 +454,10 @@ def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw == "":
         return default
-    return int(raw)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer; got {raw!r}") from exc
 
 
 def _float_env(name: str, default: float) -> float:
@@ -462,7 +476,7 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
     max_scan_env = os.environ.get("CITYPODS_WORKER_MAX_SCAN")
     max_scan_setting = policy.dispatch.max_scan
     if max_scan_env not in (None, ""):
-        max_scan: int | None = int(max_scan_env)
+        max_scan: int | None = _int_env("CITYPODS_WORKER_MAX_SCAN", 0)
     elif max_scan_setting is not None:
         max_scan = max_scan_setting
     else:
@@ -931,7 +945,7 @@ class ExternalTranscribeWorker:
 
     def _scan_limit(self) -> int:
         if self.config.max_scan is not None:
-            return max(0, self.config.max_scan)
+            return self.config.max_scan
         return max(0, self.config.max_claims + _DEFAULT_ADOPT_HEADROOM)
 
     def _run_claim_loop(
@@ -2017,12 +2031,12 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
 
     def _scan_limit(self) -> int:
         if self.config.max_scan is not None:
-            return max(0, self.config.max_scan)
+            return self.config.max_scan
         return _DEFAULT_INTERNAL_MAX_SCAN
 
     def _ordered(self, items: list[WorkItem]) -> list[WorkItem]:
         # Consecutive Actions runs advance one full scan window. Slots take adjacent windows,
-        # giving a stable queue eventual full coverage instead of repeatedly probing its head.
+        # giving eventual full coverage for a stable queue, worker count, and scan budget.
         # Local/external callers retain the existing owner-derived rotation.
         run_number = os.environ.get("GITHUB_RUN_NUMBER")
         if run_number is None:
