@@ -60,6 +60,27 @@ export function requestStartMarginMs(route) {
   return Math.ceil(seconds * 1000);
 }
 
+/**
+ * Optional per-route margin added to the TOKEN-per-minute window (`tpm_window_margin_seconds`).
+ *
+ * The window ledger records each call at its SCHEDULED start (claim clock + wait). The provider
+ * counts it at its ARRIVAL, which is later by a variable delay (claim-to-receipt latency, the B2
+ * payload read, gateway hops). Two packets that each nearly fill a minute are released exactly
+ * 60.000s apart on the ledger, so whenever the first arrives later than the second's delay the
+ * provider sees them less than 60s apart and 429s the second. Releasing the window this much
+ * later absorbs that jitter. Unlike `request_start_margin_seconds` it leaves RPM spacing alone.
+ */
+export function tpmWindowMarginMs(route) {
+  const seconds = Number(route?.tpm_window_margin_seconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.ceil(seconds * 1000);
+}
+
+/** Length of the route's token window (60s plus its margin): reservations age out after it. */
+export function tpmWindowSpanMs(route) {
+  return MS_PER_MINUTE + tpmWindowMarginMs(route);
+}
+
 /** Length of the route's RPM accounting window, including any start-time safety margin. */
 export function rpmWindowDurationMs(route) {
   return MS_PER_MINUTE + requestStartMarginMs(route);
@@ -316,11 +337,12 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     // A job admitted at the lower ratio but reserved at the conservative one occupies the whole
     // minute window at most.
     const windowTokens = Math.min(inputEstimate, tpm);
-    const recent = inputWindow(route).filter((entry) => entry.at > notBeforeAt - MS_PER_MINUTE);
+    const span = tpmWindowSpanMs(route);
+    const recent = inputWindow(route).filter((entry) => entry.at > notBeforeAt - span);
     let used = recent.reduce((sum, entry) => sum + entry.tokens, 0);
     for (const entry of recent) {
       if (used + windowTokens <= tpm) break;
-      push("input_minute_window", entry.at + MS_PER_MINUTE);
+      push("input_minute_window", entry.at + span);
       used -= entry.tokens;
     }
   }
@@ -346,11 +368,12 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // from a quiet stretch beforehand.
   if (Number.isFinite(tpm) && tpm > 0) {
     const windowReserved = Number(route?.tpm_reserved) || 0;
+    const span = tpmWindowSpanMs(route);
     const windowStale =
-      !Number.isFinite(route?.tpm_window_start) || now - route.tpm_window_start >= MS_PER_MINUTE;
+      !Number.isFinite(route?.tpm_window_start) || now - route.tpm_window_start >= span;
     const effectiveWindowReserved = windowStale ? 0 : windowReserved;
     if (reservation <= tpm && effectiveWindowReserved + reservation > tpm) {
-      push("tpm_window", (windowStale ? now : route.tpm_window_start) + MS_PER_MINUTE);
+      push("tpm_window", (windowStale ? now : route.tpm_window_start) + span);
     }
 
     const availableAtNotBefore =

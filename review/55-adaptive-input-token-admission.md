@@ -111,6 +111,26 @@ same calibrated ratios and the route merged with its ledger; callers with no liv
 indexing, the structural unroutable checks) keep the catalog values, and the oversize check
 (`_exceedsEveryLiveCeiling`) filters routes by context window alone and applies the learned gate.
 
+## Token-window margin (follow-up, 2026-10-19)
+
+After the one size gate, `gemma_4_31b_*` (judge:sibling) showed ~48 `own_tpm` 429s/hour against ~22
+completions/hour (about 71% of attempts refused; ~5.5 failures and ~6.5 completions/hour before).
+The learned ratio is not the cause: the pooled judge ring has 128 samples, p95 1.002, so the
+reservation ratio (1.2024) and admission ratio (0.9975) over-count Google's own tokens, and Gemini
+reservations carry no output. What changed is the packet size: a ~10-11.5k-token packet (largest
+accepted 11,514) fills the 14,400 ledger minute alone, so the ledger releases the next one exactly
+60.000s after the last SCHEDULED start (claim clock + wait). Google counts at ARRIVAL, which trails
+the schedule by a variable delay (claim-to-receipt, B2 payload read, gateway), so about half of
+those pairs reach Google less than 60s apart and 11k + 11k exceeds 16k. The `own_tpm` cooldown
+(`tpm_window_start = now`) is the same 60s and re-offers the route at the same boundary.
+
+`tpm_window_margin_seconds` (pacing.js `tpmWindowMarginMs`) lengthens the token window for
+the input-minute ledger and the fixed `tpm_window` (and thereby the `own_tpm` cooldown) by the
+margin; RPM spacing is untouched. Set to 15 on the two routes; remove the key to revert. Every
+Google `own_tpm` now logs `own_tpm_observed` (no DO rows) so the margin can be sized from data.
+Per-attempt rows are not stored (route_failures is a per-day counter), which is why the
+reconstruction above is inferred from the ledger arithmetic, not measured per call.
+
 ## Additional goals
 
 Per-key observability (n, p50/p95/p99, size rejections, near-edge admissions) in `/v2/calibration`

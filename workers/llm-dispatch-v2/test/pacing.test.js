@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   minInterRequestGapMs,
   requestStartMarginMs,
+  tpmWindowMarginMs,
+  tpmWindowSpanMs,
   rpmWindowDurationMs,
   availableTokenBudget,
   reservationFor,
@@ -473,4 +475,52 @@ test("a gate object says which limit refused the job or set its start, and chang
   const refused = {};
   assert.equal(earliestSafeStart(small, request, NOW, NOW, { gate: refused }), null);
   assert.equal(refused.reason, "over_input_ceiling");
+});
+
+test("tpm_window_margin_seconds releases a saturated Google minute later, and only then", () => {
+  // One ~11k packet fills a 14.4k minute: the next may start 60s after the last SCHEDULED start.
+  // The margin keeps it off the provider's minute boundary, where arrival jitter would put the
+  // two packets <60s apart (the 2026-10-19 own_tpm storm on gemma_4_31b_*).
+  const big = { input_token_estimate: 9000, max_output_token_estimate: 800 };
+  const make = (extra = {}) => freshRoute({
+    provider: "gemini", tpm: 14400, input_token_ratio: 1.2, full_token_budget: 1e9,
+    input_window_json: JSON.stringify([{ at: NOW - 20_000, tokens: 10800 }]),
+    tpm_window_start: NOW - 20_000, tpm_reserved: 10800, ...extra,
+  });
+  const plain = earliestSafeStart(make(), big, NOW, NOW);
+  assert.equal(plain.notBeforeAt, NOW + 40_000);
+  const gate = {};
+  const padded = earliestSafeStart(make({ tpm_window_margin_seconds: 15 }), big, NOW, NOW, { gate });
+  assert.equal(padded.notBeforeAt, NOW + 55_000);
+  assert.ok(["input_minute_window", "tpm_window"].includes(gate.binding));
+  // A small packet that fits beside the recorded one is not delayed at all.
+  const small = { input_token_estimate: 1000, max_output_token_estimate: 800 };
+  assert.equal(earliestSafeStart(make({ tpm_window_margin_seconds: 15 }), small, NOW, NOW).notBeforeAt, NOW);
+});
+
+test("the margin also stretches the cooldown that own_tpm leaves in the fixed window", () => {
+  // authorizeRetry(own_tpm) sets tpm_reserved = tpm and tpm_window_start = failure time.
+  const failedAt = NOW - 61_000;
+  const route = (extra = {}) => freshRoute({
+    provider: "gemini", tpm: 14400, full_token_budget: 1e9,
+    tpm_window_start: failedAt, tpm_reserved: 14400, ...extra,
+  });
+  const request = { input_token_estimate: 9000, max_output_token_estimate: 800 };
+  // 61s after the failure the unpadded window is already stale: the retry goes straight out.
+  assert.equal(earliestSafeStart(route(), request, NOW, NOW).notBeforeAt, NOW);
+  assert.equal(
+    earliestSafeStart(route({ tpm_window_margin_seconds: 15 }), request, NOW, NOW).notBeforeAt,
+    failedAt + 75_000
+  );
+});
+
+test("tpmWindowMarginMs ignores absent, zero, negative and non-numeric margins", () => {
+  for (const value of [undefined, null, 0, -5, "x", NaN]) {
+    assert.equal(tpmWindowMarginMs({ tpm_window_margin_seconds: value }), 0);
+    assert.equal(tpmWindowSpanMs({ tpm_window_margin_seconds: value }), 60_000);
+  }
+  assert.equal(tpmWindowMarginMs({ tpm_window_margin_seconds: 15 }), 15_000);
+  assert.equal(tpmWindowSpanMs({ tpm_window_margin_seconds: 15 }), 75_000);
+  // RPM spacing is a separate knob and must not move.
+  assert.equal(minInterRequestGapMs({ rpm: 30, tpm_window_margin_seconds: 15 }), 2000);
 });

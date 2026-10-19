@@ -1532,6 +1532,50 @@ test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retr
   assert.equal(row.last_failure_class, "own_tpm");
 });
 
+test("authorizeRetry own_tpm on a Google route logs what the window ledger believed", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      token_reservation, payload_key, created_at, updated_at
+    ) VALUES (
+      'j-log', 'idem-log', 'digest-log', '{}', 'leased', 'b1', 'gemma_4_31b_primary',
+      'ltok', 'judge', 9000, 800, 10800, 'payloads/j-log/request.json', ?, ?
+    )`,
+    now, now
+  );
+  coordinator._getOrCreateRouteLedger("gemma_4_31b_primary", now, {});
+  sql.exec(
+    "UPDATE routes SET input_window_json = ? WHERE route_id = 'gemma_4_31b_primary'",
+    JSON.stringify([{ at: now - 40_000, tokens: 5000 }, { at: now - 90_000, tokens: 7000 }])
+  );
+  const logged = [];
+  const original = console.info;
+  console.info = (line) => logged.push(line);
+  try {
+    await coordinator.authorizeRetry("j-log", "ltok", "att-1", now, null, "own_tpm");
+  } finally {
+    console.info = original;
+  }
+  const event = logged.map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .find((e) => e?.event === "own_tpm_observed");
+  assert.ok(event, "own_tpm_observed was logged");
+  assert.equal(event.route_id, "gemma_4_31b_primary");
+  assert.equal(event.job_reservation, 10800);
+  assert.equal(event.job_input_estimate, 9000);
+  // The 90s-old entry is outside the 60s + 15s margin span; only the 40s-old one counts.
+  assert.equal(event.ledger_window_tokens, 5000);
+  assert.equal(event.ledger_window_calls, 1);
+  assert.equal(event.window_margin_ms, 15_000);
+  const row = [...sql.exec("SELECT tpm_reserved, tpm_window_start FROM routes WHERE route_id = 'gemma_4_31b_primary'")][0];
+  assert.equal(row.tpm_window_start, now);
+  assert.equal(row.tpm_reserved, 14400);
+});
+
 test("authorizeRetry with payment_required sets the billing day cooldown, not a short own_rpm backoff", async () => {
   // A 429 the classifier reads as payment_required (zero-provisioned-limit, insufficient-budget)
   // used to fall into authorizeRetry's default branch alongside own_rpm/unknown_429, buying only

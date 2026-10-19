@@ -429,6 +429,7 @@ _WORKER_ROUTE_FIELDS = (
     "tpm",
     "concurrency",
     "request_start_margin_seconds",
+    "tpm_window_margin_seconds",
     "free",
     "input_per_token",
     "output_per_token",
@@ -1125,6 +1126,20 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"observed_recovery_seconds: {obs_rec!r}"
                 )
             route["observed_recovery_seconds"] = float(obs_rec)
+
+        tpm_margin = route.get("tpm_window_margin_seconds")
+        if tpm_margin is not None:
+            if (
+                isinstance(tpm_margin, bool)
+                or not isinstance(tpm_margin, (int, float))
+                or not math.isfinite(tpm_margin)
+                or not 0 < tpm_margin <= 120
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"tpm_window_margin_seconds: {tpm_margin!r}"
+                )
+            route["tpm_window_margin_seconds"] = float(tpm_margin)
 
         ra_trust = route.get("retry_after_trustworthy")
         if ra_trust is not None:
