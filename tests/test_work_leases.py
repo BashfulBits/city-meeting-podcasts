@@ -717,3 +717,8 @@ def test_run_claim_loop_empty_candidates_is_noop():
     )
     assert summary == {"claimed": 0, "completed": 0, "failed": 0}
     assert (bucket.class_a, bucket.class_b) == (0, 0)
+
+
+def test_ordered_candidates_accepts_wrapping_explicit_scan_offset():
+    assert wl.ordered_candidates(["a", "b", "c"], "owner", offset=4) == ["b", "c", "a"]
+    assert wl.ordered_candidates([], "owner", offset=4) == []

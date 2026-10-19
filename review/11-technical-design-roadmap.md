@@ -2223,3 +2223,16 @@ Capacity is three new-route sessions per weekly run, each capped at 96 calls, 16
 1,572,864 output tokens, and 90 minutes; shared caps are 288 calls, 50,331,648 input and 4,718,592
 output tokens, with a five-hour weekly Action limit. Configured-route scans are a separate pending
 request and are not included. See review/48's activation amendment.
+
+
+### R2 lease-read scan bound — implementation prepared, 2026-10-18
+
+Operational H14/H19 follow-up; no strategic queue change. The
+[R2 Class B audit](r2-class-b-usage-audit-2026-10-18.md) reproduced `max_scan=2` issuing 100
+lease probes when all claims were denied. Internal workers also derived an effectively unlimited
+scan cap from their unlimited claim count. The prepared fix counts actual claim attempts, defaults
+internal workers to 256 probes, and advances adjacent matrix windows by Actions run number.
+Unvisited work stays queued; CAS ownership and artifact recipes are unchanged. Regression tests
+cover real terminal/live-lease reads, no-work runs, override precedence, and stable-queue window
+coverage. Deployment and live read/completion verification remain pending; no pipeline-version
+bump, artifact invalidation, or catalog backfill. See the audit's R2B-01 follow-up.

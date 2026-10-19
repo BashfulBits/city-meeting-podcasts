@@ -823,9 +823,14 @@ def scan_offset(owner: str, n: int) -> int:
     return int(hashlib.sha1(owner.encode()).hexdigest(), 16) % n
 
 
-def ordered_candidates(candidates: Sequence[T], owner: str) -> list[T]:
+def ordered_candidates(
+    candidates: Sequence[T], owner: str, *, offset: int | None = None
+) -> list[T]:
     """Rotate *candidates* (policy-ordered, e.g. read straight from the ``work.json`` discovery
     index) to *owner*'s deterministic :func:`scan_offset`.
+
+    An explicit ``offset`` lets bounded Actions scans advance across consecutive run numbers
+    without making ownership authority depend on that ordering hint.
 
     Generic over the candidate shape — :func:`run_claim_loop` calls this with
     ``(source_key, uid)`` tuples; a worker that composes the claim primitives itself (instead of
@@ -836,7 +841,7 @@ def ordered_candidates(candidates: Sequence[T], owner: str) -> list[T]:
     n = len(candidates)
     if n == 0:
         return []
-    offset = scan_offset(owner, n)
+    offset = scan_offset(owner, n) if offset is None else offset % n
     return [candidates[(offset + i) % n] for i in range(n)]
 
 

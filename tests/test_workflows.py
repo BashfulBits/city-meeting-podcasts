@@ -1941,3 +1941,10 @@ def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports
     assert any(
         step.get("name") == "Download current-run publication inputs" for step in publish["steps"]
     )
+
+
+def test_internal_scan_windows_use_the_matrix_lane_worker_count():
+    _, job = _job("asr.yml", "asr")
+    step = next(s for s in job["steps"] if "run-internal-worker" in s.get("run", ""))
+    assert step["env"]["CITYPODS_INTERNAL_WORKER_COUNT"] == "${{ matrix.workers }}"
+    assert step["env"]["CITYPODS_INTERNAL_WORKER_SLOT"] == "${{ matrix.slot }}"

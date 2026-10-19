@@ -352,7 +352,12 @@ def main(argv: list[str] | None = None) -> int:
     ciw.add_argument("--base-url", help="base URL (for resolving cloud storage)")
     ciw.add_argument("--owner", help="override the worker owner identity")
     ciw.add_argument("--max-claims", type=int, metavar="N")
-    ciw.add_argument("--max-scan", type=int, metavar="N")
+    ciw.add_argument(
+        "--max-scan",
+        type=int,
+        metavar="N",
+        help="maximum lease probes, including denials (default: 256; env/policy override; 0: none)",
+    )
 
     tq = sub.add_parser(
         "transcript-quality",

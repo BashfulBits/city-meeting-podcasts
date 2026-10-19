@@ -138,9 +138,12 @@ SUPPORTED_WORK_CLASSES = frozenset(
 )
 RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})
 
-# How many already-done (adopted) head-of-queue items one run will skip past, beyond ``max_claims``,
-# before giving up — the default bound on stale-manifest scanning when ``max_scan`` is unset.
+# Additional lease probes beyond max_claims when max_scan is unset, including denied claims
+# and already-done (adopted) items. Productive work and idle scans share this bounded allowance.
 _DEFAULT_ADOPT_HEADROOM = 50
+# Internal workers are deadline-bounded, not claim-count-bounded. Keep their lease-probe budget
+# independent of the unlimited transcription count so an idle run cannot scan the entire backlog.
+_DEFAULT_INTERNAL_MAX_SCAN = 256
 
 # GH#1019: successful transcript commits are coalesced into a bounded batch instead of one
 # push_records_merged() fetch+merge+put of the whole source episodes.json per episode. A batch
@@ -179,9 +182,8 @@ class ExternalWorkerConfig:
     # this run merely *adopts* (artifacts already in storage — a stale manifest, or a prior owner
     # that uploaded then crashed before recording) do NOT consume a slot; the loop scans past them.
     max_claims: int = 1
-    # Hard bound on how many items one run will lease+examine, so a stale manifest whose head is
-    # all already-done can't make the loop walk the entire queue chasing ``max_claims`` fresh items.
-    # ``None`` -> ``max_claims`` + a fixed adopt-headroom (see ExternalTranscribeWorker.run).
+    # Hard bound on attempted claims, including denied reads of held or terminal leases.
+    # None -> max_claims + adopt-headroom externally; a fixed 256 probes for internal workers.
     max_scan: int | None = None
     lease_ttl_seconds: float = 6 * 3600
     work_class: str = "transcript-asr"
@@ -197,6 +199,17 @@ class ExternalWorkerConfig:
     cpu_threads: int = 4
     provider_run_id: str | None = None
     provider_input_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_scan is not None and (
+            isinstance(self.max_scan, bool)
+            or not isinstance(self.max_scan, int)
+            or self.max_scan < 0
+        ):
+            raise ValueError(
+                "max_scan/CITYPODS_WORKER_MAX_SCAN must be a non-negative integer "
+                "(0 disables lease probes)"
+            )
 
 
 @dataclass(frozen=True)
@@ -441,7 +454,10 @@ def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw == "":
         return default
-    return int(raw)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer; got {raw!r}") from exc
 
 
 def _float_env(name: str, default: float) -> float:
@@ -460,7 +476,7 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
     max_scan_env = os.environ.get("CITYPODS_WORKER_MAX_SCAN")
     max_scan_setting = policy.dispatch.max_scan
     if max_scan_env not in (None, ""):
-        max_scan: int | None = int(max_scan_env)
+        max_scan: int | None = _int_env("CITYPODS_WORKER_MAX_SCAN", 0)
     elif max_scan_setting is not None:
         max_scan = max_scan_setting
     else:
@@ -927,6 +943,11 @@ class ExternalTranscribeWorker:
     def _after_claim(self, claim: CompletedClaim) -> None:
         return None
 
+    def _scan_limit(self) -> int:
+        if self.config.max_scan is not None:
+            return self.config.max_scan
+        return max(0, self.config.max_claims + _DEFAULT_ADOPT_HEADROOM)
+
     def _run_claim_loop(
         self,
         candidates: list[WorkItem],
@@ -936,24 +957,27 @@ class ExternalTranscribeWorker:
         budget_policy=None,
         budget_cycle: str | None = None,
     ) -> tuple[ClaimLoopSummary, list[CompletedClaim]]:
-        summary = ClaimLoopSummary(scanned=len(candidates))
+        summary = ClaimLoopSummary()
         settled_claims: list[CompletedClaim] = []
         ordered = self._ordered(candidates)
         worked = 0
         if max_worked is not None and max_worked <= 0:
             return summary, settled_claims
-        scan_cap = (
-            self.config.max_scan
-            if self.config.max_scan is not None
-            else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
-        )
+        scan_cap = self._scan_limit()
         for item in ordered:
             if should_stop is not None and should_stop():
                 break
             if max_worked is not None and worked >= max_worked:
                 break
-            if summary.claimed >= scan_cap:
+            if summary.scanned >= scan_cap:
+                print(
+                    f"[{self.config.backend}-worker] scan budget exhausted: "
+                    f"attempted={summary.scanned} candidates={len(candidates)} "
+                    f"claimed={summary.claimed} skipped={summary.skipped}",
+                    flush=True,
+                )
                 break
+            summary.scanned += 1
             claim_owner = f"{self.config.owner}:{summary.claimed}"
             held = work_leases.claim(
                 self.storage,
@@ -1992,7 +2016,42 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         )
 
     def close(self) -> None:
-        self.local_backend.close()
+        # Scan exhaustion is an ordinary run boundary, so a partial success/adoption batch must
+        # be published even when no later claim reaches the normal size/age flush threshold.
+        try:
+            self._flush_pending_transcripts(raise_on_transient=False)
+        except Exception as exc:  # noqa: BLE001 - preserve the claim outcome, like external run()
+            print(
+                f"[{self.config.backend}-worker] warning: end-of-run transcript batch "
+                f"flush failed: {exc}",
+                flush=True,
+            )
+        finally:
+            self.local_backend.close()
+
+    def _scan_limit(self) -> int:
+        if self.config.max_scan is not None:
+            return self.config.max_scan
+        return _DEFAULT_INTERNAL_MAX_SCAN
+
+    def _ordered(self, items: list[WorkItem]) -> list[WorkItem]:
+        # Consecutive Actions runs advance one full scan window. Slots take adjacent windows,
+        # giving eventual full coverage for a stable queue, worker count, and scan budget.
+        # Local/external callers retain the existing owner-derived rotation.
+        run_number = os.environ.get("GITHUB_RUN_NUMBER")
+        if run_number is None:
+            return super()._ordered(items)
+        try:
+            run_index = int(run_number)
+            slot = int(os.environ.get("CITYPODS_INTERNAL_WORKER_SLOT", "0"))
+            workers = int(os.environ.get("CITYPODS_INTERNAL_WORKER_COUNT", "1"))
+        except ValueError:
+            return super()._ordered(items)
+        if run_index < 0 or workers <= 0 or not 0 <= slot < workers:
+            return super()._ordered(items)
+        return work_leases.ordered_candidates(
+            items, self.config.owner, offset=(run_index * workers + slot) * self._scan_limit()
+        )
 
     def _base_candidates(self) -> list[WorkItem]:
         candidates = super()._base_candidates()
@@ -2299,7 +2358,16 @@ def run_internal_worker(
             or f"github-actions:{run_id}:{work_class}:{slot}"
         ),
         max_claims=max_claims if max_claims is not None else sys.maxsize,
-        max_scan=max_scan,
+        max_scan=(
+            max_scan
+            if max_scan is not None
+            else _int_env(
+                "CITYPODS_WORKER_MAX_SCAN",
+                policy.dispatch.max_scan
+                if policy.dispatch.max_scan is not None
+                else _DEFAULT_INTERNAL_MAX_SCAN,
+            )
+        ),
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=work_class,
         estimated_runtime_seconds_per_audio_second=(
