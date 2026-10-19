@@ -604,6 +604,24 @@ shows earlier answers, so a contested item and a sampled one read the same.
 - **Promotion.** `judge-audit-promote.yml` (dispatch with the item id) turns a finalized Supported or
   Not supported answer into a `gold.json` entry in a pull request.
 
+### Old sibling answers removed and the chat prompt tightened (2026-10-19)
+
+The first sibling runs (13 to 14 October) left `reason` optional: 2,859 of 5,163 Gemma answers
+had none, and on all 265 choose items `choice` stayed empty with the letter written into `reason`.
+Calibration must not read them, so before PR7 the 5,163 Gemma sibling rows and the 64 contested
+adjudications chosen on them were archived to
+`state/archive/judge-old-sibling-rows-2026-10-19/` and removed from the episodes' `judging`
+blocks, and the 1,031 pending old-prompt packets (319 failure markers) were archived to
+`state/archive/judge-v1-pending-handles-2026-10-19/` and deleted. JEV's 109,856 judgments and the two
+random calibration adjudications stay. The planner then asks the removed cells again. To keep the
+re-ask from repeating the failure, each chat item now names its answer field (`answer_with`) and
+lists the choose letters, and the prompts ask for the deciding quote even when nothing is flagged.
+A chat packet's identity also carries `CHAT_REQUEST_REVISION`, because the registry returns a
+completed record for a known recipe and would otherwise answer a re-asked packet of the same items
+from the old reasonless result. The check itself is unchanged: a fabricated quote still never counts as valid. A prompt-version bump
+was rejected: it would re-ask all of JEV's judgments and needs the adjudication helpers to filter
+ledger rows by version.
+
 ### PR7 — Calibration report and threshold proposal
 
 `python -m citypods.judging.calibrate --task <task>` computes, per question kind, from the

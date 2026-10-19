@@ -14,6 +14,7 @@ from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_lanes import load_families, load_lanes
 from citypods.judging import ledger, runner
 from citypods.judging.backends import (
+    AdjudicatorBackend,
     ChatJudgeBackend,
     Item,
     JevBackend,
@@ -365,6 +366,66 @@ def test_jev_compiles_and_parses_every_question_type():
     assert len(by_q["best"]) == 4  # recorded on every subject in the meeting
     # A missing answer yields no row, never a guess.
     assert JevBackend().parse(packet, {"answers": {}}) == []
+
+
+def test_chat_packet_identity_carries_the_request_revision_and_jev_is_unchanged():
+    import hashlib
+
+    from citypods.judging import backends
+
+    subject = Subject("tag", "s1", "ep", None, None, {})
+    item = Item(
+        QuestionSpec("supported", "validate", "x"), "T1", make_evidence("T1", "e"), (subject,)
+    )
+    identity = sorted([(item.qid, item.evidence.digest, item.question.prompt_version)])
+
+    def legacy(role, model):
+        blob = json.dumps([role, model, identity]).encode()
+        return f"judge-{role}-{hashlib.sha256(blob).hexdigest()[:32]}"
+
+    anchor = Packet("judge:anchor", "anchor", "typesafe/jev-1.13", (item,))
+    sibling = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", (item,))
+    assert anchor.recipe_hash == legacy("anchor", "typesafe/jev-1.13")
+    assert sibling.recipe_hash != legacy("sibling", "google/gemma-4-31b-it")
+    assert backends.CHAT_REQUEST_REVISION == "2"
+
+
+def test_chat_judge_items_name_the_field_to_answer_and_list_choose_letters():
+    ensure_contract()
+    subjects = [Subject("moment", f"s{i}", "ep", "g", None, {}) for i in range(3)]
+    levels = ("low", "high")
+    items = (
+        Item(
+            QuestionSpec("supported", "validate", "x"),
+            "T1",
+            make_evidence("T1", "e"),
+            (subjects[0],),
+        ),
+        Item(
+            QuestionSpec("publishable", "gate", "x"), "T1", make_evidence("T1", "e"), (subjects[0],)
+        ),
+        Item(
+            QuestionSpec("usefulness", "grade", "x", levels=levels),
+            "T1",
+            make_evidence("T1", "e"),
+            (subjects[0],),
+        ),
+        Item(
+            QuestionSpec("best", "choose", "x"),
+            "T1",
+            make_evidence("T1", "e"),
+            tuple(subjects),
+            options=choose_options(subjects, reverse=False),
+        ),
+    )
+    packet = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", items)
+    job = ChatJudgeBackend(max_total_tokens=10_000, max_items=25).build(packet)
+    sent = json.loads(job.inputs["messages"][1]["content"])["items"]
+    assert [entry["answer_with"] for entry in sent] == ["verdict", "verdict", "level", "choice"]
+    assert sent[3]["options"] == [letter for letter, _ in items[3].options]
+    assert "options" not in sent[0] and "levels" not in sent[0]
+    assert sent[2]["levels"] == list(levels)
+    assert "answer_with" in ChatJudgeBackend.SYSTEM and "answer_with" in AdjudicatorBackend.SYSTEM
 
 
 def test_chat_judge_parses_valid_partial_and_malformed_replies():
