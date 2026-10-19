@@ -3053,11 +3053,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       );
       this._indexQueuedJobModels(queuedClone, queueModels);
+      // A correction clone is new ingress, not a rescheduling of the source job. Only
+      // completion-time requeues of an existing job increment retried_today.
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
          ingress_write_units_today = ingress_write_units_today + ?,
-         queued_job_count = queued_job_count + 1,
-         retried_today = retried_today + 1 WHERE id = 1`,
+         queued_job_count = queued_job_count + 1 WHERE id = 1`,
         writeUnits
       );
       sql.exec(

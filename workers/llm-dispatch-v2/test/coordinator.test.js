@@ -635,6 +635,7 @@ test("schemaRetry charges ingress for the backup-model index rows its own clone 
   });
   await coordinator.enqueueBatch([backupPolicyJob("source", 12)]);
   sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  sql.exec("UPDATE scheduler SET retried_today = 3 WHERE id = 1");
   const before = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
     .ingress_write_units_today;
 
@@ -655,6 +656,18 @@ test("schemaRetry charges ingress for the backup-model index rows its own clone 
     .ingress_write_units_today;
   // 3 (job row + purpose ledger + scheduler counter) + 2 model-index rows = 5, not 4.
   assert.equal(after - before, 5);
+  const counters = (await coordinator.stats(Date.now())).scheduler;
+  assert.equal(counters.jobs_ingested_today, 2, "the correction creates a new ledger row");
+  assert.equal(counters.retried_today, 3, "a new correction row is ingress, not a Worker requeue");
+  const replay = await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  });
+  assert.equal(replay.id, result.id);
+  const replayCounters = (await coordinator.stats(Date.now())).scheduler;
+  assert.equal(replayCounters.jobs_ingested_today, 2);
+  assert.equal(replayCounters.retried_today, 3, "replaying the correction adds no retry event");
 });
 
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {

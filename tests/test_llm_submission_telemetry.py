@@ -182,6 +182,9 @@ def test_scheduler_summary_matches_worker_stats_shape():
         "queued": 12,
         "claimed": 19,
         "ingested": 83,
+        "completed": None,
+        "failed": None,
+        "retried": None,
         "last_reason": "active_bundle_limit",
         "empty_claims": 4,
         "reason_counts": {"active_bundle_limit": 11},
@@ -228,6 +231,40 @@ def test_old_worker_has_unknown_recovery_evidence():
         "cursor": None,
         "complete": None,
     }
+
+
+def test_retry_reporting_separates_run_observations_from_worker_daily_counters():
+    summary = _scheduler_summary(
+        {
+            "scheduler": {
+                "utc_day": "2026-10-19",
+                "jobs_ingested_today": 179,
+                "completed_today": 31,
+                "failed_today": 7,
+                "retried_today": 154,
+            }
+        }
+    )
+    assert (summary["completed"], summary["failed"], summary["retried"]) == (31, 7, 154)
+    events = [
+        {"event": "llm_submission_worker_snapshot", "phase": "end", "summary": summary},
+        {"event": "llm_dispatch_v2_batch", "operation": "schema-retry", "schema_retry": 139},
+        {"event": "llm_dispatch_v2_batch", "operation": "schema-retry", "schema_retry": 1},
+        {"event": "llm_dispatch_v2_batch", "operation": "enqueue-batch", "accepted": 39},
+    ]
+    markdown = render_markdown(events)
+    assert "Schema-correction submission observations in this run: **140**" in markdown
+    assert "ingress today `179`" in markdown
+    assert "completed `31`, failed `7`, Worker requeues `154`" in markdown
+    assert "a Worker retry/requeue reschedules the same job" in markdown
+    assert "not an exact UTC-day count" in markdown
+    assert "not client validation or content acceptance" in markdown
+
+
+def test_old_snapshots_report_unknown_result_counts_instead_of_zero():
+    events = [{"event": "llm_submission_worker_snapshot", "summary": _scheduler_summary({})}]
+    markdown = render_markdown(events)
+    assert "completed `?`, failed `?`, Worker requeues `?`" in markdown
 
 
 def test_empty_recovery_summary_explicitly_reports_missing_evidence():

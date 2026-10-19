@@ -423,6 +423,11 @@ reader incorrectly unwraps an already-normalized reservation map, displaying zer
 quotas and utilization. Read that map directly and use admission's four-unit legacy default;
 no counters, admission budgets, row writes, or pipeline versions change. Regression coverage
 includes compiled and overridden maps, fresh/replay batches, cancellation, and UTC rollover.
+Actions snapshots also carry existing completed/failed/retried counters and a separate per-run
+schema-correction observation line. A correction clone is new ingress, not a Worker requeue;
+`retried_today` no longer includes new correction admissions. Pre-deploy legacy counts age out
+at UTC rollover without a reset or guessed backfill. Provider-completion versus client-validation
+semantics are explicit, without new DO counters or row writes.
 [Recorded comparisons](evidence/2026-10-18-llm-ingress-accuracy.md).
 
 **Locator producer accounting fix (Shipped in
