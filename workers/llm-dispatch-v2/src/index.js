@@ -988,6 +988,9 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
         ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
         observed_input_tokens: usage.input,
         observed_output_tokens: usage.output,
+        // What the request asked for, beside what came back: a reply that stopped at the cap sent
+        // is the model running on; one that stopped below it is the provider's own lower limit.
+        requested_max_tokens: response.sentMaxTokens ?? null,
         provider_status_code: response.status,
         gateway_correlation_id: response.correlationId,
         failure_class: "output_budget_exhausted",

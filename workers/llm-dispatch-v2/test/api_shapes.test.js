@@ -175,3 +175,41 @@ test("a JEV 200 with no answers object is never stored as a result", async () =>
   assert.equal(out.result.outcome, "retryable_error");
   assert.equal(stored.length, 0);
 });
+
+test("a reply cut off at its output limit reports the cap the request carried", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "{\"a\":" }, finish_reason: "length" }],
+        usage: { prompt_tokens: 900, completion_tokens: 4096 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  try {
+    const route = { ...CHAT, output_context_limit: 8192, input_context_limit: 100000 };
+    const out = await attemptProviderCall({
+      env: { BEATAPI_API_KEY: "k" },
+      b2: { putJson: async () => {} },
+      route,
+      dispatchLimits: LIMITS,
+      job: {
+        id: "job-2",
+        lease_token: "lease",
+        not_before_at: 0,
+        lease_expires_at: Date.now() + 600_000,
+        input_token_estimate: 1000,
+        payload: { messages: [{ role: "user", content: "x" }], max_tokens: 2048, max_tokens_mode: "route_max" },
+        purpose: "chapter-agenda",
+      },
+      attemptId: "attempt-2",
+      idempotencyKey: "idem",
+      maxResponseMs: 60_000,
+    });
+    assert.equal(out.result.failure_class, "output_budget_exhausted");
+    assert.equal(out.result.requested_max_tokens, 8192, "route_max sends the route's own limit");
+    assert.equal(out.result.observed_output_tokens, 4096);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

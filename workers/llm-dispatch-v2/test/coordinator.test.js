@@ -1761,6 +1761,49 @@ test("a reply cut off at its output limit requeues without cooling the route dow
   assert.deepEqual(failures.map((row) => [row.failure_class, row.count]), [["output_budget_exhausted", 1]]);
 });
 
+test("an output_budget_exhausted result records the cap it carried and the tokens it held", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
+  const route = "openrouter_google_gemma_4_31b_it_free";
+  for (const [id, sent, held] of [["j-cap-1", 65536, 65536], ["j-cap-2", 65536, 17000]]) {
+    sql.exec(
+      `INSERT INTO jobs (
+        id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+        lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+        payload_key, created_at, updated_at
+      ) VALUES (?, ?, 'digest', '{}', 'leased', 'b1', ?, 'ltok', 'tags', 100, 50, ?, ?, ?)`,
+      id, `idem-${id}`, route, `payloads/${id}/request.json`, now, now
+    );
+    await coordinator.completeBatch("b1", "tok", [
+      {
+        job_id: id,
+        lease_token: "ltok",
+        attempt_id: `att-${id}`,
+        planned_at: now,
+        actual_start_at: now,
+        actual_end_at: now + 500,
+        outcome: "retryable_error",
+        provider_status_code: 200,
+        failure_class: "output_budget_exhausted",
+        requested_max_tokens: sent,
+        observed_output_tokens: held,
+      },
+    ]);
+    insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
+  }
+  const row = [...sql.exec(
+    `SELECT count, last_max_tokens_sent, last_output_tokens, max_output_tokens FROM route_failures
+      WHERE route_id = ? AND failure_class = 'output_budget_exhausted'`, route)][0];
+  assert.equal(row.count, 2);
+  assert.equal(row.last_max_tokens_sent, 65536);
+  assert.equal(row.last_output_tokens, 17000);
+  assert.equal(row.max_output_tokens, 65536, "the day's largest cut-off reply is kept");
+  const detail = await coordinator.detailedStats(now, 10, { failureClasses: ["output_budget_exhausted"] });
+  const listed = detail.route_failures.find((entry) => entry.route_id === route);
+  assert.equal(listed.max_output_tokens, 65536);
+});
+
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
