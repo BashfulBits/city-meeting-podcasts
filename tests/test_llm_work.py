@@ -51,9 +51,7 @@ def row(work):
     return work.snapshot()["purposes"]["new-purpose"]
 
 
-@pytest.mark.parametrize(
-    "stage_name,purpose", [("MomentsStage", "r6-moments"), ("MomentJudgeStage", "r6-judge")]
-)
+@pytest.mark.parametrize("stage_name,purpose", [("MomentsStage", "r6-moments")])
 def test_moment_producers_skip_missing_episode_identity(stage_name, purpose):
     from citypods import stages
 
@@ -68,20 +66,6 @@ def test_moment_producers_skip_missing_episode_identity(stage_name, purpose):
     stats = getattr(stages, stage_name)().process(None, SimpleNamespace(extra={}), [episode], ctx)
     assert stats.ran == 0
     assert work.snapshot()["purposes"][purpose]["observed"] == 0
-
-
-def test_judge_census_requires_storage():
-    from citypods.stages import MomentJudgeStage
-
-    ctx = SimpleNamespace(
-        moment_backend=object(),
-        storage=None,
-        moment_evaluation_config={"judges": {"enabled": True}},
-    )
-    stage = MomentJudgeStage()
-    assert stage.telemetry_purposes(ctx) == ()
-    ctx.storage = object()
-    assert stage.telemetry_purposes(ctx) == ("r6-judge",)
 
 
 def test_registration_requires_telemetry_and_owner():

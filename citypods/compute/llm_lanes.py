@@ -497,7 +497,7 @@ def load_lanes(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, Lane
       requires be deliberate.
 
     So a config selected with ``--site-config`` controls site content -- ``custom_domain``,
-    ``tagging.enabled``, the judge allowlist that *narrows* ``llm_lanes["r6-judge"]`` -- and never
+    ``tagging.enabled`` -- and never
     which purposes exist or what each may spend. ``path`` stays parameterized for the compiler and
     for tests; nothing in the pipeline passes it.
 

@@ -2623,7 +2623,7 @@ def test_tag_shadow_prelabeler_records_beside_production_without_changing_displa
 
 
 def test_all_stage_classes_satisfy_runtime_checkable_protocol():
-    """All 17 concrete stage classes implement the @runtime_checkable EnrichmentStage protocol."""
+    """All 16 concrete stage classes implement the @runtime_checkable EnrichmentStage protocol."""
     from citypods.stages import (
         AgendaChapterCandidatesStage,
         AgendaTextStage,
@@ -2634,7 +2634,6 @@ def test_all_stage_classes_satisfy_runtime_checkable_protocol():
         LinksStage,
         MinutesTextStage,
         MomentAdmissionStage,
-        MomentJudgeStage,
         MomentsStage,
         NativeDiarizeStage,
         RemapStage,
@@ -2654,7 +2653,6 @@ def test_all_stage_classes_satisfy_runtime_checkable_protocol():
         LinksStage,
         MinutesTextStage,
         MomentAdmissionStage,
-        MomentJudgeStage,
         MomentsStage,
         NativeDiarizeStage,
         RemapStage,
@@ -2665,7 +2663,7 @@ def test_all_stage_classes_satisfy_runtime_checkable_protocol():
         VideoClipsStage,
     ]
 
-    assert len(stage_classes) == 17
+    assert len(stage_classes) == 16
     for cls in stage_classes:
         instance = cls()
         assert isinstance(instance, EnrichmentStage), (

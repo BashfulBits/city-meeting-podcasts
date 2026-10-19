@@ -49,7 +49,6 @@ DISPATCHING_PURPOSES = frozenset(
         "topic-tags:prelabeler",
         "topic-tags:prelabeler-shadow",
         "r6-moments",
-        "r6-judge",
         "tournament:tag",
         "tournament:tag-judge",
         "r5-benchmark:tag",
@@ -300,8 +299,7 @@ class TestLaneLookup:
         # other config would submit jobs the deployed Worker either rejects outright
         # (`purpose_not_registered`) or charges against budgets that config never described: the
         # override would appear to work in the producer and simply not exist at ingress. A
-        # selected `--site-config` still governs site content, and still NARROWS a lane where that
-        # is meaningful (`moments.judges.models` picks a subset of `llm_lanes["r6-judge"]`).
+        # selected `--site-config` still governs site content, never a lane's models or budgets.
         with pytest.raises(TypeError):
             lane_for("topic-tags:tagger", {"llm_lanes": {}})  # type: ignore[call-arg]
         with pytest.raises(TypeError):
@@ -359,7 +357,7 @@ class TestRepositoryConfig:
         site = yaml.safe_load(SITE_CONFIG.read_text())
         assert "llm_models" not in site["tagging"]
         assert "llm_model" not in site["tagging"]
-        assert "models" not in site["moments"]["judges"]
+        assert "judges" not in site["moments"]
         assert "model" not in site["tagging"]["prelabeler"]
 
 
@@ -420,29 +418,6 @@ class TestTournamentGrid:
         from citypods.tournament import JUDGE_MODEL, MODELS
 
         assert JUDGE_MODEL not in MODELS
-
-
-class TestJudgePanel:
-    def test_absent_or_empty_allowlist_uses_the_whole_configured_panel(self):
-        from citypods.moment_judging import JUDGE_MODELS, judge_models
-
-        # MomentJudgeStage reads `judges.models` from site config, which no longer carries a list,
-        # so the empty case is the normal one. Treating it as an empty intersection would disable
-        # judging with no error anywhere.
-        assert judge_models(None) == JUDGE_MODELS
-        assert judge_models(()) == JUDGE_MODELS
-        assert judge_models([]) == JUDGE_MODELS
-
-    def test_a_matching_allowlist_narrows_the_panel(self):
-        from citypods.moment_judging import JUDGE_MODELS, judge_models
-
-        assert judge_models([JUDGE_MODELS[0]]) == (JUDGE_MODELS[0],)
-
-    def test_a_non_matching_allowlist_is_an_error_not_a_silent_disable(self):
-        from citypods.moment_judging import judge_models
-
-        with pytest.raises(ValueError, match="matches none of"):
-            judge_models(["retired/typo-route"])
 
 
 class TestTournamentSampleBudget:

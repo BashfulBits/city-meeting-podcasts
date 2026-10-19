@@ -2347,7 +2347,7 @@ def _run_enrich_global_queue(
 
     moment_batcher = None
     original_moment_backend = ctx.moment_backend
-    if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
+    if any(stage.name == "moments" for stage in audio_stages):
         from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
 
         if (
@@ -2995,11 +2995,7 @@ def _build_impl(
     )
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
-    # Extraction and candidate/panel judging share the stage counter. Both lane allowances
-    # must contribute: using only extraction slots starves the larger judge fan-out.
-    moment_max_dispatches = (
-        lane_for("r6-moments").max_dispatches_per_run + lane_for("r6-judge").max_dispatches_per_run
-    )
+    moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
     # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
     # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
     # skip building its prompts instead of doing the work only to have every job rejected. The
@@ -3020,7 +3016,6 @@ def _build_impl(
                 "chapter-agenda": True,
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
-                "r6-judge": moments_config.get("enabled"),
                 # The judge lanes are preflighted only for the judge lane's own run: a Worker that
                 # is down or refusing ingress would otherwise cost a full planning pass (about 50
                 # minutes) and end in a red run (2026-10-13: HTTP 500 on every enqueue).
@@ -3042,7 +3037,7 @@ def _build_impl(
             chapter_agenda_max_dispatches = 0
         if "chapter-locator" in closed:
             chapter_locator_max_dispatches = 0
-        if {"r6-moments", "r6-judge"} & closed:
+        if "r6-moments" in closed:
             moment_max_dispatches = 0
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
@@ -3895,7 +3890,7 @@ def _build_impl(
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue
-        if name in {"tags", "chapter_agenda", "chapter_locator", "moments", "moment-judge"}:
+        if name in {"tags", "chapter_agenda", "chapter_locator", "moments"}:
             record_stage_activity(
                 lane=ctx.lane,
                 stage=name,

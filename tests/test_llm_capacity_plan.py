@@ -1,20 +1,16 @@
-"""Capacity must account for batches, shadow jobs and pinned candidate/panel fan-out."""
+"""Capacity must account for batches, shadow jobs and pinned candidate fan-out."""
 
 from scripts.llm_capacity_plan import consensus_plan, judging_demand, project
 
 
 def test_full_plan_is_not_800_jobs_per_lane():
     report = project()
-    assert report["new_jobs"] == 20800
-    assert report["provider_attempts"] == 22880
-    assert report["ingress_units"] == 94400
-    assert report["billed_rows_estimate"] == 513160
+    assert report["new_jobs"] == 8800
+    assert report["provider_attempts"] == 9680
+    assert report["ingress_units"] == 46400
+    assert report["billed_rows_estimate"] == 244360
     assert not report["fits_shared_caps"]
-    judge = next(row for row in report["lanes"] if row["purpose"] == "r6-judge")
-    assert judge["jobs"] == 12000
-    assert judge["ingress_units_per_job"] == 4
-    assert judge["configured_daily_job_ceiling"] == 4000
-    assert judge["configured_daily_job_ceiling"] < judge["jobs"]
+    assert all(row["purpose"] != "r6-judge" for row in report["lanes"])
 
 
 def test_optional_and_ineligible_work_can_be_excluded():
@@ -22,7 +18,6 @@ def test_optional_and_ineligible_work_can_be_excluded():
         chapter_fraction=0,
         tag_fraction=0,
         moment_fraction=1,
-        quotes=0,
         shadow=False,
         retry_fraction=0,
     )
@@ -30,12 +25,11 @@ def test_optional_and_ineligible_work_can_be_excluded():
     assert report["fits_shared_caps"]
 
 
-def test_panel_scales_per_quote_and_shadow_per_batch():
-    report = project(quotes=10, prelabel_batches=4)
+def test_shadow_scales_per_batch():
+    report = project(prelabel_batches=4)
     rows = {row["purpose"]: row for row in report["lanes"]}
-    assert rows["r6-judge"]["jobs"] == 24000
     assert rows["topic-tags:prelabeler-shadow"]["jobs"] == 3200
-    assert report["new_jobs"] == 34400
+    assert report["new_jobs"] == 10400
 
 
 def test_consensus_packing_makes_the_800_target_fit_on_paper():
@@ -86,7 +80,7 @@ def test_capacity_budget_tracks_worker_defaults(tmp_path, monkeypatch):
     )
     (worker / "coordinator.js").write_text('_envInt("DO_ROWS_ENQUEUE_STOP", 90000)')
     monkeypatch.setattr(calculator, "ROOT", tmp_path)
-    report = project(chapter_fraction=0, tag_fraction=0, quotes=0, shadow=False, retry_fraction=0)
+    report = project(chapter_fraction=0, tag_fraction=0, shadow=False, retry_fraction=0)
     assert report["safe_row_budget"] == 40000
     assert not report["fits_shared_caps"]
     assert consensus_plan()["safe_row_budget"] == 40000
