@@ -2541,6 +2541,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         )].map((row) => [row.purpose, row])
       );
       const purposeQueuedCounts = new Map();
+      const getPurposeQueuedCount = (purposeName) => {
+        if (!purposeQueuedCounts.has(purposeName)) {
+          const count = [...sql.exec(
+            "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
+            purposeName
+          )][0]?.count || 0;
+          purposeQueuedCounts.set(purposeName, count);
+        }
+        return purposeQueuedCounts.get(purposeName);
+      };
 
       let newlyInsertedCount = 0;
       let newlyAdmittedWriteUnits = 0;
@@ -2660,6 +2670,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
               rejected.push({ id: job.id, reason: "queue_full" });
               continue;
             }
+            if (row.state !== "queued") {
+              const purposeMaxQueued = Number(ingressReservations[purpose]?.max_queued_jobs);
+              if (
+                Number.isFinite(purposeMaxQueued) &&
+                purposeMaxQueued > 0 &&
+                getPurposeQueuedCount(purpose) >= purposeMaxQueued
+              ) {
+                rejected.push({ id: job.id, reason: "purpose_queue_full" });
+                continue;
+              }
+            }
             const supersedeUnits = this._ingressWriteUnitsFor({
               ...job,
               policy_json: policyJson,
@@ -2720,6 +2741,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             );
             this._indexQueuedJobModels(supersededJob, queueModels);
             rowBudgetReserved += supersedeRows;
+            if (row.state !== "queued" && purposeQueuedCounts.has(purpose)) {
+              purposeQueuedCounts.set(purpose, purposeQueuedCounts.get(purpose) + 1);
+            }
             // Superseding replaces a row that already existed; it is not new admission and must
             // not consume today's cap, for the same reason an idempotent replay doesn't.
             accepted.push({ id: row.id, submitted_id: job.id, superseded: true });
@@ -2804,19 +2828,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
         };
         const writeUnits = this._ingressWriteUnitsFor({ ...job, policy_json: policyJson });
         const purposeMaxQueued = Number(reservation.max_queued_jobs);
-        if (Number.isFinite(purposeMaxQueued) && purposeMaxQueued > 0) {
-          if (!purposeQueuedCounts.has(purpose)) {
-            const count = [...sql.exec(
-              "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
-              purpose
-            )][0]?.count || 0;
-            purposeQueuedCounts.set(purpose, count);
-          }
-          const currentQueued = purposeQueuedCounts.get(purpose);
-          if (currentQueued >= purposeMaxQueued) {
-            rejected.push({ id: job.id, reason: "purpose_queue_full" });
-            continue;
-          }
+        if (
+          Number.isFinite(purposeMaxQueued) &&
+          purposeMaxQueued > 0 &&
+          getPurposeQueuedCount(purpose) >= purposeMaxQueued
+        ) {
+          rejected.push({ id: job.id, reason: "purpose_queue_full" });
+          continue;
         }
         const purposeWriteLimit = Number(reservation.daily_write_units);
         if (
