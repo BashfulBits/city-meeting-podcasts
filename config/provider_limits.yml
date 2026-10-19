@@ -478,6 +478,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    # Token-window release margin (pacing.js tpmWindowMarginMs). An ~11k packet fills this minute,
+    # so the next is released exactly 60s after the last SCHEDULED start; arrival jitter lands the
+    # pair <60s apart at Google. own_tpm was ~71% of attempts (2026-10-19, review/55).
+    tpm_window_margin_seconds: 15
     hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
@@ -497,6 +501,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    # Token-window release margin (pacing.js tpmWindowMarginMs). An ~11k packet fills this minute,
+    # so the next is released exactly 60s after the last SCHEDULED start; arrival jitter lands the
+    # pair <60s apart at Google. own_tpm was ~71% of attempts (2026-10-19, review/55).
+    tpm_window_margin_seconds: 15
     hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"

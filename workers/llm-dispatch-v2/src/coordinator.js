@@ -37,6 +37,7 @@ import {
   computeRouteLaneWait,
   minInterRequestGapMs,
   rpmWindowDurationMs,
+  tpmWindowSpanMs,
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
   paymentRequiredBackoffUntil,
@@ -4491,7 +4492,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     let tpmWindowStart = mergedRoute.tpm_window_start;
     let tpmReserved = mergedRoute.tpm_reserved;
     if (tpm > 0 && reservation <= tpm) {
-      if (!Number.isFinite(tpmWindowStart) || notBeforeAt - tpmWindowStart >= 60_000) {
+      if (!Number.isFinite(tpmWindowStart) || notBeforeAt - tpmWindowStart >= tpmWindowSpanMs(mergedRoute)) {
         tpmWindowStart = notBeforeAt;
         tpmReserved = reservation;
       } else {
@@ -4525,7 +4526,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ? dailyTokenDebt(mergedRoute, notBeforeAt) + reservation : 0,
       tpd_updated_at: notBeforeAt,
       input_window_json: mergedRoute.provider === "gemini"
-        ? JSON.stringify([...inputWindow(mergedRoute).filter((e) => e.at > notBeforeAt - 60_000),
+        ? JSON.stringify([...inputWindow(mergedRoute).filter((e) => e.at > notBeforeAt - tpmWindowSpanMs(mergedRoute)),
             { at: notBeforeAt, tokens: reservation }])
         : "[]",
       tpm_window_start: tpmWindowStart,
@@ -5670,7 +5671,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     return this._transactionSync(() => {
       const jobRows = [...sql.exec(
-        "SELECT lease_token, lease_route_id, bundle_id, state, attempts FROM jobs WHERE id = ?",
+        "SELECT lease_token, lease_route_id, bundle_id, state, attempts, token_reservation, " +
+        "input_token_estimate FROM jobs WHERE id = ?",
         jobId
       )];
       if (jobRows.length === 0 || jobRows[0].lease_token !== leaseToken || jobRows[0].state !== "leased") {
@@ -5730,6 +5732,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         case "own_tpm": {
           const tpm = route?.tpm || 0;
+          if (route?.provider === "gemini") {
+            // Evidence for tuning tpm_window_margin_seconds (no DO rows): what the ledger believed
+            // when the provider refused. Compare `ledger_window_tokens` with the provider's limit.
+            const windowEntries = inputWindow(ledger).filter(
+              (e) => e.at > now - tpmWindowSpanMs(route)
+            );
+            console.info(JSON.stringify({
+              event: "own_tpm_observed",
+              route_id: routeId,
+              tpm,
+              job_reservation: Number(job.token_reservation) || 0,
+              job_input_estimate: Number(job.input_token_estimate) || 0,
+              ledger_window_tokens: windowEntries.reduce((sum, e) => sum + e.tokens, 0),
+              ledger_window_calls: windowEntries.length,
+              newest_entry_age_ms: windowEntries.length
+                ? now - windowEntries[windowEntries.length - 1].at : null,
+              oldest_entry_age_ms: windowEntries.length ? now - windowEntries[0].at : null,
+              window_margin_ms: tpmWindowSpanMs(route) - 60_000,
+            }));
+          }
           sql.exec(
             `UPDATE routes SET full_token_budget = 0, token_budget_updated_at = ?,
                                tpm_reserved = ?, tpm_window_start = ?,

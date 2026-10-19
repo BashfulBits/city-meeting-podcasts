@@ -80,6 +80,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # (2026-10-17) with Gemma 4 31B's second slot.
     assert worker["providers"]["nvidia"]["concurrency"] == 4
     assert gemma["request_start_margin_seconds"] is None
+    assert gemma["tpm_window_margin_seconds"] == 15.0
+    assert worker["routes_by_id"]["gemma_4_26b_primary"]["tpm_window_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
