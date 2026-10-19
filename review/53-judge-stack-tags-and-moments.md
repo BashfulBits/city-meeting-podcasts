@@ -539,10 +539,17 @@ shows earlier answers, so a contested item and a sampled one read the same.
   task's evidence builder can produce, packets of up to 20 questions and 60,000 estimated tokens.
   `judging.adjudication.enabled` is the switch; `max_outstanding_packets.adjudicator` bounds its
   queue share; the lane's reservation is 920 units and it left `PENDING_DISPATCH_PURPOSES`.
-- **Quote check**: a chat judge's or adjudicator's `reason` must hold a double-quoted passage of at
-  least three words that occurs verbatim in the evidence it was sent (NFKC, typographic quotes and
-  dashes flattened, whitespace collapsed; case kept; `...` or an ellipsis splits a quote into parts
-  that each must occur). The evidence is rebuilt from the transcript when the answer is collected and
+- **Quote check**: a chat judge's or adjudicator's `reason` must carry direct evidence: a passage
+  of at least three words that occurs in the evidence it was sent. Presentation does not matter
+  (changed 2026-10-19; the first rule required straight double quotes and exact case, and 89% of the
+  first 1,844 answers failed it, 97% of those had no double-quoted passage): matching is NFKC, case-,
+  punctuation- and whitespace-insensitive; the passage may be in double, curly, guillemet, single
+  or backtick quotes; a double-style quote that is not in the evidence sinks the reason, while a
+  single-quoted or backticked one only ever supports it; with no usable quote, five consecutive
+  copied words are accepted; `...` or an ellipsis splits a quote into parts that each must occur.
+  The reply contract asks for `reason` (`judge-answers-v2`, required; v1 still parses every reply):
+  with it optional the judge left it out of 53% of its answers. The evidence is rebuilt from the
+  transcript when the answer is collected and
   must carry the digest the question was asked with. The row is stored with `quote_valid`; false
   rows are kept (the ledger is append-only) and ignored as votes. An answer whose transcript cannot
   be read now, or past `quote_check_reads` (400 transcripts) a pass, keeps its marker and is

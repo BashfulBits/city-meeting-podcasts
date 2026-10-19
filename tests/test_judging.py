@@ -375,7 +375,7 @@ def test_chat_judge_parses_valid_partial_and_malformed_replies():
     )
     packet = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", (item,))
     job = ChatJudgeBackend(max_total_tokens=10_000, max_items=25).build(packet)
-    assert job.inputs["structured_output"] == "judge-answers-v1"
+    assert job.inputs["structured_output"] == "judge-answers-v2"
 
     def reply(content):
         return {"choices": [{"message": {"content": content}}]}
@@ -1292,22 +1292,71 @@ def _judged_contested(ep, **extra):
 def test_quotes_must_occur_verbatim_in_the_evidence():
     from citypods.judging.quotes import normalize, quote_valid
 
-    evidence = "Council voted\n 5-2   to approve the Elm Street rezoning on Tuesday night"
+    evidence = (
+        "Council voted\n 5-2   to approve the Elm Street rezoning on Tuesday night. "
+        "The council\u2019s rezoning vote was final."
+    )
     assert quote_valid('He said "voted 5-2 to approve the" it', evidence)
     # Typographic quotes, apostrophes and whitespace are normalised on both sides.
     assert quote_valid("\u201cto approve the Elm Street rezoning\u201d", evidence)
-    assert quote_valid('"the council\'s rezoning vote"', "Tonight the council\u2019s rezoning vote")
+    assert quote_valid('"the council\'s rezoning vote"', evidence)
     assert quote_valid('"Council voted ... Tuesday night"', evidence)
-    # Not in the evidence, altered, or case-changed: invalid.
+    # Not in the evidence or altered: invalid.
     assert not quote_valid('"voted 5-2 to reject the rezoning"', evidence)
-    assert not quote_valid('"COUNCIL VOTED 5-2 to approve"', evidence)
-    # No quote at all, a quote too short to prove anything, or a missing reason: invalid.
+    # No usable passage, a quote too short to prove anything, or a missing reason: invalid.
     assert not quote_valid("the evidence clearly supports it", evidence)
     assert not quote_valid('"rezoning"', evidence)
+    assert not quote_valid("Mentions the council's vote and approval", evidence)
+    assert not quote_valid("", evidence)
     assert not quote_valid(None, evidence)
-    # One bad quote among good ones sinks the reason.
+    # One fabricated double-quoted passage among good ones sinks the reason.
     assert not quote_valid('"voted 5-2 to approve" and "something never said here"', evidence)
-    assert normalize("a b — c") == "a b - c"
+    assert normalize("a b \u2014 c") == "a b - c"
+
+
+def test_the_quote_check_ignores_how_the_passage_is_presented():
+    from citypods.judging.quotes import quote_valid
+
+    evidence = "Council voted 5-2 to approve the Elm Street rezoning on Tuesday night"
+    # Case and punctuation do not matter.
+    assert quote_valid('"COUNCIL VOTED 5-2 to approve"', evidence)
+    assert quote_valid('"voted, 5 2 to approve the elm street rezoning."', evidence)
+    # Any quotation style counts in the reason's favour: single, backtick, guillemets.
+    assert quote_valid("It says 'approve the Elm Street rezoning' plainly.", evidence)
+    assert quote_valid("It says `approve the Elm Street rezoning` plainly.", evidence)
+    assert quote_valid("It says \u00abto approve the Elm Street\u00bb plainly.", evidence)
+    # Copied words without quotation marks count once the run is long enough (5 words)...
+    assert quote_valid("They voted to approve the Elm Street rezoning so it is supported", evidence)
+    # ...but not three coincident words.
+    assert not quote_valid("The council will approve the plan", evidence)
+    # A single-quoted passage that is not in the evidence is not held against the reason (it may
+    # be a scare quote or an apostrophe), but it does not support it either.
+    assert not quote_valid("The speaker calls it 'a totally different project'", evidence)
+    assert quote_valid(
+        "The speaker calls it 'a totally different project' but voted to approve the Elm Street",
+        evidence,
+    )
+    # A fabricated double-quoted passage still sinks the reason.
+    assert not quote_valid(
+        '"voted 5-2 to approve the Elm" and "a totally different project"', evidence
+    )
+
+
+def test_a_new_packet_requires_a_reason_but_every_reply_still_parses():
+    from citypods.compute.structured import response_model
+
+    ensure_contract()
+    strict = response_model("judge-answers-v2")
+    lenient = response_model("judge-answers-v1")
+    answer = {"answers": [{"id": "q1", "verdict": True}]}
+    assert lenient.model_validate(answer).answers[0].reason == ""
+    try:
+        strict.model_validate(answer)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the request contract must require a reason")
+    assert strict.model_json_schema()["$defs"]["RequiredAnswer"]["required"] == ["id", "reason"]
 
 
 def test_a_contested_subject_goes_to_an_independent_adjudicator_at_the_largest_tier():

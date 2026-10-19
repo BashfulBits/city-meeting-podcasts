@@ -19,6 +19,8 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.judging.tasks import Evidence, QuestionSpec, Subject
 
 JUDGE_CONTRACT = "judge-answers-v1"
+# What a packet asks for (reason required); JUDGE_CONTRACT still parses every reply.
+JUDGE_REQUEST_CONTRACT = "judge-answers-v2"
 # The stored reason is trimmed to REASON_MAX after the quote check. The reply schema allows more, so
 # one verbose answer cannot discard the 20 others in its packet; the prompts still ask for 300.
 REASON_MAX = 300
@@ -91,12 +93,25 @@ class Packet:
 
 
 def ensure_contract():
+    """Register both judge reply contracts and return the lenient one (``JUDGE_CONTRACT``).
+
+    The lenient contract parses every reply, including those of packets sent before the strict one
+    existed. The strict one (``JUDGE_REQUEST_CONTRACT``) is what a new packet asks for: ``reason``
+    is required, because with it optional the judge left it out of 53% of its answers (2026-10-18)
+    and there was nothing to check."""
     from citypods.compute.structured import register_response_model, response_model
 
     try:
-        return response_model(JUDGE_CONTRACT)
+        lenient = response_model(JUDGE_CONTRACT)
     except ValueError:
-        pass
+        lenient = None
+    try:
+        response_model(JUDGE_REQUEST_CONTRACT)
+        strict_registered = True
+    except ValueError:
+        strict_registered = False
+    if lenient is not None and strict_registered:
+        return lenient
     from pydantic import BaseModel, ConfigDict, Field
 
     class Answer(BaseModel):
@@ -111,7 +126,18 @@ def ensure_contract():
         model_config = ConfigDict(extra="forbid")
         answers: list[Answer] = Field(max_length=100)
 
-    return register_response_model(JUDGE_CONTRACT, Response)
+    class RequiredAnswer(Answer):
+        reason: str = Field(max_length=REASON_CONTRACT_MAX)
+
+    class RequiredResponse(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        answers: list[RequiredAnswer] = Field(max_length=100)
+
+    if not strict_registered:
+        register_response_model(JUDGE_REQUEST_CONTRACT, RequiredResponse)
+    if lenient is None:
+        lenient = register_response_model(JUDGE_CONTRACT, Response)
+    return lenient
 
 
 def _policy(purpose: str, model: str) -> LLMRequestPolicy:
@@ -261,9 +287,9 @@ class ChatJudgeBackend:
         "Never rewrite or create a candidate. For each item return its id and exactly the field "
         "its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it "
         "must be held back); grade -> level (0 = lowest listed level); choose -> choice (the "
-        "option letter). In reason (at most 300 characters), copy a short passage from the "
-        'evidence word for word and put it in double quotes ("..."); an answer whose quote is '
-        "not in the evidence is discarded."
+        "option letter). Always give a reason (at most 300 characters): copy a short passage "
+        'from the evidence word for word and put it in double quotes ("..."); an answer with no '
+        "passage from the evidence, or with a quote that is not in it, is discarded."
     )
 
     def build(self, packet: Packet) -> InferenceJob:
@@ -285,7 +311,7 @@ class ChatJudgeBackend:
                     {"role": "system", "content": self.SYSTEM},
                     {"role": "user", "content": json.dumps({"items": items}, ensure_ascii=False)},
                 ],
-                "structured_output": JUDGE_CONTRACT,
+                "structured_output": JUDGE_REQUEST_CONTRACT,
                 "llm_policy": _policy(packet.purpose, packet.judge_model),
                 "max_tokens": self.output_reservation,
                 "max_tokens_mode": "route_max",
@@ -347,9 +373,10 @@ class AdjudicatorBackend(ChatJudgeBackend):
         "no reasonable way to read it otherwise. Never rewrite or create a candidate. For each "
         "item return its id and exactly the field its kind asks for: validate -> verdict (true if "
         "supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest "
-        "listed level); choose -> choice (the option letter). In reason (at most 300 characters), "
-        "copy the short passage that decides the item from the evidence word for word and put it "
-        'in double quotes ("..."); an answer whose quote is not in the evidence is discarded.'
+        "listed level); choose -> choice (the option letter). Always give a reason (at most 300 "
+        "characters): copy the short passage that decides the item from the evidence word for "
+        'word and put it in double quotes ("..."); an answer with no passage from the evidence, '
+        "or with a quote that is not in it, is discarded."
     )
 
 
