@@ -226,7 +226,7 @@ def test_external_worker_scans_only_feed_visible_transcript_claims(tmp_path):
 
     summary = worker.run()
 
-    assert summary.scanned == 1
+    assert summary.scanned == 0  # max_claims=0 performs no lease probes
 
 
 def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypatch):
@@ -474,7 +474,7 @@ def test_external_worker_prefers_long_meetings_for_claim_scan(tmp_path):
 
     summary = worker.run()
 
-    assert summary.scanned == 1
+    assert summary.scanned == 0  # max_claims=0 performs no lease probes
 
 
 def test_telemetry_metadata_uses_canonical_duration_fields(tmp_path, monkeypatch):
@@ -1732,3 +1732,175 @@ def test_storage_outage_defers_claim_and_requeues_without_failure(tmp_path, monk
     assert summary.deferred == 1
     assert summary.failed == summary.completed == 0
     assert claims[0].outcome == "deferred"
+
+
+@pytest.mark.parametrize("internal", [False, True])
+@pytest.mark.parametrize("cap", [0, 3])
+@pytest.mark.parametrize("state", ["failed", "done", "leased"])
+def test_scan_cap_bounds_real_terminal_lease_reads(tmp_path, monkeypatch, internal, cap, state):
+    from tests._cas_fake import MemCAS
+
+    worker = _internal_worker(tmp_path) if internal else _loop_worker(tmp_path, [])
+    worker.config = replace(worker.config, max_scan=cap)
+    worker.storage = storage = MemCAS()
+    items = [_queued(str(i)) for i in range(100)]
+    for item in items:
+        lease = ew.work_leases.WorkLease(
+            source_key=item.source_key,
+            uid=item.episode_uid,
+            state=state,
+            lease_expiry=datetime(2030, 1, 1, tzinfo=UTC) if state == "leased" else None,
+            pipeline_version=ew._lease_pipeline_version(item.work_class),
+        )
+        storage.put_cas(
+            ew.work_leases.lease_key(item.source_key, item.episode_uid),
+            ew.work_leases._serialize(lease),
+            "application/json",
+        )
+    writes_before = storage.class_a
+
+    summary, claims = worker._run_claim_loop(items, max_worked=1, should_stop=None)
+
+    assert storage.class_b == summary.scanned == summary.skipped == cap
+    assert storage.class_a == writes_before  # terminal claims were never reopened
+    assert summary.claimed == summary.completed == summary.failed == 0
+    assert claims == []
+
+
+def test_denied_and_adopted_claims_share_the_same_scan_budget(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c", "d"], max_scan=3)
+    _patch_loop(monkeypatch, worker, adopted_uids={"b"})
+    attempts = []
+
+    def claim(storage, source, uid, **kwargs):
+        attempts.append(uid)
+        return object() if uid == "b" else None
+
+    monkeypatch.setattr(ew.work_leases, "claim", claim)
+    summary = worker.run()
+
+    assert attempts == ["a", "b", "c"]
+    assert summary.scanned == 3
+    assert summary.skipped == 2
+    assert summary.adopted == summary.claimed == 1
+
+
+def test_internal_unlimited_claim_count_still_has_a_finite_scan_budget(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    worker.config = replace(worker.config, max_claims=sys.maxsize)
+    monkeypatch.setattr(ew.work_leases, "claim", lambda *a, **k: None)
+    summary, _ = worker._run_claim_loop(
+        [_queued(str(i)) for i in range(1000)], max_worked=None, should_stop=None
+    )
+    assert summary.scanned == summary.skipped == 256
+
+
+def test_internal_scan_windows_cover_queue_across_runs_and_slots(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    worker.config = replace(worker.config, max_scan=3)
+    items = [_queued(str(i)) for i in range(17)]
+    monkeypatch.setenv("CITYPODS_INTERNAL_WORKER_COUNT", "2")
+    seen = set()
+    for run in range(3):
+        monkeypatch.setenv("GITHUB_RUN_NUMBER", str(run))
+        windows = []
+        for slot in range(2):
+            monkeypatch.setenv("CITYPODS_INTERNAL_WORKER_SLOT", str(slot))
+            window = {item.episode_uid for item in worker._ordered(items)[:3]}
+            assert len(window) == 3
+            windows.append(window)
+            seen.update(window)
+        assert windows[0].isdisjoint(windows[1])
+    assert seen == {item.episode_uid for item in items}
+
+
+def test_internal_scan_without_actions_metadata_retains_owner_rotation(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    monkeypatch.delenv("GITHUB_RUN_NUMBER", raising=False)
+    items = [_queued(str(i)) for i in range(17)]
+    assert worker._ordered(items) == ew.work_leases.ordered_candidates(items, worker.config.owner)
+
+
+@pytest.mark.parametrize(
+    ("argument", "environment", "policy_cap", "expected"),
+    [
+        (None, None, None, 256),
+        (None, None, 128, 128),
+        (None, "64", 128, 64),
+        (7, "64", 128, 7),
+        (0, "64", 128, 0),
+    ],
+)
+def test_internal_entrypoint_resolves_scan_budget(
+    tmp_path, monkeypatch, argument, environment, policy_cap, expected
+):
+    if environment is None:
+        monkeypatch.delenv("CITYPODS_WORKER_MAX_SCAN", raising=False)
+    else:
+        monkeypatch.setenv("CITYPODS_WORKER_MAX_SCAN", environment)
+    site_config = {"defaults": {"compute_backends": {"github-actions": {"max_scan": policy_cap}}}}
+    monkeypatch.setattr(ew, "load_site_config", lambda path: site_config)
+    monkeypatch.setattr(ew, "load_city_configs", lambda *a: [])
+    monkeypatch.setattr(ew, "resolve_state_dir", lambda *a: tmp_path)
+    monkeypatch.setattr(ew, "make_storage", lambda *a: SimpleNamespace(cas_capable=True))
+    monkeypatch.setattr(ew, "pull_state", lambda *a: None)
+    captured = {}
+
+    class Worker:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def _base_candidates(self):
+            return []
+
+        def _run_claim_loop(self, *a, **k):
+            return ew.ClaimLoopSummary(), []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(ew, "InternalTranscribeWorker", Worker)
+    ew.run_internal_worker(max_scan=argument)
+    assert captured["config"].max_scan == expected
+
+
+def test_internal_scan_exhaustion_flushes_partial_transcript_batch(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    worker.config = replace(worker.config, max_scan=0)
+    worker._pending_transcript_records = {"src": {"a": {"uid": "a"}}}
+    worker._pending_transcript_since = 1.0
+    events = []
+
+    def push(storage, state_dir, sources, **kwargs):
+        events.append("flush")
+        assert sources == ["src"]
+        assert kwargs["owned_uids"] == {"src": frozenset({"a"})}
+        return 1
+
+    monkeypatch.setattr(ew, "push_records_merged", push)
+    monkeypatch.setattr(worker.local_backend, "close", lambda: events.append("close"))
+    summary, _ = worker._run_claim_loop([_queued("a")], max_worked=None, should_stop=None)
+    worker.close()
+
+    assert summary.scanned == 0
+    assert events == ["flush", "close"]
+    assert worker._pending_transcript_records == {}
+
+
+def test_internal_close_releases_inference_process_even_when_final_flush_fails(
+    tmp_path, monkeypatch, capsys
+):
+    worker = _internal_worker(tmp_path)
+    worker._pending_transcript_records = {"src": {"a": {"uid": "a"}}}
+    events = []
+
+    def unavailable(*args, **kwargs):
+        raise ew.TransientStateSyncError("storage unavailable")
+
+    monkeypatch.setattr(ew, "push_records_merged", unavailable)
+    monkeypatch.setattr(worker.local_backend, "close", lambda: events.append("close"))
+    worker.close()
+
+    assert events == ["close"]
+    assert worker._pending_transcript_records == {"src": {"a": {"uid": "a"}}}
+    assert "end-of-run transcript batch flush failed" in capsys.readouterr().out

@@ -1,6 +1,6 @@
 # R2 Class B usage audit — 2026-10-18
 
-Status: investigation and recommendations only; no runtime/configuration changes applied.
+Status: audit complete; R2B-01 fix prepared locally, not deployed. Other findings remain proposals.
 Code checked: `origin/main` at `1338cfd0`, refreshed before finalizing this report.
 The earlier workflow-failure fix is already merged in PR #2486; these findings remain afterward.
 
@@ -167,3 +167,25 @@ are now multiplied by backlog and worker count. It does not replace their CAS co
 [review/44](44-bounded-bundled-llm-dispatch.md) and
 [review/47](47-do-row-read-budget.md) cover a separate DO/B2 dispatch system and SQLite row meter;
 DO row reads must not be combined with R2 Class B operations.
+
+
+## R2B-01 implementation follow-up — prepared, 2026-10-18
+
+The maintainer authorized investigation/fix of the dominant scan issue. Two causes are addressed:
+`max_scan` counted acquired claims rather than attempts, and the internal worker's unlimited
+claim count made its default scan allowance effectively unlimited. The prepared change bounds
+attempts, defaults internal workers to 256, and honors CLI/environment/backend-policy overrides.
+The helper-level limit also protects internal workers instantiated outside the CLI entrypoint.
+
+Adjacent matrix slots now scan consecutive windows, advancing by lane worker count and Actions
+run number. For a stable 8,613-entry queue, three workers consuming 256 probes each cover the
+queue in at most 12 consecutive runs. This is not a wall-clock guarantee under queue churn,
+stopped/skipped jobs, or early productive completion. External workers keep owner-based rotation.
+No new durable cursor or R2 coordination object is introduced. `scanned` now counts attempted
+claims; an exhausted window logs the full candidate count separately. Claim ownership still uses
+fresh R2 GET/CAS. Internal shutdown now flushes partial transcript batches before closing
+inference; cheap final flushing/settlement remains outside the scan admission gate.
+
+The earlier 3.76M/month reduction remains an estimate pending deployment and live metrics.
+This follow-up does not implement terminal suppression, report census changes, provider backoff,
+or budget telemetry. No production settings or schedules were changed during preparation.

@@ -103,6 +103,17 @@ manifest from canonical records, reaps expired work leases, and then starts iden
 workers; the matrix no longer consumes a static transcribe-plan artifact. H14 extends the planner's
 route classifier with one budget/capacity snapshot; individual workers must not race to predict
 changing GPU availability.
+Idle pull workers have a separate lease-probe budget: `max_scan` counts every attempted claim,
+including held/terminal rejections, and `scanned` reports actual attempts. Internal workers default
+to 256 probes (CLI > `CITYPODS_WORKER_MAX_SCAN` > backend dispatch policy > default), separately
+from their deadline-bounded inference capacity. Each Actions lane supplies its worker count and
+slot; adjacent windows advance with `GITHUB_RUN_NUMBER` across the policy-ordered candidate list.
+A stable queue is fully covered when successive runs consume their windows; churn or early
+productive completion can change that coverage. CAS ownership checks remain authoritative, and
+unvisited candidates remain queued. Internal shutdown flushes partial transcript batches before
+closing inference, including after scan exhaustion. External workers retain owner-derived rotation and
+`max_claims + 50` default probe allowance.
+
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static
