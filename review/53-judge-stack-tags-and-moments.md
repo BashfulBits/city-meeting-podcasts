@@ -554,6 +554,17 @@ shows earlier answers, so a contested item and a sampled one read the same.
   rows are kept (the ledger is append-only) and ignored as votes. An answer whose transcript cannot
   be read now, or past `quote_check_reads` (400 transcripts) a pass, keeps its marker and is
   recorded on a later pass. JEV answers are numbers and are not quote-checked.
+  Counters (2026-10-19, run 39264396053: 866 valid, 2,368 invalid): `quote_missing` is an answer
+  with no reason at all, `quote_invalid` a reason with no passage from the evidence or one that is
+  not in it. Of those 2,368, 1,822 (77%) had no reason; every packet was 2026-10-13/14, sent
+  before a reason was asked for (the original prompt said only to put a quote in `reason`, and
+  the field was optional). Of the 545 sibling answers with a reason, 399 gave prose with no passage, 139 quoted
+  fewer than three words, and 7 quoted something close to but not in the evidence; none was
+  fabricated, from another item, or taken from text the check lacked (all 3,168 sibling evidence
+  digests rebuilt identically). The check was not the problem, so it is unchanged. A marker
+  without `contract` (written before `judge-answers-v2`) whose answer has no reason is dropped,
+  not recorded: a row of any kind answers its question, so recording it would keep the current
+  prompt from ever asking it. It is counted as `legacy_no_reason_dropped` and asked again.
 - **Stability probe**: `judging.stability_sample_rate` (2%) of subjects, once the first-tier routine
   answer is recorded, are asked again by the same judge with `order "_s"`, `sample "stability"`: the
   evidence first and the question reworded after it. The report counts flips per judge.

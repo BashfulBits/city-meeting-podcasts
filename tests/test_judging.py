@@ -2132,3 +2132,68 @@ def test_sibling_packets_track_the_workers_packing_ceiling():
         runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_items
         == (runner.SIBLING_CEILINGS[GEMMA_31B][1])
     )
+
+
+def _strip_reasons(dispatch):
+    """Rewrite every answered chat packet so its answers carry no reason."""
+    for record in dispatch.records.values():
+        output = getattr(record, "output", None)
+        if not isinstance(output, dict) or "choices" not in output:
+            continue
+        message = output["choices"][0]["message"]
+        reply = json.loads(message["content"])
+        for answer in reply["answers"]:
+            answer.pop("reason", None)
+        message["content"] = json.dumps(reply)
+
+
+def _forget_contract(ep):
+    """Make every pending marker look like one written before a reason was required."""
+    for subject in _subjects(ep):
+        for marker in ledger.pending(subject):
+            marker.pop("contract", None)
+
+
+def test_a_missing_reason_is_counted_apart_from_an_invalid_quote():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer()
+    _strip_reasons(dispatch)
+    stats = runner.run([ep], _adj_ctx(dispatch))
+    sibling = [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    # A packet that asked for a reason (the current contract) keeps the row, flagged unsupported.
+    assert sibling and {r["quote_valid"] for r in sibling} == {False}
+    assert stats.counts["quote_missing"] == len(sibling)
+    assert stats.counts["quote_invalid"] == 0
+
+
+def test_a_legacy_answer_with_no_reason_is_dropped_and_asked_again():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    _forget_contract(ep)
+    dispatch.answer()
+    _strip_reasons(dispatch)
+    stats = runner.run([ep], _adj_ctx(dispatch))
+    # Nothing is recorded for it, so the question is still open and goes out again.
+    assert not [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert stats.counts["legacy_no_reason_dropped"] >= 1
+    assert stats.counts["quote_missing"] == 0 and stats.counts["answer_missing"] == 0
+    assert any(packet.role == "sibling" for packet, _job in dispatch.submitted.values())
+    # The new request carries the current contract, so its answer is judged, not dropped.
+    dispatch.answer()
+    runner.run([ep], _adj_ctx(dispatch))
+    assert {r["quote_valid"] for r in _tag_judgments(ep) if r["judge_role"] == "sibling"} == {True}
+
+
+def test_a_legacy_answer_that_has_a_reason_is_still_checked_and_recorded():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    _forget_contract(ep)
+    dispatch.answer()
+    stats = runner.run([ep], _adj_ctx(dispatch))
+    sibling = [r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"]
+    assert sibling and {r["quote_valid"] for r in sibling} == {True}
+    assert stats.counts["legacy_no_reason_dropped"] == 0

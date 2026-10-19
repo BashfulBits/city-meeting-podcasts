@@ -34,6 +34,7 @@ from citypods.judging.adjudication import (
     subject_adjudicator,
 )
 from citypods.judging.backends import (
+    JUDGE_REQUEST_CONTRACT,
     REASON_MAX,
     STABILITY_ORDER,
     AdjudicatorBackend,
@@ -231,7 +232,7 @@ def _sibling_backend(
 
 
 def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:
-    return {
+    marker = {
         "subject_id": subject.subject_id,
         "question_id": item.question_id,
         "judge_model": packet.judge_model,
@@ -247,6 +248,11 @@ def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:
         "sample": item.sample,
         "options": [list(pair) for pair in item.options],
     }
+    if packet.role != "anchor":
+        # The reply contract the packet asked for. A marker without it was sent before ``reason``
+        # was required (2026-10-19), when a judge could not be held to giving evidence at all.
+        marker["contract"] = JUDGE_REQUEST_CONTRACT
+    return marker
 
 
 def _adjudicator_backend() -> AdjudicatorBackend:
@@ -556,6 +562,17 @@ def _collect(
                 (item,),
             )
             rows = _backend_for(packet.role, packet.judge_model).parse(packet, record.output)
+            if role != "anchor" and not marker.get("contract"):
+                # Sent before a reason was required: an answer without one can never pass the
+                # quote check, and recorded it would only close the question (a row of any kind
+                # answers it) so the current prompt never asks it. Drop it; it is asked again.
+                kept = [pair for pair in rows if str(pair[1].get("reason") or "").strip()]
+                if len(kept) < len(rows):
+                    stats.counts["legacy_no_reason_dropped"] += len(rows) - len(kept)
+                    rows = kept
+                    if not rows:
+                        ledger.drop_pending(subject, marker)
+                        continue
             evidence_text: str | _Defer | None = None
             if role != "anchor" and rows:
                 evidence_text = _evidence_text(subject, item, marker, ctx, episodes, read)
@@ -568,7 +585,17 @@ def _collect(
                 if role != "anchor":
                     if isinstance(evidence_text, str):
                         row["quote_valid"] = quote_valid(row.get("reason"), evidence_text)
-                        stats.counts[f"quote_{'valid' if row['quote_valid'] else 'invalid'}"] += 1
+                        # "missing" (no reason at all) is kept apart from "invalid" (a reason with
+                        # no passage from the evidence, or one that is not in it): they have
+                        # different causes and different fixes.
+                        outcome = (
+                            "valid"
+                            if row["quote_valid"]
+                            else "invalid"
+                            if str(row.get("reason") or "").strip()
+                            else "missing"
+                        )
+                        stats.counts[f"quote_{outcome}"] += 1
                     else:
                         stats.counts["quote_unchecked"] += 1
                     if row.get("reason"):
