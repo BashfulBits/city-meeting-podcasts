@@ -5,6 +5,14 @@ import {
 } from "./gateway.js";
 import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 
+/** Explicit per-request demand above a token quota cannot be repaired by waiting. */
+function requestExceedsTokenQuota(msg) {
+  const limit = /limit\s*[:=]?\s*(\d[\d,]*)/.exec(msg);
+  const requested = /requested\s*[:=]?\s*(\d[\d,]*)/.exec(msg);
+  const number = (match) => Number(match?.[1]?.replaceAll(",", ""));
+  return Boolean(limit && requested && number(limit) > 0 && number(requested) > number(limit));
+}
+
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
  * Each rule is data: { rule_id, provider, failure_class, match }.
@@ -498,6 +506,14 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
         continue;
       }
       if (rule.match(matchContext)) {
+        if (rule.failure_class === "own_tpm" && requestExceedsTokenQuota(msg)) {
+          return {
+            failure_class: "route_input_limit",
+            rule_id: "size-status-request-exceeds-tpm",
+            retry_after_seconds: retryAfterSeconds,
+            scope: "route",
+          };
+        }
         return {
           failure_class: rule.failure_class,
           rule_id: rule.rule_id,
@@ -559,9 +575,7 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
         // whatever is already "Used". No amount of waiting admits it on this route, so it is a
         // size rejection (the job moves to a sibling route), not pacing. With R <= L the bucket
         // was merely full, which clears on its own.
-        const limit = /limit\s*[:=]?\s*(\d+)/.exec(msg);
-        const requested = /requested\s*[:=]?\s*(\d+)/.exec(msg);
-        if (limit && requested && Number(requested[1]) > Number(limit[1])) {
+        if (requestExceedsTokenQuota(msg)) {
           return {
             failure_class: "route_input_limit",
             rule_id: "size-status-request-exceeds-tpm",

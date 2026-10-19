@@ -944,7 +944,18 @@ ratio and p95 output size of the last 32 completions (after 16 samples) and rese
 `scaled input + min(max_tokens, 1.25 × p95 output)` rather than the full `max_tokens`; each successful
 completion then settles the route's token bucket to the provider's reported usage. The Worker checks
 `hard_input_ceiling` at that learned ratio. Google reservations count only input, with a persisted
-trailing-minute start ledger, so idle credit and fixed-window boundaries cannot buy excess TPM.
+input-minute ledger, so idle credit and fixed-window boundaries cannot buy excess TPM.
+Google claims tag each pending input reservation with its lease token and hold it through the lease
+expiry. Completion replaces only that lease's entry with measured input at response end, a
+conservative upper bound on provider arrival, then ages it out after 60 seconds plus the configured
+margin (15 seconds on Gemma 31B). Unknown usage retains the reservation; non-consuming or unstarted
+calls release it. Lost executors age out after lease expiry plus that window. This deliberately
+trades throughput on slow Google responses for safe pacing without a per-request start RPC.
+An explicit requested token count above the whole quota is a job-local size rejection on HTTP 429
+as well as 400/413; a quota message without a requested count remains rate exhaustion. `own_tpm`
+honors the larger of the local token window and Google's retry delay plus one second, including
+when the job has exhausted its retry budget. An in-flight Google success cannot erase that cooldown.
+The primary and secondary Google keys belong to distinct projects (maintainer-confirmed 2026-10-19).
 Queue estimates include response schemas. Gemma AI Studio routes retain their 14,400 input ceiling
 without tolerance, preserving the 10% quota margin. Other routes may add
 `hard_input_ceiling_tolerance`; near misses are tried only when nothing else can dispatch. A queued

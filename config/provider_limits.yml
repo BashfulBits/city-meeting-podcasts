@@ -478,9 +478,9 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    # Token-window release margin (pacing.js tpmWindowMarginMs). An ~11k packet fills this minute,
-    # so the next is released exactly 60s after the last SCHEDULED start; arrival jitter lands the
-    # pair <60s apart at Google. own_tpm was ~71% of attempts (2026-10-19, review/55).
+    # Extra headroom on the completion-settled input window (pacing.js tpmWindowMarginMs).
+    # Pending calls stay charged through their lease; response-end settlement prevents delayed
+    # starts from releasing input quota early. See review/55's 2026-10-19 quota recovery follow-up.
     tpm_window_margin_seconds: 15
     hard_input_ceiling: 14400
     free: true
@@ -501,9 +501,9 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    # Token-window release margin (pacing.js tpmWindowMarginMs). An ~11k packet fills this minute,
-    # so the next is released exactly 60s after the last SCHEDULED start; arrival jitter lands the
-    # pair <60s apart at Google. own_tpm was ~71% of attempts (2026-10-19, review/55).
+    # Extra headroom on the completion-settled input window (pacing.js tpmWindowMarginMs).
+    # Pending calls stay charged through their lease; response-end settlement prevents delayed
+    # starts from releasing input quota early. See review/55's 2026-10-19 quota recovery follow-up.
     tpm_window_margin_seconds: 15
     hard_input_ceiling: 14400
     free: true

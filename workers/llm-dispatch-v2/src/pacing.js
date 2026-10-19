@@ -63,12 +63,11 @@ export function requestStartMarginMs(route) {
 /**
  * Optional per-route margin added to the TOKEN-per-minute window (`tpm_window_margin_seconds`).
  *
- * The window ledger records each call at its SCHEDULED start (claim clock + wait). The provider
- * counts it at its ARRIVAL, which is later by a variable delay (claim-to-receipt latency, the B2
- * payload read, gateway hops). Two packets that each nearly fill a minute are released exactly
- * 60.000s apart on the ledger, so whenever the first arrives later than the second's delay the
- * provider sees them less than 60s apart and 429s the second. Releasing the window this much
- * later absorbs that jitter. Unlike `request_start_margin_seconds` it leaves RPM spacing alone.
+ * Adds headroom beyond the provider's minute. Google pending reservations stay charged until
+ * their lease deadline, then completion re-anchors them at response end (a conservative upper
+ * bound on arrival). Legacy entries and explicitly reserved probes retain their scheduled start.
+ * The margin remains useful for clock/transport uncertainty, but is not the sole guard against
+ * delayed starts. Unlike `request_start_margin_seconds` it leaves RPM spacing alone.
  */
 export function tpmWindowMarginMs(route) {
   const seconds = Number(route?.tpm_window_margin_seconds);
@@ -186,6 +185,30 @@ export function inputWindow(route) {
           .sort((a, b) => a.at - b.at)
       : [];
   } catch { return []; }
+}
+
+/**
+ * Settle a lease-tagged Google input reservation at response end, a conservative upper bound on
+ * arrival at the provider. Pending entries are held at the lease deadline until this happens;
+ * a lost executor therefore ages out safely without a start RPC or a per-attempt table.
+ */
+export function settleInputWindow(route, job, result, now, nonConsuming = false) {
+  const entries = inputWindow(route).filter((entry) => entry.lease_token !== job.lease_token);
+  if (!nonConsuming && result.actual_start_at != null) {
+    const observed = Number(result.observed_input_tokens);
+    const hasUsage = result.observed_input_tokens != null &&
+      Number.isFinite(observed) && observed >= 0;
+    const tokens = hasUsage ? observed : Number(job.token_reservation) || 0;
+    if (tokens > 0) {
+      const endedAt = Number(result.actual_end_at);
+      entries.push({
+        at: Math.max(Number(result.actual_start_at), Number.isFinite(endedAt) && endedAt > 0
+          ? endedAt : now),
+        tokens,
+      });
+    }
+  }
+  return JSON.stringify(entries.filter((entry) => entry.at > now - tpmWindowSpanMs(route)));
 }
 
 function fixedWindowReadyAt(windowStart, count, limit, windowMs, now) {
