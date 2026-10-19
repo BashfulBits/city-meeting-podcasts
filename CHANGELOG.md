@@ -15,6 +15,21 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **A reply cut off at its output limit now records the cap it carried.** For
+  `output_budget_exhausted`, `route_failures` keeps the `max_tokens` the request was sent with
+  (`last_max_tokens_sent`), the tokens the reply held (`last_output_tokens`) and the day's largest
+  such reply (`max_output_tokens`), shown in `/v2/stats?detail=1`. Nemotron Ultra chapter-agenda
+  calls were cut off on 2026-10-18 (40 of 51 on NVIDIA) although agenda jobs ask for the route's
+  full 65,536-token limit; this says whether the model really ran to that limit or a lower one
+  applied.
+
+- **NVIDIA Gemma 4 31B goes back to one concurrency slot, and the prelabeler shadow evaluator is
+  off.** With two slots the share of the route's calls that hit the 720 s limit rose from 3%
+  (2026-10-17 morning) to 28% by the end of 2026-10-18, each hung call holding half the route for
+  12 minutes while normal calls run under a minute. `tagging.prelabeler.shadow_enabled` is now
+  `false`: the `topic-tags:prelabeler-shadow` lane (Gemma 4 26B, retired by review/53 PR11)
+  produced about 160 `output_budget_exhausted` failures and empty replies on 2026-10-18.
+
 - **Judges must give a reason, and the quote check accepts any presentation of real evidence.** New
   packets ask for `judge-answers-v2`, where `reason` is required (it was optional and 53% of the
   first 1,844 sibling answers left it empty, so there was nothing to check); `judge-answers-v1`
