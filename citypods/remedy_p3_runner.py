@@ -58,6 +58,10 @@ P3_ROUTES = {
 }
 P3_CHAT_CONTRACT = "remedy-p3-body-decision-v1"
 P3_PROMPT_VERSION = "p3-unexpected-body-v1"
+# The evaluated output cap (review/51 "P3 evaluated model parameters"). The 540 scored observations
+# reached 13,455 completion tokens (DeepSeek) and 10,322 (GLM Flash); the earlier 8,192 would have
+# truncated them. Sol and DeepSeek allow exactly 16,384 on their routes.
+P3_CHAT_MAX_OUTPUT_TOKENS = 16_384
 
 
 class P3ChatResponse(BaseModel):
@@ -183,7 +187,7 @@ def _chat_job(
             "messages": messages,
             "structured_output": P3_CHAT_CONTRACT,
             "llm_policy": policy,
-            "max_tokens": 8192,
+            "max_tokens": P3_CHAT_MAX_OUTPUT_TOKENS,
             "num_retries": 0,
         },
     )
