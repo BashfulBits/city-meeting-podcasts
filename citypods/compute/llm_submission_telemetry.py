@@ -220,26 +220,6 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
     ]
     recovery = [event for event in events if event.get("event") == "llm_structural_recovery"]
     lines = ["## LLM submission telemetry", ""]
-    schema_retries = [
-        event
-        for event in events
-        if event.get("event") == "llm_dispatch_v2_batch"
-        and event.get("operation") == "schema-retry"
-    ]
-    if schema_retries:
-        observed = sum(int(event.get("schema_retry", 0) or 0) for event in schema_retries)
-        lines.extend(
-            [
-                "### Recovery submissions",
-                "",
-                f"Schema-correction submission observations in this run: **{observed}**.",
-                "These are recovery traffic, not new content work. A new correction job counts "
-                "as ingress; a Worker retry/requeue reschedules the same job. Observations "
-                "can include idempotent replays and are not an exact "
-                "UTC-day count of new correction rows.",
-                "",
-            ]
-        )
     _render_accounting(events, lines)
     if producer:
         lines.extend(
@@ -424,7 +404,7 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                 lines.append(
                     "- **{phase}:** active bundles `{active_bundles}`, "
                     "active calls `{active_calls}`, "
-                    "queued `{queued}`, claimed today `{claimed}`, ingress today `{ingested}` "
+                    "queued `{queued}`, claimed today `{claimed}` "
                     "(UTC day `{utc_day}`); "
                     "last claim `{last_reason}`.".format(
                         phase=event.get("phase", "snapshot"),
@@ -432,7 +412,6 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                         active_calls=summary.get("active_calls", "?"),
                         queued=summary.get("queued", "?"),
                         claimed=summary.get("claimed", "?"),
-                        ingested=summary.get("ingested", "?"),
                         utc_day=summary.get("utc_day", "?"),
                         last_reason=summary.get("last_reason", "?"),
                     )
@@ -440,13 +419,11 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                 reason_counts = summary.get("reason_counts")
                 outcomes = {
                     key: summary.get(key) if summary.get(key) is not None else "?"
-                    for key in ("completed", "failed", "retried")
+                    for key in ("ingested", "completed", "retried")
                 }
                 lines.append(
-                    "  - Worker results today: completed `{completed}`, failed `{failed}`, "
-                    "Worker requeues `{retried}` (completion-time requeues, including late "
-                    "deferrals). Completed means provider completion, not client "
-                    "validation or content acceptance.".format(**outcomes)
+                    "  - Jobs today: new ingress `{ingested}`, Worker requeues `{retried}`, "
+                    "completed jobs `{completed}` (runner validates results).".format(**outcomes)
                 )
                 budget = summary.get("row_budget")
                 if isinstance(budget, Mapping):

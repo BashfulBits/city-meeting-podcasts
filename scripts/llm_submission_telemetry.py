@@ -47,7 +47,6 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
         "claimed": scheduler.get("bundle_count_today"),
         "ingested": scheduler.get("jobs_ingested_today"),
         "completed": scheduler.get("completed_today"),
-        "failed": scheduler.get("failed_today"),
         "retried": scheduler.get("retried_today"),
         "last_reason": claim.get("last_reason"),
         "empty_claims": claim.get("empty_count_today"),

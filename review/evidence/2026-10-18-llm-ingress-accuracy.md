@@ -29,7 +29,7 @@ The sweep also reported 277 schema-correction resubmissions during this interval
 recovery traffic: a new correction row counts as fresh ingress, while a provider retry on the
 same row does not. Increased ingress alone does not establish successful or healthy model output.
 
-## Result and recovery reporting
+## Job metrics
 
 The deployed Worker incremented `retried_today` for newly inserted schema-correction clones,
 which mixed new-job admission with same-job rescheduling. The correction removes that increment:
@@ -38,7 +38,6 @@ which mixed new-job admission with same-job rescheduling. The correction removes
   existing admission does not increment it; rescheduling the same job creates no ingress.
 - `completed_today`: provider-success settlements. Client schema, grounding, or content checks
   may still reject their results, so this is not a count of accepted content artifacts.
-- `failed_today`: settlements that leave the job terminally failed, rather than requeued.
 - `retried_today`: completion-time rescheduling of an existing job, including `deferred_late`.
   A new correction clone no longer increments it. Idempotent clone replays change neither count.
 
@@ -47,17 +46,15 @@ include legacy correction admissions until the next UTC rollover. No counts are 
 historical split is guessed from incomplete client telemetry. Admission policy and DO row-write
 cost are unchanged: the correction removes an increment from an existing scheduler UPDATE.
 
-Actions snapshots now carry all three existing result counters, labeling retries as Worker
-requeues rather than presenting correction admissions as rescheduling of the same job.
+Actions snapshots highlight only the three requested job metrics: new ingress, Worker
+requeues, and completed jobs for runner validation. Existing raw failure counters and client
+reconciliation diagnostics remain available, without a separate schema-correction report line.
 
 The raw completion outcomes are `success`, `deferred_late`, `retryable_error`, and
 `terminal_error`; retry policy determines whether an error becomes queued or failed. The client
 poll report separately counts completed, pending, missing, failed, and unknown observations.
 These layers are not interchangeable: the same content item can have multiple job attempts.
 
-Schema-correction submission observations get a separate per-run line in Actions summaries,
-derived from existing JSONL events without new requests or DO writes. Repeated/idempotent calls
-can repeat observations, so this line is not advertised as an exact UTC-day correction count.
 
 ## Why the current total is small
 

@@ -183,7 +183,6 @@ def test_scheduler_summary_matches_worker_stats_shape():
         "claimed": 19,
         "ingested": 83,
         "completed": None,
-        "failed": None,
         "retried": None,
         "last_reason": "active_bundle_limit",
         "empty_claims": 4,
@@ -233,7 +232,7 @@ def test_old_worker_has_unknown_recovery_evidence():
     }
 
 
-def test_retry_reporting_separates_run_observations_from_worker_daily_counters():
+def test_job_reporting_uses_only_the_three_worker_counters():
     summary = _scheduler_summary(
         {
             "scheduler": {
@@ -245,7 +244,7 @@ def test_retry_reporting_separates_run_observations_from_worker_daily_counters()
             }
         }
     )
-    assert (summary["completed"], summary["failed"], summary["retried"]) == (31, 7, 154)
+    assert (summary["ingested"], summary["completed"], summary["retried"]) == (179, 31, 154)
     events = [
         {"event": "llm_submission_worker_snapshot", "phase": "end", "summary": summary},
         {"event": "llm_dispatch_v2_batch", "operation": "schema-retry", "schema_retry": 139},
@@ -253,18 +252,17 @@ def test_retry_reporting_separates_run_observations_from_worker_daily_counters()
         {"event": "llm_dispatch_v2_batch", "operation": "enqueue-batch", "accepted": 39},
     ]
     markdown = render_markdown(events)
-    assert "Schema-correction submission observations in this run: **140**" in markdown
-    assert "ingress today `179`" in markdown
-    assert "completed `31`, failed `7`, Worker requeues `154`" in markdown
-    assert "a Worker retry/requeue reschedules the same job" in markdown
-    assert "not an exact UTC-day count" in markdown
-    assert "not client validation or content acceptance" in markdown
+    assert "new ingress `179`, Worker requeues `154`, completed jobs `31`" in markdown
+    assert "runner validates results" in markdown
+    assert "Recovery submissions" not in markdown
+    assert "Schema-correction submission observations" not in markdown
+    assert "failed `7`" not in markdown
 
 
 def test_old_snapshots_report_unknown_result_counts_instead_of_zero():
     events = [{"event": "llm_submission_worker_snapshot", "summary": _scheduler_summary({})}]
     markdown = render_markdown(events)
-    assert "completed `?`, failed `?`, Worker requeues `?`" in markdown
+    assert "new ingress `?`, Worker requeues `?`, completed jobs `?`" in markdown
 
 
 def test_empty_recovery_summary_explicitly_reports_missing_evidence():
