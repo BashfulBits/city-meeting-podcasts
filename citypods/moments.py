@@ -434,6 +434,34 @@ def normalize_decision_candidate(
     }
 
 
+def apply_admission(candidate: Mapping[str, Any], *, technical_gate: bool) -> dict[str, Any]:
+    """Apply a maintainer's explicit ``manual_status`` (plus start/end/title overrides) to a quote.
+
+    Without a manual decision a candidate stays a hidden shadow. The calibrated score policy and
+    the R6 judge panel that could auto-admit are retired (review/53 PR10); a future admission
+    path is the judge stack's graduation (PR8/PR9). ``technical_gate`` comes from the media layer:
+    this never makes a video-safe decision from text alone and never changes a quote.
+    """
+    result = dict(candidate)
+    manual = str(candidate.get("manual_status") or "").title()
+    if manual == "Reject":
+        result.update({"admission": "rejected", "display": False, "admission_reason": "manual"})
+    elif manual == "Borderline":
+        result.update({"admission": "shadow", "display": False, "admission_reason": "manual"})
+    elif manual == "Good":
+        result.update(
+            {
+                "admission": "admitted" if technical_gate else "admitted_text_only",
+                # A manual Good remains a public, text-backed quote when its video gate fails.
+                "display": True,
+                "admission_reason": "manual-good",
+            }
+        )
+    else:
+        result.update({"admission": "shadow", "display": False, "admission_reason": "manual-only"})
+    return result
+
+
 def quote_safety_gate(candidate: Mapping[str, Any], segments: list[dict[str, Any]]) -> bool:
     """Recheck grounded timing after a maintainer supplies a range override."""
     quote = str(candidate.get("quote") or "")

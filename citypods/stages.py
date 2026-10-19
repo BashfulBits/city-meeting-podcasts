@@ -326,7 +326,6 @@ class StageContext:
     # one pass across all sources); filled from the lanes' max_dispatches_per_run on first use.
     judge_run_caps: dict = field(default_factory=dict)
     judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
-    moment_evaluation_state_path: Path | None = None
     moment_evaluation_config: dict = field(default_factory=dict)
     moment_max_dispatches: int = 40
     moment_dispatches: int = 0
@@ -1692,7 +1691,7 @@ class JudgeStage(LLMProducerStage):
 
 
 class MomentAdmissionStage:
-    """Apply immutable human decisions and qualified model/judge policies to existing candidates."""
+    """Apply a maintainer's explicit decisions to candidates; the rest stay hidden shadows."""
 
     name = "moment-admission"
     version = "1"
@@ -1700,18 +1699,12 @@ class MomentAdmissionStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.moment_evaluation import apply_admission, load_state, refresh_policies
-        from citypods.moments import parse_transcript_segments, quote_safety_gate
+        from citypods.moments import apply_admission, parse_transcript_segments, quote_safety_gate
         from citypods.video_clips import technical_video_gate
 
         stats = StageStats(self.name)
         if ctx.storage is None:
             return stats
-        state = (
-            load_state(ctx.moment_evaluation_state_path) if ctx.moment_evaluation_state_path else {}
-        )
-        refresh_policies(state)
-        mode = str((ctx.moment_evaluation_config or {}).get("mode") or "manual")
         for ep in episodes:
             if ctx.stop is not None and ctx.stop():
                 stats.defer("stop")
@@ -1724,7 +1717,7 @@ class MomentAdmissionStage:
                     continue
                 # Apply manual controls before resolving media: an explicit served range may map
                 # to a different source cut, and must be what both the safety gate and renderer use.
-                prepared = apply_admission(candidate, state, technical_gate=False, global_mode=mode)
+                prepared = apply_admission(candidate, technical_gate=False)
                 try:
                     source = _moment_source(provider, city, ep, prepared)
                 except Exception:  # noqa: BLE001 - unresolved provider media is text-only.
@@ -1746,7 +1739,7 @@ class MomentAdmissionStage:
                         with ctx.moment_video_gate_lock:
                             ctx.moment_video_gate_cache[cache_key] = cached
                     gate = cached
-                admitted = apply_admission(prepared, state, technical_gate=gate, global_mode=mode)
+                admitted = apply_admission(prepared, technical_gate=gate)
                 if admitted.get("admission") == "admitted" and not quote_safety_gate(
                     admitted, segments
                 ):

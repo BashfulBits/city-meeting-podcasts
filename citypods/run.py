@@ -3499,14 +3499,7 @@ def _build_impl(
                 ),
             },
         },
-        moment_evaluation_state_path=state_dir
-        / str(
-            (moments_config.get("evaluation") or {}).get("state_path", "r6_moment_evaluation.json")
-        ),
-        moment_evaluation_config={
-            **moments_config,
-            **(moments_config.get("evaluation") or {}),
-        },
+        moment_evaluation_config=dict(moments_config),
         moment_max_dispatches=moment_max_dispatches,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
