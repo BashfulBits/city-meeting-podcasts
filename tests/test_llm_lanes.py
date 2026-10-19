@@ -338,12 +338,15 @@ class TestRepositoryConfig:
             entry = compiled["reservations"][purpose]
             assert entry["reserved_write_units"] == lane.reserved_write_units
             assert entry["daily_write_units"] == lane.daily_write_units
+            assert entry["max_queued_jobs"] == lane.max_queued_jobs
             assert entry["models"] == list(lane.models)
             assert entry["backup_models"] == list(lane.backup_models)
 
-    def test_every_lane_run_cap_is_funded_by_its_daily_budget(self):
+    def test_every_lane_has_positive_max_queued_jobs(self):
         for lane in load_lanes().values():
-            assert lane.max_dispatches_per_run <= lane.max_jobs_per_day, lane.purpose
+            assert lane.max_queued_jobs is not None and lane.max_queued_jobs > 0, lane.purpose
+            if lane.max_dispatches_per_run is not None:
+                assert lane.max_dispatches_per_run <= lane.max_jobs_per_day, lane.purpose
 
     def test_site_config_no_longer_carries_duplicate_model_lists(self):
         # These keys moved into `llm_lanes`. Leaving a copy behind is how the two lists drifted

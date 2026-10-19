@@ -432,6 +432,7 @@ class SourcePipeline:
                     speaker_config=self.ctx.speaker_config,
                     judging_config=self.ctx.judging_config,
                     judge_audit_rows=self.ctx.judge_audit_rows,
+                    tag_llm_enabled=bool(self.ctx.tag_backend),
                 ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
@@ -811,6 +812,18 @@ class SourcePipeline:
                     flush=True,
                 )
                 return self._cache[key]
+            if self.ctx.lane == "moments":
+                rollout = (self.ctx.moment_evaluation_config or {}).get(
+                    "rollout_meeting_families"
+                ) or []
+                family = str(city.extra.get("meeting_family") or "default")
+                if rollout and family not in rollout:
+                    print(
+                        f"[enrich] moments skip non-rollout family={family} slug={city.slug}",
+                        flush=True,
+                    )
+                    self._cache[key] = []
+                    return []
             t0 = time.perf_counter()
             thread_name = threading.current_thread().name
             print(
@@ -1893,6 +1906,20 @@ def _run_enrich_global_queue(
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
+    skipped_policy_cities: list[City] = []
+    if ctx.lane == "moments":
+        rollout = (ctx.moment_evaluation_config or {}).get("rollout_meeting_families") or []
+        if rollout:
+            rollout_set = set(rollout)
+            active_cities: list[City] = []
+            for c in cities:
+                fam = str(c.extra.get("meeting_family") or "default")
+                if fam in rollout_set:
+                    active_cities.append(c)
+                else:
+                    skipped_policy_cities.append(c)
+            cities = active_cities
+
     rep_city: dict[str, City] = {}
     for c in cities:
         rep_city.setdefault(source_key(c), c)
@@ -2597,6 +2624,10 @@ def _run_enrich_global_queue(
         else:
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
+    results.extend(
+        CityResult(c.slug, "skipped", detail="policy_held: non-rollout family")
+        for c in skipped_policy_cities
+    )
     if llm_submission_failures:
         # Not attributable to one city -- a failed ingress batch spans sources -- so it gets its
         # own result row. This is what makes `cli.build` exit non-zero: a lane whose jobs never
@@ -3646,6 +3677,17 @@ def _build_impl(
                 # below can only order within a source). Renderless by definition.
                 polling_cities = [c for c in cities if c.lifecycle.polls_provider()]
                 retired_cities = [c for c in cities if not c.lifecycle.polls_provider()]
+                if lane == "moments":
+
+                    def _moments_priority(city: City) -> tuple[int, str]:
+                        fam = str(city.extra.get("meeting_family") or "")
+                        if fam == "council":
+                            return (0, city.slug)
+                        if fam == "planning_and_zoning":
+                            return (1, city.slug)
+                        return (2, city.slug)
+
+                    polling_cities.sort(key=_moments_priority)
                 results = _run_enrich_global_queue(
                     pipeline,
                     polling_cities,

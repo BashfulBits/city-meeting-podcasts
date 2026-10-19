@@ -116,6 +116,7 @@ def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str,
             purpose: {
                 "reserved_write_units": lane.reserved_write_units,
                 "daily_write_units": lane.daily_write_units,
+                "max_queued_jobs": lane.max_queued_jobs,
                 # Carried for operator legibility in Workers Logs and the /v2/stats snapshot; the
                 # coordinator's admission arithmetic uses only the two budgets above.
                 "models": list(lane.models),

@@ -1,6 +1,7 @@
 slug: dallas-tx-city-planning-commission
 city: dallas-tx
 provider: swagit
+meeting_family: planning_and_zoning
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: City Planning Commission

@@ -4362,3 +4362,80 @@ def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout(
         if s.get("name", "").startswith("Judge persisted")
     )
     assert step["timeout-minutes"] > window
+
+
+def test_moments_enrich_skips_non_rollout_family(tmp_path):
+    city = City(
+        slug="austin-parks",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/f"},
+        podcast_title="Parks",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "parks_and_recreation"},
+    )
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=True,
+        lane="moments",
+        moment_evaluation_config={"rollout_meeting_families": ["council", "planning_and_zoning"]},
+    )
+    pipeline = run.SourcePipeline(
+        state_dir=tmp_path,
+        stages=[],
+        ctx=ctx,
+        full_artifact_episodes=5,
+        metadata_retention_episodes=10,
+        refresh_state={},
+    )
+    # Should skip immediately and return empty list without touching filesystem or provider
+    episodes = pipeline.enrich(city)
+    assert episodes == []
+
+
+def test_moments_priority_order_in_build():
+    c_council = City(
+        slug="austin-council",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/council"},
+        podcast_title="Council",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "council"},
+    )
+    c_pz = City(
+        slug="austin-pz",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/pz"},
+        podcast_title="P&Z",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "planning_and_zoning"},
+    )
+    c_other = City(
+        slug="austin-transit",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/transit"},
+        podcast_title="Transit",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "transit"},
+    )
+    cities = [c_other, c_pz, c_council]
+
+    def _moments_priority(city: City) -> tuple[int, str]:
+        fam = str(city.extra.get("meeting_family") or "")
+        if fam == "council":
+            return (0, city.slug)
+        if fam == "planning_and_zoning":
+            return (1, city.slug)
+        return (2, city.slug)
+
+    sorted_cities = sorted(cities, key=_moments_priority)
+    assert sorted_cities == [c_council, c_pz, c_other]

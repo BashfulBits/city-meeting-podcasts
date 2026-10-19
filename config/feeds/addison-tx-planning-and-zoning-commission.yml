@@ -1,6 +1,7 @@
 slug: addison-tx-planning-and-zoning-commission
 city: addison-tx
 provider: swagit
+meeting_family: planning_and_zoning
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Planning and Zoning Commission"

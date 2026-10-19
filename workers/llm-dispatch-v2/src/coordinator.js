@@ -793,10 +793,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const minUnits = Number(config.write_units_per_job) || 4;
         if (laneAvailable < minUnits) reasons.push("purpose_write_budget_exceeded");
         if (globalAvailable < minUnits) reasons.push("ingress_write_budget_reserved");
+        const maxQueuedForPurpose = Number(config.max_queued_jobs);
+        let queuedForPurpose = null;
+        if (Number.isFinite(maxQueuedForPurpose) && maxQueuedForPurpose > 0) {
+          queuedForPurpose = [...sql.exec(
+            "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
+            purpose
+          )][0]?.count || 0;
+          if (queuedForPurpose >= maxQueuedForPurpose) reasons.push("purpose_queue_full");
+        }
         lane = {
           write_units_used: used,
           daily_write_units: Number.isFinite(daily) ? daily : null,
           write_units_available: Math.max(0, Math.min(laneAvailable, globalAvailable)),
+          queued_jobs: queuedForPurpose,
+          max_queued_jobs: Number.isFinite(maxQueuedForPurpose) && maxQueuedForPurpose > 0
+            ? maxQueuedForPurpose
+            : null,
         };
       }
     }
@@ -2527,6 +2540,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           sched.utc_day
         )].map((row) => [row.purpose, row])
       );
+      const purposeQueuedCounts = new Map();
 
       let newlyInsertedCount = 0;
       let newlyAdmittedWriteUnits = 0;
@@ -2789,6 +2803,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
           write_units: 0,
         };
         const writeUnits = this._ingressWriteUnitsFor({ ...job, policy_json: policyJson });
+        const purposeMaxQueued = Number(reservation.max_queued_jobs);
+        if (Number.isFinite(purposeMaxQueued) && purposeMaxQueued > 0) {
+          if (!purposeQueuedCounts.has(purpose)) {
+            const count = [...sql.exec(
+              "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
+              purpose
+            )][0]?.count || 0;
+            purposeQueuedCounts.set(purpose, count);
+          }
+          const currentQueued = purposeQueuedCounts.get(purpose);
+          if (currentQueued >= purposeMaxQueued) {
+            rejected.push({ id: job.id, reason: "purpose_queue_full" });
+            continue;
+          }
+        }
         const purposeWriteLimit = Number(reservation.daily_write_units);
         if (
           Number.isFinite(purposeWriteLimit) &&
@@ -2869,6 +2898,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         delta.jobs += 1;
         delta.units += writeUnits;
         purposeDeltas.set(purpose, delta);
+        if (purposeQueuedCounts.has(purpose)) {
+          purposeQueuedCounts.set(purpose, purposeQueuedCounts.get(purpose) + 1);
+        }
         accepted.push({ id: job.id, submitted_id: job.id });
       }
 
@@ -3148,6 +3180,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           write_units: Number(row.write_units) || 0,
           daily_quota: dailyQuota,
           percent_used: pct,
+          max_queued_jobs: Number(quotaInfo?.max_queued_jobs) || null,
         };
       });
       let burndown = [];

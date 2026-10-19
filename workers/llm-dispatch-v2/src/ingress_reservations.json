@@ -8,6 +8,7 @@
     "chapter-agenda": {
       "reserved_write_units": 4800,
       "daily_write_units": 4800,
+      "max_queued_jobs": 3200,
       "models": [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
         "tencent/hy3",
@@ -25,6 +26,7 @@
     "chapter-locator": {
       "reserved_write_units": 4300,
       "daily_write_units": 7200,
+      "max_queued_jobs": 3200,
       "models": [
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4.1-flash",
@@ -39,6 +41,7 @@
     "judge:adjudicator": {
       "reserved_write_units": 920,
       "daily_write_units": 1600,
+      "max_queued_jobs": 1600,
       "models": [
         "zai/glm-5.3-flash",
         "deepseek/deepseek-v4.1-flash"
@@ -52,6 +55,7 @@
     "judge:anchor": {
       "reserved_write_units": 920,
       "daily_write_units": 5600,
+      "max_queued_jobs": 800,
       "models": [
         "typesafe/jev-1.13"
       ],
@@ -64,6 +68,7 @@
     "judge:sibling": {
       "reserved_write_units": 2400,
       "daily_write_units": 8000,
+      "max_queued_jobs": 2000,
       "models": [
         "google/gemma-4-31b-it",
         "openrouter/nvidia/nemotron-3.5-super-vl:free"
@@ -77,6 +82,7 @@
     "r6-moments": {
       "reserved_write_units": 916,
       "daily_write_units": 9600,
+      "max_queued_jobs": 3200,
       "models": [
         "gemini/gemini-3.8-flash",
         "gemini/gemini-3.7-flash",
@@ -97,6 +103,7 @@
     "remedy:p3": {
       "reserved_write_units": 0,
       "daily_write_units": 800,
+      "max_queued_jobs": 800,
       "models": [
         "openai/gpt-6.1-sol",
         "zai/glm-5.3-flash",
@@ -112,6 +119,7 @@
     "topic-tags:tagger": {
       "reserved_write_units": 1860,
       "daily_write_units": 9600,
+      "max_queued_jobs": 6400,
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "kilo/stepfun/step-3.7-flash:free",
