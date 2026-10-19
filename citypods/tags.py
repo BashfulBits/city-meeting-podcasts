@@ -1264,8 +1264,11 @@ TAG_ADMISSION_POLICY = "624ceafe8f6480c1"
 
 
 def _json_hash(value: Any) -> str:
+    # An identity digest of public tag fields, not a security control; SHA1 stays so existing
+    # persisted `candidate_id`s keep their value.
     return hashlib.sha1(
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(),
+        usedforsecurity=False,
     ).hexdigest()[:16]
 
 
