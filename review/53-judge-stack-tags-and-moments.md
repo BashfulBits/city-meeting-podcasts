@@ -638,6 +638,29 @@ the deterministic gates pass, `supported` is admitted, no judge flags `publishab
 the meeting's top K by `best` (tie-break `usefulness`). `moments.mode` is left for the maintainer to
 set to `auto` separately, as the kill switch.
 
+### Retirement moved ahead of graduation (decided 2026-10-19)
+
+PR10 and PR11 no longer wait for PR8 and PR9. The old gates hold no authority today, so retiring
+them cannot change what is shown, and keeping them only spends LLM calls and manual review:
+
+- **Tags.** `llm_evaluation.json` has 115 calibration rows and 289 human reviews; none is qualified,
+  so every LLM tag candidate fails the admission threshold (the fallback is 1.0 and needs strictly
+  more) and the pre-labeler overlay, which only acts once its own row qualifies, is inert.
+  `scripts/check_retirement_display.py` projects all 172,526 stored candidates through the live
+  display code and compares them with the post-retirement rule (LLM hidden until PR8, rule tags
+  unchanged): 0 differences (128,386 rule tags shown, 0 LLM tags shown, 924 active LLM candidates
+  hidden).
+- **Moments.** `moments.mode` is `manual` and `r6_moment_evaluation.json` does not exist, so the R6
+  policy has never admitted anything; the R6 panel is candidate-only by design.
+- **Interim display rule.** Until PR8, an LLM tag candidate is hidden and a rule tag is shown, the
+  same as now. PR11 must state this where it removes the matrix.
+- **Step 1 (this change):** `tagging.prelabeler.enabled` and `moments.judges.enabled` off; the
+  scheduled R5/R6 review workflows (`llm-tag-review`, `llm-tournament`, `tournament-tag-backfill`,
+  `r6-moment-review`) lose their cron triggers.
+- **Dry-run counts for PR10/PR11's cancel step (2026-10-19):** 4,835 queued R6 judge jobs at the
+  Worker (3,909 Gemini 3.6 Flash, 926 Qwen 3.8), about 3,450 completed-but-uncollected R6 results,
+  1,712 stale handles the Worker no longer knows, and 439 failed. No R5 job is queued.
+
 ### PR10 — Retire the R6 judge and human calibration (after PR9)
 
 - Remove lane `r6-judge`, `MomentJudgeStage`, `citypods/moment_judging.py`'s panel and its

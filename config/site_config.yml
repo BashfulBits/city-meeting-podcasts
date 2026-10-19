@@ -53,7 +53,10 @@ tagging:
       topic-tags:
         "litellm:gemini/gemini-3.1-flash-lite": 1.0
   prelabeler:
-    enabled: true
+    # Off since 2026-10-19 (review/53 PR11 retires the R5 flows). No calibration row has ever
+    # qualified (0 of 115, 289 human reviews), so the overlay changes no display; the weekly
+    # digest and review tickets stop with it.
+    enabled: false
     # Route lives in `llm_lanes["topic-tags:prelabeler"]` -- a separate verb with its own ingress
     # budget, which deliberately does not inherit from the `topic-tags` prefix.
     prompt_version: "1"
@@ -473,7 +476,10 @@ moments:
     minimum_reviews: 30
     required_precision: 0.90
   judges:
-    enabled: true
+    # Off since 2026-10-19 (review/53 PR10 retires the R6 panel). The panel is candidate-only and
+    # has never admitted anything (no r6_moment_evaluation.json exists); its queued jobs are
+    # cancelled separately.
+    enabled: false
     allow_paid: false
     # Routes live in `llm_lanes["r6-judge"]`.
 # Optional banner shown on every page; clear it ("") to remove at launch.
