@@ -99,8 +99,6 @@ def record_producer_caps(ctx: Any) -> None:
     """
     for purpose, prefix, exhausted_name in (
         ("topic-tags:tagger", "tag", "tag_llm_dispatch_exhausted"),
-        ("topic-tags:prelabeler", "tag_prelabeler", "tag_prelabeler_dispatch_exhausted"),
-        ("topic-tags:prelabeler-shadow", "tag_prelabeler_shadow", None),
         ("chapter-agenda", "chapter_agenda", "chapter_agenda_dispatch_exhausted"),
         ("chapter-locator", "chapter_locator", "chapter_locator_dispatch_exhausted"),
         ("r6-shared-moments-and-judge", "moment", None),

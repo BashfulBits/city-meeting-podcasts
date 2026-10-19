@@ -7,13 +7,6 @@ exhausted or paused model. This maintenance command reads the canonical deferred
 chapter-agenda handles that use a retired model or have waited past the supplied age threshold,
 and, with ``--apply``, batch-cancels submitted v2 jobs before discarding their client records.
 
-``--lane topic-tags:prelabeler`` applies the same supersede flow to Gemma pre-labeler batch
-handles older than the threshold. Pre-labeler batches used to be sized past Google AI Studio's
-10k-token Gemma ceiling, so after those routes became the only live Gemma legs (2026-09-23) old
-oversized batches could never be claimed; superseding them lets the next tag run re-batch the
-still-pending candidates under the ceiling-aware sizing. Only handles whose recipe has the
-pre-labeler's ``<16 hex>-<16 hex>`` batch shape are touched, never tournament judge jobs.
-
 ``--lane any`` drops the task/purpose scoping entirely and classifies every handle in the
 registry, regardless of lane, against one lane-agnostic signal: its ``model`` has zero configured
 routes in the current compiled catalog (``workers/llm-dispatch-v2/src/dispatch_limits.json``).
@@ -48,7 +41,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import re
 import signal
 import sys
 from collections import Counter
@@ -70,15 +62,13 @@ from citypods.config import load_site_config
 from citypods.storage import StorageReadUnavailable, make_storage
 
 CURRENT_MODELS = frozenset((*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS))
-LANES = ("chapter-agenda", "topic-tags:prelabeler")
+LANES = ("chapter-agenda",)
 # Lane-agnostic: classifies every handle in the registry by one signal alone (see module
-# docstring). Not in LANES -- it skips every task/purpose check LANES's two members apply.
+# docstring). Not in LANES -- it skips the task/purpose check LANES's member applies.
 LANE_ANY = "any"
 LANE_CHOICES = (*LANES, LANE_ANY)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DISPATCH_LIMITS_PATH = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
-# `llm_prelabel_candidates` recipes are f"{episode prelabel recipe}-{batch recipe}", both 16 hex.
-_PRELABELER_RECIPE_RE = re.compile(r"^[0-9a-f]{16}-[0-9a-f]{16}$")
 DEFAULT_MAX_ROW_WRITES = 25_000
 # A queued cancellation deletes one or more job-model rows and updates the job row plus the
 # state/updated-at indexes. Cloudflare bills affected index rows too, so keep a safety margin over
@@ -136,13 +126,6 @@ def _purpose(handle: JobHandle) -> str | None:
     return deferred.policy.purpose
 
 
-def prelabeler_model_for(site_config_path: str) -> str:
-    """The canonical production pre-labeler model from the lane registry in ``site_config_path``."""
-    from citypods.compute.llm_lanes import lane_for
-
-    return canonical_model(lane_for("topic-tags:prelabeler", path=site_config_path).primary_model)
-
-
 def current_catalog_models(dispatch_limits_path: Path = DISPATCH_LIMITS_PATH) -> frozenset[str]:
     """Every model with at least one configured route in the compiled v2 catalog.
 
@@ -156,27 +139,16 @@ def current_catalog_models(dispatch_limits_path: Path = DISPATCH_LIMITS_PATH) ->
     return frozenset(canonical_model(model) for model in routes_map)
 
 
-def _is_prelabeler_handle(handle: JobHandle, prelabeler_model: str) -> bool:
-    if handle.task != "tag" or _purpose(handle) not in {None, "topic-tags:prelabeler"}:
-        return False
-    if not _PRELABELER_RECIPE_RE.match(str(handle.recipe_hash or "")):
-        return False
-    return bool(handle.model) and canonical_model(handle.model) == prelabeler_model
-
-
 def _classify_entry(
     entry,
     *,
     now: datetime,
     older_than_hours: float,
     lane: str = "chapter-agenda",
-    prelabeler_model: str = "",
     current_models: frozenset[str] | None = None,
 ) -> dict[str, Any] | None:
     """Classify one snapshot entry when it is an old or legacy handle of ``lane``.
 
-    ``prelabeler_model`` is the canonical production pre-labeler model resolved from the same
-    ``--site-config`` the run loaded (``prelabeler_model_for``); required for that lane.
     ``current_models`` is the catalog's live model set (``current_catalog_models``); required for
     ``lane="any"``, which applies only the legacy-model signal, never age (see module docstring).
     """
@@ -198,12 +170,7 @@ def _classify_entry(
         age_hours = ((now - created).total_seconds() / 3600) if created else None
         purpose = _purpose(handle)
     else:
-        if lane == "topic-tags:prelabeler":
-            if not prelabeler_model:
-                raise ValueError("the topic-tags:prelabeler lane needs its production model")
-            if not _is_prelabeler_handle(handle, prelabeler_model):
-                return None
-        elif handle.task != "agenda-item-extract":
+        if handle.task != "agenda-item-extract":
             return None
 
         purpose = _purpose(handle)
@@ -486,9 +453,6 @@ def run(
         file=sys.stderr,
         flush=True,
     )
-    prelabeler_model = (
-        prelabeler_model_for(site_config_path) if lane == "topic-tags:prelabeler" else ""
-    )
     current_models = current_catalog_models() if lane == LANE_ANY else None
     candidates = [
         classified
@@ -499,7 +463,6 @@ def run(
                 now=now,
                 older_than_hours=older_than_hours,
                 lane=lane,
-                prelabeler_model=prelabeler_model,
                 current_models=current_models,
             )
         )

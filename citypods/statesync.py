@@ -386,7 +386,7 @@ def pull_state(
     Returns the number of files restored. No-op for backends without sync support.
 
     ``only_paths`` (optional): when given, restrict the pull to the listed relative paths (e.g.
-    ``["llm_evaluation.json"]``). Must be valid relative paths confined to ``state_dir``.
+    ``["r7_speaker_registry.json"]``). Must be valid relative paths confined to ``state_dir``.
 
     ``only_prefixes`` (optional): when given, restrict the pull to relative paths starting with
     any of the listed prefixes (e.g. ``["sources/denton-tx/"]``). Mutually exclusive with

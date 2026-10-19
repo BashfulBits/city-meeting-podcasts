@@ -430,9 +430,6 @@ class SourcePipeline:
                     ep,
                     city,
                     speaker_config=self.ctx.speaker_config,
-                    evaluation_config=(
-                        self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
-                    ),
                     judging_config=self.ctx.judging_config,
                     judge_audit_rows=self.ctx.judge_audit_rows,
                 ):
@@ -1983,8 +1980,12 @@ def _run_enrich_global_queue(
     # (avoiding tens of thousands of idle worker tasks), while retained_episodes remains intact for
     # append-only persistence.
     if ctx.lane == "tag":
-        from citypods.llm_evaluation import config_from_mapping, load_state, policy_fingerprint
-        from citypods.tags import TAG_PROMPT_VERSION, episode_needs_tagging, load_taxonomy
+        from citypods.tags import (
+            TAG_ADMISSION_POLICY,
+            TAG_PROMPT_VERSION,
+            episode_needs_tagging,
+            load_taxonomy,
+        )
 
         with ctx.tag_taxonomy_cache_lock:
             cache = ctx.tag_taxonomy_cache
@@ -1993,23 +1994,8 @@ def _run_enrich_global_queue(
                     cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
                 except Exception as exc:  # noqa: BLE001
                     cache["taxonomy_error"] = str(exc)
-            if "evaluation_state" not in cache and "eval_error" not in cache:
-                try:
-                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-                    evaluation_state = (
-                        load_state(ctx.llm_evaluation_state_path)
-                        if ctx.llm_evaluation_state_path is not None
-                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-                    )
-                    cache["evaluation_config"] = evaluation_config
-                    cache["evaluation_state"] = evaluation_state
-                    cache["admission_policy"] = policy_fingerprint(
-                        evaluation_config, evaluation_state
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    cache["eval_error"] = str(exc)
             taxonomy = cache.get("taxonomy")
-            admission_policy = cache.get("admission_policy", "")
+            admission_policy = TAG_ADMISSION_POLICY
 
         if taxonomy is not None:
             llm_route = (
@@ -2019,25 +2005,6 @@ def _run_enrich_global_queue(
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
-            prelabeler_config = ctx.llm_evaluation_config.get("prelabeler") or {}
-            prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
-                ctx.tag_backend is not None
-            )
-            # Resolved from `llm_lanes["topic-tags:prelabeler"]` where the context is built, so a
-            # test may still inject its own evaluation config here.
-            prelabeler_model = str(prelabeler_config.get("model") or "")
-            prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
-            prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
-            # Keep episodes whose only outstanding work is the shadow evaluator, or its deferred
-            # results would never be read back (TagsStage shares `needs_shadow_prelabel`). Once
-            # the run's shadow allowance is spent, shadow-only episodes are not worth queueing.
-            shadow_model = str(prelabeler_config.get("shadow_model") or "")
-            if (
-                not prelabeler_config.get("shadow_enabled", False)
-                or shadow_model == prelabeler_model
-                or ctx.tag_prelabeler_shadow_exhausted()
-            ):
-                shadow_model = ""
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -2049,11 +2016,6 @@ def _run_enrich_global_queue(
                         llm_route=llm_route,
                         prompt_version=TAG_PROMPT_VERSION,
                         admission_policy=admission_policy,
-                        prelabeler_enabled=prelabeler_enabled and bool(prelabeler_model),
-                        prelabeler_model=prelabeler_model,
-                        prelabeler_prompt_version=prelabeler_prompt_version,
-                        prelabeler_llm_schema_version=prelabeler_llm_schema_version,
-                        prelabeler_shadow_model=shadow_model,
                     )
                 ]
     elif ctx.lane == "chapter-agenda":
@@ -2120,15 +2082,7 @@ def _run_enrich_global_queue(
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)
     if ctx.lane == "tag" and ctx.tag_backend is not None:
-        tag_caps = [
-            cap
-            for cap in (
-                ctx.tag_max_dispatches,
-                ctx.tag_prelabeler_max_dispatches,
-                ctx.tag_prelabeler_shadow_max_dispatches,
-            )
-            if cap is not None
-        ]
+        tag_caps = [cap for cap in (ctx.tag_max_dispatches,) if cap is not None]
         if tag_caps and max(tag_caps) > 0:
             # Sizing the candidate queue to the larger purpose allowance plus a headroom factor
             # avoids scheduling thousands of older backlog items that would inevitably be deferred
@@ -2988,11 +2942,6 @@ def _build_impl(
     # throughput bound and its ingress write budget are set side by side rather than in two
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
-    tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
-    shadow_enabled = bool((tagging_config.get("prelabeler") or {}).get("shadow_enabled", False))
-    tag_prelabeler_shadow_max_dispatches = (
-        lane_for("topic-tags:prelabeler-shadow").max_dispatches_per_run if shadow_enabled else 0
-    )
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
     moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
@@ -3011,8 +2960,6 @@ def _build_impl(
         closed = _closed_llm_lanes(
             {
                 "topic-tags:tagger": tagging_config.get("enabled"),
-                "topic-tags:prelabeler": tagging_config.get("enabled"),
-                "topic-tags:prelabeler-shadow": tagging_config.get("enabled") and shadow_enabled,
                 "chapter-agenda": True,
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
@@ -3029,10 +2976,6 @@ def _build_impl(
                 judge_closed_caps[judge_purpose] = 0
         if "topic-tags:tagger" in closed:
             tag_max_dispatches = 0
-        if "topic-tags:prelabeler" in closed:
-            tag_prelabeler_max_dispatches = 0
-        if "topic-tags:prelabeler-shadow" in closed:
-            tag_prelabeler_shadow_max_dispatches = 0
         if "chapter-agenda" in closed:
             chapter_agenda_max_dispatches = 0
         if "chapter-locator" in closed:
@@ -3258,19 +3201,9 @@ def _build_impl(
             remaining_secs = max(0.0, lane_deadline_secs - (time.monotonic() - enrich_phase_start))
             deadline = (time.monotonic() + remaining_secs) if lane_window_min > 0 else None
 
-            # Active stop trigger: once both tagger and prelabeler quotas are exhausted, stop.
+            # Active stop trigger: once the tagger quota is exhausted, stop.
             def _tag_quotas_exhausted() -> bool:
-                if ctx is None:
-                    return False
-                prelabeler_cfg = site_config.get("tagging", {}).get("prelabeler", {})
-                prelabeler_active = bool(prelabeler_cfg.get("enabled", False)) and bool(
-                    ctx.tag_prelabeler_max_dispatches
-                )
-                tagger_done = ctx.tag_llm_dispatch_exhausted.is_set()
-                prelabeler_done = (
-                    ctx.tag_prelabeler_dispatch_exhausted.is_set() if prelabeler_active else True
-                )
-                return tagger_done and prelabeler_done
+                return ctx is not None and ctx.tag_llm_dispatch_exhausted.is_set()
 
             stop = StopSignal(
                 deadline=deadline,
@@ -3481,24 +3414,6 @@ def _build_impl(
         # A judge lane the Worker reports closed starts with no packets to send this run.
         judge_run_caps=judge_closed_caps,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
-        llm_evaluation_state_path=state_dir
-        / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
-        llm_evaluation_config={
-            **(tagging_config.get("evaluation") or {}),
-            # The prelabeler's route comes from its own lane, not from `tagging.prelabeler.model`:
-            # `topic-tags:prelabeler` is a separate verb with a separate ingress budget and does
-            # not inherit anything from the `topic-tags` prefix. Everything else in the block
-            # (enabled, prompt_version, llm_schema_version) stays where it is.
-            "prelabeler": {
-                **(tagging_config.get("prelabeler") or {}),
-                "model": lane_for("topic-tags:prelabeler").primary_model,
-                "shadow_model": (
-                    lane_for("topic-tags:prelabeler-shadow").primary_model
-                    if (tagging_config.get("prelabeler") or {}).get("shadow_enabled", False)
-                    else None
-                ),
-            },
-        },
         moment_evaluation_config=dict(moments_config),
         moment_max_dispatches=moment_max_dispatches,
         speaker_registry_path=state_dir
@@ -3582,8 +3497,6 @@ def _build_impl(
         lane=lane,
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
-        tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
-        tag_prelabeler_shadow_max_dispatches=tag_prelabeler_shadow_max_dispatches,
         chapter_agenda_max_dispatches=chapter_agenda_max_dispatches,
         chapter_locator_max_dispatches=chapter_locator_max_dispatches,
     )
