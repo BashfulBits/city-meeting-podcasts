@@ -15,7 +15,7 @@ rows in about four hours. The improvement is real and appears in the counter.
 | [Locator 39182256025](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39182256025) | 39 | 22 | October 19: 0 → 39; locator purpose 0 → 39 |
 | [Agenda 39171421426](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39171421426) | 21 | 46 | October 18: 479 → 500; agenda purpose 26 → 47 |
 
-All 20 downloaded start/end snapshots from ten post-fix runs had exact agreement between
+All 22 downloaded start/end snapshots from eleven post-fix runs had exact agreement between
 `scheduler.jobs_ingested_today` and the sum of per-purpose `jobs_ingested` values. Concurrent
 workflows mean a global run delta need not equal that run's own admissions; the locator and
 agenda comparisons above also agree at purpose level.
@@ -34,6 +34,15 @@ same row does not. Increased ingress alone does not establish successful or heal
 The counter resets at midnight UTC: 7 p.m. America/Chicago on October 18. At October 19 00:09
 UTC it was zero; at 01:17 UTC it was 39, all from the locator run above. These are recorded
 observations, not a claim about all subsequent traffic or a rolling 24-hour count.
+
+The later [sweep 39185424706](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39185424706)
+recorded 39 at 01:28 UTC and 179 at 02:00 UTC. Its artifact records 140 schema-retry operations,
+matching the 140-row increase: shadow prelabeler +131, moment extraction +7, and agenda +2.
+The run failed after a B2 `StorageReadUnavailable` while re-reading a canonical record inside
+`discard_terminal_failure`'s mutation guard. Reconciliation stopped before its final summary;
+the successfully admitted rows remain counted. Follow-up: isolate transient guarded-cleanup
+read failures so one unavailable record cannot abort the rest of the bounded sweep. This is
+separate from the stats quota correction and does not justify treating reads as missing jobs.
 
 An accepted idempotent replay refers to an existing job and does not create another ledger row.
 Superseding an existing row, retrying a provider attempt, and collecting a completion also do not
