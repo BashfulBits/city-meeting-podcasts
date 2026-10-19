@@ -204,7 +204,9 @@ def test_build_sample_manifest_skips_already_sampled_episodes(tmp_path, monkeypa
 
     fake_city = type("FakeCity", (), {"slug": "t"})()
     monkeypatch.setattr(tq, "load_site_config", lambda path: {"defaults": {}})
-    monkeypatch.setattr(tq, "load_city_configs", lambda config_dir, defaults: [fake_city])
+    monkeypatch.setattr(
+        tq, "load_city_configs", lambda config_dir, defaults: [fake_city, fake_city]
+    )
     monkeypatch.setattr(tq, "resolve_state_dir", lambda site_config, output_dir: state_dir)
     monkeypatch.setattr(tq, "source_key", lambda city: "src-1")
     monkeypatch.setattr(
@@ -227,6 +229,7 @@ def test_build_sample_manifest_skips_already_sampled_episodes(tmp_path, monkeypa
     manifest = tq.build_sample_manifest("site.yml", "config", "docs", limit=8)
     sample_ids = {s["sample_id"] for s in manifest["samples"]}
     assert sample_ids == {"sample-ep-new"}
+    assert len(manifest["samples"]) == 1
 
 
 def test_blind_mapping_stable_and_balanced():
@@ -1946,3 +1949,82 @@ def test_sampler_excludes_episodes_production_marked_align_ineligible():
         provider_transcript = {"candidate": {"align_ineligible_pipeline_version": marker}}
 
     assert _episode_candidate_pair(None, _Ep(), config=None) is None  # type: ignore[arg-type]
+
+
+def test_generated_candidate_scoring_uses_local_files(tmp_path, monkeypatch):
+    import citypods.transcript_quality as tq
+
+    words = tmp_path / "words.json"
+    words.write_text('{"segments": [{"words": [{"w": "hello", "s": 0, "e": 1}]}]}')
+    monkeypatch.setattr(
+        tq.urllib.request, "urlopen", lambda *a, **k: pytest.fail("public read attempted")
+    )
+    units = tq._candidate_units(
+        {"local_words_ref": str(words), "words_ref": "https://example.test/forbidden"}
+    )
+    assert units[0]["text"] == "hello"
+
+
+def test_sample_deadline_escapes_best_effort_handlers():
+    import time
+
+    import citypods.transcript_quality as tq
+
+    with pytest.raises(tq._SampleDeadline):
+        with tq._sample_deadline(0.01):
+            try:
+                time.sleep(1)
+            except Exception:
+                pytest.fail("deadline swallowed")
+
+
+def test_completed_sample_survives_interrupted_batch(tmp_path, monkeypatch):
+    import citypods.transcript_quality as tq
+
+    manifest = _manifest(tmp_path)
+    manifest["samples"].append({**manifest["samples"][0], "sample_id": "second"})
+    original = tq._evaluate_one_sample
+
+    def interrupted(sample, **kwargs):
+        if sample["sample_id"] == "second":
+            raise KeyboardInterrupt()
+        return original(sample, **kwargs)
+
+    monkeypatch.setattr(tq, "_evaluate_one_sample", interrupted)
+    state_dir = tmp_path / "state"
+    with pytest.raises(KeyboardInterrupt):
+        evaluate_samples(
+            manifest, out_dir=tmp_path / "artifacts", state_dir=state_dir, config=QualityConfig()
+        )
+    assert "sample-1" in load_rollups(state_dir)["rows"][0]["evidence"]
+    assert tq.load_raw_log(state_dir)["events"]
+
+
+def test_failed_sample_syncs_before_next_sample(tmp_path, monkeypatch):
+    import citypods.transcript_quality as tq
+
+    manifest = _manifest(tmp_path)
+    manifest["samples"].append({**manifest["samples"][0], "sample_id": "second"})
+    pushed = []
+
+    def interrupted(sample, **kwargs):
+        if sample["sample_id"] == "second":
+            assert pushed[0]["events"][0]["error_type"] == "ValueError"
+            raise KeyboardInterrupt()
+        raise ValueError("bad candidate")
+
+    monkeypatch.setattr(tq, "_evaluate_one_sample", interrupted)
+    monkeypatch.setattr(
+        tq,
+        "push_transcript_quality_log_merged",
+        lambda storage, state_dir, **kwargs: pushed.append(tq.load_raw_log(state_dir)),
+    )
+    with pytest.raises(KeyboardInterrupt):
+        evaluate_samples(
+            manifest,
+            out_dir=tmp_path / "artifacts",
+            state_dir=tmp_path / "state",
+            config=QualityConfig(),
+            storage=object(),
+        )
+    assert len(pushed) == 1

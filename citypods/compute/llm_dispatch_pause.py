@@ -40,6 +40,10 @@ MAX_PAUSE_SECONDS = 3600
 class DispatchPauseError(RuntimeError):
     """The Worker refused or failed a pause-control request."""
 
+    def __init__(self, message, *, diagnostic=None):
+        super().__init__(message)
+        self.diagnostic = diagnostic or "dispatch control validation failed"
+
 
 @dataclass(frozen=True)
 class Selection:
@@ -159,7 +163,13 @@ class DispatchPauseClient:
         headers = {"authorization": f"Bearer {self.token}"} if self.token else {}
         url = urljoin(self.url.rstrip("/") + "/", path)
         # Re-arming a pause is idempotent; admission/reservation calls must never retry.
-        attempts = 2 if method == "POST" and path == "v2/dispatch:pause" else 1
+        operation = path.split("?", 1)[0]
+        retryable = (method, operation) in {
+            ("POST", "v2/dispatch:pause"),
+            ("POST", "v2/dispatch:resume"),
+            ("GET", "v2/dispatch:pause-status"),
+        }
+        attempts = 2 if retryable else 1
         for attempt in range(attempts):
             try:
                 response = self.session.request(
@@ -177,14 +187,20 @@ class DispatchPauseClient:
                         attempt + 1,
                     )
                     continue
-                raise DispatchPauseError(f"{path} request failed: {type(exc).__name__}") from exc
+                raise DispatchPauseError(
+                    f"{path} request failed: {type(exc).__name__}",
+                    diagnostic=f"{operation} transport={type(exc).__name__}",
+                ) from exc
         try:
             data = response.json()
         except ValueError:
             data = {}
         if response.status_code != 200 or not isinstance(data, dict):
             detail = (data.get("detail") or data.get("error")) if isinstance(data, dict) else None
-            raise DispatchPauseError(f"{path} returned HTTP {response.status_code}: {detail}")
+            raise DispatchPauseError(
+                f"{path} returned HTTP {response.status_code}: {detail}",
+                diagnostic=f"{operation} HTTP={response.status_code}",
+            )
         return data
 
     def pause(self, selection: Selection, seconds: int, reason: str = "") -> dict:

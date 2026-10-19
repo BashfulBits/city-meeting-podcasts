@@ -639,9 +639,13 @@ def main(argv=None):
             accepted=False,
             comment=f"/apply deferred: {type(exc).__name__}: "
             + (
-                str(exc)
-                if not isinstance(exc, (subprocess.CalledProcessError, DispatchPauseError))
-                else "verification or publication command failed"
+                exc.diagnostic
+                if isinstance(exc, DispatchPauseError)
+                else (
+                    "verification or publication command failed"
+                    if isinstance(exc, subprocess.CalledProcessError)
+                    else str(exc)
+                )
             ),
         )
     if result.get("accepted") and result.get("retry_receipt") and args.retry_receipt:

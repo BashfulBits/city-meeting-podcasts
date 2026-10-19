@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -398,10 +399,14 @@ def layout(tmp_path, monkeypatch):
         lambda args: ({"judging": {"tasks": {"tag": {}}}}, fake.state_dir, object()),
     )
     monkeypatch.setattr("citypods.statesync.pull_state", lambda *a, **k: 0)
-    monkeypatch.setattr(
-        "citypods.statesync.push_state",
-        lambda storage, state_dir, **k: fake.pushed.append(k["only_paths"]),
-    )
+
+    def push(storage, state_dir, **kwargs):
+        paths = kwargs["only_paths"]
+        assert all(not Path(p).is_absolute() and ".." not in Path(p).parts for p in paths)
+        assert all((state_dir / p).is_file() for p in paths)
+        fake.pushed.append(paths)
+
+    monkeypatch.setattr("citypods.statesync.push_state", push)
     return fake
 
 
@@ -578,3 +583,19 @@ def test_the_audit_workflows_are_main_only_and_validate_the_promote_input():
     # The input reaches the shell only through an environment variable, never inline.
     run_blocks = [step["run"] for step in promote["jobs"]["promote"]["steps"] if "run" in step]
     assert not any("inputs.item_id" in block for block in run_blocks)
+
+
+def test_audit_pull_paths_are_relative():
+    assert cli._state_paths() == [Path("judge_audit/items.json"), Path("judge_audit/answers.json")]
+
+
+def test_package_syncs_absolute_state_root_with_real_storage(tmp_path, monkeypatch):
+    from citypods.storage.local import LocalStorage
+
+    state_dir = tmp_path / "state"
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://test")
+    monkeypatch.setattr(cli, "_settings", lambda args: ({}, state_dir, storage))
+    monkeypatch.setattr(cli, "_episodes", lambda *args: iter(()))
+    assert cli.package(SimpleNamespace(out_dir=str(tmp_path / "out"), config_dir="config")) == 0
+    assert storage.exists("state/judge_audit/items.json")
+    assert not storage.exists("state/judge_audit/answers.json")

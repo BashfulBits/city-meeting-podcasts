@@ -49,10 +49,10 @@ def _settings(args: argparse.Namespace):
     return site, state_dir, storage
 
 
-def _state_paths(state_dir: Path) -> list[Path]:
+def _state_paths() -> list[Path]:
     return [
-        state_dir / audit.STATE_DIR / "items.json",
-        state_dir / audit.STATE_DIR / "answers.json",
+        Path(audit.STATE_DIR) / "items.json",
+        Path(audit.STATE_DIR) / "answers.json",
     ]
 
 
@@ -168,7 +168,7 @@ def package(args: argparse.Namespace) -> int:
             manifest["reasons"] = ["no claim has both an anchor and a sibling reading yet"]
     paths = state.save(state_dir)
     # Only items.json: ingest owns answers.json, and pushing a stale copy would lose an answer.
-    push_state(storage, state_dir, only_paths=[paths[0]])
+    push_state(storage, state_dir, only_paths=[paths[0].relative_to(state_dir)])
     (out_dir / "review-batch.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(
         f"packaged {len(children)} judge-audit claim(s); "
@@ -229,7 +229,7 @@ def ingest(args: argparse.Namespace) -> int:
     from citypods.statesync import pull_state, push_state
 
     site, state_dir, storage = _settings(args)
-    pull_state(storage, state_dir, only_paths=_state_paths(state_dir))
+    pull_state(storage, state_dir, only_paths=_state_paths())
     body = Path(args.issue_body_file).read_text(encoding="utf-8")
     ident = str(decode_envelope(body).get("candidate_id") or "")
     choice = require_one_decision(body, audit.CHOICES)
@@ -246,7 +246,7 @@ def ingest(args: argparse.Namespace) -> int:
     )
     if result["stored"]:
         paths = state.save(state_dir)
-        push_state(storage, state_dir, only_paths=[paths[1]])
+        push_state(storage, state_dir, only_paths=[paths[1].relative_to(state_dir)])
     print(json.dumps(result, sort_keys=True))
     return 0
 
@@ -283,7 +283,7 @@ def promote(args: argparse.Namespace) -> int:
     from citypods.statesync import pull_state
 
     _site, state_dir, storage = _settings(args)
-    pull_state(storage, state_dir, only_paths=_state_paths(state_dir))
+    pull_state(storage, state_dir, only_paths=_state_paths())
     state = audit.AuditState.load(state_dir)
     name, entry = promote_entry(state, args.item_id, datetime.now(UTC))
     root = Path(args.repo_root) / "evals" / "judge" if args.repo_root else DEFAULT_ROOT
