@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
+import INGRESS_RESERVATIONS from "../src/ingress_reservations.json" with { type: "json" };
 import {
   activeBundles, createMockSqlStorage, createRecordingSqlStorage, insertActiveBundle, withTestReservations,
 } from "./helpers.js";
@@ -75,6 +76,60 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[0].priority, 1);
   assert.equal(rows[1].priority, 0);
 });
+
+for (const binding of ["compiled", "object", "json", "legacy"]) {
+  test(`stats ingress matches admissions and UTC rollover (${binding})`, async (t) => {
+    let now = Date.UTC(2026, 9, 18, 23, 50);
+    t.mock.method(Date, "now", () => now);
+    const purpose = "topic-tags:tagger";
+    const custom = { [purpose]: { daily_write_units: 40, write_units_per_job: 4 } };
+    if (binding === "legacy") delete custom[purpose].write_units_per_job;
+    const env = { MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "100000" };
+    if (binding !== "compiled") {
+      env.INGRESS_PURPOSE_RESERVATIONS = binding === "json" ? JSON.stringify(custom) : custom;
+    }
+    // Bypass makeCoordinator's broad fixture map: exercise the actual compiled default too.
+    const { sql, storage } = createMockSqlStorage();
+    const coordinator = new LLMSchedulerDO({ storage }, env);
+    const reservation = binding === "compiled"
+      ? INGRESS_RESERVATIONS.reservations[purpose]
+      : custom[purpose];
+    const job = (id) => laneModelJob(id, purpose, ["gemini/gemini-3.1-flash-lite"]);
+    const first = job("stats-first");
+    const initial = await coordinator.enqueueBatch([first, job("stats-second")]);
+    assert.equal(initial.accepted.length, 2);
+    const replay = { ...first, id: "stats-replay" };
+    const mixed = await coordinator.enqueueBatch([replay, job("stats-third")]);
+    assert.deepEqual(mixed.accepted, [
+      { id: first.id, submitted_id: replay.id },
+      { id: "stats-third", submitted_id: "stats-third" },
+    ]);
+
+    const check = async (expected, day) => {
+      const before = sql.exec("SELECT total_changes() AS n")[0].n;
+      const snapshot = await coordinator.stats(now);
+      assert.equal(sql.exec("SELECT total_changes() AS n")[0].n, before,
+        "reading ingress stats adds no SQLite writes");
+      assert.equal(snapshot.scheduler.utc_day, day);
+      assert.equal(snapshot.scheduler.jobs_ingested_today, expected);
+      const purposeTotal = snapshot.ingress.by_purpose.reduce((sum, row) => sum + row.jobs_ingested, 0);
+      assert.equal(purposeTotal, expected);
+      const lane = snapshot.ingress.by_purpose.find((row) => row.purpose === purpose);
+      const perJob = reservation.write_units_per_job || 4;
+      const quota = Math.floor(reservation.daily_write_units / perJob);
+      assert.equal(lane.daily_quota, quota);
+      assert.equal(lane.percent_used, Math.round(expected / quota * 1000) / 10);
+    };
+    await check(3, "2026-10-18");
+    await coordinator.cancelBatch(["stats-second"]);
+    await check(3, "2026-10-18"); // Lifecycle changes never decrement historical ingress.
+    now += 24 * 60 * 60 * 1000;
+    await coordinator.enqueueBatch([job("stats-next-day")]);
+    await check(1, "2026-10-19");
+    // Yesterday's row persists for history but is excluded from today's totals.
+    assert.equal(sql.exec("SELECT SUM(jobs_ingested) AS n FROM ingress_purpose")[0].n, 4);
+  });
+}
 
 test("queued counter heals direct SQLite state edits at the hourly recount", async () => {
   // The counter is maintained by explicit deltas on the RPC paths, not per-row triggers (each
@@ -580,6 +635,7 @@ test("schemaRetry charges ingress for the backup-model index rows its own clone 
   });
   await coordinator.enqueueBatch([backupPolicyJob("source", 12)]);
   sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  sql.exec("UPDATE scheduler SET retried_today = 3 WHERE id = 1");
   const before = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
     .ingress_write_units_today;
 
@@ -600,6 +656,18 @@ test("schemaRetry charges ingress for the backup-model index rows its own clone 
     .ingress_write_units_today;
   // 3 (job row + purpose ledger + scheduler counter) + 2 model-index rows = 5, not 4.
   assert.equal(after - before, 5);
+  const counters = (await coordinator.stats(Date.now())).scheduler;
+  assert.equal(counters.jobs_ingested_today, 2, "the correction creates a new ledger row");
+  assert.equal(counters.retried_today, 3, "a new correction row is ingress, not a Worker requeue");
+  const replay = await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  });
+  assert.equal(replay.id, result.id);
+  const replayCounters = (await coordinator.stats(Date.now())).scheduler;
+  assert.equal(replayCounters.jobs_ingested_today, 2);
+  assert.equal(replayCounters.retried_today, 3, "replaying the correction adds no retry event");
 });
 
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {

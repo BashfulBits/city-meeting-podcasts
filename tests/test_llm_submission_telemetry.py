@@ -182,6 +182,8 @@ def test_scheduler_summary_matches_worker_stats_shape():
         "queued": 12,
         "claimed": 19,
         "ingested": 83,
+        "completed": None,
+        "retried": None,
         "last_reason": "active_bundle_limit",
         "empty_claims": 4,
         "reason_counts": {"active_bundle_limit": 11},
@@ -228,6 +230,39 @@ def test_old_worker_has_unknown_recovery_evidence():
         "cursor": None,
         "complete": None,
     }
+
+
+def test_job_reporting_uses_only_the_three_worker_counters():
+    summary = _scheduler_summary(
+        {
+            "scheduler": {
+                "utc_day": "2026-10-19",
+                "jobs_ingested_today": 179,
+                "completed_today": 31,
+                "failed_today": 7,
+                "retried_today": 154,
+            }
+        }
+    )
+    assert (summary["ingested"], summary["completed"], summary["retried"]) == (179, 31, 154)
+    events = [
+        {"event": "llm_submission_worker_snapshot", "phase": "end", "summary": summary},
+        {"event": "llm_dispatch_v2_batch", "operation": "schema-retry", "schema_retry": 139},
+        {"event": "llm_dispatch_v2_batch", "operation": "schema-retry", "schema_retry": 1},
+        {"event": "llm_dispatch_v2_batch", "operation": "enqueue-batch", "accepted": 39},
+    ]
+    markdown = render_markdown(events)
+    assert "new ingress `179`, Worker requeues `154`, completed jobs `31`" in markdown
+    assert "runner validates results" in markdown
+    assert "Recovery submissions" not in markdown
+    assert "Schema-correction submission observations" not in markdown
+    assert "failed `7`" not in markdown
+
+
+def test_old_snapshots_report_unknown_result_counts_instead_of_zero():
+    events = [{"event": "llm_submission_worker_snapshot", "summary": _scheduler_summary({})}]
+    markdown = render_markdown(events)
+    assert "new ingress `?`, Worker requeues `?`, completed jobs `?`" in markdown
 
 
 def test_empty_recovery_summary_explicitly_reports_missing_evidence():

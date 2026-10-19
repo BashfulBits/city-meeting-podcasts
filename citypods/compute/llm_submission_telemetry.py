@@ -404,7 +404,7 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                 lines.append(
                     "- **{phase}:** active bundles `{active_bundles}`, "
                     "active calls `{active_calls}`, "
-                    "queued `{queued}`, claimed today `{claimed}`, ingress today `{ingested}` "
+                    "queued `{queued}`, claimed today `{claimed}` "
                     "(UTC day `{utc_day}`); "
                     "last claim `{last_reason}`.".format(
                         phase=event.get("phase", "snapshot"),
@@ -412,12 +412,19 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                         active_calls=summary.get("active_calls", "?"),
                         queued=summary.get("queued", "?"),
                         claimed=summary.get("claimed", "?"),
-                        ingested=summary.get("ingested", "?"),
                         utc_day=summary.get("utc_day", "?"),
                         last_reason=summary.get("last_reason", "?"),
                     )
                 )
                 reason_counts = summary.get("reason_counts")
+                outcomes = {
+                    key: summary.get(key) if summary.get(key) is not None else "?"
+                    for key in ("ingested", "completed", "retried")
+                }
+                lines.append(
+                    "  - Jobs today: new ingress `{ingested}`, Worker requeues `{retried}`, "
+                    "completed jobs `{completed}` (runner validates results).".format(**outcomes)
+                )
                 budget = summary.get("row_budget")
                 if isinstance(budget, Mapping):
                     lines.append(

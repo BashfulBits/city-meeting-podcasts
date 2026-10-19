@@ -3065,11 +3065,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       );
       this._indexQueuedJobModels(queuedClone, queueModels);
+      // A correction clone is new ingress, not a rescheduling of the source job. Only
+      // completion-time requeues of an existing job increment retried_today.
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
          ingress_write_units_today = ingress_write_units_today + ?,
-         queued_job_count = queued_job_count + 1,
-         retried_today = retried_today + 1 WHERE id = 1`,
+         queued_job_count = queued_job_count + 1 WHERE id = 1`,
         writeUnits
       );
       sql.exec(
@@ -3126,8 +3127,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
            FROM scheduler WHERE id = 1`
       );
-      const reservationConfig = this._ingressPurposeReservations();
-      const reservations = reservationConfig?.purposes || reservationConfig?.reservations || {};
+      // The helper already unwraps the compiled file and returns the purpose-keyed map,
+      // matching the operator override's shape and the map used by actual admission.
+      const reservations = this._ingressPurposeReservations();
       const ingressPurposes = [...sql.exec(
         "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
         scheduler.utc_day
@@ -3135,7 +3137,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const ingressByPurpose = ingressPurposes.map((row) => {
         const quotaInfo = reservations[row.purpose];
         const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
-        const perJob = Number(quotaInfo?.write_units_per_job) || 1;
+        const perJob = Number(quotaInfo?.write_units_per_job) || 4;
         const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
         const ingested = Number(row.jobs_ingested) || 0;
         const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
