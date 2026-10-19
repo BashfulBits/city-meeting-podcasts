@@ -21,9 +21,7 @@ CDN. It is **provider-agnostic**: each meeting platform is a pluggable adapter b
 R7 speaker calibration, and H16 availability evidence. Feature adapters retain candidate selection and
 durable-state validation; the shared publisher adds a versioned hidden envelope, byte-safe bodies, a common
 trust label, idempotent native-child batches, and a scheduled resolver/finalizer. H16 children write
-availability overrides only after re-validating the persisted record. Tournament champion routing uses the
-same envelope's rolling-ticket surface: a trusted selection opens a configuration-only PR, and a merged
-retained-catalog selection creates a resumable tag-backfill request. Review plumbing has no output pipeline
+availability overrides only after re-validating the persisted record. Review plumbing has no output pipeline
 version; route changes are recipe-driven and refresh gradually or through the bounded backfill lane.
 
 ## Pipeline (data flow)
@@ -868,8 +866,7 @@ batch transaction, plus shared batch bookkeeping, so a request that starts below
 commit a 1,000-job batch past it. Exact idempotent replays stay write-free. `build()` preflights
 `GET /v2/ingress-status?purpose=` for each enabled lane and zeroes a closed lane's per-run cap, so
 no prompts are built for refused work while the run still applies completed results
-(`python -m citypods.cli llm-ingress-status` is the operator view). The weekly tournament and
-manual R5 benchmark preflight their own registered lanes before preparing new samples. If the
+(`python -m citypods.cli llm-ingress-status` is the operator view). If the
 configured preflight is unavailable, that lane closes for new dispatch work rather than assuming
 unlimited headroom; builds and completed-result reconciliation continue.
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs

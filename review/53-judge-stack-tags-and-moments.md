@@ -690,6 +690,13 @@ or a hidden shadow. No `r6_moment_evaluation.json` state existed, so there was n
 
 ### PR11 — Retire the R5 pre-labelers, packet, benchmark and tournament (moved ahead of PR8, 2026-10-19)
 
+**Status (2026-10-19):** split. PR11a removes the tournament and R5 benchmark (code, five
+workflows, four lanes, `tournament` config; reservations now 10 lanes). PR11b removes the
+pre-labelers, `llm_evaluation.py` matrix and tag overlay, `llm_tag_review`, and the `r5` issue
+handler, keeping the interim display rule. The benchmark's frozen sample was never stored in the
+repo, so nothing moved to `evals/tag-judge/`. The 81 `llm-calibration-review` issues and the
+tournament champion ticket were closed on 2026-10-19.
+
 - Remove lanes `topic-tags:prelabeler`, `topic-tags:prelabeler-shadow`, `r5-benchmark:tag`,
   `r5-benchmark:judge`, `tournament:tag`, `tournament:tag-judge`; the pre-labeler overlay and the
   12/90 matrix in `citypods/llm_evaluation.py`; workflows `llm-tag-review.yml`, `r5-benchmark.yml`,

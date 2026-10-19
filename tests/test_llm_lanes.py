@@ -49,10 +49,6 @@ DISPATCHING_PURPOSES = frozenset(
         "topic-tags:prelabeler",
         "topic-tags:prelabeler-shadow",
         "r6-moments",
-        "tournament:tag",
-        "tournament:tag-judge",
-        "r5-benchmark:tag",
-        "r5-benchmark:judge",
         # review/53: registered in PR2; anchor and sibling dispatched by the judge stage since PR4,
         # the adjudicator by PR5; only remedy:p3 is pending -- see PENDING_DISPATCH_PURPOSES below.
         "judge:anchor",
@@ -396,46 +392,6 @@ class TestRecipeAffectingModelPins:
         assert AGENDA_BACKUP_MODELS == ("tencent/hy3", "gemini/gemini-3.1-flash-lite")
         assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
-
-
-class TestTournamentGrid:
-    def test_contest_grid_covers_every_unordered_contestant_pair(self):
-        from citypods.tournament import CONTESTS, JUDGE_MODEL, MODELS
-
-        pairs = {frozenset((left, right)) for left, right, _judge in CONTESTS}
-        expected = {
-            frozenset((left, right))
-            for index, left in enumerate(MODELS)
-            for right in MODELS[index + 1 :]
-        }
-        assert pairs == expected
-        assert len(CONTESTS) == len(MODELS) * (len(MODELS) - 1) // 2
-        assert all(judge == JUDGE_MODEL for _l, _r, judge in CONTESTS)
-
-    def test_judge_is_never_also_a_contestant(self):
-        # `_build_pairwise_judge_job` raises on this; catching it in config is cheaper than
-        # discovering it mid-run.
-        from citypods.tournament import JUDGE_MODEL, MODELS
-
-        assert JUDGE_MODEL not in MODELS
-
-
-class TestTournamentSampleBudget:
-    def test_budget_respects_both_lanes_and_fits_each(self):
-        from citypods.tournament import CONTESTS, MODELS
-
-        tag = lane_for("tournament:tag")
-        judge = lane_for("tournament:tag-judge")
-        # One sample spends from two independent lane budgets: len(MODELS) candidate jobs against
-        # tournament:tag and len(CONTESTS)*2 comparisons against tournament:tag-judge. Dividing
-        # either budget by the COMBINED count would overrun the other lane.
-        samples = min(
-            tag.max_dispatches_per_run // len(MODELS),
-            judge.max_dispatches_per_run // (len(CONTESTS) * 2),
-        )
-        assert samples >= 1
-        assert samples * len(MODELS) <= tag.max_dispatches_per_run
-        assert samples * len(CONTESTS) * 2 <= judge.max_dispatches_per_run
 
 
 # --- Lane <-> route catalog consistency -----------------------------------------------------------

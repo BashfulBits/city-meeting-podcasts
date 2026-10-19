@@ -168,17 +168,6 @@ def test_shared_review_resolution_isolates_one_bad_child_and_still_finalizes():
     )
 
 
-def test_llm_tournament_timeout_covers_configured_sample_budget():
-    _wf, job = _job("llm-tournament.yml", "tournament")
-    sampling = next(step for step in job["steps"] if step.get("name") == "Run bounded tag samples")
-
-    assert job["timeout-minutes"] == 180
-    assert sampling["timeout-minutes"] == 165
-    assert "python -m citypods.tournament" in sampling["run"]
-    assert "--samples 2" not in sampling["run"]
-    assert sampling["timeout-minutes"] < job["timeout-minutes"]
-
-
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).
@@ -1717,7 +1706,6 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
             45,
             38,
         ),
-        ("llm-tournament.yml", "tournament", "Run bounded tag samples", 180, 165),
         ("r7-diarization.yml", "diarize", "Diarize Denton pilot meetings", 330, 325),
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)", 360, 330),
         (
@@ -1726,14 +1714,6 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
             "Reconcile pending deferred/dispatched LLM requests",
             360,
             330,
-        ),
-        ("r5-benchmark.yml", "benchmark", "Run or package R5 shadow benchmark", 180, 165),
-        (
-            "tournament-tag-backfill.yml",
-            "backfill",
-            "Refresh one retained source through the normal bounded tag lane",
-            180,
-            165,
         ),
         (
             "asr.yml",

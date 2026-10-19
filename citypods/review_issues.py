@@ -65,7 +65,7 @@ class ReviewBatch:
 
 @dataclass(frozen=True)
 class ReviewTicket:
-    """A rolling, single-issue decision surface (used by tournament champion routing)."""
+    """A rolling, single-issue decision surface (no current producer)."""
 
     family: str
     label: str

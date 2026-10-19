@@ -100,8 +100,6 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
         "topic-tags",
         "chapter-agenda",
         "chapter-locator",
-        "tournament:",
-        "r5-benchmark:",
     )
     if deferred.policy.purpose.startswith(durable_purposes):
         return replace(
@@ -234,12 +232,6 @@ def _register_known_contracts() -> None:
         from citypods.judging.backends import ensure_contract
 
         ensure_contract()
-    except ImportError:
-        pass
-    try:
-        from citypods.tournament import _judge_model
-
-        _judge_model()
     except ImportError:
         pass
     try:

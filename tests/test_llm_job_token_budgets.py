@@ -130,7 +130,6 @@ def test_audit_actually_inspects_at_least_the_known_production_call_sites():
         "citypods/discovery/classify.py",
         "citypods/stages.py",
         "citypods/tags.py",
-        "citypods/tournament.py",
     }
     scanned = {str(path.relative_to(REPO_ROOT)) for path in _iter_source_files()}
     missing = known_files - scanned
