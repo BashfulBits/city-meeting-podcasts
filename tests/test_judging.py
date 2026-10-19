@@ -368,6 +368,28 @@ def test_jev_compiles_and_parses_every_question_type():
     assert JevBackend().parse(packet, {"answers": {}}) == []
 
 
+def test_chat_packet_identity_carries_the_request_revision_and_jev_is_unchanged():
+    import hashlib
+
+    from citypods.judging import backends
+
+    subject = Subject("tag", "s1", "ep", None, None, {})
+    item = Item(
+        QuestionSpec("supported", "validate", "x"), "T1", make_evidence("T1", "e"), (subject,)
+    )
+    identity = sorted([(item.qid, item.evidence.digest, item.question.prompt_version)])
+
+    def legacy(role, model):
+        blob = json.dumps([role, model, identity]).encode()
+        return f"judge-{role}-{hashlib.sha256(blob).hexdigest()[:32]}"
+
+    anchor = Packet("judge:anchor", "anchor", "typesafe/jev-1.13", (item,))
+    sibling = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", (item,))
+    assert anchor.recipe_hash == legacy("anchor", "typesafe/jev-1.13")
+    assert sibling.recipe_hash != legacy("sibling", "google/gemma-4-31b-it")
+    assert backends.CHAT_REQUEST_REVISION == "2"
+
+
 def test_chat_judge_items_name_the_field_to_answer_and_list_choose_letters():
     ensure_contract()
     subjects = [Subject("moment", f"s{i}", "ep", "g", None, {}) for i in range(3)]

@@ -616,7 +616,9 @@ blocks, and the 1,031 pending old-prompt packets (319 failure markers) were arch
 random calibration adjudications stay. The planner then asks the removed cells again. To keep the
 re-ask from repeating the failure, each chat item now names its answer field (`answer_with`) and
 lists the choose letters, and the prompts ask for the deciding quote even when nothing is flagged.
-The check itself is unchanged: a fabricated quote still never counts as valid. A prompt-version bump
+A chat packet's identity also carries `CHAT_REQUEST_REVISION`, because the registry returns a
+completed record for a known recipe and would otherwise answer a re-asked packet of the same items
+from the old reasonless result. The check itself is unchanged: a fabricated quote still never counts as valid. A prompt-version bump
 was rejected: it would re-ask all of JEV's judgments and needs the adjudication helpers to filter
 ledger rows by version.
 

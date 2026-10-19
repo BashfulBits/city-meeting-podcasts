@@ -74,6 +74,11 @@ class Item:
         return f"{self.question.instruction}\n\n{self.evidence.text}"
 
 
+# Bump when what a chat judge is asked changes in a way that must not reuse earlier results
+# (see Packet.recipe_hash). "2": each item names its answer field and lists the choose letters.
+CHAT_REQUEST_REVISION = "2"
+
+
 @dataclass(frozen=True)
 class Packet:
     purpose: str
@@ -86,9 +91,13 @@ class Packet:
         identity = sorted(
             (item.qid, item.evidence.digest, item.question.prompt_version) for item in self.items
         )
-        digest = hashlib.sha256(
-            json.dumps([self.role, self.judge_model, identity]).encode()
-        ).hexdigest()
+        payload: list[Any] = [self.role, self.judge_model, identity]
+        if self.role != "anchor":
+            # The chat request revision is part of a chat judge's identity: a packet of the same
+            # items must not be answered from a result recorded under an older request (the
+            # registry returns a completed record for a known recipe). JEV's hashes are unchanged.
+            payload.append(CHAT_REQUEST_REVISION)
+        digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
         return f"judge-{self.role}-{digest[:32]}"
 
 
