@@ -1803,7 +1803,22 @@ def _retained_working_set(
     return working
 
 
-def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]]:
+def moments_family_priority(city: City) -> tuple[int, str]:
+    """Sort priority for moments: Council first (0), Planning & Zoning second (1), others (2)."""
+    fam = str(city.extra.get("meeting_family") or "")
+    if fam == "council":
+        return (0, city.slug)
+    if fam == "planning_and_zoning":
+        return (1, city.slug)
+    return (2, city.slug)
+
+
+def _order_global_candidates(
+    prepared: dict,
+    policy,
+    *,
+    family_priority: Callable[[City], tuple[int, str]] | None = None,
+) -> list[tuple[str, Episode]]:
     """Build the global candidate queue — each prepared source's materialized set — ordered
     across sources by the backlog policy. Pure + unit-testable. ``prepared`` maps each
     ``source_key`` to a dict with at least ``{"city": City, "episodes": list[Episode]}``."""
@@ -1822,11 +1837,21 @@ def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]
             candidates.append((key, ep))
     if policy is not None and policy.keys:
         keyfn = sort_key_for(policy)
-        candidates.sort(
-            key=lambda ke: keyfn(
-                workitem_from_episode(ke[1], city_slug=prepared[ke[0]]["city"].slug)
+        if family_priority is not None:
+            candidates.sort(
+                key=lambda ke: (
+                    family_priority(prepared[ke[0]]["city"]),
+                    keyfn(workitem_from_episode(ke[1], city_slug=prepared[ke[0]]["city"].slug)),
+                )
             )
-        )
+        else:
+            candidates.sort(
+                key=lambda ke: keyfn(
+                    workitem_from_episode(ke[1], city_slug=prepared[ke[0]]["city"].slug)
+                )
+            )
+    elif family_priority is not None:
+        candidates.sort(key=lambda ke: family_priority(prepared[ke[0]]["city"]))
     return candidates
 
 
@@ -1950,17 +1975,41 @@ def _run_enrich_global_queue(
                     errors[key] = str(exc)
                 continue
             notes: list[str] = [f"{seeded} legacy"] if seeded else []
-            prepared[key] = {
-                "city": rep_city[key],
-                "provider": provider,
-                "episodes": episodes,
-                "persisted": persisted,
-                "notes": notes,
-                "persist_episodes": getattr(pipeline, "_aggregate_persist", {}).pop(key, episodes),
-                "dirty_uids": (
-                    pipeline.dirty_uids(key) if hasattr(pipeline, "dirty_uids") else None
-                ),
-            }
+            if ctx.lane == "moments":
+                matching_cities = [c for c in cities if source_key(c) == key]
+                for feed_city in matching_cities:
+                    body_filter = source_body_filter(feed_city.source)
+                    body_inclusions = source_body_inclusions(feed_city.source)
+                    feed_episodes = filter_by_body(episodes, body_filter, body_inclusions)
+                    prepared[feed_city.slug] = {
+                        "city": feed_city,
+                        "provider": provider,
+                        "episodes": feed_episodes,
+                        "persisted": persisted,
+                        "notes": notes,
+                        "persist_episodes": getattr(pipeline, "_aggregate_persist", {}).get(
+                            key, episodes
+                        ),
+                        "dirty_uids": (
+                            pipeline.dirty_uids(key) if hasattr(pipeline, "dirty_uids") else None
+                        ),
+                        "source_key": key,
+                    }
+            else:
+                prepared[key] = {
+                    "city": rep_city[key],
+                    "provider": provider,
+                    "episodes": episodes,
+                    "persisted": persisted,
+                    "notes": notes,
+                    "persist_episodes": getattr(pipeline, "_aggregate_persist", {}).pop(
+                        key, episodes
+                    ),
+                    "dirty_uids": (
+                        pipeline.dirty_uids(key) if hasattr(pipeline, "dirty_uids") else None
+                    ),
+                    "source_key": key,
+                }
     # Aggregate archive feeds are projections over the dedicated feeds. Reconcile them before
     # candidate selection so an overlapping recording is never materialized or persisted twice.
     for key, state in prepared.items():
@@ -2107,7 +2156,8 @@ def _run_enrich_global_queue(
             list(pool.map(_normalize_prepared, prepared.items()))
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
-    candidates = _order_global_candidates(prepared, policy)
+    family_priority = moments_family_priority if ctx.lane == "moments" else None
+    candidates = _order_global_candidates(prepared, policy, family_priority=family_priority)
     if ctx.lane == "tag" and ctx.tag_backend is not None:
         tag_caps = [cap for cap in (ctx.tag_max_dispatches,) if cap is not None]
         if tag_caps and max(tag_caps) > 0:
@@ -2126,7 +2176,9 @@ def _run_enrich_global_queue(
     # Register every alias before worker submission so new duplicate artifacts choose one
     # deterministic source prefix regardless of which candidate thread reaches AudioStage first.
     for key, ep in candidates:
-        ctx.audio_artifact_cache.register(prepared[key]["city"].provider, key, ep.uid or ep.guid)
+        ctx.audio_artifact_cache.register(
+            prepared[key]["city"].provider, prepared[key].get("source_key", key), ep.uid or ep.guid
+        )
     print(
         f"[enrich] global queue: {len(prepared)} source(s), {len(candidates)} candidate episode(s)"
         f"{f', {len(errors)} fetch error(s)' if errors else ''}"
@@ -2191,9 +2243,14 @@ def _run_enrich_global_queue(
         (so audio-pass results survive a mid-run kill before the decoupled transcript pass even
         starts, GH#377) and again at the end (to capture transcripts). ``persist_source`` /
         ``merge_records`` are append-only and idempotent, so the repeat is safe."""
+        persisted_sources = set()
         for key, st in prepared.items():
+            s_key = st.get("source_key", key)
+            if s_key in persisted_sources:
+                continue
+            persisted_sources.add(s_key)
             pipeline.persist_source(
-                key,
+                s_key,
                 st.get("persist_episodes", st["episodes"]),
                 st["persisted"],
                 notes=st["notes"],
@@ -3678,16 +3735,7 @@ def _build_impl(
                 polling_cities = [c for c in cities if c.lifecycle.polls_provider()]
                 retired_cities = [c for c in cities if not c.lifecycle.polls_provider()]
                 if lane == "moments":
-
-                    def _moments_priority(city: City) -> tuple[int, str]:
-                        fam = str(city.extra.get("meeting_family") or "")
-                        if fam == "council":
-                            return (0, city.slug)
-                        if fam == "planning_and_zoning":
-                            return (1, city.slug)
-                        return (2, city.slug)
-
-                    polling_cities.sort(key=_moments_priority)
+                    polling_cities.sort(key=moments_family_priority)
                 results = _run_enrich_global_queue(
                     pipeline,
                     polling_cities,

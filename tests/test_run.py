@@ -4364,7 +4364,7 @@ def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout(
     assert step["timeout-minutes"] > window
 
 
-def test_moments_enrich_skips_non_rollout_family(tmp_path):
+def test_moments_enrich_skips_non_rollout_family(tmp_path, monkeypatch):
     city = City(
         slug="austin-parks",
         provider="granicus",
@@ -4391,12 +4391,17 @@ def test_moments_enrich_skips_non_rollout_family(tmp_path):
         metadata_retention_episodes=10,
         refresh_state={},
     )
-    # Should skip immediately and return empty list without touching filesystem or provider
+    # Assert fetch_merge is never reached when meeting family is outside rollout
+    monkeypatch.setattr(
+        pipeline, "fetch_merge", lambda *args, **kwargs: pytest.fail("fetch_merge called")
+    )
     episodes = pipeline.enrich(city)
     assert episodes == []
 
 
 def test_moments_priority_order_in_build():
+    from citypods.run import moments_family_priority
+
     c_council = City(
         slug="austin-council",
         provider="granicus",
@@ -4428,14 +4433,64 @@ def test_moments_priority_order_in_build():
         extra={"meeting_family": "transit"},
     )
     cities = [c_other, c_pz, c_council]
-
-    def _moments_priority(city: City) -> tuple[int, str]:
-        fam = str(city.extra.get("meeting_family") or "")
-        if fam == "council":
-            return (0, city.slug)
-        if fam == "planning_and_zoning":
-            return (1, city.slug)
-        return (2, city.slug)
-
-    sorted_cities = sorted(cities, key=_moments_priority)
+    sorted_cities = sorted(cities, key=moments_family_priority)
     assert sorted_cities == [c_council, c_pz, c_other]
+
+
+def test_order_global_candidates_prioritizes_moments_families():
+    from citypods.ops.workqueue import BacklogPolicy
+    from citypods.run import _order_global_candidates, moments_family_priority
+
+    c_council = City(
+        slug="addison-council",
+        provider="swagit",
+        source={"list_url": "https://swagit/1", "body": "City Council"},
+        podcast_title="Council",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "council"},
+    )
+    c_pz = City(
+        slug="addison-pz",
+        provider="swagit",
+        source={"list_url": "https://swagit/1", "body": "Planning and Zoning"},
+        podcast_title="P&Z",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "planning_and_zoning"},
+    )
+    ep_council = Episode(
+        guid="ep-council",
+        title="Council Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://audio/council.mp3",
+    )
+    ep_pz = Episode(
+        guid="ep-pz",
+        title="P&Z Meeting",
+        published=datetime(2026, 1, 2, tzinfo=UTC),
+        video_url="https://audio/pz.mp3",
+    )
+    prepared = {
+        "addison-council": {
+            "city": c_council,
+            "candidate_episodes": [ep_council],
+            "episodes": [ep_council],
+        },
+        "addison-pz": {
+            "city": c_pz,
+            "candidate_episodes": [ep_pz],
+            "episodes": [ep_pz],
+        },
+    }
+    # Even if P&Z published later, Council candidates come first when moments_family_priority
+    # is passed.
+    policy = BacklogPolicy.from_site_config({"backlog_priority": [{"recency": "desc"}]})
+    candidates = _order_global_candidates(prepared, policy, family_priority=moments_family_priority)
+    assert len(candidates) == 2
+    assert candidates[0][0] == "addison-council"
+    assert candidates[0][1].guid == "ep-council"
+    assert candidates[1][0] == "addison-pz"
+    assert candidates[1][1].guid == "ep-pz"
