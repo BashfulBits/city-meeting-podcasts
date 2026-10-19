@@ -445,17 +445,11 @@ judging:
   probes: {enabled: true, per_pass: 2}
 moments:
   enabled: true
-  mode: "manual"  # manual | auto; global kill switch back to manual
   # Initial rollout is intentionally limited to explicit council feeds and round-robin queue work.
   rollout_meeting_families: [council]
   # Routes and the per-run dispatch cap live in `llm_lanes["r6-moments"]`; the stage still filters
   # that allowlist by meeting family before dispatching.
   timeout_seconds: 90
-  evaluation:
-    state_path: "r6_moment_evaluation.json"
-    minimum_days: 30
-    minimum_reviews: 30
-    required_precision: 0.90
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

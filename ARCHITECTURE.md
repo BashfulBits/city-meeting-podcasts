@@ -17,7 +17,7 @@ CDN. It is **provider-agnostic**: each meeting platform is a pluggable adapter b
 
 ## Weekly human-review infrastructure
 
-`citypods/review_issues.py` is the common control plane for H15 transcript quality, R5 tags, R6 moments,
+`citypods/review_issues.py` is the common control plane for H15 transcript quality, R5 tags,
 R7 speaker calibration, and H16 availability evidence. Feature adapters retain candidate selection and
 durable-state validation; the shared publisher adds a versioned hidden envelope, byte-safe bodies, a common
 trust label, idempotent native-child batches, and a scheduled resolver/finalizer. H16 children write
@@ -850,11 +850,9 @@ backstop), so a cheap day dispatches until the safe projection closes admission.
 by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
 `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
 These are shared free-tier safety ceilings, not capacity for 800 fully enriched meetings.
-Tagging and prelabeling can split meetings into batches; moment judging submits one pinned job
-per candidate per judge. The enabled shadow prelabeler also consumes batches. Lane ceilings now
-express an explicit planning scenario (two tag batches, three prelabel batches, five quotes and
-three judges per eligible meeting); the producer's tag caps count episodes, while R6 shares an
-extraction/judge job counter.
+Tagging and prelabeling can split meetings into batches. The enabled shadow prelabeler also
+consumes batches. Lane ceilings now express an explicit planning scenario (two tag batches and
+three prelabel batches per eligible meeting); the producer's tag caps count episodes.
 See [capacity evidence](review/evidence/2026-10-02-llm-800-meeting-capacity.md) and
 `scripts/llm_capacity_plan.py` for eligibility, retries, provider bottlenecks and lifecycle rows.
 The planning scenario exceeds both the shared capacity and free Gemini judge quota. The model

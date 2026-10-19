@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -6,15 +6,12 @@ import pytest
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_deferred import write_deferred
 from citypods.models import Episode
-from citypods.moment_evaluation import (
-    append_judge_observation,
+from citypods.moments import (
     apply_admission,
-    load_state,
-    record_review,
-    refresh_policies,
-    save_state,
+    normalize_quote_candidate,
+    parse_transcript_segments,
+    transcript_region,
 )
-from citypods.moments import normalize_quote_candidate, parse_transcript_segments, transcript_region
 from citypods.stages import StageContext, StageStats, _admit_r6_dispatch
 from citypods.video_clips import caption_text, render_video_clip, video_clip_key
 from tests._cas_fake import MemStorage
@@ -93,91 +90,25 @@ def test_grounding_uses_contiguous_timed_transcript_text():
     )
 
 
-def test_manual_decisions_override_mode_and_technical_gate():
-    assert (
-        apply_admission(
-            _candidate(manual_status="Good"), {}, technical_gate=True, global_mode="manual"
-        )["admission"]
-        == "admitted"
+def test_manual_decisions_override_the_technical_gate():
+    assert apply_admission(_candidate(manual_status="Good"), technical_gate=True)["admission"] == (
+        "admitted"
     )
-    assert (
-        apply_admission(
-            _candidate(manual_status="Reject"), {}, technical_gate=True, global_mode="auto"
-        )["admission"]
-        == "rejected"
-    )
-    text_only = apply_admission(
-        _candidate(manual_status="Good"), {}, technical_gate=False, global_mode="manual"
-    )
+    assert apply_admission(_candidate(manual_status="Reject"), technical_gate=True)[
+        "admission"
+    ] == ("rejected")
+    text_only = apply_admission(_candidate(manual_status="Good"), technical_gate=False)
     assert text_only["admission"] == "admitted_text_only"
     assert text_only["display"] is True
 
 
-def test_calibration_requires_warmup_and_precision():
-    state = {"version": 1, "reviews": [], "policies": {}}
-    old = datetime.now(UTC) - timedelta(days=31)
-    for index in range(30):
-        candidate = _candidate(candidate_id=f"r6-{index}", quality_score=0.9 if index else 0.2)
-        record_review(
-            state,
-            candidate,
-            "Good" if index < 27 else "Reject",
-            reviewer="maintainer",
-            review_id=f"review-{index}",
-            reviewed_at=old,
-        )
-    refresh_policies(state, now=datetime.now(UTC))
-    assert state["policies"]
-    assert any(policy["mode"] == "auto" for policy in state["policies"].values())
-
-
-def test_review_ids_are_idempotent_and_keep_auditable_controls():
-    state = {"version": 1, "reviews": [], "policies": {}, "overrides": {}}
-    first = record_review(
-        state,
-        _candidate(),
-        "Good",
-        reviewer="maintainer",
-        review_id="review-1",
-        overrides={"title": "Safety commitment"},
+def test_a_candidate_without_a_manual_decision_stays_a_hidden_shadow():
+    shadow = apply_admission(_candidate(quality_score=0.99), technical_gate=True)
+    assert (shadow["admission"], shadow["display"]) == ("shadow", False)
+    assert (
+        apply_admission(_candidate(manual_status="Borderline"), technical_gate=True)["display"]
+        is False
     )
-    replay = record_review(
-        state,
-        _candidate(),
-        "Good",
-        reviewer="maintainer",
-        review_id="review-1",
-        overrides={"title": "Safety commitment"},
-    )
-    assert replay == first
-    assert len(state["reviews"]) == 1
-    assert state["reviews"][0]["overrides"]["title"] == "Safety commitment"
-
-
-def test_review_id_rejects_a_conflicting_replay():
-    state = {"version": 1, "reviews": [], "policies": {}, "overrides": {}}
-    record_review(state, _candidate(), "Good", reviewer="maintainer", review_id="review-1")
-    import pytest
-
-    with pytest.raises(ValueError, match="conflicting replay"):
-        record_review(state, _candidate(), "Reject", reviewer="maintainer", review_id="review-1")
-
-
-def test_calibration_stays_manual_before_warmup_or_below_precision():
-    for age, good_count in ((29, 27), (31, 20)):
-        state = {"version": 1, "reviews": [], "policies": {}}
-        when = datetime.now(UTC) - timedelta(days=age)
-        for index in range(30):
-            record_review(
-                state,
-                _candidate(candidate_id=f"r6-{age}-{index}", quality_score=0.9 if index else 0.2),
-                "Good" if index < good_count else "Reject",
-                reviewer="maintainer",
-                review_id=f"review-{age}-{index}",
-                reviewed_at=when,
-            )
-        refresh_policies(state)
-        assert all(policy["mode"] == "manual" for policy in state["policies"].values())
 
 
 def test_vtt_parser_accepts_cue_settings_and_quote_padding():
@@ -205,58 +136,6 @@ def test_clips_are_recipe_addressed():
     )
     assert source_a != video_clip_key("episode", 10, 20, "timeline", source_identity="source-b")
     assert caption_text([{"start": 10, "end": 20, "text": "A & B"}], 10, 20) == "A & B"
-
-
-def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
-    state = {"version": 1, "reviews": [], "policies": {}, "judge_policies": {}, "overrides": {}}
-    old = datetime.now(UTC) - timedelta(days=31)
-    for index in range(30):
-        good = index < 26
-        candidate = _candidate(
-            candidate_id=f"r6-{index}",
-            quality_score=0.9 if good else 0.1,
-        )
-        record_review(
-            state,
-            candidate,
-            "Good" if good else "Reject",
-            reviewer="maintainer",
-            review_id=f"review-{index}",
-            reviewed_at=old,
-        )
-    path = tmp_path / "r6.json"
-    save_state(path, state)
-    for index in range(30):
-        append_judge_observation(
-            path,
-            _candidate(candidate_id=f"r6-{index}"),
-            {
-                "provider_model": "zai/glm-4.7-flash",
-                "prompt_version": "1",
-                "schema_version": "1",
-                "admission_score": 0.95 if index < 26 else 0.05,
-            },
-        )
-    state = load_state(path)
-    refresh_policies(state)
-    judged = apply_admission(
-        _candidate(
-            quality_score=0.2,
-            judge_assessments=[
-                {
-                    "provider_model": "zai/glm-4.7-flash",
-                    "prompt_version": "1",
-                    "schema_version": "1",
-                    "admission_score": 0.95,
-                }
-            ],
-        ),
-        state,
-        technical_gate=True,
-        global_mode="auto",
-    )
-    assert judged["admission"] == "admitted"
-    assert judged["admission_reason"] == "judge-calibrated:zai/glm-4.7-flash"
 
 
 def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):

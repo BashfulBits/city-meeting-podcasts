@@ -15,7 +15,6 @@ from citypods.review_issues import decode_envelope
 COMMANDS = {
     "h15": ("transcript-quality", "ingest-review"),
     "r5": ("llm-evaluation", "ingest"),
-    "r6": ("r6-review", "ingest"),
     "judge-audit": ("judge-audit", "ingest"),
     "r7": ("speaker-review", "ingest"),
     "h16": ("availability-review", "ingest"),
