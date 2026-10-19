@@ -3454,8 +3454,8 @@ class BatchingDispatchBackend:
 class PerModelBatchingBackends:
     """Run-scoped, per-model backends that share one queue-only batch collector.
 
-    The research lanes (``citypods/tournament.py``, ``citypods/r5_benchmark.py``) compare several
-    models over the same inputs, so each needs its own ``LiteLLMBackend`` (the backend's configured
+    Research lanes that compare several models over the same inputs (the retired tournament and
+    R5 benchmark) needed its own ``LiteLLMBackend`` (the backend's configured
     model is what ``llm_tag_suggestions`` turns into ``allowed_models``). Both used to build that
     backend inside their innermost loop, which caused two distinct problems:
 
@@ -3699,9 +3699,9 @@ def dispatch_job_batch(
     caller submitting (and separately reconciling) one job at a time in a loop.
 
     Shared by every caller that used to build N `InferenceJob`s and call `run_inference` on each
-    one individually -- `citypods/stages.py`'s chapter-agenda/chapter-locator stages and
-    `citypods/tournament.py`'s pairwise-judge comparisons, as of 2026-08-18. See review/44's
-    2026-08-18 incident retrospective: the dispatch v2 protocol/DO/`enqueue_batch`/`poll_batch`
+    one individually -- `citypods/stages.py`'s chapter-agenda/chapter-locator stages, as of
+    2026-08-18. See review/44's 2026-08-18 incident retrospective: the dispatch v2
+    protocol/DO/`enqueue_batch`/`poll_batch`
     were always batch-capable end to end, but no caller ever actually accumulated more than one
     job per call before this -- every one submitted and reconciled a single job per iteration of
     its own loop, which is exactly the per-job Worker-request volume that incident flagged as the

@@ -1215,7 +1215,6 @@ from citypods.compute.structured import response_model
 _register_known_contracts()
 assert response_model('judge-answers-v1') is not None
 assert response_model('judge-answers-v2') is not None
-assert response_model('tournament-tag-judge') is not None
 assert response_model('remedy-p3-body-decision-v1') is not None
 assert response_model('agenda-chapter-title-equivalence') is not None
 """,

@@ -1175,10 +1175,6 @@ test("every purpose the Python client can dispatch has a compiled lane", async (
     "topic-tags:tagger",
     "topic-tags:prelabeler",
     "r6-moments",
-    "tournament:tag",
-    "tournament:tag-judge",
-    "r5-benchmark:tag",
-    "r5-benchmark:judge",
   ];
   for (const purpose of dispatchingPurposes) {
     assert.ok(
