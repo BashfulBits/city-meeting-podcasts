@@ -168,8 +168,19 @@ def _chat_job(
     route = P3_ROUTES[role]
     schema_hash = canonical_hash(P3ChatResponse.model_json_schema())
     request_hash = _request_hash(messages, P3_CHAT_CONTRACT, schema_hash)
+    # The output cap is part of the job's identity: a handle or observation made under another cap
+    # must not satisfy a request made under this one.
     recipe_hash = canonical_hash(
-        [P3_PROMPT_VERSION, role, model, route, request_hash, evidence_hash, policy_hash]
+        [
+            P3_PROMPT_VERSION,
+            role,
+            model,
+            route,
+            request_hash,
+            evidence_hash,
+            policy_hash,
+            P3_CHAT_MAX_OUTPUT_TOKENS,
+        ]
     )
     purpose = P3_PURPOSE
     policy = LLMRequestPolicy(
