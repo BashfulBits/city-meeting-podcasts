@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The remedy P3 chat jobs now reserve the evaluated 16,384 output tokens.** `_chat_job` sent
+  8,192, which would have cut off the longest scored answers (13,455 completion tokens on
+  DeepSeek). The cap is now part of each job's recipe hash; no P3 job existed yet, so no handle
+  or observation is orphaned. review/51 records the runtime profile that will actually run
+  (720-second Worker response limit; the slowest scored call took 162 seconds).
+  `config/remedy.yml` is unchanged: admissions stay empty and `publication_mode` stays
+  `report_only`.
+
 - **The R5 pre-labelers and calibration matrix are retired (review/53 PR11b).**
   `llm_evaluation.py`, `llm_tag_review.py`, the `llm-evaluation` command, the `r5` issue handler,
   the `llm-tag-review` workflow, the pre-labeler batching/prompt in `tags.py`, its stage code,
