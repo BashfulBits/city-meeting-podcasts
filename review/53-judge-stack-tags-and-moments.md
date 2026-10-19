@@ -661,7 +661,7 @@ them cannot change what is shown, and keeping them only spends LLM calls and man
   Worker (3,909 Gemini 3.6 Flash, 926 Qwen 3.8), about 3,450 completed-but-uncollected R6 results,
   1,712 stale handles the Worker no longer knows, and 439 failed. No R5 job is queued.
 
-### PR10 — Retire the R6 judge and human calibration (after PR9)
+### PR10 — Retire the R6 judge and human calibration (moved ahead of PR9, 2026-10-19)
 
 - Remove lane `r6-judge`, `MomentJudgeStage`, `citypods/moment_judging.py`'s panel and its
   telemetry purpose; remove the human-calibrated policy path in `citypods/moment_evaluation.py`
@@ -679,7 +679,7 @@ them cannot change what is shown, and keeping them only spends LLM calls and man
   reads (nothing).
 - Release the `r6-judge` reservation; regenerate `ingress_reservations.json`.
 
-### PR11 — Retire the R5 pre-labelers, packet, benchmark and tournament (after PR8)
+### PR11 — Retire the R5 pre-labelers, packet, benchmark and tournament (moved ahead of PR8, 2026-10-19)
 
 - Remove lanes `topic-tags:prelabeler`, `topic-tags:prelabeler-shadow`, `r5-benchmark:tag`,
   `r5-benchmark:judge`, `tournament:tag`, `tournament:tag-judge`; the pre-labeler overlay and the

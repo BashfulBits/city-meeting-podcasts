@@ -9,8 +9,8 @@ Read-only. Needs the B2 environment (`citypods-env`). Run from the repo root:
 
     python scripts/check_retirement_display.py
 
-Exit status 1 if any candidate's display would change (2026-10-19: 172,526 candidates, 0 of 115
-matrix rows qualified, 0 differences)."""
+Exit status 1 if any candidate's display would change or any source cannot be read (2026-10-19:
+172,526 candidates, 0 of 115 matrix rows qualified, 0 differences, 0 unreadable sources)."""
 
 import collections
 import json
@@ -41,10 +41,13 @@ def main() -> int:
     ]
     keys = [k for k in keys if k.endswith("/episodes.json")]
 
+    unreadable: list[str] = []
+
     def load(key):
         try:
             return get(key).get("episodes", {})
-        except Exception:  # noqa: BLE001 -- an unreadable source is skipped, not counted
+        except Exception as exc:  # noqa: BLE001 -- reported below, and fails the check
+            unreadable.append(f"{key}: {type(exc).__name__}")
             return {}
 
     totals: collections.Counter = collections.Counter()
@@ -73,9 +76,12 @@ def main() -> int:
     for key, count in sorted(totals.items(), key=str):
         print(count, key)
     print("display differences after retirement:", len(diffs))
+    print("unreadable sources:", len(unreadable))
+    for line in unreadable[:10]:
+        print(line)
     for diff in diffs[:10]:
         print(diff)
-    return 1 if diffs else 0
+    return 1 if diffs or unreadable else 0
 
 
 if __name__ == "__main__":
