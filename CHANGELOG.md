@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judges must give a reason, and the quote check accepts any presentation of real evidence.** New
+  packets ask for `judge-answers-v2`, where `reason` is required (it was optional and 53% of the
+  first 1,844 sibling answers left it empty, so there was nothing to check); `judge-answers-v1`
+  still parses every reply, including those of packets already in flight. The quote check
+  (`quotes.py`) now ignores case, punctuation and quotation style: a passage of at least three
+  words in double, curly, guillemet, single or backtick quotes counts, as do five consecutive copied
+  words with no quotes. A double-quoted passage that is not in the evidence still sinks the reason.
+
 - **Bound idle ASR lease reads.** `max_scan` now counts every attempted claim, including
   denied reads of held or same-recipe terminal leases; `scanned` reports actual attempts instead
   of total candidates. Internal workers default to 256 probes independently of their unlimited
