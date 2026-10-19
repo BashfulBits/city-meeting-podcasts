@@ -118,6 +118,8 @@ def test_chat_jobs_pin_one_exact_free_route(role):
     assert policy.allow_paid is False
     assert policy.queue_only is True
     assert job.inputs["num_retries"] == 0
+    # The evaluated output cap, so a long reasoning answer is not cut off mid-JSON.
+    assert job.inputs["max_tokens"] == 16_384
 
 
 def test_jev_job_uses_review49_adapter_and_pins_its_route():

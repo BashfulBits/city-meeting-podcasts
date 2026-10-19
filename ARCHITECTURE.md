@@ -1117,9 +1117,10 @@ three-route prompt comparison recorded provider-default reasoning, 900-second re
 950-second case deadlines, and 16,384-token output caps, with no temperature override. JEV's eight
 completed local-pilot observations do not record equivalent effective parameter provenance. The
 admission schema now represents provider-default settings and hashes compiled route parameters;
-the current P3 chat caller instead requests 8,192 output tokens under the Worker's configured
-720-second response ceiling. Exact serving identity, runtime parameter alignment, and JEV's
-effective Worker parameters still need qualification before P3 production activation. A separate,
+the P3 chat caller requests the evaluated 16,384 output tokens under the Worker's configured
+720-second response ceiling (the 900-second evaluation timeout cannot be matched; the slowest scored
+call took 162 seconds). Exact serving identity and JEV's effective Worker parameters still need
+qualification before P3 production activation. A separate,
 write-scoped daily publisher job creates human-review proposal
 PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked

@@ -1452,15 +1452,21 @@ compiled route override map only; it does not bind timeouts or output-token limi
 evaluation `route_settings_hash` values and raw observations remain in the linked immutable result
 directories above.
 
-The current P3 chat caller is not yet using the evaluated request budgets: `_chat_job` sets
-`max_tokens=8192` and `timeout_class=long`; the configured Worker `MAX_RESPONSE_SECONDS` is 720.
+**Chat caller aligned and runtime profile qualified (2026-10-19).** `_chat_job` now reserves the
+evaluated 16,384 output tokens (it sent 8,192; the scored observations reached 13,455 completion
+tokens on DeepSeek and 10,322 on GLM Flash, so the old cap would have truncated them; Sol's and
+DeepSeek's routes allow exactly 16,384). The 900-second evaluation timeout cannot be matched on the
+Worker, whose `MAX_RESPONSE_SECONDS` is 720; the runtime profile that will actually be used is
+therefore **provider-default reasoning, no temperature override, 720-second Worker response limit
+(`timeout_class` long), 16,384 output tokens, `num_retries` 0**. The scored observations support it:
+across 540 completed calls the slowest took 162 seconds (Sol p50 54 s / max 71 s; DeepSeek p50 58 s /
+max 115 s; GLM Flash p50 32 s / max 162 s), under a quarter of the 720-second limit.
 JEV's P3 `JevBackend` reserves 1,024 output tokens and also uses the long timeout class. The local
-JEV pilot bypassed the Worker and did not persist equivalent effective request parameters. Before
-admission, either align runtime chat settings with the evaluated profile and collect a JEV Worker
-observation, or explicitly qualify the runtime profile that will actually be used. Preserve shadow
-mode and empty admissions until the exact serving identities and effective Worker settings are
-verified against that decision. The current route catalog lists JEV's 4,096-token output context
-limit; that ceiling is not evidence of the effective per-request reservation.
+JEV pilot bypassed the Worker and did not persist equivalent effective request parameters, so JEV
+still needs a Worker observation that records its served identity and effective parameters before
+admission. The route catalog lists JEV's 4,096-token output context limit; that ceiling is not
+evidence of the effective per-request reservation. Preserve shadow mode and empty admissions until
+the exact serving identities and effective Worker settings are verified against that decision.
 
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
