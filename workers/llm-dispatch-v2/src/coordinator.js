@@ -796,9 +796,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const maxQueuedForPurpose = Number(config.max_queued_jobs);
         let queuedForPurpose = null;
         if (Number.isFinite(maxQueuedForPurpose) && maxQueuedForPurpose > 0) {
+          const limit = Math.floor(maxQueuedForPurpose);
           queuedForPurpose = [...sql.exec(
-            "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
-            purpose
+            "SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+            purpose,
+            limit
           )][0]?.count || 0;
           if (queuedForPurpose >= maxQueuedForPurpose) reasons.push("purpose_queue_full");
         }
@@ -2541,12 +2543,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
         )].map((row) => [row.purpose, row])
       );
       const purposeQueuedCounts = new Map();
-      const getPurposeQueuedCount = (purposeName) => {
+      const getPurposeQueuedCount = (purposeName, cap) => {
         if (!purposeQueuedCounts.has(purposeName)) {
-          const count = [...sql.exec(
-            "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
-            purposeName
-          )][0]?.count || 0;
+          const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : -1;
+          const count = limit > 0
+            ? [...sql.exec(
+                "SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+                purposeName,
+                limit
+              )][0]?.count || 0
+            : [...sql.exec(
+                "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
+                purposeName
+              )][0]?.count || 0;
           purposeQueuedCounts.set(purposeName, count);
         }
         return purposeQueuedCounts.get(purposeName);
@@ -2675,7 +2684,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               if (
                 Number.isFinite(purposeMaxQueued) &&
                 purposeMaxQueued > 0 &&
-                getPurposeQueuedCount(purpose) >= purposeMaxQueued
+                getPurposeQueuedCount(purpose, purposeMaxQueued) >= purposeMaxQueued
               ) {
                 rejected.push({ id: job.id, reason: "purpose_queue_full" });
                 continue;
@@ -2831,7 +2840,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (
           Number.isFinite(purposeMaxQueued) &&
           purposeMaxQueued > 0 &&
-          getPurposeQueuedCount(purpose) >= purposeMaxQueued
+          getPurposeQueuedCount(purpose, purposeMaxQueued) >= purposeMaxQueued
         ) {
           rejected.push({ id: job.id, reason: "purpose_queue_full" });
           continue;
