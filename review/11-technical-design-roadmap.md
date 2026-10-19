@@ -421,7 +421,7 @@ Evidence, cost contract, and post-deployment checks:
 matches the fresh-row ingress counter, including replays and the UTC midnight reset. The stats
 reader incorrectly unwraps an already-normalized reservation map, displaying zero per-purpose
 quotas and utilization. Read that map directly and use admission's four-unit legacy default;
-no counters, admission budgets, row writes, or pipeline versions change. Regression coverage
+no fresh-ingress counts, admission budgets, row writes, or pipeline versions change. Coverage
 includes compiled and overridden maps, fresh/replay batches, cancellation, and UTC rollover.
 Actions snapshots also carry existing completed/failed/retried counters and a separate per-run
 schema-correction observation line. A correction clone is new ingress, not a Worker requeue;

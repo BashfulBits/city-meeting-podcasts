@@ -90,7 +90,8 @@ The actual admission paths use the flat map correctly; their limits were not zer
 The correction reads the map directly and uses the same four-write-unit minimum as ingress
 preflight for legacy overrides lacking `write_units_per_job`. `daily_quota` remains a configured
 job-equivalent estimate, not guaranteed capacity: actual model-index write units, other reserved
-budgets, and account limits still control admission. No admission policy or counters change.
+budgets and account limits still control admission. Admission policy and fresh-ingress counts
+are unchanged by the quota-display fix.
 
 Regression tests cover compiled, object, JSON, and legacy override maps; fresh and replayed
 batches; per-purpose/global count agreement; cancellation; and midnight rollover. They assert
