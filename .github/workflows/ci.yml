@@ -141,7 +141,7 @@ jobs:
           npm --version
           # 44.132.1 pulls @yarnpkg/core 4.9.2's npm-incompatible patch: dependency.
           # Keep the verified validator pinned; Renovate tracks this hygiene tool.
-          if npx --yes --loglevel verbose --package renovate@44.151.5 \
+          if npx --yes --loglevel verbose --package renovate@44.169.0 \
             renovate-config-validator .github/renovate.json5; then
             exit 0
           else
