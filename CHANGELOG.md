@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chat judge items now name the one field to answer and list the choose letters.** Each
+  item carries `answer_with` (verdict, level or choice) and, for choose, its `options`; the
+  sibling and adjudicator prompts say to fill only that field and to quote the deciding words
+  even when nothing is flagged. In the first sibling runs Gemma put the option letter inside
+  `reason` and left `choice` empty on all 265 choose items, so no choose answer was recorded.
+  A chat packet's identity now includes a request revision, so a packet of the same items is
+  asked again instead of being answered from an older recorded result; JEV's hashes are unchanged.
+
 - Google AI Studio Gemma 31B routes no longer retry a saturated token minute exactly 60s after the
   last scheduled start. A new per-route `tpm_window_margin_seconds` (15 on `gemma_4_31b_primary`
   and `gemma_4_31b_secondary`) ages reservations out of the trailing-minute ledger, and out of the
