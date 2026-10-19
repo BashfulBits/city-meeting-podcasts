@@ -1306,7 +1306,7 @@
       "rpm": 4,
       "rpd": 800,
       "tpm": 36000,
-      "concurrency": 2,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,

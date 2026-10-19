@@ -1659,7 +1659,7 @@
       "rpd": 800,
       "tpd": null,
       "tpm": 36000,
-      "concurrency": 2,
+      "concurrency": 1,
       "request_start_margin_seconds": null,
       "free": true,
       "input_per_token": 0.0,
