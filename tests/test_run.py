@@ -4362,3 +4362,173 @@ def test_the_judge_window_is_its_cron_interval_and_fits_inside_the_step_timeout(
         if s.get("name", "").startswith("Judge persisted")
     )
     assert step["timeout-minutes"] > window
+
+
+def test_moments_enrich_skips_non_rollout_family(tmp_path, monkeypatch):
+    city = City(
+        slug="austin-parks",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/f"},
+        podcast_title="Parks",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "parks_and_recreation"},
+    )
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=True,
+        lane="moments",
+        moment_evaluation_config={"rollout_meeting_families": ["council", "planning_and_zoning"]},
+    )
+    pipeline = run.SourcePipeline(
+        state_dir=tmp_path,
+        stages=[],
+        ctx=ctx,
+        full_artifact_episodes=5,
+        metadata_retention_episodes=10,
+        refresh_state={},
+    )
+    # Assert fetch_merge is never reached when meeting family is outside rollout
+    monkeypatch.setattr(
+        pipeline, "fetch_merge", lambda *args, **kwargs: pytest.fail("fetch_merge called")
+    )
+    episodes = pipeline.enrich(city)
+    assert episodes == []
+
+
+def test_moments_priority_order_in_build():
+    from citypods.run import moments_family_priority
+
+    c_council = City(
+        slug="austin-council",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/council"},
+        podcast_title="Council",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "council"},
+    )
+    c_pz = City(
+        slug="austin-pz",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/pz"},
+        podcast_title="P&Z",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "planning_and_zoning"},
+    )
+    c_other = City(
+        slug="austin-transit",
+        provider="granicus",
+        source={"feed_url": "https://austin.granicus.com/transit"},
+        podcast_title="Transit",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "transit"},
+    )
+    cities = [c_other, c_pz, c_council]
+    sorted_cities = sorted(cities, key=moments_family_priority)
+    assert sorted_cities == [c_council, c_pz, c_other]
+
+
+def test_order_global_candidates_prioritizes_moments_families():
+    from citypods.ops.workqueue import BacklogPolicy
+    from citypods.run import _order_global_candidates, moments_family_priority
+
+    c_council = City(
+        slug="addison-council",
+        provider="swagit",
+        source={"list_url": "https://swagit/1", "body": "City Council"},
+        podcast_title="Council",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "council"},
+    )
+    c_pz = City(
+        slug="addison-pz",
+        provider="swagit",
+        source={"list_url": "https://swagit/1", "body": "Planning and Zoning"},
+        podcast_title="P&Z",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extra={"meeting_family": "planning_and_zoning"},
+    )
+    ep_council = Episode(
+        guid="ep-council",
+        title="Council Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://audio/council.mp3",
+    )
+    ep_pz = Episode(
+        guid="ep-pz",
+        title="P&Z Meeting",
+        published=datetime(2026, 1, 2, tzinfo=UTC),
+        video_url="https://audio/pz.mp3",
+    )
+    prepared = {
+        "addison-council": {
+            "city": c_council,
+            "candidate_episodes": [ep_council],
+            "episodes": [ep_council],
+        },
+        "addison-pz": {
+            "city": c_pz,
+            "candidate_episodes": [ep_pz],
+            "episodes": [ep_pz],
+        },
+    }
+    # Even if P&Z published later, Council candidates come first when moments_family_priority
+    # is passed.
+    policy = BacklogPolicy.from_site_config({"backlog_priority": [{"recency": "desc"}]})
+    candidates = _order_global_candidates(prepared, policy, family_priority=moments_family_priority)
+    assert len(candidates) == 2
+    assert candidates[0][0] == "addison-council"
+    assert candidates[0][1].guid == "ep-council"
+    assert candidates[1][0] == "addison-pz"
+    assert candidates[1][1].guid == "ep-pz"
+
+
+def test_moments_family_priority_preserves_backlog_order_within_family():
+    from citypods.ops.workqueue import BacklogPolicy
+
+    prepared = {}
+    for slug, day in [("a-council", 1), ("z-council", 19)]:
+        city = _bare_city(slug)
+        city.extra["meeting_family"] = "council"
+        ep = _ep(slug)
+        ep.published = datetime(2026, 10, day, tzinfo=UTC)
+        prepared[slug] = {"city": city, "episodes": [ep]}
+    policy = BacklogPolicy.from_site_config({"backlog_priority": [{"recency": {"order": "desc"}}]})
+    candidates = run._order_global_candidates(
+        prepared, policy, family_priority=run.moments_family_priority
+    )
+    assert [key for key, _ in candidates] == ["z-council", "a-council"]
+
+
+def test_moments_results_count_feed_view_episodes(tmp_path):
+    city = _bare_city("council-feed")
+    city.extra["meeting_family"] = "council"
+    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=True, lane="moments")
+    pipeline = run.SourcePipeline(
+        state_dir=tmp_path,
+        stages=[],
+        ctx=ctx,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    ep = _ep()
+    ep.published = datetime.now(UTC)
+    pipeline.fetch_merge_from_records = lambda city, key: (None, [ep], {}, 0)
+    pipeline.persist_source = lambda *args, **kwargs: None
+    results = run._run_enrich_global_queue(
+        pipeline, [city], source_cache=None, max_workers=1, policy=None
+    )
+    assert results[0].episode_count == 1

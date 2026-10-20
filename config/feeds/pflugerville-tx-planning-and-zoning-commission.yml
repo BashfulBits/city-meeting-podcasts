@@ -1,6 +1,7 @@
 slug: pflugerville-tx-planning-and-zoning-commission
 city: pflugerville-tx
 provider: granicus
+meeting_family: planning_and_zoning
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Planning and Zoning Commission"

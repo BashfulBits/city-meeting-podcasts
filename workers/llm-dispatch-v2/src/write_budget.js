@@ -25,15 +25,15 @@ export const DO_ROWS_WRITTEN_PLATFORM_LIMIT = 100000;
 /** Rows left unused for other account Durable Objects and billing-counter drift. */
 export const DO_ROWS_ACCOUNT_RESERVE = 10000;
 
-/** Rows written per ingress write unit admitted: a job writes 4 + models billed rows (job row +
- * two unique keys + state index; one clustered model-index row per model, with no job_id index
- * since 2026-10-07) for 3 + models units -- 1.25 per unit at 1 model, 1.17 at 3, falling toward
- * 1 as models grow. 1.25 is the ceiling at any model count. Per-batch bookkeeping (lane counter,
+/** Rows written per ingress write unit admitted: a job writes 5 + models billed rows (job row +
+ * two unique keys + state index + queued-purpose index; one clustered model-index row per model,
+ * with no job_id index since 2026-10-07) for 3 + models units -- 1.5 per unit at 1 model, 1.33 at 3, falling toward
+ * 1 as models grow. 1.5 is the ceiling at any model count. Per-batch bookkeeping (lane counter,
  * scheduler, accounting) is reserved separately by enqueueBatch. A rejected job writes nothing. */
-export const ROWS_PER_INGRESS_WRITE_UNIT = 1.25;
+export const ROWS_PER_INGRESS_WRITE_UNIT = 1.5;
 
 /** The same while a coordinator still carries the legacy (job_id, model) index: every model-index
- * insert also writes its index entry, so a job writes 4 + 2 x models rows for 3 + models units,
+ * insert also writes its index entry, so a job writes 5 + 2 x models rows for 3 + models units,
  * approaching 2 per unit. enqueueBatch uses this until _retireLegacyJobModelsIndex drops the
  * index, and validateConfig, which cannot see the schema, always does. */
 export const ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX = 2;
@@ -51,12 +51,14 @@ export const ROWS_PER_BUNDLE = 4;
  * completion accounting belong to ROWS_PER_BUNDLE. Measured 2026-10-07: 28 before the executor
  * stopped calling attemptStarted, 23 after, 21 once attempts stopped being journaled per row, 20
  * once a requeue's queued-counter change rode on the accounting row. */
-export const ROWS_PER_LEASE_WORST = 20;
+// Reserve three additional queued-purpose index writes across claim/requeue/reclaim.
+export const ROWS_PER_LEASE_WORST = 23;
 
 /** One job through scheduled cleanup: the purge_pending transition of a failed or aged job (2)
  * plus confirmPurge's row delete (1), and one accounting row in each transaction (2).
  * A client-retired completion never reaches cleanup. */
-export const ROWS_PER_CLEANUP_JOB = 5;
+// A queued job also deletes its queued-purpose index entry at purge transition.
+export const ROWS_PER_CLEANUP_JOB = 6;
 
 export const CRON_TICKS_PER_DAY = 1440;
 

@@ -19,11 +19,13 @@ import hashlib
 import html
 import json
 import re
+import signal
 import tempfile
 import threading
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -930,6 +932,7 @@ def build_sample_manifest(
             sample = _episode_candidate_pair(city, ep, config=quality_config)
             if sample is not None and sample["sample_id"] not in already_sampled:
                 samples.append(sample)
+                already_sampled.add(sample["sample_id"])
     samples.sort(key=lambda item: (item["published_at"], item["source_key"], item["episode_uid"]))
     return {"version": 1, "sampled_at": _utc_now(), "samples": samples[-limit:]}
 
@@ -1013,10 +1016,19 @@ def _parse_vtt_timestamp(text: str) -> float:
 
 
 def _candidate_units(candidate: dict, *, storage=None) -> list[dict]:
-    words = _parse_words_payload(_read_ref_bytes(candidate.get("words_ref"), storage=storage))
+    words = _parse_words_payload(
+        _read_ref_bytes(
+            candidate.get("local_words_ref") or candidate.get("words_ref"), storage=storage
+        )
+    )
     if words:
         return words
-    return _parse_vtt_payload(_read_ref_bytes(candidate.get("transcript_ref"), storage=storage))
+    return _parse_vtt_payload(
+        _read_ref_bytes(
+            candidate.get("local_transcript_ref") or candidate.get("transcript_ref"),
+            storage=storage,
+        )
+    )
 
 
 def _candidate_plain_text(units: list[dict]) -> str:
@@ -1369,6 +1381,8 @@ def _generate_provider_align_candidate(
             content_type="application/json",
             storage=storage,
         ),
+        "local_words_ref": words_path.as_posix(),
+        "local_transcript_ref": vtt_path.as_posix(),
         "acoustic_coverage": artifacts.coverage,
         "word_logprob_mean": artifacts.word_logprob_mean,
         "word_logprob_p10": artifacts.word_logprob_p10,
@@ -1426,6 +1440,8 @@ def _generate_asr_challenger_candidate(
             content_type="application/json",
             storage=storage,
         ),
+        "local_words_ref": words_path.as_posix(),
+        "local_transcript_ref": vtt_path.as_posix(),
         "acoustic_coverage": artifacts.coverage,
         "word_logprob_mean": artifacts.word_logprob_mean,
         "word_logprob_p10": artifacts.word_logprob_p10,
@@ -1865,6 +1881,31 @@ def _evaluate_one_sample(
     return sample_event, pending_row, l2_used
 
 
+class _SampleDeadline(BaseException):
+    """Escape best-effort Exception handlers when the evaluation budget expires."""
+
+
+@contextmanager
+def _sample_deadline(seconds: float):
+    # Evaluation runs on the CLI main thread on POSIX runners. Fail explicitly elsewhere rather
+    # than silently performing unbounded inference. Native kernels may deliver the signal late.
+    def expired(signum, frame):
+        raise _SampleDeadline("sample exceeded 600-second evaluation budget")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+        if timer[0]:
+            signal.setitimer(
+                signal.ITIMER_REAL, max(0.001, timer[0] - (time.monotonic() - started)), timer[1]
+            )
+
+
 def evaluate_samples(
     manifest: dict,
     *,
@@ -1878,7 +1919,6 @@ def evaluate_samples(
     evaluated: list[dict] = []
     errors: list[dict] = []
     skipped: list[dict] = []
-    pending_rows: list[dict] = []
     # L2 budget is per evaluate() run, not per sample -- "a rotating subset, not every meeting"
     # (review/12 §H15). build_sample_manifest's already-sampled exclusion supplies the
     # oldest-checked-first spread across separate runs.
@@ -1887,15 +1927,16 @@ def evaluate_samples(
         city_slug = str(sample.get("city_slug") or "")
         city = None if cities_by_slug is None else cities_by_slug.get(city_slug)
         try:
-            sample_event, pending_row, l2_used = _evaluate_one_sample(
-                sample,
-                out_dir=out_dir,
-                config=config,
-                manifest_sampled_at=manifest.get("sampled_at"),
-                city=city,
-                storage=storage,
-                l2_budget_remaining=l2_budget_remaining,
-            )
+            with _sample_deadline(10 * 60):
+                sample_event, pending_row, l2_used = _evaluate_one_sample(
+                    sample,
+                    out_dir=out_dir,
+                    config=config,
+                    manifest_sampled_at=manifest.get("sampled_at"),
+                    city=city,
+                    storage=storage,
+                    l2_budget_remaining=l2_budget_remaining,
+                )
         except AlignmentQualityError as exc:
             # Production treats this as "provider-align ineligible -> re-transcribe", a normal
             # outcome, so it is not an evaluation failure. Reported, but kept out of `errors`.
@@ -1911,7 +1952,8 @@ def evaluate_samples(
                 flush=True,
             )
             continue
-        except Exception as exc:  # noqa: BLE001 - one bad sample must not lose the whole batch
+        # Contain one failed sample without losing the rest of the batch.
+        except (Exception, _SampleDeadline) as exc:  # noqa: BLE001
             error_event = {
                 "id": f"eval-error:{sample.get('sample_id', 'unknown')}",
                 "kind": "evaluation_error",
@@ -1931,19 +1973,21 @@ def evaluate_samples(
                 f"{type(exc).__name__}: {exc}",
                 flush=True,
             )
+            save_raw_log(state_dir, raw_log, max_events=config.raw_log_cap)
+            if storage is not None:
+                push_transcript_quality_log_merged(
+                    storage, state_dir, max_events=config.raw_log_cap
+                )
             continue
         if l2_used:
             l2_budget_remaining -= 1
         raw_log.setdefault("events", []).append(sample_event)
-        pending_rows.append(pending_row)
         evaluated.append(sample_event)
+        save_raw_log(state_dir, raw_log, max_events=config.raw_log_cap)
+        mutate_rollups_ledger(state_dir, storage, lambda rows, row=pending_row: rows + [row])
+        if storage is not None:
+            push_transcript_quality_log_merged(storage, state_dir, max_events=config.raw_log_cap)
     save_raw_log(state_dir, raw_log, max_events=config.raw_log_cap)
-    if pending_rows:
-        mutate_rollups_ledger(
-            state_dir,
-            storage,
-            lambda rows: rows + pending_rows,
-        )
     return {
         "version": 1,
         "evaluated": evaluated,

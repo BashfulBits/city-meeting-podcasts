@@ -15,6 +15,36 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Worker-side quota and per-job queue depth throttling.** Replaced client-side
+  `max_dispatches_per_run` throttling with Cloudflare Worker coordinator `daily_write_units`
+  and `max_queued_jobs` enforcement. Sized lane `max_queued_jobs` to approximately 4x daily
+  capacity for an 800 episodes/day throughput baseline. Added cached per-batch queued count checks
+  in the coordinator to prevent ingress queue flooding. A queued-only purpose index bounds
+  SQLite reads to the requested lane.
+- **Tags stage completion self-healing for historical LLM backfill.**
+  Updated `stage_output_pointer` and `stage_is_dirty` to detect episodes with chapters lacking
+  `tags_llm_recipe_hash` when tag LLM is enabled, unblocking the rate-limited historical backfill
+  of 16,144 chaptered episodes while preserving completion markers for chapterless episodes.
+- **Moments lane rollout expansion and source-level filtering.**
+  Expanded `rollout_meeting_families` to include Planning and Zoning feeds alongside City Council.
+  Pre-filtered non-rollout meeting families at the source level before archive deserialization in
+  `SourcePipeline.enrich` and the global queue, eliminating 45 minutes of archive loading overhead
+  across 70+ non-participating feeds. Prioritized Council and P&Z feeds first in the moments queue.
+
+- **PR #2508 review fixes.** Preserve backlog ordering within each moments family and report
+  feed-view episode counts correctly. Account conservatively for queued-purpose index writes in
+  ingress, lease and cleanup row reservations. Existing artifacts remain unchanged.
+
+- **Repair scheduled evaluations and audits.** Deduplicate H15 samples across shared sources,
+  score generated transcripts from local files, bound each sample to a ten-minute POSIX signal
+  budget, and save completed evidence incrementally. Native inference can delay signal delivery;
+  the workflow timeout remains the outer bound. No pipeline versions change or catalog backfill
+  is triggered. Judge-audit sync now uses relative paths while preserving file ownership.
+- **Expose safe retirement-control diagnostics.** Report dispatch operation, HTTP status or
+  transport exception category without response bodies or credentials. Retry pause, resume, and
+  pause-status transport failures once; quota reservation and admission remain single-attempt.
+  Retirement still fails closed when exclusive dispatch control cannot be verified.
+
 - **Chat judge items now name the one field to answer and list the choose letters.** Each
   item carries `answer_with` (verdict, level or choice) and, for choose, its `options`; the
   sibling and adjudicator prompts say to fill only that field and to quote the deciding words

@@ -327,7 +327,7 @@ class StageContext:
     judge_run_caps: dict = field(default_factory=dict)
     judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
     moment_evaluation_config: dict = field(default_factory=dict)
-    moment_max_dispatches: int = 40
+    moment_max_dispatches: int | None = None
     moment_dispatches: int = 0
     moment_dispatch_lock: threading.Lock = field(default_factory=threading.Lock)
     # A source preflight can be shared by many quote candidates from one meeting.  Keep the
@@ -725,6 +725,8 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
     if name in {"chapter_locator", "generated_chapters"}:
         artifact = ep.generated_agenda_candidates or {}
         return artifact.get("boundary_artifact_key") or ep.generated_chapters_spec_hash
+    if name == "tags":
+        return ep.tags_llm_recipe_hash or ("rule-only" if ep.tags else None)
     return None
 
 
@@ -971,6 +973,7 @@ def stage_is_dirty(
     speaker_config: Mapping[str, Any] | None = None,
     judging_config: Mapping[str, Any] | None = None,
     judge_audit_rows: Mapping[str, Any] | None = None,
+    tag_llm_enabled: bool = False,
 ) -> bool:
     # review/53: the judge stage's state is its candidates' judgments, not an input fingerprint.
     # A completion marker would stop it after one visit and strand every in-flight answer, so it
@@ -981,6 +984,13 @@ def stage_is_dirty(
     # revisit it rather than making a human decision wait for a transcript/media mutation before
     # it can take effect.
     if stage.name in {"moment-admission", "speaker_identity"}:
+        return True
+    if (
+        stage.name == "tags"
+        and tag_llm_enabled
+        and bool(ep.chapters)
+        and ep.tags_llm_recipe_hash is None
+    ):
         return True
     # Provider chapter markers are canonical.  A one-time visit converts any historical
     # generated-chapter state into an explicit fallback exclusion (and, where possible, cancels
@@ -1006,11 +1016,21 @@ def stage_is_dirty(
             "output": stage_output_pointer(stage.name, ep),
         }
         return False
+    expected_output = stage_output_pointer(stage.name, ep)
+    marker_output = marker.get("output")
+    output_matches = marker_output == expected_output
+    if (
+        not output_matches
+        and stage.name == "tags"
+        and marker_output is None
+        and not (tag_llm_enabled and bool(ep.chapters))
+    ):
+        output_matches = True
     return not (
         marker.get("state") in {"complete", "complete-empty"}
         and marker.get("version") == stage.version
         and marker.get("input_fingerprint") == fingerprint
-        and marker.get("output") == stage_output_pointer(stage.name, ep)
+        and output_matches
     )
 
 
@@ -1373,7 +1393,10 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
     if isinstance(existing, JobResult):
         return "cached"
     with ctx.moment_dispatch_lock:
-        if ctx.moment_dispatches >= ctx.moment_max_dispatches:
+        if (
+            ctx.moment_max_dispatches is not None
+            and ctx.moment_dispatches >= ctx.moment_max_dispatches
+        ):
             stats.defer("rollout-dispatch-cap", sample=sample)
             return "cap"
         ctx.moment_dispatches += 1
@@ -9481,6 +9504,7 @@ def run_stages(
                 speaker_config=ctx.speaker_config,
                 judging_config=ctx.judging_config,
                 judge_audit_rows=ctx.judge_audit_rows,
+                tag_llm_enabled=bool(ctx.tag_backend),
             )
         ]
         clean = len(episodes) - len(dirty)

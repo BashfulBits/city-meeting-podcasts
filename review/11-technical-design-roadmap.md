@@ -28,6 +28,11 @@ This roadmap also folds in and supersedes the standing parts of the **Codex revi
 ([`review/10`](10-codex-architecture-throughput-roadmap-review.md)); see §8 for the appraisal and the
 post-review code queue.
 
+PR #2508 (under review) moves producer caps to Worker daily and per-purpose queue admission.
+Its review fixes use a queued-only purpose index with conservative row-write reservations,
+preserve backlog policy within moments families, and count results by feed view. No artifact
+version or backfill identity changes are introduced by these fixes.
+
 ---
 
 ## §1. How to use this document
@@ -2256,3 +2261,14 @@ Unvisited work stays queued; CAS ownership and artifact recipes are unchanged. R
 cover real terminal/live-lease reads, no-work runs, override precedence, and stable-queue window
 coverage. Deployment and live read/completion verification remain pending; no pipeline-version
 bump, artifact invalidation, or catalog backfill. See the audit's R2B-01 follow-up.
+
+### Scheduled workflow reliability follow-up (2026-10-19)
+
+Operational repair for runs `39281744190`, `39305567571`, and `39306727062`: H15 deduplicates
+shared-source samples before limiting, scores generated artifacts locally, and persists completed
+sample evidence incrementally under a ten-minute per-sample POSIX signal budget. Native inference
+may delay signal delivery; the existing Actions timeout remains the outer bound. Judge-audit sync
+uses relative paths and retains items/answers ownership. Retirement control reports sanitized
+operation/status/category diagnostics and retries only idempotent pause/resume/status transport
+failures once. No admission/reservation retries, pipeline-version changes, automatic backfill, or
+roadmap sequencing changes are introduced.

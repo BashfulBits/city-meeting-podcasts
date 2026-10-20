@@ -174,6 +174,7 @@ _DEFERRED_INGRESS_REASONS = frozenset(
     {
         "daily_cap_exceeded",
         "purpose_write_budget_exceeded",
+        "purpose_queue_full",
         "ingress_write_budget_reserved",
         # The coordinator's daily DO row budget has reached its enqueue threshold.
         "daily_row_budget",

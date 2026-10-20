@@ -129,7 +129,7 @@ llm_lanes:
     backup_after_attempts: 12
     # 800 eligible meetings x one agenda job x six ingress units = 4,800 units/day.
     # Demand ceiling only: shared job/row guards and provider capacity remain authoritative.
-    max_dispatches_per_run: 67
+    max_queued_jobs: 3200
     reserved_write_units: 4800
     daily_write_units: 4800
   chapter-locator:
@@ -148,12 +148,7 @@ llm_lanes:
     # tokens, the V4.1 Flash + Kimi K3 pair (two indexes, so five write units). Kimi K3 was retired
     # upstream on 2026-10-15; the Worker skips its blocked route and V4.1 takes the work.
     dispatch_shape: per_model
-    # Twelve scheduled runs/day; 134 admits/run, with the daily reservation as the hard
-    # cap (7,200 units: 1,600 jobs plus the extra index on large packets). A pinned request costs
-    # four ingress write units (three bookkeeping + one model index), five for large packets.
-    # Raised from 800/day (2026-10-16): DeepSeek V4 Flash routes had ~1,800/day spare while the
-    # lane was limited only by this producer-side cap.
-    max_dispatches_per_run: 134
+    max_queued_jobs: 3200
     reserved_write_units: 4300
     daily_write_units: 7200
   topic-tags:tagger:
@@ -167,10 +162,10 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "kilo/stepfun/step-3.7-flash:free"
       - "deepseek/deepseek-v4-flash"
-    max_dispatches_per_run: 267
+    max_queued_jobs: 6400
     reserved_write_units: 1860
     # Planning allowance: 800 meetings x two chapter batches x six units = 9,600.
-    # The per-run cap counts episode reservations, while each episode can enqueue many batches.
+    # The queue cap provides a ~4-day smoothing envelope for backfill and bursts.
     daily_write_units: 9600
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
@@ -199,9 +194,7 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    # Nine passes: ceil(800 / 9).
-    # Daily lane/global/row gates still bound actual admission.
-    max_dispatches_per_run: 89
+    max_queued_jobs: 3200
     reserved_write_units: 916
     # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
     daily_write_units: 9600
@@ -211,9 +204,8 @@ llm_lanes:
   # the Slice 3a rescue never moves a judge packet to another model. Sized for 800 meetings/day
   # (review/53 "Capacity and reservations"): reserved = routine jobs x 4 units x 1.2, set in PR4 when
   # judging is enabled (zero until then, so idle lanes take no headroom); the daily cap leaves
-  # backfill headroom. The judge workflow runs every two hours (12 runs/day), so each run
-  # cap is the daily job cap / 12. Nothing enqueues to these lanes until the judge stage (PR3) and
-  # `judging.enabled` (PR4).
+  # backfill headroom. The judge workflow runs every two hours (12 runs/day).
+  # Nothing enqueues to these lanes until the judge stage (PR3) and `judging.enabled` (PR4).
   judge:anchor:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # JEV through BeatAPI's systemone endpoint; about 190 routine jobs/day at 800 meetings. The
@@ -221,7 +213,7 @@ llm_lanes:
     # share (they yield to JEV while it has queued work).
     models: ["typesafe/jev-1.13"]
     dispatch_shape: per_model
-    max_dispatches_per_run: 116
+    max_queued_jobs: 800
     # review/53 PR4: routine ~191 jobs/day x 4 units x 1.2.
     reserved_write_units: 920
     daily_write_units: 5600
@@ -240,7 +232,7 @@ llm_lanes:
       google: ["google/gemma-4-31b-it"]
       non_google: ["openrouter/nvidia/nemotron-3.5-super-vl:free", "qwen/qwen3.8-27b"]
     dispatch_shape: per_model
-    max_dispatches_per_run: 166
+    max_queued_jobs: 2000
     # review/53 PR4: routine ~473 jobs/day x 4 units x 1.2, rounded up.
     reserved_write_units: 2400
     daily_write_units: 8000
@@ -253,7 +245,7 @@ llm_lanes:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
     dispatch_shape: per_model
-    max_dispatches_per_run: 33
+    max_queued_jobs: 1600
     # 920 from PR5, when adjudication starts dispatching (a 3% sample plus contested items).
     reserved_write_units: 920
     daily_write_units: 1600
@@ -268,7 +260,7 @@ llm_lanes:
       - "deepseek/deepseek-v4.1-flash"
       - "typesafe/jev-1.13"
     dispatch_shape: per_model
-    max_dispatches_per_run: 200
+    max_queued_jobs: 800
     reserved_write_units: 0
     daily_write_units: 800
 # Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:
@@ -330,8 +322,8 @@ judging:
   probes: {enabled: true, per_pass: 2}
 moments:
   enabled: true
-  # Initial rollout is intentionally limited to explicit council feeds and round-robin queue work.
-  rollout_meeting_families: [council]
+  # Rollout covers explicit council and planning and zoning feeds.
+  rollout_meeting_families: [council, planning_and_zoning]
   # Routes and the per-run dispatch cap live in `llm_lanes["r6-moments"]`; the stage still filters
   # that allowlist by meeting family before dispatching.
   timeout_seconds: 90
