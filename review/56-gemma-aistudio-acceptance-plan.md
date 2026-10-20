@@ -433,3 +433,11 @@ but all inspected objects and current registry contracts use the new format. Old
 GitHub-prepared work is not supported as the explanation for this cohort's ongoing 429s; the
 current-pointer limitation above prevents a categorical exclusion. Prompt-format freshness and
 conservative packet sizing are separate checks. No work was cancelled, deleted, or re-enqueued.
+
+The historical timestamp was independently matched against the maintainer's first gateway export
+(`logs-2026-10-19T20_48_41.612Z.json`): gateway ID
+`01a15495-445e-73e8-b179-0f56fc0d8ce7` records the same model, 827 input tokens, 983 output tokens,
+and HTTP 200 at **2026-10-19 14:34:53.331 UTC**. Its response-cache flag is `false` and its duration
+is 61,380 ms. Thus this example is historical even without relying on the provider response's
+`created` field. Google's 9,901 cached prompt tokens are distinct from a Cloudflare whole-response
+cache hit; Cloudflare reports the latter as false here.
