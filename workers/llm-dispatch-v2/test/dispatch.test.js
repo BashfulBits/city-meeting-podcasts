@@ -3675,3 +3675,242 @@ test("purpose queue counts seek the queued-purpose index instead of scanning oth
   );
   assert.ok(plan.some(row => /SEARCH jobs USING.*idx_jobs_queued_purpose/.test(row.detail)));
 });
+
+const GEMMA_MODEL = "google/gemma-4-31b-it";
+function makeQuotaRecoveryCoordinator({ overflow = true, ...env } = {}) {
+  const google = {
+    provider: "gemini", model: GEMMA_MODEL, upstream_model: "gemma-4-31b-it",
+    free: true, rpm: 15, rpd: 100, tpm: 14400,
+    input_context_limit: 262144, output_context_limit: 32768, hard_input_ceiling: 14400,
+  };
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: {
+      [GEMMA_MODEL]: ["google-a", "google-b", ...(overflow ? ["overflow"] : [])],
+    },
+    routes_by_id: {
+      "google-a": { ...google }, "google-b": { ...google },
+      ...(overflow ? {
+        overflow: { ...google, provider: "nvidia", hard_input_ceiling: null },
+      } : {}),
+    },
+  };
+  return makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_5XX_RETRIES: "1", ...env });
+}
+function quotaRecoveryJob(id, policy = {}) {
+  return makeJob(id, {
+    policy_json: JSON.stringify({ allowed_models: [GEMMA_MODEL], allow_paid: false, ...policy }),
+  });
+}
+function quotaResult(claimed, overrides = {}) {
+  return {
+    job_id: claimed.id, lease_token: claimed.lease_token,
+    attempt_id: `attempt-${claimed.lease_token}`, planned_at: claimed.not_before_at,
+    actual_start_at: claimed.not_before_at, actual_end_at: claimed.not_before_at + 100,
+    outcome: "terminal_error", provider_status_code: 429, failure_class: "own_tpm",
+    ...overrides,
+  };
+}
+async function refuseQuota(coordinator, plan) {
+  const claimed = plan.jobs[0];
+  const result = quotaResult(claimed);
+  await coordinator.authorizeRetry(claimed.id, claimed.lease_token, result.attempt_id,
+    result.actual_end_at, 32, "own_tpm");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+  return result;
+}
+
+test("two Google TPM refusals reach overflow with transient retries intact", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-overflow")]);
+  const start = Date.now();
+  for (const [index, routeId] of ["google-a", "google-b"].entries()) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    assert.equal(plan.jobs[0].route_id, routeId);
+    const result = await refuseQuota(coordinator, plan);
+    // Duplicate and stale settlement must not extend the route bound or alter retry accounting.
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+    const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-overflow'")];
+    assert.equal(row.state, "queued");
+    assert.equal(row.transient_retry_count, 0);
+    assert.equal(row.size_excluded_routes, null);
+    assert.equal(JSON.parse(row.quota_excluded_routes).length, index + 1);
+    const [ledger] = [...sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)];
+    assert.ok(ledger.blocked_until > result.actual_end_at, "retain Google cooldown");
+    assert.equal(ledger.input_rejected_min, 0, "ambiguous quota is not a learned size bound");
+  }
+  const plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  assert.equal(plan.jobs[0].route_id, "overflow");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    quotaResult(plan.jobs[0], {
+      outcome: "success", provider_status_code: 200, failure_class: null,
+      result_key: "results/quota-overflow.json",
+      observed_input_tokens: 600, observed_output_tokens: 100,
+    }),
+  ]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-overflow'")];
+  assert.equal(row.state, "completed");
+  assert.equal(row.attempts, 3);
+});
+
+test("quota overflow waits through pause, cooldown and exhausted daily capacity", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-wait")]);
+  const start = Date.now();
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
+  await coordinator.pauseDispatch({ scope: "route", target: "overflow", seconds: 600 }, start);
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start + 120_000, 25));
+  let plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  assert.equal(plan.jobs.length, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='quota-wait'")][0].state, "queued");
+  await coordinator.resumeDispatch({ scope: "route", target: "overflow" }, start + 240_000);
+  coordinator._getOrCreateRouteLedger("overflow", start, {});
+  sql.exec(
+    "UPDATE routes SET blocked_until=?, rpd_count=100, rpd_day_key=? WHERE route_id='overflow'",
+    start + 600_000, zonedDateKey(start, "UTC"));
+  plan = await coordinator.claimDispatchWindow(start + 360_000, 25);
+  assert.equal(plan.jobs.length, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='quota-wait'")][0].state, "queued");
+  sql.exec("UPDATE routes SET blocked_until=0 WHERE route_id='overflow'");
+  plan = await coordinator.claimDispatchWindow(start + 480_000, 25);
+  assert.equal(plan.jobs.length, 0, "daily quota still blocks overflow");
+  sql.exec("UPDATE routes SET rpd_count=0 WHERE route_id='overflow'");
+  plan = await coordinator.claimDispatchWindow(start + 720_000, 25);
+  assert.equal(plan.jobs[0].route_id, "overflow");
+});
+
+test("Google-only quota recovery is finite and never claims proven oversize", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator({ overflow: false });
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-exhausted")]);
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    await refuseQuota(coordinator, plan);
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-exhausted'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "quota_recovery_exhausted");
+  assert.equal(row.transient_retry_count, 0);
+  assert.equal(row.attempts, 2);
+  assert.equal(JSON.parse(row.quota_excluded_routes).length, 2);
+  assert.equal((await coordinator.claimDispatchWindow(start + 240_000, 25)).jobs.length, 0);
+});
+
+test("overflow failures retain the existing independent transient bound", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-5xx")]);
+  const start = Date.now();
+  for (let index = 0; index < 4; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    if (index < 2) await refuseQuota(coordinator, plan);
+    else {
+      assert.equal(plan.jobs[0].route_id, "overflow");
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+        quotaResult(plan.jobs[0], {
+          outcome: "retryable_error", provider_status_code: 503, failure_class: "server_error",
+        }),
+      ]);
+    }
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-5xx'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.attempts, 4);
+  assert.equal(row.transient_retry_count, 1);
+});
+
+test("mixed size/quota exhaustion does not become input_too_large", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator({ overflow: false });
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-size")]);
+  const start = Date.now();
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
+  const plan = await coordinator.claimDispatchWindow(start + 120_000, 25);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    quotaResult(plan.jobs[0], {
+      provider_status_code: 400, failure_class: "route_input_limit",
+    }),
+  ]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-size'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "quota_recovery_exhausted");
+});
+
+test("lease expiry and stale completions preserve job-local quota exclusions", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-expiry")]);
+  const start = Date.now();
+  const google = await coordinator.claimDispatchWindow(start, 25);
+  const stale = await refuseQuota(coordinator, google);
+  const stuck = await coordinator.claimDispatchWindow(start + 120_000, 25);
+  assert.equal(stuck.jobs[0].route_id, "google-b");
+  const recovered = await coordinator.claimDispatchWindow(stuck.jobs[0].lease_expires_at + 1, 25);
+  assert.equal(recovered.jobs.length, 1);
+  assert.notEqual(recovered.jobs[0].route_id, "google-a");
+  await coordinator.completeBatch(recovered.bundle_id, recovered.execution_token, [stale]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-expiry'")];
+  assert.equal(row.state, "leased");
+  assert.equal(row.lease_token, recovered.jobs[0].lease_token);
+  assert.deepEqual(JSON.parse(row.quota_excluded_routes), ["google-a"]);
+});
+
+test("a spent transient allowance cannot prevent Google TPM route recovery", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-spent")]);
+  sql.exec("UPDATE jobs SET transient_retry_count=1 WHERE id='quota-spent'");
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    await refuseQuota(coordinator, plan);
+  }
+  assert.equal([...sql.exec("SELECT transient_retry_count FROM jobs WHERE id='quota-spent'")][0]
+    .transient_retry_count, 1);
+  assert.equal((await coordinator.claimDispatchWindow(start + 240_000, 25)).jobs[0].route_id,
+    "overflow");
+});
+
+test("an unrelated 429 retains the existing retry allowance and no quota exclusions", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("quota-unrelated")]);
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      quotaResult(plan.jobs[0], {
+        failure_class: "own_rpm",
+      }),
+    ]);
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-unrelated'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.quota_excluded_routes, null);
+  assert.equal(row.transient_retry_count, 1);
+});
+
+test("a physically pinned Google packet does not widen its policy on quota refusal", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([
+    quotaRecoveryJob("quota-pinned", { allowed_route_ids: ["google-a"] }),
+  ]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await refuseQuota(coordinator, plan);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='quota-pinned'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "quota_recovery_exhausted");
+});
+
+test("TPM recovery does not change backup-model policies or unstarted calls", async () => {
+  for (const variant of ["backup", "unstarted"]) {
+    const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+    await coordinator.enqueueBatch([quotaRecoveryJob(`quota-${variant}`, variant === "backup" ? {
+      backup_models: ["google/gemma-4-26b-a4b-it"], backup_after_attempts: 5,
+    } : {})]);
+    const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+    const result = quotaResult(plan.jobs[0], variant === "unstarted" ? {
+      actual_start_at: null, actual_end_at: null,
+    } : {});
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+    const [row] = [...sql.exec("SELECT * FROM jobs WHERE id=?", `quota-${variant}`)];
+    assert.equal(row.state, "queued");
+    assert.equal(row.quota_excluded_routes, null);
+    assert.equal(row.transient_retry_count, 1);
+  }
+});

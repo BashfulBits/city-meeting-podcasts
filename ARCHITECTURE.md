@@ -710,6 +710,17 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   small packets behind one large one). When every route of the model has rejected it, it fails with
   `terminal_reason: input_too_large` and the producer re-packs it. See review/55.
 
+  **Google Gemma TPM recovery** (review/56): a packet restricted to one Gemma 4 model with no
+  backup models records actual Google `own_tpm` refusals separately in
+  `jobs.quota_excluded_routes`. Each refusing project is skipped for that packet, leaving the
+  ordinary transient retry allowance available for other routes of the same model. Existing
+  route cooldowns and quota charges remain in force. A busy, paused, or daily-exhausted overflow
+  route leaves the packet queued; no policy pins, paid-route permissions, or capacity limits are
+  widened. Exhausting the configured eligible routes returns `quota_recovery_exhausted`, rather
+  than falsely claiming proven oversize. The nullable column is added without rewriting queued
+  payloads; superseding a payload clears its exclusions. Already-failed jobs are not revived.
+  Ambiguous quota refusals do not update size calibration or learned input ceilings.
+
 As of the maintainer's 2026-10-09 reopening decision, OpenRouter's Gemma 4 31B/26B free routes
 and NVIDIA's Gemma 4 31B route each have a 20-RPD allowance. They are eligible for ordinary dispatch
 and scarce-quota health observation; NVIDIA calls share the provider's concurrency.

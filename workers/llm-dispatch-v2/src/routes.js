@@ -124,7 +124,15 @@ export function jobPolicy(job) {
 
 /** Route ids that rejected this job's input size (`jobs.size_excluded_routes`, a JSON array). */
 export function sizeExcludedRoutes(job) {
-  const raw = job?.size_excluded_routes;
+  return excludedRoutes(job?.size_excluded_routes);
+}
+
+/** Google TPM refusals for this packet, not evidence of an input-size limit. */
+export function quotaExcludedRoutes(job) {
+  return excludedRoutes(job?.quota_excluded_routes);
+}
+
+function excludedRoutes(raw) {
   if (!raw) return new Set();
   try {
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -234,6 +242,7 @@ export function routesEligibleFor(
   const inputTokens = job.input_token_estimate || 0;
   const outputTokens = job.max_output_token_estimate || 0;
   const sizeExcluded = sizeExcludedRoutes(job);
+  const quotaExcluded = quotaExcludedRoutes(job);
 
   const seenRouteIds = new Set();
   const eligible = [];
@@ -246,6 +255,7 @@ export function routesEligibleFor(
       // A route that already rejected this job for size is not retried for it (it stays eligible
       // for every other job).
       if (sizeExcluded.has(routeId)) continue;
+      if (quotaExcluded.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
       // An explicit rpd: 0 is the catalog's paused-route convention. Filter it before the
