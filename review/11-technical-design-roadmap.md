@@ -2255,3 +2255,14 @@ Unvisited work stays queued; CAS ownership and artifact recipes are unchanged. R
 cover real terminal/live-lease reads, no-work runs, override precedence, and stable-queue window
 coverage. Deployment and live read/completion verification remain pending; no pipeline-version
 bump, artifact invalidation, or catalog backfill. See the audit's R2B-01 follow-up.
+
+### Scheduled workflow reliability follow-up (2026-10-19)
+
+Operational repair for runs `39281744190`, `39305567571`, and `39306727062`: H15 deduplicates
+shared-source samples before limiting, scores generated artifacts locally, and persists completed
+sample evidence incrementally under a ten-minute per-sample POSIX signal budget. Native inference
+may delay signal delivery; the existing Actions timeout remains the outer bound. Judge-audit sync
+uses relative paths and retains items/answers ownership. Retirement control reports sanitized
+operation/status/category diagnostics and retries only idempotent pause/resume/status transport
+failures once. No admission/reservation retries, pipeline-version changes, automatic backfill, or
+roadmap sequencing changes are introduced.

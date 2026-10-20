@@ -342,3 +342,32 @@ def test_pause_transport_retry_can_recover_without_repeating_other_operations(ca
     assert client.pause(Selection("provider", "groq"), 600)["ok"] is True
     assert "pause_control_transport_retry" in caplog.text
     assert "ConnectionError" in caplog.text and "private network" not in caplog.text
+
+
+@pytest.mark.parametrize("operation", ["resume", "status"])
+def test_idempotent_control_retries_transport_errors(operation):
+    import requests
+
+    class TransientSession(FakeSession):
+        attempts = 0
+
+        def request(self, *args, **kwargs):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise requests.ConnectionError("secret provider URL")
+            return super().request(*args, **kwargs)
+
+    session = TransientSession([0])
+    getattr(_client(session), operation)(Selection("global"))
+    assert session.attempts == 2
+
+
+def test_control_diagnostic_does_not_include_worker_response():
+    class RefusedSession(FakeSession):
+        def request(self, *args, **kwargs):
+            return FakeResponse(403, {"detail": "secret token"})
+
+    with pytest.raises(DispatchPauseError) as caught:
+        _client(RefusedSession([0])).pause(Selection("global"), 60)
+    assert caught.value.diagnostic == "v2/dispatch:pause HTTP=403"
+    assert "secret" not in caught.value.diagnostic

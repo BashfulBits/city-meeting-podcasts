@@ -1979,3 +1979,12 @@ purpose. Admission counts seek that index rather than scanning other lanes. Ingr
 cleanup row reservations include its additional writes; runtime billed-row accounting remains
 authoritative. Moments candidates use feed body filters over shared archives, prioritize meeting
 family before the configured backlog policy, and persist each source once.
+
+H15 evaluation deduplicates shared-source sample identities before applying its batch limit.
+Generated candidates retain local transcript/word references for scoring alongside their published
+review URLs. Each sample has a ten-minute POSIX signal budget (native inference may delay delivery);
+completed raw events and rollup evidence are saved incrementally. The Actions timeout remains the
+outer bound. Judge-audit scoped sync paths are relative to the state root; packaging owns items and
+ingestion owns answers. Dispatch pause/resume/status transport failures retry once, while admission
+and reservation remain single-attempt. Retirement failures expose only safe operation/status/error
+categories, preserving exclusive-control verification before any removal.
