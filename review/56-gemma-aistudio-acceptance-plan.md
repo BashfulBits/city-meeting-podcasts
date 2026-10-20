@@ -388,3 +388,41 @@ sidewalk-waiver discussion, while item 1 asks the walking/access question and re
 references. These examples are not an audit of all 25 judgments.
 
 [cache-accounting]: https://developers.cloudflare.com/ai-gateway/configuration/custom-costs/
+
+## Can GitHub submit an old prepared cohort after a Cloudflare cleanup?
+
+Yes, there are two mechanisms distinct from the Cloudflare queue itself:
+
+1. `BatchingDispatchBackend` in `citypods/compute/llm.py` collects complete `InferenceJob` objects
+   in a run-local `_queued` map and submits them on `flush`. An Actions run using an old checkout
+   can prepare a packet before cleanup and enqueue it later in that same run. This is process
+   memory, not a persisted GitHub Actions prompt cache; the workflow caches pip dependencies.
+2. The deferred registry can persist `DeferredLLMRequest.messages`, policy, and output budget in
+   B2 under `state/llm_deferred/`. The sweep function `_job_from_deferred_handle` rebuilds
+   an inference job from those saved messages and can enqueue it later without rebuilding the
+   current judge prompt. Clearing only the DO queue does not clear this separate prepared work.
+
+A normal already-submitted v2 handle has no saved messages. The sweep polls that handle; it does
+not regenerate its request merely because a B2 payload object remains. An explicitly missing DO
+job is reported as missing rather than blindly resubmitting its stored payload.
+
+**Read-only cohort audit at 2026-10-20 02:19:36 UTC (October 19, 9:19 p.m. Central):** the sibling
+reconciliation-index prefix contained zero unsubmitted/deferred capsules. The Google 31B pending
+index contained 237 records, all `judge-answers-v2`, and none contained prepared messages.
+Polling those IDs found 229 queued, three leased, four completed, one failed, and zero missing.
+Every one of the **232 active payloads** was then read: all had the 743-character current system
+prompt, every item named `answer_with`, and the schema required `reason`. No old-format active
+payload was found. The audit was bounded at 300 records and did not hit that cap. This is a
+snapshot of indexed work, not a proof that an unindexed orphan cannot exist.
+
+The latest judge runs at 20:11 and 23:55 UTC used commits `b54a2cf0` and `e48b36e4`; both contain
+chat request revision 2 and the current prompt. Both runs were completed when checked. The
+supplied 408-character request was served at 14:34:52 UTC, before the afternoon identity fix;
+it is historical evidence of the old format, not evidence of a current stale cohort. Its
+preparation time is unknown. The 13:55 producer's checkout already had a 592-character prompt,
+which further cautions against equating provider request time with preparation time.
+
+Conclusion: a Cloudflare-only cleanup can theoretically be repopulated by the mechanisms above,
+but the current indexed 31B cohort is entirely in the new format. Old-format GitHub-prepared work
+is not supported as the explanation for this cohort's ongoing 429s. Prompt-format freshness and
+conservative packet sizing are separate checks. No work was cancelled, deleted, or re-enqueued.
