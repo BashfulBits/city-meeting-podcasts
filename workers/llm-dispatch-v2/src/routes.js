@@ -132,6 +132,24 @@ export function quotaExcludedRoutes(job) {
   return excludedRoutes(job?.quota_excluded_routes);
 }
 
+/** Settled response deadlines per physical route; two deadlines exhaust that route for a job. */
+export function responseTimeoutCounts(job) {
+  try {
+    const raw = job?.response_timeout_routes;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return new Map(Object.entries(parsed && !Array.isArray(parsed) ? parsed : {})
+      .filter(([id, count]) => id && Number.isInteger(count) && count > 0)
+      .map(([id, count]) => [id, Math.min(2, count)]));
+  } catch {
+    return new Map();
+  }
+}
+
+export function timeoutExcludedRoutes(job) {
+  return new Set([...responseTimeoutCounts(job)].filter(([, count]) => count >= 2)
+    .map(([id]) => id));
+}
+
 function excludedRoutes(raw) {
   if (!raw) return new Set();
   try {
@@ -243,6 +261,7 @@ export function routesEligibleFor(
   const outputTokens = job.max_output_token_estimate || 0;
   const sizeExcluded = sizeExcludedRoutes(job);
   const quotaExcluded = quotaExcludedRoutes(job);
+  const timeoutExcluded = timeoutExcludedRoutes(job);
 
   const seenRouteIds = new Set();
   const eligible = [];
@@ -256,6 +275,7 @@ export function routesEligibleFor(
       // for every other job).
       if (sizeExcluded.has(routeId)) continue;
       if (quotaExcluded.has(routeId)) continue;
+      if (timeoutExcluded.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
       // An explicit rpd: 0 is the catalog's paused-route convention. Filter it before the

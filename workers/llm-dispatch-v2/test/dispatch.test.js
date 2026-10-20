@@ -3914,3 +3914,273 @@ test("TPM recovery does not change backup-model policies or unstarted calls", as
     assert.equal(row.transient_retry_count, 1);
   }
 });
+
+test("response timeouts use bounded route retries and retain quota charges", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "1" });
+  await coordinator.enqueueBatch([makeJob("response-timeout", {
+    policy_json: JSON.stringify({
+      allowed_models: ["gemini/gemini-flash-lite"],
+      allowed_route_ids: ["route-a"], allow_paid: false,
+    }),
+  })]);
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    const result = quotaResult(plan.jobs[0], {
+      outcome: "retryable_error", provider_status_code: null,
+      failure_class: "provider_response_timeout",
+    });
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+    const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='response-timeout'")];
+    assert.equal(row.state, index === 0 ? "queued" : "failed");
+    assert.equal(row.transient_retry_count, 0);
+    assert.equal(row.terminal_reason, index === 0 ? null : "timeout_recovery_exhausted");
+    assert.equal(JSON.parse(row.response_timeout_routes)["route-a"], index + 1);
+    const [ledger] = [...sql.exec("SELECT * FROM routes WHERE route_id='route-a'")];
+    assert.ok(ledger.blocked_until > Date.now(), "a timeout cools the route like a final 5xx");
+    assert.equal(ledger.rpd_count, index + 1, "timeout does not prove quota was unconsumed");
+    assert.equal(ledger.input_rejected_min, 0);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+    assert.equal([...sql.exec("SELECT rpd_count FROM routes WHERE route_id='route-a'")][0]
+      .rpd_count, index + 1, "stale settlement does not change quota");
+    if (index === 0) {
+      assert.equal((await coordinator.claimDispatchWindow(start + 1000, 25)).jobs.length, 0,
+        "the pinned route waits for its cooldown");
+    }
+  }
+});
+
+test("an overflow timeout preserves Google quota exclusions for its bounded retry", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("overflow-timeout")]);
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const google = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    await refuseQuota(coordinator, google);
+  }
+  const plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  assert.equal(plan.jobs[0].route_id, "overflow");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
+    outcome: "retryable_error", provider_status_code: null,
+    failure_class: "provider_response_timeout",
+  })]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='overflow-timeout'")];
+  assert.equal(row.state, "queued");
+  assert.deepEqual(JSON.parse(row.quota_excluded_routes), ["google-a", "google-b"]);
+  assert.equal(row.transient_retry_count, 0);
+  const retry = await coordinator.claimDispatchWindow(start + 360_000, 25);
+  assert.equal(retry.jobs[0].route_id, "overflow", "never retry a quota-excluded Google project");
+});
+
+test("generic and unstarted transport failures do not acquire a new retry policy", async () => {
+  for (const [failureClass, actualStart] of [
+    ["server_error", Date.now()], ["server_error", null], ["provider_response_timeout", null],
+  ]) {
+    const { coordinator, sql } = makeCoordinator();
+    await coordinator.enqueueBatch([makeJob("ambiguous-transport")]);
+    const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      quotaResult(plan.jobs[0], {
+        outcome: "retryable_error", provider_status_code: null,
+        failure_class: failureClass, actual_start_at: actualStart,
+      }),
+    ]);
+    assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='ambiguous-transport'")][0]
+      .state, "failed");
+  }
+});
+
+test("two deadlines move a packet to a fitting sibling when capacity returns", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const start = Date.now();
+  coordinator._getOrCreateRouteLedger("route-b", start, {});
+  sql.exec("UPDATE routes SET blocked_until=? WHERE route_id='route-b'", start + 600_000);
+  await coordinator.enqueueBatch([makeJob("slow-provider")]);
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    assert.equal(plan.jobs[0].route_id, "route-a");
+    const result = quotaResult(plan.jobs[0], {
+      outcome: "retryable_error", provider_status_code: null,
+      failure_class: "provider_response_timeout",
+    });
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='slow-provider'")];
+  assert.equal(row.state, "queued", "a busy fitting sibling must keep recovery alive");
+  assert.deepEqual(JSON.parse(row.response_timeout_routes), { "route-a": 2 });
+  assert.equal((await coordinator.claimDispatchWindow(start + 240_000, 25)).jobs.length, 0);
+  sql.exec("UPDATE routes SET blocked_until=0 WHERE route_id='route-b'");
+  const sibling = await coordinator.claimDispatchWindow(start + 360_000, 25);
+  assert.equal(sibling.jobs[0].route_id, "route-b");
+  await coordinator.completeBatch(sibling.bundle_id, sibling.execution_token, [
+    quotaResult(sibling.jobs[0], {
+      outcome: "success", provider_status_code: 200, failure_class: null,
+      result_key: "results/slow-provider.json",
+    }),
+  ]);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='slow-provider'")][0]
+    .state, "completed");
+});
+
+test("timeouts have a finite per-route bound and never widen token limits", async () => {
+  for (const siblingFits of [true, false]) {
+    const catalog = structuredClone(TEST_CATALOG);
+    if (!siblingFits) catalog.routes_by_id["route-b"].input_context_limit = 100;
+    const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+    await coordinator.enqueueBatch([makeJob("timeout-exhaustion")]);
+    const start = Date.now();
+    const expectedAttempts = siblingFits ? 4 : 2;
+    for (let index = 0; index < expectedAttempts; index += 1) {
+      const plan = await coordinator.claimDispatchWindow(start + index * 240_000, 25);
+      assert.equal(plan.jobs.length, 1);
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+        quotaResult(plan.jobs[0], {
+          outcome: "retryable_error", provider_status_code: null,
+          failure_class: "provider_response_timeout",
+        }),
+      ]);
+    }
+    const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='timeout-exhaustion'")];
+    assert.equal(row.state, "failed");
+    assert.equal(row.attempts, expectedAttempts);
+    assert.equal(row.terminal_reason, "timeout_recovery_exhausted");
+    assert.equal(row.transient_retry_count, 0);
+    assert.ok(Object.values(JSON.parse(row.response_timeout_routes)).every(count => count === 2));
+  }
+});
+
+test("lease expiry retains recorded timeout counts", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("timeout-expiry")]);
+  const start = Date.now();
+  const first = await coordinator.claimDispatchWindow(start, 25);
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    quotaResult(first.jobs[0], { outcome: "retryable_error", provider_status_code: null,
+      failure_class: "provider_response_timeout" }),
+  ]);
+  const next = await coordinator.claimDispatchWindow(start + 120_000, 25);
+  await coordinator.claimDispatchWindow(next.jobs[0].lease_expires_at + 1, 25);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='timeout-expiry'")];
+  assert.deepEqual(JSON.parse(row.response_timeout_routes), { [first.jobs[0].route_id]: 1 });
+});
+
+test("explicit gateway timeouts share the route deadline bound and retain quota", async () => {
+  for (const status of [504, 524]) {
+    const { coordinator, sql } = makeCoordinator();
+    await coordinator.enqueueBatch([makeJob("gateway-timeout", { policy_json: {
+      allowed_models: ["gemini/gemini-flash-lite"], allowed_route_ids: ["route-a"],
+    } })]);
+    const start = Date.now();
+    for (let index = 0; index < 2; index += 1) {
+      const plan = await coordinator.claimDispatchWindow(start + index * 240_000, 25);
+      const result = quotaResult(plan.jobs[0], {
+        outcome: "retryable_error", provider_status_code: status, failure_class: "server_error",
+      });
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+      const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='gateway-timeout'")];
+      assert.equal(row.state, index === 0 ? "queued" : "failed");
+      assert.equal(row.transient_retry_count, 0);
+      assert.equal(JSON.parse(row.response_timeout_routes)[plan.jobs[0].route_id], index + 1);
+      const [ledger] = [...sql.exec(
+        "SELECT * FROM routes WHERE route_id=?", plan.jobs[0].route_id
+      )];
+      assert.equal(ledger.rpd_count, index + 1);
+    }
+  }
+});
+
+test("timeout recovery applies the claim's learned input-size gate", async () => {
+  const catalog = structuredClone(TEST_CATALOG);
+  catalog.routes_by_id["route-b"].provider = "gemini";
+  catalog.routes_by_id["route-b"].model = "google/gemma-4-31b-it";
+  catalog.routes_by_id["route-b"].hard_input_ceiling = 1000;
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  await coordinator.enqueueBatch([makeJob("learned-timeout")]);
+  const start = Date.now();
+  coordinator._getOrCreateRouteLedger("route-b", start, {});
+  sql.exec("UPDATE routes SET blocked_until=? WHERE route_id='route-b'", start + 600_000);
+  sql.exec(`INSERT INTO estimates
+    (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+    VALUES (?, 0, 64, ?, ?)`,
+  "route-b:google/gemma-4-31b-it:tags",
+  JSON.stringify({ r: Array(64).fill(3), o: [100] }), start);
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 240_000, 25);
+    assert.equal(plan.jobs[0].route_id, "route-a");
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      quotaResult(plan.jobs[0], { outcome: "retryable_error", provider_status_code: null,
+        failure_class: "provider_response_timeout" }),
+    ]);
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='learned-timeout'")];
+  assert.equal(row.state, "failed", "an unfit learned ceiling must not retain the job");
+  assert.equal(row.terminal_reason, "timeout_recovery_exhausted");
+});
+
+test("oversize checks ignore timeout-excluded routes", async () => {
+  const catalog = structuredClone(TEST_CATALOG);
+  catalog.routes_by_id["route-b"].provider = "gemini";
+  catalog.routes_by_id["route-b"].model = "google/gemma-4-31b-it";
+  catalog.routes_by_id["route-b"].hard_input_ceiling = 1000;
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  await coordinator.enqueueBatch([makeJob("excluded-oversize")]);
+  sql.exec("UPDATE jobs SET response_timeout_routes=? WHERE id='excluded-oversize'",
+    JSON.stringify({ "route-a": 2 }));
+  const start = Date.now();
+  coordinator._getOrCreateRouteLedger("route-b", start, {});
+  sql.exec(`INSERT INTO estimates
+    (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+    VALUES (?, 0, 64, ?, ?)`,
+  "route-b:google/gemma-4-31b-it:tags",
+  JSON.stringify({ r: Array(64).fill(3), o: [100] }), start);
+  await coordinator.claimDispatchWindow(start, 25);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='excluded-oversize'")];
+  assert.equal(row.state, "failed", "an excluded route cannot mask unfit remaining routes");
+  assert.equal(row.terminal_reason, "timeout_recovery_exhausted");
+});
+
+test("one previous timeout does not hide a later proven input-size failure", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("timeout-then-size", { policy_json: {
+    allowed_models: ["gemini/gemini-flash-lite"], allowed_route_ids: ["route-a"],
+  } })]);
+  const start = Date.now();
+  const first = await coordinator.claimDispatchWindow(start, 25);
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    quotaResult(first.jobs[0], { outcome: "retryable_error", provider_status_code: null,
+      failure_class: "provider_response_timeout" }),
+  ]);
+  const second = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  await coordinator.completeBatch(second.bundle_id, second.execution_token, [
+    quotaResult(second.jobs[0], { provider_status_code: 400, failure_class: "route_input_limit" }),
+  ]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='timeout-then-size'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "input_too_large");
+  assert.deepEqual(JSON.parse(row.response_timeout_routes), { "route-a": 1 });
+});
+
+test("one timeout does not relabel proven oversize as timeout exhaustion", async () => {
+  for (const structural of [true, false]) {
+    const catalog = structuredClone(TEST_CATALOG);
+    for (const id of ["route-a", "route-b"]) {
+      catalog.routes_by_id[id].hard_input_ceiling = structural ? 100 : 1000;
+    }
+    const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+    await coordinator.enqueueBatch([makeJob("one-timeout-oversize")]);
+    const start = Date.now();
+    sql.exec("UPDATE jobs SET response_timeout_routes=? WHERE id='one-timeout-oversize'",
+      JSON.stringify({ "route-a": 1 }));
+    if (!structural) {
+      sql.exec(`INSERT INTO estimates
+        (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+        VALUES (?, 0, 64, ?, ?)`, "pool:gemini/gemini-flash-lite:tags",
+      JSON.stringify({ r: Array(64).fill(3), o: [100] }), start);
+    }
+    await coordinator.claimDispatchWindow(start, 25);
+    const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='one-timeout-oversize'")];
+    assert.equal(row.state, "failed");
+    assert.equal(row.terminal_reason, "unadmissible");
+  }
+});

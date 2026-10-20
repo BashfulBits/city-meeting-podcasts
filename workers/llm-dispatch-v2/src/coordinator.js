@@ -25,10 +25,12 @@ import {
   modelForRouteId,
   modelsForJob,
   quotaExcludedRoutes,
+  responseTimeoutCounts,
   routeFitsContext,
   routeIdsOutsideModelPool,
   routesEligibleFor,
   sizeExcludedRoutes,
+  timeoutExcludedRoutes,
 } from "./routes.js";
 import {
   availableTokenBudget,
@@ -314,6 +316,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "queue_models",
     "size_excluded_routes",
     "quota_excluded_routes",
+    "response_timeout_routes",
     "token_reservation",
     "purpose",
     "schema_retry_count",
@@ -403,6 +406,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ["table:context_probe_weeks", "table:context_probe_attempts",
           "table:context_manual_weeks", "table:context_manual_attempts"].includes(item) ||
         item === "column:jobs.quota_excluded_routes" ||
+        item === "column:jobs.response_timeout_routes" ||
         (item.startsWith("column:routes.") &&
           Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
       if (additiveOnly) {
@@ -414,6 +418,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         if (readiness.missing.includes("column:jobs.quota_excluded_routes")) {
           this._ensureColumn("jobs", "quota_excluded_routes", "TEXT");
+        }
+        if (readiness.missing.includes("column:jobs.response_timeout_routes")) {
+          this._ensureColumn("jobs", "response_timeout_routes", "TEXT");
         }
         for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
           if (readiness.missing.includes(`column:routes.${column}`)) {
@@ -952,6 +959,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         queue_models                TEXT,
         size_excluded_routes        TEXT,
         quota_excluded_routes       TEXT,
+        response_timeout_routes     TEXT,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -1146,6 +1154,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // requeued job moves to a sibling route without standing the route down for other jobs.
     this._ensureColumn("jobs", "size_excluded_routes", "TEXT");
     this._ensureColumn("jobs", "quota_excluded_routes", "TEXT");
+    this._ensureColumn("jobs", "response_timeout_routes", "TEXT");
     this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
     this._runSchemaInitStep("replace job priority trigger", () => {
       const [trigger] = [...sql.exec(
@@ -1438,6 +1447,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["queue_models", "TEXT"],
       ["size_excluded_routes", "TEXT"],
       ["quota_excluded_routes", "TEXT"],
+      ["response_timeout_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_max_tokens_sent", "INTEGER"],
       ["last_output_tokens", "INTEGER"],
@@ -2746,6 +2756,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
                  transient_retry_count = 0, queue_models = ?, size_excluded_routes = NULL,
                  quota_excluded_routes = NULL,
+                 response_timeout_routes = NULL,
                  created_at = ?, updated_at = ?
                WHERE id = ?`,
               job.request_digest,
@@ -4053,6 +4064,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     const sizeExcluded = sizeExcludedRoutes(job);
     const quotaExcluded = quotaExcludedRoutes(job);
+    const timeoutExcluded = timeoutExcludedRoutes(job);
     const models = new Set();
     for (const rawModel of allowedModels) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -4066,6 +4078,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // whose routes did is not an index entry for it.
         if (sizeExcluded.has(routeId)) return false;
         if (quotaExcluded.has(routeId)) return false;
+        if (timeoutExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
         return routeFitsContext(route, inputTokens, outputTokens);
       });
@@ -4278,7 +4291,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         sql.exec(
           `UPDATE jobs SET state='failed', terminal_reason=?, terminal_catalog_digest=?,
            updated_at=? WHERE id=? AND state='queued'`,
-          quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted"
+          timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
+            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted"
             : routes.length ? "unadmissible" : "route_retired", digest, now, job.id
         );
         for (const routeId of routes) {
@@ -5427,11 +5441,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ) {
             // The routes the job fits by context window alone (the size gate is what
             // _exceedsEveryLiveCeiling then applies, with learned values), merged with their ledgers.
-            const structuralRoutes = this._routesForUnroutableJob(job, structuralCatalog)
-              .map(routeId => ({ ...structuralCatalog.routes_by_id[routeId], route_id: routeId }))
-              .filter(route => route.route_id && (jobPolicy(job).allow_paid || route.free) &&
-                routeFitsContext(route, job.input_token_estimate, job.max_output_token_estimate,
-                  { skipSizeGate: true }))
+            const structuralRoutes = routesEligibleFor(
+              job, structuralCatalog, structuralCatalog,
+              (route, candidate) => ({ ...sizingFor(route, candidate), skipSizeGate: true })
+            )
               .map(getMergedRoute);
             if (this._exceedsEveryLiveCeiling(job, structuralRoutes, calibrationCache)) {
               // A job indexed under several models can be read once per model; fail it once.
@@ -5487,8 +5500,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const { job, eligibleRoutes } of oversizeJobs) {
         // Read as 'queued' inside this same transaction, so the transition is safe unconditionally.
         sql.exec(
-          `UPDATE jobs SET state='failed', terminal_reason='unadmissible',
-           terminal_catalog_digest=?, updated_at=? WHERE id=?`, structuralDigest, now, job.id
+          `UPDATE jobs SET state='failed', terminal_reason=?,
+           terminal_catalog_digest=?, updated_at=? WHERE id=?`,
+          timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
+            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted" : "unadmissible",
+          structuralDigest, now, job.id
         );
         this._unindexQueuedJob(job);
         for (const route of eligibleRoutes) {
@@ -6198,8 +6214,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // admitted onto a model that would destroy them in turn.
         const isUpstreamCapacityFailure =
           result.outcome === "retryable_error" && result.provider_status_code === 400;
-        const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
+        const isDeadlineAbort = result.failure_class === "provider_response_timeout" &&
+          result.provider_status_code == null;
+        const isGatewayTimeout = result.failure_class === "server_error" &&
+          [504, 524].includes(result.provider_status_code);
+        const isResponseTimeout = result.outcome === "retryable_error" &&
+          (isDeadlineAbort || isGatewayTimeout) && Number.isFinite(result.actual_start_at) &&
+          typeof job.lease_route_id === "string";
+        const isTransientRouteFailure =
+          isFinal5xx || isUpstreamCapacityFailure || isResponseTimeout;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
+        const timeoutCounts = responseTimeoutCounts(job);
+        const nextRouteTimeoutCount = isResponseTimeout
+          ? Math.min(2, (timeoutCounts.get(job.lease_route_id) || 0) + 1) : 0;
+        if (isResponseTimeout) timeoutCounts.set(job.lease_route_id, nextRouteTimeoutCount);
+        const nextResponseTimeoutRoutes = isResponseTimeout
+          ? JSON.stringify(Object.fromEntries(timeoutCounts))
+          : (job.response_timeout_routes ?? null);
         const isPromptCap = result.failure_class === "free_prompt_cap";
         // A provider "input too long" answer is about THIS job's size against THIS route's limit.
         // It excludes the route for the job (below) and requeues it onto a sibling route of the
@@ -6212,7 +6243,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
         const blockedUntil = isTransientRouteFailure
-          ? this._5xxBlockedUntil(nextTransientRetryCount, now)
+          ? this._5xxBlockedUntil(
+              isResponseTimeout ? nextRouteTimeoutCount : nextTransientRetryCount, now
+            )
           : null;
         const sizeExcluded = isSizeRejection
           ? new Set([...sizeExcludedRoutes(job), job.lease_route_id].filter(Boolean))
@@ -6247,12 +6280,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const quotaRoutesLeft = isQuotaRejection ? routesEligibleFor(
           { ...job, quota_excluded_routes: nextQuotaExcludedRoutes }, catalog
         ).length : 0;
+        // Providers have different execution speeds. Two deadlines exhaust only this physical
+        // route for this packet; try fitting siblings without consuming their timeout allowance.
+        // Full-catalog checks keep temporarily busy/paused siblings queued until they can start.
+        const timeoutRoutesLeft = isResponseTimeout ? routesEligibleFor(
+          { ...job, response_timeout_routes: nextResponseTimeoutRoutes }, catalog, catalog,
+          this._sizingResolver(now, route => ({
+            ...route,
+            ...[...sql.exec("SELECT * FROM routes WHERE route_id=?", route.route_id)][0],
+          }), new Map())
+        ).length : 0;
         // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
         // producer (terminal_reason input_too_large), which re-packs it smaller.
         const sizeRoutesLeft = isSizeRejection
           ? routesEligibleFor(
               { ...job, size_excluded_routes: nextSizeExcludedRoutes,
-                quota_excluded_routes: nextQuotaExcludedRoutes },
+                quota_excluded_routes: nextQuotaExcludedRoutes,
+                response_timeout_routes: nextResponseTimeoutRoutes },
               this._dispatchLimits(),
               this._dispatchLimits(),
               this._sizingResolver(
@@ -6303,6 +6347,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRequeue = isSizeRejection
           ? shouldRetryRouteInputLimit
           : isQuotaRejection ? quotaRoutesLeft > 0
+          : isResponseTimeout ? timeoutRoutesLeft > 0
           : shouldRetryOutputBudget ||
             shouldRetryRouteUnavailable ||
             shouldRetry5xx ||
@@ -6351,9 +6396,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             newState = "queued";
             break;
           case "retryable_error":
-            // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
-            // durable, minute-scale retry; ambiguous transport failures and B2-write failures
-            // must surface as failed instead of silently becoming an unclaimable state.
+            // Final 5xx responses and confirmed response timeouts share a bounded, minute-scale
+            // retry allowance, independent of any unobserved Gateway retry sequence.
+            // Ambiguous transport and B2-write failures still surface as failed.
             newState = shouldRequeue ? "queued" : "failed";
             break;
           case "terminal_error":
@@ -6388,19 +6433,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
             ...job,
             size_excluded_routes: nextSizeExcludedRoutes,
             quota_excluded_routes: nextQuotaExcludedRoutes,
+            response_timeout_routes: nextResponseTimeoutRoutes,
           });
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
                              queue_models=?, size_excluded_routes=?, quota_excluded_routes=?,
+                             response_timeout_routes=?,
                              attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
             // Job-local exclusions have a finite route bound; preserve the transient budget.
-            isSizeRejection || isQuotaRejection
+            isSizeRejection || isQuotaRejection || isResponseTimeout
               ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
             nextSizeExcludedRoutes,
             nextQuotaExcludedRoutes,
+            nextResponseTimeoutRoutes,
             uncountedAttempt,
             now,
             result.job_id
@@ -6418,15 +6466,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
         } else {
           sql.exec(
             `UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=?,
-                             terminal_reason = COALESCE(?, terminal_reason), quota_excluded_routes=?
+                             terminal_reason = COALESCE(?, terminal_reason),
+                             quota_excluded_routes=?,
+                             response_timeout_routes=?
              WHERE id=?`,
             newState,
             uncountedAttempt,
             now,
-            newState === "failed" && (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
+            newState === "failed" && (isResponseTimeout ||
+              isSizeRejection && [...timeoutCounts.values()].some(count => count >= 2))
+              ? "timeout_recovery_exhausted"
+              : newState === "failed" &&
+                (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
               ? "quota_recovery_exhausted"
               : isSizeRejection && newState === "failed" ? "input_too_large" : null,
             nextQuotaExcludedRoutes,
+            nextResponseTimeoutRoutes,
             result.job_id
           );
         }
@@ -6458,7 +6513,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // Deliberately excludes own_rpm / own_rpd / own_tpm (those rejections are proof we DID
           // reach our limit, so the counters are correct and must stand) and unknown_429 (we
           // cannot show it was not ours, so we stay conservative and keep the charge).
-          const nonConsuming = isPromptCap || NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || "");
+          const nonConsuming = !isResponseTimeout &&
+            (isPromptCap || NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || ""));
           const settledUsage = nonConsuming ? 0 : (observedTotal ?? reservation);
           // A success folds release, settle-to-actual and the backoff reset into ONE routes
           // UPDATE per route per batch (flushSuccess; each statement on the same row is a
@@ -6679,13 +6735,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.lease_route_id
             );
           } else if (isTransientRouteFailure && !isUpstreamClass) {
-            // The Gateway has already retried this request. Temporarily remove only this route
-            // from the capacity ranking so other models/accounts can drain while it recovers.
+            // A final HTTP failure or our confirmed response deadline: temporarily remove only
+            // this route from capacity ranking so other accounts can drain while it recovers.
             sql.exec(
               `UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?),
                                  last_provider_status = ? WHERE route_id = ?`,
               blockedUntil,
-              result.provider_status_code,
+              result.provider_status_code ?? null,
               job.lease_route_id
             );
           } else if (isUpstreamClass) {

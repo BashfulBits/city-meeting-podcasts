@@ -487,6 +487,8 @@ become size-learning evidence merely because this recovery path was exhausted.
 
 ## Bounded Google TPM recovery slice: L3 contract (2026-10-20 Central)
 
+**Implemented in PR #2511; deployed at 2026-10-20 11:08:19 UTC. This contract is frozen.**
+
 The maintainer authorized implementing the confirmed recovery fix now, while passive acceptance
 measurement continues. This slice does not require the 200-packet tuning gate: it repairs job
 recovery, not producer sizing or learned acceptance targets.
@@ -523,3 +525,58 @@ The bound is the finite configured Google route set plus the existing allowances
 routes, rather than a new tunable retry count. A rollback ignores the additive field and restores
 the previous retry policy; it requires no data rewrite. This does not guarantee overflow capacity
 or a 95% acceptance rate; measure eventual outcomes and queue age after deployment.
+
+## Confirmed response-timeout recovery slice: L3 contract (2026-10-20)
+
+The maintainer requested continuing the NVIDIA overflow investigation after #2511. Live evidence
+now shows a packet reaching NVIDIA after both Google TPM refusals, then receiving a 502 and a
+720-second transport timeout. Another timed out on NVIDIA after one Google refusal. The Worker
+labels transport exceptions `retryable_error`/`server_error`, but the coordinator's 5xx retry and
+cooldown predicate requires an HTTP status. A known response timeout therefore fails immediately,
+even if its transient allowance is unused. Fix this mismatch independently of request tuning.
+The maintainer further directed trying fitting sibling routes after more than one timeout,
+because providers have different execution speeds that the catalog does not model.
+
+- In `workers/llm-dispatch-v2/src/index.js`, classify an exception as
+  `provider_response_timeout` only when the request started and the executor's own abort signal
+  fired. Retain `server_error` for pre-request failures and other transport exceptions. Include
+  the distinction in the existing bounded Google diagnostic event; never log exception text.
+- In `src/coordinator.js`, handle an actual-started `retryable_error` with that timeout class and
+  no HTTP status, or an explicit HTTP 504/524 classified `server_error`, using a finite
+  per-packet, per-physical-route allowance: two settled response
+  timeouts exclude that route for this packet. Use the existing transient route cooldown ladder,
+  with this route's timeout count, without spending the unrelated 5xx retry allowance.
+  Persist counts in nullable JSON-object `jobs.response_timeout_routes`; include fresh/additive
+  schema, warm readiness, and supersede reset, folding changes into the existing job write.
+  Existing rows start with no timeout history; lease expiry preserves recorded counts.
+- In `src/routes.js`, skip routes with two recorded timeouts. Requeue while a permitted configured
+  route still fits input/output limits, checking the full catalog independently of temporary
+  pause/cooldown/concurrency/daily quota. Busy fitting siblings keep work queued. Preserve existing
+  model/pin/paid/context restrictions and Google quota exclusions. Never weaken token limits.
+  Use the claim's calibrated size admission gate, including its existing drain tolerance; exclude
+  exhausted routes from the claim's structural oversize decision as well as normal selection.
+  Exhausting fitting routes returns `timeout_recovery_exhausted`, not a size verdict.
+  A timeout does not establish that the upstream consumed no quota: keep its claim charges;
+  do not add it to `NON_CONSUMING_FAILURE_CLASSES` or teach size calibration from it.
+- Add executor regressions in `test/api_shapes.test.js` for own-timer abort, unclassified transport
+  failure, and pre-request failure. Extend `test/dispatch.test.js` for bounded timeout recovery,
+  cooldown, unchanged ambiguous failure behavior, quota charges, stale settlement, and retention
+  of Google exclusions through an overflow timeout. Include sibling recovery after two deadlines,
+  waiting for capacity and finite exhaustion. Use `test/coordinator.test.js` for additive migration
+  and supersede reset, and `test/routes.test.js` for count parsing and policy/size restrictions.
+  Cover HTTP 504/524 under the same route bound and conservative quota charges.
+  No extra per-attempt SQL writes or row-budget changes; live sizing reads are bounded by the
+  configured model-route set.
+- Add sanitized supporting evidence in `review/evidence/2026-10-20-gemma-overflow-timeouts.md`;
+  update this plan, review/11, ROADMAP, ARCHITECTURE, and a changelog fragment. Run all Worker
+  tests, repository Ruff/format, pre-push checks, and CLI CodeRabbit before pushing a PR.
+- No output-cap, thinking, streaming, gateway retry, response deadline, quota, concurrency,
+  producer, dependency, or pipeline-version changes. No inference probes or live replay.
+
+The nullable-status transport cases must remain distinct: a confirmed local response timeout is
+recoverable up to twice per configured fitting route; a generic catch is insufficient evidence to
+change its recovery behavior. Gateway settings/logs still return 403. NVIDIA documents
+`chat_template_kwargs.enable_thinking` and output tokens up to 32,768, but defaults and actual
+generation progress were not established for these failed requests. Do not claim that thinking,
+hidden retries, or the output cap caused the timeouts. Any request-shaping comparison needs its
+own bounded canary and answer-quality validation before promotion.

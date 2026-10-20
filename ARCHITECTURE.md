@@ -721,6 +721,18 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   payloads; superseding a payload clears its exclusions. Already-failed jobs are not revived.
   Ambiguous quota refusals do not update size calibration or learned input ceilings.
 
+  **Provider response deadlines** use a distinct `provider_response_timeout` failure only after
+  the provider request starts and the executor's own abort timer fires. Explicit HTTP 504/524
+  server errors use the same timeout accounting. Two recorded deadlines
+  on a physical route exclude it for that packet via `jobs.response_timeout_routes`, leaving
+  fitting permitted siblings eligible even when their capacity temporarily requires queueing.
+  Timeout counts use the existing route cooldown ladder and preserve the 5xx allowance. They retain
+  claim
+  quota charges because client cancellation does not establish that upstream work consumed none.
+  Other transport exceptions and pre-request failures retain their existing terminal behavior.
+  Google quota exclusions survive the retry. Counts persist across lease expiry and reset when
+  a new payload supersedes the job; no output, reasoning, or response-deadline setting changes.
+
 As of the maintainer's 2026-10-09 reopening decision, OpenRouter's Gemma 4 31B/26B free routes
 and NVIDIA's Gemma 4 31B route each have a 20-RPD allowance. They are eligible for ordinary dispatch
 and scarce-quota health observation; NVIDIA calls share the provider's concurrency.
