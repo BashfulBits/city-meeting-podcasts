@@ -215,7 +215,7 @@ test("a reply cut off at its output limit reports the cap the request carried", 
 });
 
 
-test("Google Gemma executor logs admission facts once per actual call without response text", async () => {
+test("Google Gemma logs each actual call without response text", async () => {
   const info = console.info;
   const fetch = globalThis.fetch;
   const events = [];
@@ -230,8 +230,9 @@ test("Google Gemma executor logs admission facts once per actual call without re
       { role: "user", content: "PRIVATE_PROMPT" },
     ], max_tokens: 2048 },
   };
+  const env = { BEATAPI_API_KEY: "private-key" };
   const call = () => attemptProviderCall({
-    env: { BEATAPI_API_KEY: "private-key" }, b2: { putJson: async () => {} }, route,
+    env, b2: { putJson: async () => {} }, route,
     dispatchLimits: { providers: { gemini: BEATAPI } }, job,
     attemptId: "google-attempt", idempotencyKey: null, maxResponseMs: 60000,
   });
@@ -266,6 +267,11 @@ test("Google Gemma executor logs admission facts once per actual call without re
     assert.equal(events.length, 3);
     assert.equal(events[2].provider_status_code, null);
     assert.equal(events[2].failure_class, "server_error");
+    delete env.BEATAPI_API_KEY;
+    const unstarted = (await call()).result;
+    assert.equal(unstarted.outcome, "retryable_error");
+    assert.equal(unstarted.actual_start_at, null);
+    assert.equal(events.length, 3, "missing credentials must not inflate provider attempts");
     job.lease_expires_at = 0;
     assert.equal((await call()).result.outcome, "deferred_late");
     assert.equal(events.length, 3, "unstarted work must not enter the attempt denominator");

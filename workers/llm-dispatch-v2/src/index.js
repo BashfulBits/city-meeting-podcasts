@@ -948,10 +948,11 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
     return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
-  const actualStartAt = Date.now();
+  let actualStartAt = null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), maxResponseMs);
   let response;
+  let requestStarted = false;
   try {
     response = await callAiGateway({
       env,
@@ -960,16 +961,24 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       dispatchLimits,
       idempotencyKey,
       signal: controller.signal,
+      onRequestStart: () => {
+        requestStarted = true;
+        actualStartAt = Date.now();
+      },
       shaping: {
         inputTokens: job.input_token_estimate || 0,
         reasoningLevel: laneReasoningLevel(job.purpose, route),
       },
     });
   } catch (err) {
-    logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt: Date.now() });
+    if (requestStarted) {
+      logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt: Date.now() });
+    }
     return {
       result: {
-        ...baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error"),
+        ...baseAttemptResult(
+          job, attemptId, requestStarted ? actualStartAt : null, Date.now(), "retryable_error"
+        ),
         failure_class: "server_error",
       },
     };

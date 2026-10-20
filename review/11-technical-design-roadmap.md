@@ -16,7 +16,7 @@ Maintainer-directed follow-up: [review/56](56-gemma-aistudio-acceptance-plan.md)
 It records post-deploy refusals and the goal of roughly 95% AI Studio packet coverage, with
 larger same-model routes serving size overflow. Diagnostics, complete-request packing, route
 acceptance feedback, and bounded recovery have explicit rollout gates; tuning is not deployed.
-The first diagnostic slice has an L3 contract in review/56 and is under implementation; it logs
+The first diagnostic slice has an L3 contract in review/56 and is implemented locally; it logs
 quota facts and correlated attempts without changing packing or quota behavior.
 
 This is the canonical **forward design** reference for the project — the single map of every initiative

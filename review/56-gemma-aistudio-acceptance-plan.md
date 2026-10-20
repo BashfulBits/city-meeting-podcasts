@@ -256,7 +256,8 @@ payload identity change must document its own bounded backfill story.
 Before implementing, replace broad executor/report references with exact current functions and
 list every changed file/test; identify whether bounded acceptance state requires a schema change.
 Run affected Python and Worker suites, whole-repo Ruff lint/format checks, and existing row-read/
-row-write benchmarks for coordinator SQL/schema changes. Verify review/44's daily safe-stop invariants
+row-write benchmarks for coordinator SQL/schema changes. Verify review/44's daily safe-stop
+invariants
 with retries and fallback included. Run CLI CodeRabbit on the final diff and resolve valid findings.
 Update review/11, architecture if changed, roadmap status, and a changelog fragment with each slice.
 
@@ -300,6 +301,9 @@ per-request limit was measured.
 
 ### First diagnostic slice: L3 implementation contract
 
+Implemented locally, awaiting PR review and deployment. The complete acceptance/controller plan
+remains L2; these logs provide evidence and do not establish that the 95% goal has been met.
+
 This slice is authorized by the maintainer's instruction to continue. It prepares evidence for
 tuning; it does not change packing, retries, request shapes, quotas, dependencies, or schemas.
 
@@ -314,7 +318,9 @@ tuning; it does not change packing, retries, request shapes, quotas, dependencie
   admission/reservation estimates in the existing claim response using values already available.
   `authorizeRetry` adds identity to `own_tpm_observed`; no SQL/RPC or write-budget change.
 - `src/gateway.js:callAiGateway`: return the already resolved gateway retry configuration for
-  diagnostics. `dispatchOneJob` advances its local ordinal only when another attempt is authorized.
+  diagnostics and expose a local callback immediately before fetch, after request preparation.
+  Pre-request failures remain unstarted and do not enter provider-attempt logs or consume an
+  attempt. `dispatchOneJob` advances its local ordinal only when another attempt is authorized.
 - Tests: `test/classify.test.js` covers the exact supplied message, explicit requested amounts,
   structured per-day/per-minute details, malformed/array bodies, bounded output, and redaction.
   `test/api_shapes.test.js` covers actual executor success, quota refusal, transport failure, and
@@ -324,3 +330,14 @@ tuning; it does not change packing, retries, request shapes, quotas, dependencie
 
 Paths in the contract above are relative to `workers/llm-dispatch-v2/`. No other runtime files
 are in scope. Missing identity from an old coordinator remains null; do not invent a first attempt.
+
+Google's [QuotaFailure schema][quota-failure] independently confirms that `quotaValue` is the
+**enforced quota**, not the number of tokens requested. The [countTokens API][count-tokens] is
+another possible diagnostic: verify the exact Gemma model advertises support and that the native
+request's token count matches this OpenAI-compatible route's shaping before relying on it. A
+capped comparison against known successful payloads could establish packet size without generating
+another completion. It is not yet verified for these routes, and adding a preflight to every call
+would add latency and requests; prefer sampled checks or a validated local tokenizer if sufficient.
+
+[quota-failure]: https://docs.cloud.google.com/tasks/docs/reference/rpc/google.rpc#quotafailure
+[count-tokens]: https://ai.google.dev/api/tokens

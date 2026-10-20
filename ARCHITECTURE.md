@@ -956,7 +956,8 @@ as well as 400/413; a quota message without a requested count remains rate exhau
 honors the larger of the local token window and Google's retry delay plus one second, including
 when the job has exhausted its retry budget. An in-flight Google success cannot erase that cooldown.
 The primary and secondary Google keys belong to distinct projects (maintainer-confirmed 2026-10-19).
-Google Gemma calls emit `gemma_provider_attempt` before batch settlement: job/lease/attempt identity,
+Google Gemma calls emit `gemma_provider_attempt` before batch settlement: job/lease/attempt
+identity,
 known attempt ordinal, start/end, raw/admitted/reserved input estimates, sent output cap, reported
 usage, HTTP status and response-shape validation, retry hints, and bounded allowlisted quota facts.
 Transport failures have no HTTP status; unstarted work emits no attempt. Configured gateway retry

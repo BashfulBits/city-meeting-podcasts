@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyProviderFailure, FAILURE_SIGNATURES, googleQuotaDiagnostics } from "../src/classify.js";
+import {
+  classifyProviderFailure, FAILURE_SIGNATURES, googleQuotaDiagnostics,
+} from "../src/classify.js";
 import { upstreamEmptyCompletion } from "../src/gateway.js";
 
 test("classifyProviderFailure handles HTTP 402 as payment_required", () => {
@@ -864,7 +866,7 @@ test("Google's limit-only TPM message does not assert a requested packet size", 
   assert.deepEqual(facts.violations, []);
 });
 
-test("quota diagnostics preserve structured dimensions and label message amounts separately", () => {
+test("quota diagnostics separate structured dimensions and message amounts", () => {
   const body = { error: {
     message: "Limit: 16,000, Requested: 17,100, Used: 2,000.", details: [
     { "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{
@@ -890,7 +892,8 @@ test("quota diagnostics preserve structured dimensions and label message amounts
 test("quota diagnostic output is bounded and excludes unrestricted provider fields", () => {
   const item = {
     quotaMetric: "PRIVATE_SECRET", quotaId: "PRIVATE_SECRET", quotaValue: "Infinity",
-    quotaDimensions: { model: "PRIVATE_SECRET", location: "PRIVATE_SECRET", key: "PRIVATE_SECRET" } };
+    quotaDimensions: { model: "PRIVATE_SECRET", location: "PRIVATE_SECRET", key: "PRIVATE_SECRET" },
+  };
   const body = { error: { message: "PRIVATE_SECRET", details: Array(20).fill({
     violations: Array(20).fill(item), authorization: "PRIVATE_SECRET",
   }) } };
