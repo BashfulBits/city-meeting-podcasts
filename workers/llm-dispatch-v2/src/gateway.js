@@ -212,7 +212,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
  * level failures (abort, DNS, TLS) throw, which the caller maps to a retryable/terminal outcome
  * itself.
  */
-export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal, shaping }) {
+export async function callAiGateway({
+  env, route, payload, dispatchLimits, idempotencyKey, signal, shaping, onRequestStart,
+}) {
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
   const upstreamPayload = apiShapeFor(route).buildRequest(payload, route, shaping);
 
@@ -231,13 +233,15 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     headers["idempotency-key"] = idempotencyKey;
   }
 
-  const response = await fetch(creds.url, {
+  const requestInit = {
     method: "POST",
     headers,
     body: JSON.stringify(upstreamPayload),
     redirect: "manual",
     signal,
-  });
+  };
+  onRequestStart?.();
+  const response = await fetch(creds.url, requestInit);
 
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;
@@ -257,6 +261,8 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     // The output cap this request actually carried, so a reply cut off at it can be told apart
     // from one cut off lower (see the output_budget_exhausted result).
     sentMaxTokens: upstreamPayload?.max_tokens ?? upstreamPayload?.max_completion_tokens ?? null,
+    gatewayMaxAttempts: creds.usesGateway ? creds.aiGatewayMaxAttempts : null,
+    usesGateway: creds.usesGateway,
     body,
     headers: response.headers,
     parseError,

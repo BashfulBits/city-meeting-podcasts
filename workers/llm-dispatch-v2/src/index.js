@@ -20,7 +20,7 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
-import { classifyProviderFailure } from "./classify.js";
+import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
@@ -893,6 +893,54 @@ export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
     : { ...job, lease_expires_at: claimNow + leaseDurationMs }));
 }
 
+/** One log per executor call, before batch settlement. No payload or free-form errors. */
+function logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, response = null }) {
+  if (route.provider !== "gemini" || !/^gemma-4-/.test(String(route.upstream_model || ""))) return;
+  const shape = apiShapeFor(route);
+  const classification = response && !response.ok ? classifyProviderFailure({
+    status: response.status, body: response.body, headers: response.headers, route,
+    inputTokens: job.input_token_estimate,
+  }) : null;
+  const usage = response ? shape.observedTokens(response.body) : null;
+  const reportedCached = response?.body?.usage?.prompt_tokens_details?.cached_tokens;
+  const cachedInput = Number.isFinite(reportedCached) && reportedCached >= 0 &&
+    Number.isFinite(usage?.input) && reportedCached <= usage.input ? reportedCached : null;
+  const problem = response?.ok
+    ? shape.emptyCompletion(response.status, response.body) ? "empty_completion"
+      : shape.lengthTruncated(response.body) ? "output_budget_exhausted"
+        : shape.replyProblem(job.payload, response.body)
+    : null;
+  console.info(JSON.stringify({
+    event: "gemma_provider_attempt",
+    job_id: job.id,
+    lease_token: job.lease_token,
+    attempt_id: attemptId,
+    attempt_ordinal: job.attempt_ordinal ?? null,
+    route_id: job.route_id ?? route.route_id ?? null,
+    model: route.upstream_model,
+    purpose: job.purpose ?? null,
+    prompt_family: job.prompt_family ?? null,
+    actual_start_at: actualStartAt,
+    actual_end_at: actualEndAt,
+    input_token_estimate: job.input_token_estimate ?? null,
+    admitted_input_estimate: job.admitted_input_estimate ?? null,
+    reserved_input_estimate: job.reserved_input_estimate ?? null,
+    provider_status_code: response?.status ?? null,
+    gateway_correlation_id: response?.correlationId ?? null,
+    uses_gateway: response?.usesGateway ?? null,
+    configured_gateway_max_attempts: response?.gatewayMaxAttempts ?? null,
+    requested_max_tokens: response?.sentMaxTokens ?? null,
+    observed_input_tokens: usage?.input ?? null,
+    observed_output_tokens: usage?.output ?? null,
+    observed_cached_input_tokens: cachedInput,
+    observed_uncached_input_tokens: cachedInput == null ? null : usage.input - cachedInput,
+    failure_class: classification?.failure_class ?? (response ? null : "server_error"),
+    response_problem: problem,
+    retry_after_seconds: classification?.retry_after_seconds ?? null,
+    quota: response && !response.ok ? googleQuotaDiagnostics(response.body) : null,
+  }));
+}
+
 /**
  * One provider call for one job, already paced by the caller. Returns exactly one of:
  * `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller decides whether/how to
@@ -905,10 +953,11 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
     return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
-  const actualStartAt = Date.now();
+  let actualStartAt = null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), maxResponseMs);
   let response;
+  let requestStarted = false;
   try {
     response = await callAiGateway({
       env,
@@ -917,15 +966,24 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       dispatchLimits,
       idempotencyKey,
       signal: controller.signal,
+      onRequestStart: () => {
+        requestStarted = true;
+        actualStartAt = Date.now();
+      },
       shaping: {
         inputTokens: job.input_token_estimate || 0,
         reasoningLevel: laneReasoningLevel(job.purpose, route),
       },
     });
   } catch (err) {
+    if (requestStarted) {
+      logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt: Date.now() });
+    }
     return {
       result: {
-        ...baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error"),
+        ...baseAttemptResult(
+          job, attemptId, requestStarted ? actualStartAt : null, Date.now(), "retryable_error"
+        ),
         failure_class: "server_error",
       },
     };
@@ -933,6 +991,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
     clearTimeout(timeout);
   }
   const actualEndAt = Date.now();
+  logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, response });
 
   if (response.status === 429) {
     const cls = classifyProviderFailure({
@@ -1184,6 +1243,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
         rule_id: outcome.ruleId,
       };
     }
+    if (jobWithPayload.attempt_ordinal != null) jobWithPayload.attempt_ordinal += 1;
     laneState.retryBarrier = auth.retry_not_before;
     await sleepUntil(auth.retry_not_before);
     // Loop: re-attempt with a fresh attempt_id, still bounded by the DO's own retry count.

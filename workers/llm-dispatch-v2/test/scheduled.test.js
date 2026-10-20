@@ -232,9 +232,16 @@ function fakeFetchWithOneThrottle(store) {
 test("scheduled() retries once after a 429 and completes successfully", async () => {
   const store = new Map();
   const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
   globalThis.fetch = fakeFetchWithOneThrottle(store);
   try {
     const env = makeEnv({ MAX_429_BACKOFF_SECONDS: "1" });
+    const catalog = structuredClone(CATALOG);
+    catalog.routes_by_id["route-a"].upstream_model = "gemma-4-31b-it";
+    env.DISPATCH_LIMITS_OVERRIDE = catalog;
+    env.LLM_SCHEDULER.getByName().env.DISPATCH_LIMITS_OVERRIDE = catalog;
     await enqueueOneJob(env, "job-429", store);
 
     const waitUntilPromises = [];
@@ -248,8 +255,16 @@ test("scheduled() retries once after a 429 and completes successfully", async ()
     assert.equal(resultBody.choices[0].message.content, "recovered after retry");
     // The claim counted the first call and the granted retry the second.
     assert.equal(pollRes.statuses[0].attempts, 2);
+    const attempts = events.filter(e => e.event === "gemma_provider_attempt");
+    assert.deepEqual(attempts.map(e => e.attempt_ordinal), [1, 2]);
+    assert.deepEqual(attempts.map(e => e.provider_status_code), [429, 200]);
+    assert.equal(attempts[0].prompt_family, "tags");
+    assert.equal(attempts[0].admitted_input_estimate, 500);
+    assert.equal(attempts[0].reserved_input_estimate, 500);
+    assert.notEqual(attempts[0].attempt_id, attempts[1].attempt_id);
   } finally {
     globalThis.fetch = originalFetch;
+    console.info = originalInfo;
   }
 });
 
