@@ -98,6 +98,11 @@ def pack(
             for item, size in zip(part, part_sizes, strict=True):
                 if _fits([item], [size], backend):
                     place([item], [size])
+                elif getattr(backend, "allow_single_item_overflow", False):
+                    # The packing target is Google's preference, not a same-model context cap.
+                    # Preserve indivisible evidence for normal Worker admission to larger routes.
+                    flush()
+                    packets.append(Packet(purpose, role, judge_model, (item,)))
                 else:
                     too_large += 1
     flush()

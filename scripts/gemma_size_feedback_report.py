@@ -23,7 +23,10 @@ def correlate(events: Sequence[dict], responses: Sequence[dict]) -> dict[str, An
         row = event.get("source", event)
         if not isinstance(row, Mapping) or row.get("event") != "gemma_provider_attempt":
             continue
-        if row.get("provider_status_code") != 429 or row.get("failure_class") != "own_tpm":
+        if row.get("provider_status_code") not in (400, 429) or row.get("failure_class") not in (
+            "own_tpm",
+            "route_input_limit",
+        ):
             continue
         identity = row.get("request_digest")
         if not isinstance(identity, str) or not identity:

@@ -48,17 +48,22 @@ responses, manifests, and bounded poll outputs remain outside Git in `/private/t
 
 Chat judge packing now estimates its complete serialized messages and contract using enqueue's
 raw chars/4 units. Boundary tests verify exact agreement and deterministic splits. It preserves
-the existing indivisible-item blocked outcome; evidence and items are never truncated.
+whole items: indivisible Gemma items above the packing target are isolated and submitted for
+normal same-model larger-route admission. Non-Gemma blocking behavior is unchanged. Evidence is
+never truncated and a stricter Google packing target does not silently discard a large item.
 
 Future correlated learning occurs inside lease-validated settlement, using the current job
-request digest and its generation-local Google quota exclusions. Supersede clears exclusions;
+request digest and its generation-local Google quota/size exclusions. Supersede clears exclusions;
 schema-correction jobs start a new generation. Only single-model Gemma jobs qualify. NVIDIA
 success must provide full input and output usage; total/cached-only usage cannot substitute.
 
 A separate bounded 128-packet state per model/prompt family tracks resolved Google successes and
 NVIDIA recoveries. When a newly observed combined-budget overflow comprises at least 5% of the
-relevant resolved window, lower the producer bound using the p95 combined/input-estimate ratio
-with 5% headroom and at least a 5% reduction below the offender/previous bound. Never grow it
+relevant resolved window after 20 relevant resolutions and 20 fresh resolutions since the last
+cut, lower the producer bound using the p95 combined/input-estimate ratio with 5% headroom.
+A cut is at least 5% where the 4,000 raw-unit safety floor permits, and at most 10% of the
+previous bound (or the offending estimate for the first cut). The floor is a guard, not an
+empirically fitted starting target. Never grow it
 automatically. Old backlog above the bound cannot repeatedly shrink it. Keep this state separate
 from pooled tokenizer calibration and physical admission/refusal classification. Unresolved quota
 failures are not classified as size failures or silently counted as successes.
@@ -82,3 +87,12 @@ update per qualifying completion; first insertion of its TEXT-primary-key row al
 unique-key index. Single-model positive/paired outcomes alone qualify. The conservative existing
 23-row per-lease reservation remains above this success-path cost, with bundle/enqueue overhead
 reserved separately. No new schema, job index, or queue scan is introduced.
+
+## CLI review dispositions
+
+The first tracked-file review was clean. The full committed-diff review identified a valid
+changelog format issue (fixed) and a valid risk of output-heavy cold-start collapse. The latter
+was fixed and expanded: 20 relevant samples, 20 fresh samples between cuts, a maximum 10% cut,
+a 4,000 raw-unit safety floor, and whole-item Gemma overflow preservation. Actual output is not
+clipped to a reservation, preserving the maintainer's explicit combined-usage rule. No automatic
+growth/expiry rebound is intentional. Regression tests cover all safeguards and singleton overflow.

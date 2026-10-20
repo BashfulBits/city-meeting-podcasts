@@ -4185,8 +4185,18 @@ test("one timeout does not relabel proven oversize as timeout exhaustion", async
   }
 });
 
+function seedPackingResolutions(sql) {
+  const samples = Array.from({ length: 19 }, (_, i) => ({
+    id: `resolved-${i}`, input: 9000, output: 500, estimate: 8000, overflow: false,
+  }));
+  sql.exec(`INSERT INTO estimates
+    (key, margin_tokens, sample_count, recent_observed_summary, updated_at) VALUES (?,0,19,?,?)`,
+    `gemma-size:${GEMMA_MODEL}:tags`, JSON.stringify({ target: null, samples, fresh: 19 }), Date.now());
+}
+
 test("Google TPM then NVIDIA combined usage over 16k lowers only the producer bound", async () => {
   const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  seedPackingResolutions(sql);
   await coordinator.enqueueBatch([{
     ...quotaRecoveryJob("size-correlation"), input_token_estimate: 10000,
   }]);
@@ -4207,7 +4217,7 @@ test("Google TPM then NVIDIA combined usage over 16k lowers only the producer bo
   const after = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
   assert.ok(after.pack_ceiling_input_estimate < before.pack_ceiling_input_estimate);
   assert.equal(after.size_feedback.correlated_size_overflows, 1);
-  assert.equal(after.size_feedback.resolved_packets, 1);
+  assert.equal(after.size_feedback.resolved_packets, 20);
   assert.ok(after.routes.find(r => r.route_id === "overflow").input_estimate_limit >
     after.size_feedback.input_estimate_target, "do not constrain the larger route");
   assert.equal([...sql.exec("SELECT input_rejected_min FROM routes WHERE route_id='google-a'")][0]
@@ -4220,8 +4230,11 @@ test("Google TPM then NVIDIA combined usage over 16k lowers only the producer bo
 });
 
 test("NVIDIA input plus output above 16k is correlated budget overflow", async () => {
-  const { coordinator } = makeQuotaRecoveryCoordinator();
-  await coordinator.enqueueBatch([quotaRecoveryJob("small-input")]);
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  seedPackingResolutions(sql);
+  await coordinator.enqueueBatch([{
+    ...quotaRecoveryJob("small-input"), input_token_estimate: 10000,
+  }]);
   const start = Date.now();
   await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
   await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start + 120_000, 25));
@@ -4232,9 +4245,9 @@ test("NVIDIA input plus output above 16k is correlated budget overflow", async (
     observed_output_tokens: 4000,
   })]);
   const { size_feedback } = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
-  assert.equal(size_feedback.resolved_packets, 1);
+  assert.equal(size_feedback.resolved_packets, 20);
   assert.equal(size_feedback.correlated_size_overflows, 1);
-  assert.ok(size_feedback.input_estimate_target < 500);
+  assert.ok(size_feedback.input_estimate_target < 10000);
 });
 
 test("NVIDIA combined usage without a prior Google refusal cannot lower packing", async () => {

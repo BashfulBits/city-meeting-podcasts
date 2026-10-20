@@ -598,7 +598,7 @@ No synthetic calls, quota changes, queue rewrites, or deployment are part of thi
 - Add `workers/llm-dispatch-v2/src/gemma-packing.js`: bounded 128-packet resolved-outcome window,
   scoped by canonical Gemma model and prompt family, versioned separately from tokenizer ratios.
   Google success contributes observed full input. NVIDIA success contributes only when this same
-  job generation previously excluded a Google route for TPM and the single-model policy matches.
+  job generation previously excluded a Google route for TPM or explicit input size and the single-model policy matches.
   Job generation identity includes request digest; supersede/schema correction cannot inherit
   another payload's negative evidence. Cached/uncached counts are never substituted for full prompt tokens. Preserve input and output
   separately; the maintainer explicitly selected their sum as an empirical sizing signal, not
@@ -608,9 +608,12 @@ No synthetic calls, quota changes, queue rewrites, or deployment are part of thi
   execution-token/lease guards provide idempotency. Keep Google physical routes' rejection
   classes, global tokenizer calibration, admission, and recovery semantics unchanged.
 - A resolved NVIDIA input plus output above 16,000 after Google TPM refusal is a correlated size overflow.
-  At a resolved-window overflow fraction of at least 5%, lower the complete-request target using
+  Require at least 20 relevant resolved packets and 20 fresh relevant resolutions since the
+  last cut. At a resolved-window overflow fraction of at least 5%, lower the complete-request
+  target, capped at a 10% cut per step and a 4,000 raw-unit safety floor, using
   the observed p95 combined-usage/input-estimate ratio with 5% headroom, strictly below the offending estimate
-  and the prior target. Do not repeatedly shrink for older packets already larger than the
+  and the prior target where the safety floor permits. The floor is a safety guard, not a
+  historically fitted starting target. Do not repeatedly shrink for older packets already larger than the
   current target. No automatic growth or expiry-driven rebound; manual future growth needs its
   own evidence. Apply the minimum of this bound and the normal packing ceiling to Google routes
   only. Below 5%, retain the bound; it never increases a ceiling. Expose sample counts, correlated

@@ -2230,3 +2230,22 @@ def test_chat_packet_size_matches_enqueue_estimate_and_boundary():
     )
     assert [i.qid for p in result.packets for i in p.items] == [i.qid for i in items]
     assert len(result.packets) == 2
+
+
+def test_gemma_indivisible_over_target_item_is_preserved_for_same_model_overflow():
+    from citypods.judging.runner import _sibling_backend
+
+    backend = _sibling_backend("google/gemma-4-31b-it", {"google/gemma-4-31b-it": 4000})
+    item = _item("large-intact", 5000)
+    result = pack(
+        [[item]],
+        backend,
+        purpose="judge:sibling",
+        role="sibling",
+        judge_model="google/gemma-4-31b-it",
+    )
+    assert result.payload_too_large == 0
+    assert len(result.packets) == 1
+    assert result.packets[0].items == (item,)
+    assert backend.packet_input_estimate((item,)) > backend.max_total_tokens
+    assert not _sibling_backend("other-model").allow_single_item_overflow

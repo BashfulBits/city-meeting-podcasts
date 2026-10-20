@@ -6854,7 +6854,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const models = new Set((Array.isArray(policy.allowed_models) ? policy.allowed_models : [])
       .map(m => canonicalModelName(m, catalog)));
     if (models.size !== 1 || !models.has(model) || policy.backup_models?.length) return;
-    const googleRoutes = [...quotaExcludedRoutes(job)].filter(id =>
+    const googleRoutes = [...new Set([
+      ...quotaExcludedRoutes(job), ...sizeExcludedRoutes(job),
+    ])].filter(id =>
       catalog.routes_by_id?.[id]?.provider === "gemini" && this._modelForRoute(id) === model);
     const recovered = route?.provider === "nvidia" && googleRoutes.length > 0;
     if (route?.provider !== "gemini" && !recovered) return;

@@ -290,11 +290,19 @@ ANSWER_FIELD = {"validate": "verdict", "gate": "verdict", "grade": "level", "cho
 class ChatJudgeBackend:
     role = "sibling"
 
-    def __init__(self, *, max_total_tokens: int, max_items: int, output_reservation: int = 2048):
+    def __init__(
+        self,
+        *,
+        max_total_tokens: int,
+        max_items: int,
+        output_reservation: int = 2048,
+        allow_single_item_overflow: bool = False,
+    ):
         self.max_total_tokens = max_total_tokens
         self.max_question_tokens = max_total_tokens
         self.max_items = max_items
         self.output_reservation = output_reservation
+        self.allow_single_item_overflow = allow_single_item_overflow
 
     SYSTEM = (
         "You are an independent judge. Answer every item using only the evidence given with it. "

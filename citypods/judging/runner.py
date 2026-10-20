@@ -228,7 +228,11 @@ def _sibling_backend(
         # Never above the safe share of what the Worker will admit, however small; an item too big
         # for it is reported as payload_too_large by the packer instead of being sent to fail.
         total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
-    return ChatJudgeBackend(max_total_tokens=total, max_items=items)
+    return ChatJudgeBackend(
+        max_total_tokens=total,
+        max_items=items,
+        allow_single_item_overflow=model.startswith("google/gemma-4-"),
+    )
 
 
 def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:

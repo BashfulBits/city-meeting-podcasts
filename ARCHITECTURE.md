@@ -995,8 +995,11 @@ raw units as enqueue. Google Gemma packing preflight also returns a separate mod
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet
 resolved window. Per maintainer policy, a Google TPM refusal followed by NVIDIA input plus output
 above 16k is correlated budget-overflow evidence, not a reclassification of Google's input quota.
-When its resolved-window fraction is at least 5%, a p95 combined-usage ratio with 5% headroom
-lowers the target. There is no automatic growth; older packets already above the bound cannot
+After 20 relevant resolved packets and 20 fresh resolutions since a cut, a fraction of at least
+5% permits a lower target using the p95 combined-usage ratio with 5% headroom. Cuts are capped
+at 10%, with a 4,000 raw-unit safety floor. Indivisible Gemma items above the packing target are
+isolated for normal larger-route admission, preserving evidence. There is no automatic growth;
+older packets already above the bound cannot
 repeatedly shrink it. Targets affect new packing only, not current admission or stored payloads.
 Feedback uses one point-read/upsert in `estimates` per qualifying completion, no new schema or
 queue scan. Generation digests accompany Google diagnostics; correlated logs retain separate full
