@@ -2297,3 +2297,9 @@ uses relative paths and retains items/answers ownership. Retirement control repo
 operation/status/category diagnostics and retries only idempotent pause/resume/status transport
 failures once. No admission/reservation retries, pipeline-version changes, automatic backfill, or
 roadmap sequencing changes are introduced.
+
+Judge-contract prerequisite under review (2026-10-20): the maintainer authorized direct
+route evaluations through the production parser and typed per-kind reply fields before
+PR7 calibration. Parsed sibling decisions remain usable independently of quote quality;
+adjudicator evidence remains required. See review/53 and evals/judge for the scoped change.
+No task graduation, production recovery, or calibration thresholds are implied.

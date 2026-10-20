@@ -534,7 +534,11 @@ def answer_job(job, *, anchor_p=0.9, sibling=True, bad_quote=False):
     answers = []
     for entry in items:
         kind = entry["kind"]
-        answer = {"id": entry["id"], "reason": _quoted(entry["item"], bad=bad_quote)}
+        answer = {
+            "id": entry["id"],
+            "kind": kind,
+            "reason": _quoted(entry["item"], bad=bad_quote),
+        }
         if kind in ("validate", "gate"):
             answer["verdict"] = sibling if kind == "validate" else False
         elif kind == "grade":
@@ -1467,23 +1471,21 @@ def test_an_answer_whose_quote_is_not_in_the_evidence_is_unsupported_and_ignored
     rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "adjudicator"]
     assert stats.counts["quote_invalid"] == 2
     assert {r["quote_valid"] for r in rows} == {False}  # kept, never modified or deleted
-    # An unsupported sibling answer no longer counts as a vote: the subject stops being contested
-    # on it, so the evidence of disagreement is only what is supported.
+    # Adjudicator evidence remains mandatory, independently of sibling quote quality.
     from citypods.judging import adjudication
 
     [subject] = [s for s in _subjects(ep) if s.payload.get("source_kind") == "rule"]
     assert adjudication._by_tier(subject, "supported", "adjudicator", None) == {}
 
 
-def test_only_supported_votes_decide_whether_a_subject_is_contested():
+def test_sibling_decision_counts_when_its_quote_fails():
     ep = _episode(llm=[])
     dispatch = FakeDispatch()
     runner.run([ep], _adj_ctx(dispatch))
     dispatch.answer(anchor_p=0.9, verdicts={"sibling": False}, bad_quotes=("sibling",))
     runner.run([ep], _adj_ctx(dispatch))
-    # The dissenting sibling's quote was not in the evidence: its vote is unsupported, so the
-    # subject is not contested and, with no calibration sample, nothing goes to the adjudicator.
-    assert not _adjudicator_packets(dispatch)
+    # Quote quality does not erase a parsed dissenting sibling decision.
+    assert _adjudicator_packets(dispatch)
 
 
 def test_agreeing_judges_are_adjudicated_only_in_the_calibration_sample():
@@ -1867,7 +1869,7 @@ def test_the_report_scores_probes_per_judge_and_keeps_them_out_of_live_statistic
     anchor = next(v for k, v in report["probes"].items() if "jev" in k)
     assert anchor == {"asked": 2, "scored": 2, "correct": 1, "unsupported": 0, "accuracy": 0.5}
     assert all(not k.startswith("probe") for k in report["agreement"])
-    # Unsupported (bad-quote) sibling answers are counted, not scored.
+    # Bad-quote sibling answers retain their parsed decisions and are scored.
     dispatch2 = FakeDispatch()
     ep2 = _episode(uid="ep-2", llm=[])
     runner.run([ep2], _ctx(dispatch2, probes=probes, probes_per_pass=2))
@@ -1879,7 +1881,9 @@ def test_the_report_scores_probes_per_judge_and_keeps_them_out_of_live_statistic
         for k, v in summarize([record2], probes={p.id: p.verdict for p in probes})["probes"].items()
         if "gemma" in k
     )
-    assert sibling["unsupported"] == 2 and sibling["scored"] == 0 and sibling["accuracy"] is None
+    assert (
+        sibling["unsupported"] == 2 and sibling["scored"] == 2 and sibling["accuracy"] is not None
+    )
 
 
 def test_the_stage_loads_probes_only_when_enabled(monkeypatch):

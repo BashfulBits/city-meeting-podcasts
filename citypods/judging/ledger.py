@@ -27,6 +27,15 @@ KEY_FIELDS = (
 )
 
 
+def usable_vote(row: Mapping[str, Any]) -> bool:
+    """Parsed sibling decisions count independently of quote quality.
+
+    Adjudicators retain their evidence requirement. Missing legacy quote checks retain
+    their existing treatment; this predicate does not validate answer fields.
+    """
+    return row.get("judge_role") != "adjudicator" or row.get("quote_valid") is not False
+
+
 def key_of(row: Mapping[str, Any]) -> tuple[Any, ...]:
     return tuple(row.get(field) for field in KEY_FIELDS)
 

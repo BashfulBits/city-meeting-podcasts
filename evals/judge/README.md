@@ -152,3 +152,11 @@ retry or production-state write is hidden in this harness.
 The October 20 candidate iterations and route limitations are recorded with the dated results;
 parsing success and quote-support rates are deliberately separate. Newly planned chat packets use
 request revision 3, leaving JEV, already-stored judgments and pending pointers unchanged.
+
+Sibling quote policy (maintainer clarification, 2026-10-20): a parsed, structurally valid
+sibling decision remains usable when its quote is missing or invalid. Quote checks remain
+quality signals in reports and evaluation artifacts; they do not veto sibling decisions,
+probe accuracy, stability comparisons, or disagreement selection. Adjudicator decisions
+retain their evidence requirement. This applies to existing stored sibling rows on read;
+it requires no packet re-submission and does not invalidate JEV records. Required typed
+answer fields and valid option/grade bounds remain mandatory.

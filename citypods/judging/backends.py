@@ -376,7 +376,7 @@ class ChatJudgeBackend:
         "characters): start reason with at least five consecutive words copied exactly from "
         "the evidence, then briefly explain if needed. Do not surround the copied passage or "
         "paraphrases with quotation marks. Include the passage even when nothing is flagged; "
-        "a reason without a real copied passage is discarded."
+        "Quote quality is checked separately from the required decision."
     )
 
     def _messages(self, packet_items: Sequence[Item]) -> list[dict[str, str]]:

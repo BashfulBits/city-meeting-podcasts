@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from citypods.judging import ledger
 from citypods.judging.audit import final_reading
 
 CANDIDATE_LISTS = {
@@ -86,6 +87,7 @@ def summarize(
                     cell[0] += 1
                     if row.get("quote_valid") is False:
                         cell[3] += 1
+                    if not ledger.usable_vote(row):
                         continue
                     answer = _binary(row)
                     if truth is not None and answer is not None:
@@ -107,10 +109,10 @@ def summarize(
             routine = {
                 (r.get("judge_model"), r.get("question_id"), r.get("context_tier")): _binary(r)
                 for r in rows
-                if r.get("sample") == "routine" and r.get("quote_valid") is not False
+                if r.get("sample") == "routine" and ledger.usable_vote(r)
             }
             for row in rows:
-                if row.get("sample") != "stability" or row.get("quote_valid") is False:
+                if row.get("sample") != "stability" or not ledger.usable_vote(row):
                     continue
                 base = str(row.get("question_id") or "").removesuffix("_s")
                 first = routine.get((row.get("judge_model"), base, row.get("context_tier")))

@@ -23,7 +23,7 @@ def test_frozen_packet_has_all_kinds_and_both_choice_orders():
     assert [sid for _, sid in choose[0].options] == [sid for _, sid in choose[1].options][::-1]
 
 
-def test_evaluator_rejects_missing_choice_and_bad_quote_even_when_json_parses():
+def test_evaluator_scores_decisions_separately_from_quote_quality():
     manifest = json.loads((ROOT / "evals/judge/manifest.json").read_bytes())
     route, role = eval_contract.routes()[0]
     backend, packets = eval_contract.build_packets(manifest, route, role)
@@ -49,7 +49,11 @@ def test_evaluator_rejects_missing_choice_and_bad_quote_even_when_json_parses():
 
     result = eval_contract.inspect_reply(backend, packet, output())
     assert result["schema_valid"] and result["parsed_items"] == len(packet.items)
-    assert not result["pass"] and result["quote_valid"] == 0
+    assert result["pass"] and result["quote_valid"] == 0
+    assert not result["quotes_all_valid"]
+    adjudicator, _ = eval_contract.build_packets(manifest, route, "adjudicator")
+    adjudicated = eval_contract.inspect_reply(adjudicator, packet, output())
+    assert adjudicated["contract_pass"] and not adjudicated["pass"]
     next(a for a in answers if a["kind"] == "choose").pop("choice")
     result = eval_contract.inspect_reply(backend, packet, output())
     assert not result["schema_valid"] and not result["pass"]
@@ -73,9 +77,11 @@ def test_non_object_provider_error_is_saved_without_crashing(tmp_path, monkeypat
     manifest = json.loads((ROOT / "evals/judge/manifest.json").read_bytes())
     result = eval_contract.evaluate_route(route, role, manifest, tmp_path, True, 1)
     assert result["results"][0]["status"] == "transport_error"
-    request = (tmp_path / route.route_id / "00-request.json").read_text()
+    request = (tmp_path / f"{route.route_id}-{role}" / "00-request.json").read_text()
     assert "not-a-real-key" not in request
-    assert json.loads((tmp_path / route.route_id / "00-response.json").read_text())[0]["error"]
+    assert json.loads((tmp_path / f"{route.route_id}-{role}" / "00-response.json").read_text())[0][
+        "error"
+    ]
 
 
 def test_real_gemma_reply_with_a_lone_closing_fence_reaches_the_production_parser():
@@ -94,3 +100,34 @@ def test_judge_fence_normalization_still_rejects_trailing_prose():
     for content in ('{"answers": []} trailing prose```', '{"answers": [```'):
         with pytest.raises(ValueError):
             eval_contract.parse_chat_response({"choices": [{"message": {"content": content}}]})
+
+
+def test_route_selection_preserves_both_roles_without_alias_duplicates(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        eval_contract,
+        "load_site_config",
+        lambda _: {
+            "llm_lanes": {
+                "judge:sibling": {"models": ["base", "alias"]},
+                "judge:adjudicator": {"models": ["base"]},
+            }
+        },
+    )
+    route = SimpleNamespace(route_id="route", model="base", also_serves=["alias"], free=True)
+    monkeypatch.setattr(eval_contract, "ROUTE_REGISTRY", {"route": route})
+    assert eval_contract.routes() == [(route, "adjudicator"), (route, "sibling")]
+
+
+def test_missing_keychain_binary_is_an_inconclusive_route(tmp_path, monkeypatch):
+    route, role = eval_contract.routes()[0]
+    monkeypatch.delenv(route.api_key_env, raising=False)
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("security")
+
+    monkeypatch.setattr(eval_contract.subprocess, "run", missing)
+    manifest = json.loads((ROOT / "evals/judge/manifest.json").read_bytes())
+    result = eval_contract.evaluate_route(route, role, manifest, tmp_path, True, 1)
+    assert result["results"][0]["status"] == "missing_key"

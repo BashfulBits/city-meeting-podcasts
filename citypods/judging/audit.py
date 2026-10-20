@@ -136,10 +136,10 @@ def _binary(value: Any) -> bool | None:
 
 
 def final_reading(rows: Sequence[Mapping[str, Any]], role: str) -> tuple[Any, str | None]:
-    """A judge role's value at its highest tier (unsupported rows ignored), and its model."""
+    """A judge role's value at its highest tier (adjudicator evidence required), and its model."""
     best: tuple[int, Any, str | None] | None = None
     for row in rows:
-        if row.get("judge_role") != role or row.get("quote_valid") is False:
+        if row.get("judge_role") != role or not ledger.usable_vote(row):
             continue
         tier = row.get("context_tier")
         rank = TIERS.index(tier) if tier in TIERS else -1

@@ -2055,3 +2055,11 @@ outer bound. Judge-audit scoped sync paths are relative to the state root; packa
 ingestion owns answers. Dispatch pause/resume/status transport failures retry once, while admission
 and reservation remain single-attempt. Retirement failures expose only safe operation/status/error
 categories, preserving exclusive-control verification before any removal.
+
+Sibling quote policy (maintainer clarification, 2026-10-20): a parsed, structurally valid
+sibling decision remains usable when its quote is missing or invalid. Quote checks remain
+quality signals in reports and evaluation artifacts; they do not veto sibling decisions,
+probe accuracy, stability comparisons, or disagreement selection. Adjudicator decisions
+retain their evidence requirement. This applies to existing stored sibling rows on read;
+it requires no packet re-submission and does not invalidate JEV records. Required typed
+answer fields and valid option/grade bounds remain mandatory.

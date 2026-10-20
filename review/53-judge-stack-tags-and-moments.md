@@ -836,3 +836,11 @@ authority, measured by the audit and the reliability tripwires.
 ## Open questions
 
 None blocking. The capacity numbers are projections and are re-derived from PR4 data.
+
+Sibling quote policy (maintainer clarification, 2026-10-20): a parsed, structurally valid
+sibling decision remains usable when its quote is missing or invalid. Quote checks remain
+quality signals in reports and evaluation artifacts; they do not veto sibling decisions,
+probe accuracy, stability comparisons, or disagreement selection. Adjudicator decisions
+retain their evidence requirement. This applies to existing stored sibling rows on read;
+it requires no packet re-submission and does not invalidate JEV records. Required typed
+answer fields and valid option/grade bounds remain mandatory.

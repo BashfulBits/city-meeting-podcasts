@@ -98,14 +98,16 @@ def routes():
     for role in ("sibling", "adjudicator"):
         lane = site["llm_lanes"][f"judge:{role}"]
         for model in [*lane["models"], *lane.get("eligible_models", [])]:
-            roles[model] = role
-    return [
-        (route, roles[model])
-        for route in ROUTE_REGISTRY.values()
-        if route.free
-        for model in roles
-        if model == route.model or model in route.also_serves
-    ]
+            roles.setdefault(model, set()).add(role)
+    selected = {}
+    for route in ROUTE_REGISTRY.values():
+        if not route.free:
+            continue
+        for model, model_roles in roles.items():
+            if model == route.model or model in route.also_serves:
+                for role in sorted(model_roles):
+                    selected[(route.route_id, role)] = (route, role)
+    return list(selected.values())
 
 
 def build_packets(manifest, route, role):
@@ -161,11 +163,9 @@ def inspect_reply(backend, packet, raw):
         and result.get("ids_exact", False)
         and len(parsed) == len(packet.items)
     )
-    result["pass"] = (
-        result["schema_valid"]
-        and result.get("ids_exact", False)
-        and len(parsed) == len(packet.items)
-        and result["quote_valid"] == len(packet.items)
+    result["quotes_all_valid"] = result["quote_valid"] == len(packet.items)
+    result["pass"] = result["contract_pass"] and (
+        backend.role != "adjudicator" or result["quotes_all_valid"]
     )
     return result
 
@@ -176,25 +176,28 @@ def evaluate_route(route, role, manifest, out, live, packet_limit=None, output_c
     backend, packets = build_packets(manifest, route, role)
     if packet_limit:
         packets = packets[:packet_limit]
-    directory = out / route.route_id
+    directory = out / f"{route.route_id}-{role}"
     directory.mkdir(parents=True, exist_ok=True)
     key = os.environ.get(route.api_key_env, "").strip()
     if live and not key:
-        secret = subprocess.run(
-            [
-                "security",
-                "find-generic-password",
-                "-a",
-                os.environ.get("USER", ""),
-                "-s",
-                f"citypods/{route.api_key_env}",
-                "-w",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if secret.returncode == 0:
-            key = secret.stdout.strip()
+        try:
+            secret = subprocess.run(
+                [
+                    "security",
+                    "find-generic-password",
+                    "-a",
+                    os.environ.get("USER", ""),
+                    "-s",
+                    f"citypods/{route.api_key_env}",
+                    "-w",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if secret.returncode == 0:
+                key = secret.stdout.strip()
+        except FileNotFoundError:
+            pass  # Non-macOS hosts can evaluate routes with environment credentials.
     summary = {
         "route": route.route_id,
         "model": route.model,
