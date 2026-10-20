@@ -410,10 +410,16 @@ job is reported as missing rather than blindly resubmitting its stored payload.
 reconciliation-index prefix contained zero unsubmitted/deferred capsules. The Google 31B pending
 index contained 237 records, all `judge-answers-v2`, and none contained prepared messages.
 Polling those IDs found 229 queued, three leased, four completed, one failed, and zero missing.
-Every one of the **232 active payloads** was then read: all had the 743-character current system
-prompt, every item named `answer_with`, and the schema required `reason`. No old-format active
-payload was found. The audit was bounded at 300 records and did not hit that cap. This is a
-snapshot of indexed work, not a proof that an unindexed orphan cannot exist.
+The **232 ID-derived original payload objects** were then read: all had the 743-character current
+system prompt, every item named `answer_with`, and the schema required `reason`. No old-format
+object was found. The audit was bounded at 300 records and did not hit that cap.
+
+**Pointer limitation:** `pollBatch` hides `payload_key` for queued/leased jobs. The audit therefore
+read `payloads/<job-id>/request.json`; a superseded row can retain its job ID while pointing at a
+different payload key. These reads prove the format of those original objects, not every current
+DO payload pointer. All 237 registry contracts are independently confirmed as v2, but the snapshot
+cannot exclude an unindexed orphan or a superseded reference. Verify actual claim payload keys
+in executor evidence before declaring every live request format conclusively verified.
 
 The latest judge runs at 20:11 and 23:55 UTC used commits `b54a2cf0` and `e48b36e4`; both contain
 chat request revision 2 and the current prompt. Both runs were completed when checked. The
@@ -423,6 +429,7 @@ preparation time is unknown. The 13:55 producer's checkout already had a 592-cha
 which further cautions against equating provider request time with preparation time.
 
 Conclusion: a Cloudflare-only cleanup can theoretically be repopulated by the mechanisms above,
-but the current indexed 31B cohort is entirely in the new format. Old-format GitHub-prepared work
-is not supported as the explanation for this cohort's ongoing 429s. Prompt-format freshness and
+but all inspected objects and current registry contracts use the new format. Old-format
+GitHub-prepared work is not supported as the explanation for this cohort's ongoing 429s; the
+current-pointer limitation above prevents a categorical exclusion. Prompt-format freshness and
 conservative packet sizing are separate checks. No work was cancelled, deleted, or re-enqueued.
