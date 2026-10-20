@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyProviderFailure, FAILURE_SIGNATURES } from "../src/classify.js";
+import { classifyProviderFailure, FAILURE_SIGNATURES, googleQuotaDiagnostics } from "../src/classify.js";
 import { upstreamEmptyCompletion } from "../src/gateway.js";
 
 test("classifyProviderFailure handles HTTP 402 as payment_required", () => {
@@ -840,5 +840,67 @@ test("stray commas do not hide explicit quota numbers on size or rate statuses",
         "limit 8,000, requested, requested 9,500" } },
     });
     assert.equal(result.failure_class, "route_input_limit");
+  }
+});
+
+
+const GOOGLE_INPUT_QUOTA_MESSAGE = "Quota exceeded for metric: " +
+  "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+  "limit: 16000, model: gemma-4-31b Please retry in 32.154473808s.";
+
+test("Google's limit-only TPM message does not assert a requested packet size", () => {
+  const body = [{ error: { message: GOOGLE_INPUT_QUOTA_MESSAGE } }];
+  const cls = classifyProviderFailure({
+    status: 429, body, headers: {}, route: { provider: "gemini" },
+  });
+  assert.equal(cls.failure_class, "own_tpm");
+  assert.equal(cls.retry_after_seconds, 33);
+  const facts = googleQuotaDiagnostics(body);
+  assert.equal(facts.message_limit, 16000);
+  assert.equal(facts.message_requested, null);
+  assert.equal(facts.message_used, null);
+  assert.equal(facts.message_metric,
+    "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count");
+  assert.deepEqual(facts.violations, []);
+});
+
+test("quota diagnostics preserve structured dimensions and label message amounts separately", () => {
+  const body = { error: {
+    message: "Limit: 16,000, Requested: 17,100, Used: 2,000.", details: [
+    { "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{
+      quotaMetric: "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count",
+      quotaId: "GenerateContentInputTokensPerModelPerMinute-FreeTier",
+      quotaValue: "16000",
+      quotaDimensions: { model: "gemma-4-31b", location: "global", project: "PRIVATE_PROJECT" },
+    }] },
+  ] } };
+  const facts = googleQuotaDiagnostics(body);
+  assert.deepEqual([facts.message_limit, facts.message_requested, facts.message_used],
+    [16000, 17100, 2000]);
+  assert.equal(facts.violations[0].quota_value, 16000);
+  assert.equal(facts.violations[0].quota_id,
+    "GenerateContentInputTokensPerModelPerMinute-FreeTier");
+  assert.equal(facts.violations[0].model, "gemma-4-31b");
+  assert.equal(JSON.stringify(facts).includes("PRIVATE_PROJECT"), false);
+  body.error.details[0].violations[0].quotaId = "GenerateContentInputTokensPerModelPerDay-FreeTier";
+  assert.equal(googleQuotaDiagnostics(body).violations[0].quota_id,
+    "GenerateContentInputTokensPerModelPerDay-FreeTier");
+});
+
+test("quota diagnostic output is bounded and excludes unrestricted provider fields", () => {
+  const item = {
+    quotaMetric: "PRIVATE_SECRET", quotaId: "PRIVATE_SECRET", quotaValue: "Infinity",
+    quotaDimensions: { model: "PRIVATE_SECRET", location: "PRIVATE_SECRET", key: "PRIVATE_SECRET" } };
+  const body = { error: { message: "PRIVATE_SECRET", details: Array(20).fill({
+    violations: Array(20).fill(item), authorization: "PRIVATE_SECRET",
+  }) } };
+  const facts = googleQuotaDiagnostics(body);
+  assert.equal(facts.violations.length, 4);
+  assert.equal(JSON.stringify(facts).includes("PRIVATE_SECRET"), false);
+  assert.deepEqual(facts.violations[0], {
+    metric: null, quota_id: null, quota_value: null, model: null, location: null,
+  });
+  for (const malformed of [null, [], "PRIVATE_SECRET", { error: { details: [null, {}] } }]) {
+    assert.doesNotThrow(() => googleQuotaDiagnostics(malformed));
   }
 });

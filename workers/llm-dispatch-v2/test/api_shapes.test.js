@@ -213,3 +213,65 @@ test("a reply cut off at its output limit reports the cap the request carried", 
     globalThis.fetch = realFetch;
   }
 });
+
+
+test("Google Gemma executor logs admission facts once per actual call without response text", async () => {
+  const info = console.info;
+  const fetch = globalThis.fetch;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
+  const route = { ...CHAT, provider: "gemini", upstream_model: "gemma-4-31b-it" };
+  const job = {
+    id: "google-job", route_id: "google-route", lease_token: "google-lease",
+    lease_expires_at: Date.now() + 600_000, input_token_estimate: 12000,
+    admitted_input_estimate: 12500, reserved_input_estimate: 15500,
+    attempt_ordinal: 1, prompt_family: "judge:sibling", purpose: "judge:sibling",
+    payload: { model: "google/gemma-4-31b-it", messages: [
+      { role: "user", content: "PRIVATE_PROMPT" },
+    ], max_tokens: 2048 },
+  };
+  const call = () => attemptProviderCall({
+    env: { BEATAPI_API_KEY: "private-key" }, b2: { putJson: async () => {} }, route,
+    dispatchLimits: { providers: { gemini: BEATAPI } }, job,
+    attemptId: "google-attempt", idempotencyKey: null, maxResponseMs: 60000,
+  });
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify([{ error: {
+      message: "Quota exceeded for metric: " +
+        "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+        "limit: 16000, model: gemma-4-31b Please retry in 32.154473808s. PRIVATE_ERROR",
+    } }]), { status: 429, headers: { "cf-aig-log-id": "gateway-id" } });
+    const failure = await call();
+    assert.equal(failure.failureClass, "own_tpm");
+    assert.equal(events.length, 1);
+    assert.equal(events[0].event, "gemma_provider_attempt");
+    assert.equal(events[0].attempt_ordinal, 1);
+    assert.equal(events[0].quota.message_requested, null);
+    assert.equal(events[0].quota.message_limit, 16000);
+    assert.equal(events[0].gateway_correlation_id, "gateway-id");
+    assert.equal(events[0].requested_max_tokens, 2048);
+    assert.ok(events[0].actual_end_at >= events[0].actual_start_at);
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "PRIVATE_OUTPUT" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 12653, completion_tokens: 1659 },
+    }), { status: 200 });
+    job.attempt_ordinal = 2;
+    assert.equal((await call()).result.outcome, "success");
+    assert.equal(events.length, 2);
+    assert.equal(events[1].observed_input_tokens, 12653);
+    assert.equal(events[1].response_problem, null);
+    assert.equal(events[1].attempt_ordinal, 2);
+    globalThis.fetch = async () => { throw new Error("PRIVATE_TRANSPORT"); };
+    assert.equal((await call()).result.outcome, "retryable_error");
+    assert.equal(events.length, 3);
+    assert.equal(events[2].provider_status_code, null);
+    assert.equal(events[2].failure_class, "server_error");
+    job.lease_expires_at = 0;
+    assert.equal((await call()).result.outcome, "deferred_late");
+    assert.equal(events.length, 3, "unstarted work must not enter the attempt denominator");
+    assert.equal(JSON.stringify(events).includes("PRIVATE_"), false);
+  } finally {
+    console.info = info;
+    globalThis.fetch = fetch;
+  }
+});

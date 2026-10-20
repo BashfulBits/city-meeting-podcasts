@@ -13,6 +13,51 @@ function requestExceedsTokenQuota(msg) {
   return Boolean(limit && requested && number(limit) > 0 && number(requested) > number(limit));
 }
 
+/** Bounded Google quota facts for logs. Message amounts are not per-request measurements. */
+export function googleQuotaDiagnostics(rawBody) {
+  const body = normalizeProviderBody(rawBody);
+  const error = body?.error && typeof body.error === "object" ? body.error : body;
+  const message = typeof error?.message === "string" ? error.message.slice(0, 8192) : "";
+  const amount = (label) => {
+    const match = new RegExp(`\\b${label}\\s*[:=]?\\s*(\\d[\\d,]*(?:\\.\\d+)?)`, "i").exec(message);
+    const value = match ? Number(match[1].replaceAll(",", "")) : NaN;
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  const metric = (value) => typeof value === "string" &&
+    /^generativelanguage\.googleapis\.com\/[a-z0-9_]{1,128}$/.test(value) ? value : null;
+  const quotaId = (value) => typeof value === "string" &&
+    /^GenerateContent[A-Za-z0-9-]{1,160}$/.test(value) ? value : null;
+  const violations = [];
+  for (const detail of (Array.isArray(error?.details) ? error.details.slice(0, 8) : [])) {
+    for (const item of (Array.isArray(detail?.violations) ? detail.violations.slice(0, 4) : [])) {
+      const value = Number(item?.quotaValue);
+      const dimensions = item?.quotaDimensions;
+      violations.push({
+        metric: metric(item?.quotaMetric),
+        quota_id: quotaId(item?.quotaId),
+        quota_value: item?.quotaValue != null && Number.isFinite(value) && value >= 0
+          ? value : null,
+        model: typeof dimensions?.model === "string" &&
+          /^(?:gemma|gemini)-[a-zA-Z0-9._-]{1,100}$/.test(dimensions.model)
+          ? dimensions.model : null,
+        location: typeof dimensions?.location === "string" &&
+          /^(?:global|[a-z]+-[a-z]+[0-9]+)$/.test(dimensions.location)
+          ? dimensions.location : null,
+      });
+      if (violations.length === 4) break;
+    }
+    if (violations.length === 4) break;
+  }
+  const messageMetric = message.match(/generativelanguage\.googleapis\.com\/[a-z0-9_]{1,128}/);
+  return {
+    message_metric: metric(messageMetric?.[0]),
+    message_limit: amount("limit"),
+    message_requested: amount("requested"),
+    message_used: amount("used"),
+    violations,
+  };
+}
+
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
  * Each rule is data: { rule_id, provider, failure_class, match }.

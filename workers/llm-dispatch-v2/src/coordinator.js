@@ -5669,6 +5669,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // For per-lane request shaping at send time (reasoning level, output budget): the
             // lane comes from the job's own policy and costs no extra row reads or writes.
             purpose: this._purposeForJob(job),
+            prompt_family: job.prompt_family,
+            attempt_ordinal: Number(job.attempts || 0) + 1,
+            admitted_input_estimate: scaledInputTokens(job.input_token_estimate, admitRatio),
+            reserved_input_estimate: scaledInputTokens(job.input_token_estimate, inputRatio),
             input_token_estimate: Number(job.input_token_estimate || 0),
             reserved_output_tokens: outputReserveFor(job, outputForecast),
             token_reservation: waitResult.reservation,
@@ -5812,6 +5816,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             );
             console.info(JSON.stringify({
               event: "own_tpm_observed",
+              job_id: jobId,
+              lease_token: leaseToken,
+              attempt_id: attemptId,
               route_id: routeId,
               tpm,
               job_reservation: Number(job.token_reservation) || 0,

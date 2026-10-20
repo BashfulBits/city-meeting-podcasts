@@ -257,6 +257,8 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     // The output cap this request actually carried, so a reply cut off at it can be told apart
     // from one cut off lower (see the output_budget_exhausted result).
     sentMaxTokens: upstreamPayload?.max_tokens ?? upstreamPayload?.max_completion_tokens ?? null,
+    gatewayMaxAttempts: creds.usesGateway ? creds.aiGatewayMaxAttempts : null,
+    usesGateway: creds.usesGateway,
     body,
     headers: response.headers,
     parseError,

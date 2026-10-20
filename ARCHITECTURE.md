@@ -956,6 +956,15 @@ as well as 400/413; a quota message without a requested count remains rate exhau
 honors the larger of the local token window and Google's retry delay plus one second, including
 when the job has exhausted its retry budget. An in-flight Google success cannot erase that cooldown.
 The primary and secondary Google keys belong to distinct projects (maintainer-confirmed 2026-10-19).
+Google Gemma calls emit `gemma_provider_attempt` before batch settlement: job/lease/attempt identity,
+known attempt ordinal, start/end, raw/admitted/reserved input estimates, sent output cap, reported
+usage, HTTP status and response-shape validation, retry hints, and bounded allowlisted quota facts.
+Transport failures have no HTTP status; unstarted work emits no attempt. Configured gateway retry
+policy is labelled as configuration, not an observed upstream call count. No prompt, completion,
+full error body, or credential is logged, and no per-attempt SQL row or extra RPC is introduced.
+`own_tpm_observed` includes job/lease/attempt identity for correlation. A quota limit without a
+requested amount remains ambiguous between packet size and recent project usage; see
+[review/56](review/56-gemma-aistudio-acceptance-plan.md) for the acceptance and feedback plan.
 Queue estimates include response schemas. Gemma AI Studio routes retain their 14,400 input ceiling
 without tolerance, preserving the 10% quota margin. Other routes may add
 `hard_input_ceiling_tolerance`; near misses are tried only when nothing else can dispatch. A queued

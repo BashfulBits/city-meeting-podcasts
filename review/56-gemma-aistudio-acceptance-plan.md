@@ -256,7 +256,7 @@ payload identity change must document its own bounded backfill story.
 Before implementing, replace broad executor/report references with exact current functions and
 list every changed file/test; identify whether bounded acceptance state requires a schema change.
 Run affected Python and Worker suites, whole-repo Ruff lint/format checks, and existing row-read/
-row-write benchmarks for any coordinator change. Verify review/44's daily safe-stop invariants
+row-write benchmarks for coordinator SQL/schema changes. Verify review/44's daily safe-stop invariants
 with retries and fallback included. Run CLI CodeRabbit on the final diff and resolve valid findings.
 Update review/11, architecture if changed, roadmap status, and a changelog fragment with each slice.
 
@@ -265,3 +265,62 @@ This plan supersedes any interpretation of review/55 that equates a token-ratio 
 not supersede the already shipped lease accounting, cooldown, and explicit-size recovery fixes.
 Recurring synthetic provider probing in [review/54](54-provider-limit-characterization.md) remains
 separate; the first step here uses real-work observations rather than promoting that deferred scope.
+
+## Follow-up: quota interpretation and downward feedback (2026-10-19 Central)
+
+The maintainer supplied the message `Quota exceeded for metric: ...input_token_count, limit:
+16000, model: gemma-4-31b` with a 32.154473808-second retry hint. This identifies an input-token
+quota failure but supplies **no requested token count**. A 12k request encountering 6k of recent
+usage can produce the same failure as an individually oversized request. A cooldown hint does
+not distinguish those cases. Preserve the structured quota ID to distinguish per-minute from
+per-day dimensions when the metric name is shared.
+
+There is already negative feedback: `completeBatch` records `input_rejected_min` for
+`route_input_limit`, and `packingInputLimit` includes that bound. However, the recorded size is
+`raw estimate × conservative input ratio`. A refusal of a 13,181-estimate job can thus record
+16,672, above the configured 14,400 ceiling, leaving the producer's packing ceiling unchanged.
+This is a second gap beyond the absence of usage in generic 429s.
+
+**Proposed downward signal (L2, after diagnostics):** keep a separate bound in raw complete-request
+estimate units, scoped to physical route and prompt family. On a confirmed size refusal, a fresh
+packing bound must be strictly below that refused raw estimate; take the minimum with the normal
+packing limit before returning it to producers. Do not divide it by another tokenizer ratio or
+write synthetic observations into the pooled ratio ring. Apply expiry and bounded relearning;
+a later success with a comparable or larger raw request can contradict the bound. A success
+on another provider cannot clear Google's signal. Specify storage/cardinality, expiry, and growth
+rules using the cohort before promoting this controller to L3. This protects against one unusual
+high-ratio packet permanently shrinking all prompt families.
+
+For ambiguous TPM failures, retain a separate operational signal. Repeated isolated failures with
+known complete-request sizes can justify a reversible target reduction in an experiment, but
+must not be recorded as proven intrinsic size failures. Compare small controls and near-target
+packets; if both fail, the response is pacing/ownership/provider diagnosis rather than repeated
+packing reductions. The 95% goal permits statistical adaptation without falsely claiming a
+per-request limit was measured.
+
+### First diagnostic slice: L3 implementation contract
+
+This slice is authorized by the maintainer's instruction to continue. It prepares evidence for
+tuning; it does not change packing, retries, request shapes, quotas, dependencies, or schemas.
+
+- `src/classify.js`: add a pure, bounded extractor for allowlisted Google quota metadata and
+  separately labelled message limit/requested/used values. Normalize array bodies. Never emit
+  full messages, arbitrary dimensions, credentials, or prompt text. Keep classification unchanged.
+- `src/index.js:attemptProviderCall`: emit one structured event for every actual Google Gemma
+  call, including network failures and HTTP 2xx, with identity, timing, known attempt ordinal,
+  full-job estimates, usage, sent output cap, quota details, and response validation outcome.
+  Include configured gateway attempt policy as configuration, not a measured provider call count.
+- `src/coordinator.js:claimDispatchWindow`: include attempt ordinal, prompt family, and calibrated
+  admission/reservation estimates in the existing claim response using values already available.
+  `authorizeRetry` adds identity to `own_tpm_observed`; no SQL/RPC or write-budget change.
+- `src/gateway.js:callAiGateway`: return the already resolved gateway retry configuration for
+  diagnostics. `dispatchOneJob` advances its local ordinal only when another attempt is authorized.
+- Tests: `test/classify.test.js` covers the exact supplied message, explicit requested amounts,
+  structured per-day/per-minute details, malformed/array bodies, bounded output, and redaction.
+  `test/api_shapes.test.js` covers actual executor success, quota refusal, transport failure, and
+  unchanged non-Google behavior. Coordinator and scheduled suites guard claim/ordinal propagation.
+- Documentation: this plan, review/11 status, architecture telemetry description, and a changelog
+  fragment. No artifacts are invalidated and no existing queued payload is rewritten.
+
+Paths in the contract above are relative to `workers/llm-dispatch-v2/`. No other runtime files
+are in scope. Missing identity from an old coordinator remains null; do not invent a first attempt.
