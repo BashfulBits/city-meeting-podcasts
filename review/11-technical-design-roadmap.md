@@ -20,9 +20,15 @@ The first diagnostic slice **shipped in PR #2509** (October 19 Central) and logs
 correlated attempts without changing packing or quota behavior. The passive report **shipped in
 PR #2510**; [initial baseline](evidence/2026-10-19-gemma-2509-baseline.md) confirms the
 16k per-minute quota dimension but has insufficient mature/new-producer samples for a rate claim.
-The follow-up bounded-recovery slice has an L3 contract in review/56 and is implemented locally:
+The follow-up bounded-recovery slice **shipped in PR #2511**:
 Google TPM refusals exclude the refusing project for that packet, preserve the transient retry
 allowance, and permit remaining same-model routes without learning an unproven size bound.
+The next L3 slice distinguishes confirmed response timeouts from ambiguous transport failures
+and moves work to fitting siblings after two deadlines per route;
+[overflow evidence][overflow-timeouts]
+records NVIDIA failures after successful route recovery. Request tuning remains unpromoted.
+
+[overflow-timeouts]: evidence/2026-10-20-gemma-overflow-timeouts.md
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a

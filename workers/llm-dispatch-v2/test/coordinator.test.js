@@ -899,7 +899,9 @@ test("enqueueBatch supersedes a completed row whose old payload was wrong, and r
   // and it is the value supersede must actually reset, not one that was already 0.
   sql.exec(
     "UPDATE jobs SET state = 'failed', result_key = NULL, attempts = 2, transient_retry_count = 1,\n" +
-      "                 quota_excluded_routes = '[\"google-a\"]', updated_at = ? WHERE id = 'j1'",
+      "                 quota_excluded_routes = '[\"google-a\"]', response_timeout_routes = ?,\n" +
+      "                 updated_at = ? WHERE id = 'j1'",
+    JSON.stringify({ "slow-route": 2 }),
     Date.now()
   );
 
@@ -920,7 +922,7 @@ test("enqueueBatch supersedes a completed row whose old payload was wrong, and r
 
   const row = [...sql.exec(
     `SELECT state, request_digest, payload_key, attempts, transient_retry_count,
-            quota_excluded_routes FROM jobs WHERE id = 'j1'`
+            quota_excluded_routes, response_timeout_routes FROM jobs WHERE id = 'j1'`
   )][0];
   assert.equal(row.state, "queued", "a superseded row must be runnable again, not stuck failed");
   assert.equal(row.request_digest, "d1-corrected");
@@ -928,6 +930,7 @@ test("enqueueBatch supersedes a completed row whose old payload was wrong, and r
   assert.equal(row.attempts, 0, "a corrected payload has never actually been attempted");
   assert.equal(row.transient_retry_count, 0);
   assert.equal(row.quota_excluded_routes, null);
+  assert.equal(row.response_timeout_routes, null);
 });
 
 test("supersede does not consume today's admission cap", async () => {
@@ -3939,4 +3942,35 @@ test("Google quota exclusion upgrade is additive and preserves existing job stat
   makeCoordinator(env, fixture);
   assert.ok(fixture.recorder.statements.every(({ query }) =>
     /^(SELECT|PRAGMA|EXPLAIN)\b/i.test(query)));
+});
+
+test("timeout upgrade is additive and retains route counts on warm startup", async () => {
+  const fixture = createRecordingSqlStorage();
+  const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+  const { coordinator, sql } = makeCoordinator(env, fixture);
+  await coordinator.enqueueBatch([{
+    id: "legacy-timeout", idempotency_key: "legacy-timeout", request_digest: "legacy-timeout",
+    policy_json: "{}", prompt_family: "tags", input_token_estimate: 100,
+    max_output_token_estimate: 50, payload_key: "payloads/legacy-timeout",
+  }]);
+  sql.exec("UPDATE jobs SET quota_excluded_routes='[\"google-a\"]' WHERE id='legacy-timeout'");
+  sql.exec("ALTER TABLE jobs DROP COLUMN response_timeout_routes");
+  fixture.recorder.start();
+  makeCoordinator(env, fixture);
+  assert.deepEqual(fixture.recorder.statements.filter(({ query }) =>
+    !/^(SELECT|PRAGMA|EXPLAIN)\b/i.test(query)).map(({ query }) => query),
+  ["ALTER TABLE jobs ADD COLUMN response_timeout_routes TEXT"]);
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='legacy-timeout'")];
+  assert.equal(row.state, "queued");
+  assert.equal(row.response_timeout_routes, null);
+  assert.deepEqual(JSON.parse(row.quota_excluded_routes), ["google-a"]);
+  sql.exec("UPDATE jobs SET response_timeout_routes=? WHERE id='legacy-timeout'",
+    JSON.stringify({ "slow-route": 1 }));
+  fixture.recorder.reset();
+  makeCoordinator(env, fixture);
+  assert.ok(fixture.recorder.statements.every(({ query }) =>
+    /^(SELECT|PRAGMA|EXPLAIN)\b/i.test(query)));
+  assert.deepEqual(JSON.parse([...sql.exec(
+    "SELECT response_timeout_routes FROM jobs WHERE id='legacy-timeout'"
+  )][0].response_timeout_routes), { "slow-route": 1 });
 });

@@ -483,3 +483,24 @@ test("quota exclusions preserve model, physical pin, paid and context restrictio
   assert.ok(fresh.some(route => route.route_id === "gemma_4_31b_primary"),
     "a refusal for another job does not exclude this route");
 });
+
+test("timeout counts exclude only routes with two deadlines without widening policy", () => {
+  const catalog = {
+    model_aliases: {}, model_routes_map: { model: ["slow", "sibling", "paid", "too-small"] },
+    routes_by_id: Object.fromEntries(["slow", "sibling", "paid", "too-small"].map(id => [id, {
+      free: id !== "paid", input_context_limit: id === "too-small" ? 100 : 10000,
+      output_context_limit: 1000,
+    }])),
+  };
+  const job = { policy_json: { allowed_models: ["model"], allow_paid: false },
+    input_token_estimate: 500, max_output_token_estimate: 200 };
+  const ids = value => routesEligibleFor({ ...job, response_timeout_routes: value }, catalog)
+    .map(route => route.route_id);
+  assert.deepEqual(ids(JSON.stringify({ slow: 1 })), ["slow", "sibling"]);
+  assert.deepEqual(ids(JSON.stringify({ slow: 2 })), ["sibling"]);
+  assert.deepEqual(ids(JSON.stringify({ slow: 99, sibling: 2 })), []);
+  assert.deepEqual(ids("broken-json"), ["slow", "sibling"]);
+  assert.deepEqual(ids(JSON.stringify({ slow: -1, sibling: 1.5 })), ["slow", "sibling"]);
+  assert.deepEqual(routesEligibleFor({ ...job, response_timeout_routes: '{"slow":2}',
+    policy_json: { ...job.policy_json, allowed_route_ids: ["slow"] } }, catalog), []);
+});

@@ -894,7 +894,9 @@ export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
 }
 
 /** One log per executor call, before batch settlement. No payload or free-form errors. */
-function logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, response = null }) {
+function logGemmaAttempt({
+  job, route, attemptId, actualStartAt, actualEndAt, response = null, failureClass = null,
+}) {
   if (route.provider !== "gemini" || !/^gemma-4-/.test(String(route.upstream_model || ""))) return;
   const shape = apiShapeFor(route);
   const classification = response && !response.ok ? classifyProviderFailure({
@@ -934,7 +936,8 @@ function logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, re
     observed_output_tokens: usage?.output ?? null,
     observed_cached_input_tokens: cachedInput,
     observed_uncached_input_tokens: cachedInput == null ? null : usage.input - cachedInput,
-    failure_class: classification?.failure_class ?? (response ? null : "server_error"),
+    failure_class: classification?.failure_class ??
+      (response ? null : failureClass || "server_error"),
     response_problem: problem,
     retry_after_seconds: classification?.retry_after_seconds ?? null,
     quota: response && !response.ok ? googleQuotaDiagnostics(response.body) : null,
@@ -976,15 +979,21 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       },
     });
   } catch (err) {
+    // Only our own deadline establishes a response timeout. DNS/TLS errors and preparation
+    // failures remain ambiguous, and must not inherit a new retry policy from a generic catch.
+    const failureClass = requestStarted && controller.signal.aborted
+      ? "provider_response_timeout" : "server_error";
     if (requestStarted) {
-      logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt: Date.now() });
+      logGemmaAttempt({
+        job, route, attemptId, actualStartAt, actualEndAt: Date.now(), failureClass,
+      });
     }
     return {
       result: {
         ...baseAttemptResult(
           job, attemptId, requestStarted ? actualStartAt : null, Date.now(), "retryable_error"
         ),
-        failure_class: "server_error",
+        failure_class: failureClass,
       },
     };
   } finally {

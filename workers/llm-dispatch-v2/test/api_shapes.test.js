@@ -292,3 +292,44 @@ test("cached prompt tokens remain included in scheduler calibration input", () =
     prompt_tokens_details: { cached_tokens: 9901 },
   } }), { input: 10728, output: 983 });
 });
+
+test("only our own started-request deadline is a provider response timeout", async () => {
+  const fetch = globalThis.fetch;
+  const info = console.info;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
+  const route = { ...CHAT, provider: "gemini", upstream_model: "gemma-4-31b-it" };
+  const job = {
+    id: "timeout-job", route_id: "google-route", lease_token: "timeout-lease",
+    lease_expires_at: Date.now() + 60_000, input_token_estimate: 100,
+    payload: { messages: [{ role: "user", content: "PRIVATE_PROMPT" }], max_tokens: 100 },
+  };
+  const env = { BEATAPI_API_KEY: "PRIVATE_KEY" };
+  const call = () => attemptProviderCall({
+    env, b2: {}, route, dispatchLimits: { providers: { gemini: BEATAPI } }, job,
+    attemptId: "timeout-attempt", idempotencyKey: null, maxResponseMs: 5,
+  });
+  try {
+    globalThis.fetch = async (_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+    const timeout = (await call()).result;
+    assert.equal(timeout.outcome, "retryable_error");
+    assert.equal(timeout.failure_class, "provider_response_timeout");
+    assert.equal(timeout.provider_status_code, null);
+    assert.ok(timeout.actual_start_at != null);
+    assert.equal(events[0].failure_class, "provider_response_timeout");
+    globalThis.fetch = async () => { throw new DOMException("PRIVATE_ERROR", "AbortError"); };
+    assert.equal((await call()).result.failure_class, "server_error",
+      "an AbortError without our timer firing remains ambiguous");
+    delete env.BEATAPI_API_KEY;
+    const unstarted = (await call()).result;
+    assert.equal(unstarted.failure_class, "server_error");
+    assert.equal(unstarted.actual_start_at, null);
+    assert.equal(events.length, 2, "pre-request failures are not provider attempts");
+    assert.doesNotMatch(JSON.stringify(events), /PRIVATE_/);
+  } finally {
+    globalThis.fetch = fetch;
+    console.info = info;
+  }
+});

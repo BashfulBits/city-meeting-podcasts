@@ -16,8 +16,10 @@ L2 delivery plan are in [review/56](review/56-gemma-aistudio-acceptance-plan.md)
 precede further tuning. PR #2507 shipped quota recovery but did not change producer sizing.
 PR #2509 deployed correlated quota diagnostics; its initial passive baseline is recorded in
 [the measurement evidence](review/evidence/2026-10-19-gemma-2509-baseline.md).
-The passive report shipped in #2510. The next L3 slice in review/56 repairs bounded same-model
-recovery after Google TPM refusals; acceptance-target tuning remains gated on measured evidence.
+The passive report shipped in #2510; bounded Google TPM recovery shipped in #2511. The next L3
+slice repairs response-timeout recovery with a two-deadline bound per physical route, then tries
+fitting siblings while respecting existing capacity and cooldown limits.
+Acceptance-target tuning remains gated on measured evidence.
 
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
 remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
