@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Gemma acceptance measurement.** Add an offline report for saved Worker events with deployment
+  and time cutoffs, a response-maturity allowance, attempt deduplication, and separate model/route
+  counts. Retries do not repair first-attempt refusal rates; cached input is not packet size.
+  Record the #2509 deployment and initial passive quota evidence. Production behavior, queued
+  payloads, artifact versions, and provider quotas are unchanged.
+
 - **Gemma quota diagnostics.** Correlate request timing, input estimates, observed usage,
   full/cached/uncached input, response validity, gateway configuration, and bounded quota details.
   This distinguishes
