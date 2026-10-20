@@ -347,6 +347,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
 
 const CURRENT_SCHEMA_OBJECTS = [
   ["index", "idx_jobs_state_updated_id"],
+  ["index", "idx_jobs_queued_purpose"],
   ["trigger", "trg_jobs_priority_sync"],
 ];
 
@@ -793,10 +794,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const minUnits = Number(config.write_units_per_job) || 4;
         if (laneAvailable < minUnits) reasons.push("purpose_write_budget_exceeded");
         if (globalAvailable < minUnits) reasons.push("ingress_write_budget_reserved");
+        const maxQueuedForPurpose = Number(config.max_queued_jobs);
+        let queuedForPurpose = null;
+        if (Number.isFinite(maxQueuedForPurpose) && maxQueuedForPurpose > 0) {
+          const limit = Math.floor(maxQueuedForPurpose);
+          queuedForPurpose = [...sql.exec(
+            "SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+            purpose,
+            limit
+          )][0]?.count || 0;
+          if (queuedForPurpose >= maxQueuedForPurpose) reasons.push("purpose_queue_full");
+        }
         lane = {
           write_units_used: used,
           daily_write_units: Number.isFinite(daily) ? daily : null,
           write_units_available: Math.max(0, Math.min(laneAvailable, globalAvailable)),
+          queued_jobs: queuedForPurpose,
+          max_queued_jobs: Number.isFinite(maxQueuedForPurpose) && maxQueuedForPurpose > 0
+            ? maxQueuedForPurpose
+            : null,
         };
       }
     }
@@ -937,7 +953,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- jobs, the 2026-08-27 rows-read overage) -- and the queued/leased lookups by state alone.
       --
       -- Each index on jobs is a billed row written on every insert and every state change, and a
-      -- job changes state ~4 times, so jobs deliberately carries no other secondary index beyond
+      -- job changes state ~4 times. Except for the queued-only purpose index, jobs carries none beyond
       -- its id/idempotency_key uniqueness. Three were dropped on 2026-09-23 (see _initSchema):
       -- (state, updated_at), an exact prefix of this one; (state, priority, created_at), obsolete
       -- since job_models took over admission ordering; and (purpose, state, created_at), which no
@@ -1148,6 +1164,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "purpose", "TEXT NOT NULL DEFAULT ''");
+    // Purpose counts must seek a covering index, including on upgrades from older schemas.
+    sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_queued_purpose ON jobs (purpose) WHERE state = 'queued'");
     // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
     // already-provisioned DO's existing rows get 0, same as a freshly-created job.
     this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
@@ -2527,6 +2545,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
           sched.utc_day
         )].map((row) => [row.purpose, row])
       );
+      const purposeQueuedCounts = new Map();
+      const getPurposeQueuedCount = (purposeName, cap) => {
+        if (!purposeQueuedCounts.has(purposeName)) {
+          const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : -1;
+          const count = limit > 0
+            ? [...sql.exec(
+                "SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+                purposeName,
+                limit
+              )][0]?.count || 0
+            : [...sql.exec(
+                "SELECT COUNT(*) AS count FROM jobs WHERE state = 'queued' AND purpose = ?",
+                purposeName
+              )][0]?.count || 0;
+          purposeQueuedCounts.set(purposeName, count);
+        }
+        return purposeQueuedCounts.get(purposeName);
+      };
 
       let newlyInsertedCount = 0;
       let newlyAdmittedWriteUnits = 0;
@@ -2646,6 +2682,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
               rejected.push({ id: job.id, reason: "queue_full" });
               continue;
             }
+            if (row.state !== "queued") {
+              const purposeMaxQueued = Number(ingressReservations[purpose]?.max_queued_jobs);
+              if (
+                Number.isFinite(purposeMaxQueued) &&
+                purposeMaxQueued > 0 &&
+                getPurposeQueuedCount(purpose, purposeMaxQueued) >= purposeMaxQueued
+              ) {
+                rejected.push({ id: job.id, reason: "purpose_queue_full" });
+                continue;
+              }
+            }
             const supersedeUnits = this._ingressWriteUnitsFor({
               ...job,
               policy_json: policyJson,
@@ -2706,6 +2753,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             );
             this._indexQueuedJobModels(supersededJob, queueModels);
             rowBudgetReserved += supersedeRows;
+            if (row.state !== "queued" && purposeQueuedCounts.has(purpose)) {
+              purposeQueuedCounts.set(purpose, purposeQueuedCounts.get(purpose) + 1);
+            }
             // Superseding replaces a row that already existed; it is not new admission and must
             // not consume today's cap, for the same reason an idempotent replay doesn't.
             accepted.push({ id: row.id, submitted_id: job.id, superseded: true });
@@ -2789,6 +2839,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
           write_units: 0,
         };
         const writeUnits = this._ingressWriteUnitsFor({ ...job, policy_json: policyJson });
+        const purposeMaxQueued = Number(reservation.max_queued_jobs);
+        if (
+          Number.isFinite(purposeMaxQueued) &&
+          purposeMaxQueued > 0 &&
+          getPurposeQueuedCount(purpose, purposeMaxQueued) >= purposeMaxQueued
+        ) {
+          rejected.push({ id: job.id, reason: "purpose_queue_full" });
+          continue;
+        }
         const purposeWriteLimit = Number(reservation.daily_write_units);
         if (
           Number.isFinite(purposeWriteLimit) &&
@@ -2869,6 +2928,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         delta.jobs += 1;
         delta.units += writeUnits;
         purposeDeltas.set(purpose, delta);
+        if (purposeQueuedCounts.has(purpose)) {
+          purposeQueuedCounts.set(purpose, purposeQueuedCounts.get(purpose) + 1);
+        }
         accepted.push({ id: job.id, submitted_id: job.id });
       }
 
@@ -3148,6 +3210,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           write_units: Number(row.write_units) || 0,
           daily_quota: dailyQuota,
           percent_used: pct,
+          max_queued_jobs: Number(quotaInfo?.max_queued_jobs) || null,
         };
       });
       let burndown = [];

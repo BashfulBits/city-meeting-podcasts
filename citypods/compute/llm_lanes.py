@@ -59,9 +59,10 @@ class LaneConfig:
 
     purpose: str
     models: tuple[str, ...]
-    max_dispatches_per_run: int
-    reserved_write_units: int
-    daily_write_units: int
+    max_dispatches_per_run: int | None = None
+    reserved_write_units: int = 0
+    daily_write_units: int = 0
+    max_queued_jobs: int | None = None
     telemetry_producer: str = ""
     telemetry_unit: str = "episode"
     telemetry_completion: str = "consumed"
@@ -434,10 +435,23 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             telemetry_unit=unit,
             telemetry_completion=telemetry["completion"],
             telemetry_scope=telemetry["scope"],
-            max_dispatches_per_run=_coerce_int(
-                entry.get("max_dispatches_per_run"),
-                purpose=purpose,
-                field="max_dispatches_per_run",
+            max_dispatches_per_run=(
+                _coerce_int(
+                    entry.get("max_dispatches_per_run"),
+                    purpose=purpose,
+                    field="max_dispatches_per_run",
+                )
+                if entry.get("max_dispatches_per_run") is not None
+                else None
+            ),
+            max_queued_jobs=(
+                _coerce_int(
+                    entry.get("max_queued_jobs"),
+                    purpose=purpose,
+                    field="max_queued_jobs",
+                )
+                if entry.get("max_queued_jobs") is not None
+                else None
             ),
             reserved_write_units=reserved,
             daily_write_units=daily,
@@ -459,7 +473,10 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
                 "never admit a single job"
             )
-        if lane.max_dispatches_per_run > lane.max_jobs_per_day:
+        if (
+            lane.max_dispatches_per_run is not None
+            and lane.max_dispatches_per_run > lane.max_jobs_per_day
+        ):
             # A run cap above what the daily budget funds is not a harmless upper bound: the
             # producer submits to that cap and the Worker rejects everything past the budget, so
             # the surplus is pure wasted ingress traffic that looks like a lane failing to fill

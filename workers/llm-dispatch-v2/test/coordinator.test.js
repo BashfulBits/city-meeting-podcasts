@@ -2310,7 +2310,7 @@ test("stats() names accounts whose secret is not set in this deployment", async 
   assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
 });
 
-test("jobs carries only the terminal-history state index; retired indexes are dropped", () => {
+test("jobs keeps terminal-history and queued-purpose indexes; retired indexes are dropped", () => {
   // Every index on jobs is a billed DO row on each insert and state change (write_budget.js /
   // bench/rows-written). Adding one back must be a deliberate, re-measured decision.
   const { storage, sql } = createMockSqlStorage();
@@ -2325,7 +2325,7 @@ test("jobs carries only the terminal-history state index; retired indexes are dr
     .map((row) => row.name)
     .filter((name) => !name.startsWith("sqlite_autoindex_"))
     .sort();
-  assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
+  assert.deepEqual(names, ["idx_jobs_queued_purpose", "idx_jobs_state_updated_id"]);
 });
 
 test("an existing rowid job_models is rebuilt clustered, keeping rows, key uniqueness and the priority trigger", async () => {
@@ -2926,11 +2926,11 @@ test("a coordinator from before attempt_usage drops its per-attempt journal on r
 
 test("enqueue reserves the legacy-index row cost until that index is retired", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
-  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.5);
   sql.exec("CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model)");
   assert.equal(coordinator._rowsPerIngressWriteUnit(), 2);
   await coordinator.recountQueuedJobs(); // nothing legacy is queued, so the index is dropped
-  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.5);
 });
 
 test("a failed attempt on a lease with no recorded route still completes", async () => {

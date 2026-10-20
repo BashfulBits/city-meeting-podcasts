@@ -2514,3 +2514,69 @@ def test_pending_tagger_episode_does_not_spend_new_work_cap(tmp_path, monkeypatc
         assert ctx.tag_dispatches_count == i
     assert calls == 2
     assert ctx.tag_backend.queued_count == 1
+
+
+def test_tags_stage_output_pointer():
+    ep = _ep("one")
+    assert stage_output_pointer("tags", ep) is None
+    ep.tags = [{"tag": "housing"}]
+    assert stage_output_pointer("tags", ep) == "rule-only"
+    ep.tags_llm_recipe_hash = "recipe-hash-123"
+    assert stage_output_pointer("tags", ep) == "recipe-hash-123"
+
+
+def test_tags_stage_is_dirty_when_llm_enabled():
+    from citypods.stages import TagsStage
+
+    city = _city()
+    stage = TagsStage()
+    ep = _ep("one")
+    ep.chapters = [{"start": 0, "title": "Intro"}]
+    ep.tags = [{"tag": "housing"}]
+    # Mark complete with rule-only / legacy output pointer
+    ep.stage_completion["tags"] = {
+        "state": "complete",
+        "version": stage.version,
+        "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+        "output": "rule-only",
+    }
+    # When tag_llm_enabled is False, clean record is not dirty
+    assert not stage_is_dirty(stage, ep, city, tag_llm_enabled=False)
+    # When tag_llm_enabled is True and episode has chapters without tags_llm_recipe_hash: dirty!
+    assert stage_is_dirty(stage, ep, city, tag_llm_enabled=True)
+    # Once tags_llm_recipe_hash is populated, it is no longer dirty
+    ep.tags_llm_recipe_hash = "recipe-hash-123"
+    ep.stage_completion["tags"]["output"] = "recipe-hash-123"
+    assert not stage_is_dirty(stage, ep, city, tag_llm_enabled=True)
+
+
+def test_tags_stage_not_dirty_without_chapters_even_with_null_marker():
+    from citypods.stages import TagsStage
+
+    city = _city()
+    stage = TagsStage()
+    ep = _ep("one")
+    ep.chapters = []
+    ep.tags = [{"tag": "housing"}]
+    ep.stage_completion["tags"] = {
+        "state": "complete",
+        "version": stage.version,
+        "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+        "output": None,  # Legacy marker from rule-only tag runs
+    }
+    # Chapterless episodes do not participate in LLM tagging and stay clean
+    assert not stage_is_dirty(stage, ep, city, tag_llm_enabled=True)
+
+
+def test_admit_r6_dispatch_unbounded_when_moment_max_dispatches_is_none(tmp_path):
+    from citypods.stages import _admit_r6_dispatch
+
+    ctx = _ctx(tmp_path)
+    ctx.moment_max_dispatches = None
+    stats = StageStats("moments")
+    # Multiple dispatches should be admitted without hitting cap
+    for i in range(50):
+        result = _admit_r6_dispatch(ctx, stats, f"recipe-{i}", f"ep-{i}")
+        assert result == "admitted"
+    assert ctx.moment_dispatches == 50
+    assert "rollout-dispatch-cap" not in stats.defer_reasons

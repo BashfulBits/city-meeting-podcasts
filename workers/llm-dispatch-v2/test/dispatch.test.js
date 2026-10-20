@@ -3249,6 +3249,62 @@ test("ingressStatus closes a lane whose daily write units are spent", async () =
   assert.equal(status.lane.write_units_available, 0);
 });
 
+test("max_queued_jobs bounds per-purpose queue depth in preflight, enqueueBatch, and supersede", async () => {
+  const { storage, sql } = createMockSqlStorage();
+  const coordinator = new LLMSchedulerDO({ storage }, {
+    ...withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG }),
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+      unspecified: {
+        reserved_write_units: 0,
+        daily_write_units: 1000,
+        max_queued_jobs: 2,
+        write_units_per_job: 4,
+      },
+    }),
+  });
+  assert.equal((await coordinator.ingressStatus("unspecified")).open, true);
+
+  // A batch that crosses the cap mid-batch accepts up to max_queued_jobs and rejects the rest
+  const res1 = await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2"), makeJob("j3")]);
+  assert.equal(res1.accepted.length, 2);
+  assert.equal(res1.rejected.length, 1);
+  assert.equal(res1.rejected[0].id, "j3");
+  assert.equal(res1.rejected[0].reason, "purpose_queue_full");
+
+  // Preflight is now closed due to purpose_queue_full
+  const status = await coordinator.ingressStatus("unspecified");
+  assert.equal(status.open, false);
+  assert.deepEqual(status.reasons, ["purpose_queue_full"]);
+  assert.equal(status.lane.queued_jobs, 2);
+  assert.equal(status.lane.max_queued_jobs, 2);
+
+  // Superseding an already-queued job does not increase queue depth; it succeeds in-place
+  const resSupersedeQueued = await coordinator.enqueueBatch([
+    makeJob("resubmit-j1", {
+      idempotency_key: "key-j1",
+      request_digest: "digest-v2",
+    }),
+  ]);
+  assert.equal(resSupersedeQueued.accepted.length, 1);
+  assert.equal(resSupersedeQueued.accepted[0].superseded, true);
+
+  // Mark j1 completed, leaving 1 queued job (j2). Then enqueue j4 to fill the lane again (2).
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'j1'");
+  const resFill = await coordinator.enqueueBatch([makeJob("j4")]);
+  assert.equal(resFill.accepted.length, 1);
+
+  // Superseding a completed job when the lane is full attempts to re-queue it, and must be rejected
+  const resSupersedeCompleted = await coordinator.enqueueBatch([
+    makeJob("resubmit-completed-j1", {
+      idempotency_key: "key-j1",
+      request_digest: "digest-v3",
+    }),
+  ]);
+  assert.equal(resSupersedeCompleted.accepted.length, 0);
+  assert.equal(resSupersedeCompleted.rejected.length, 1);
+  assert.equal(resSupersedeCompleted.rejected[0].reason, "purpose_queue_full");
+});
+
 test("a mid-day deploy seeds the new row counter from today's recorded work, never from zero", () => {
   const { sql, storage } = createMockSqlStorage();
   const env = withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG });
@@ -3609,4 +3665,13 @@ test("the claim's eligibility filter uses the learned admission ratio, not the c
   await coordinator.enqueueBatch([gemmaJob("fits-learned", 11000)]);
   const plan = await coordinator.claimDispatchWindow(now, 30);
   assert.deepEqual(plan.jobs.map((job) => [job.id, job.route_id]), [["fits-learned", "gemma-ai-studio"]]);
+});
+
+test("purpose queue counts seek the queued-purpose index instead of scanning other lanes", () => {
+  const { sql } = makeCoordinator();
+  const plan = sql.exec(
+    "EXPLAIN QUERY PLAN SELECT COUNT(*) AS count FROM (SELECT 1 FROM jobs WHERE state = 'queued' AND purpose = ? LIMIT ?)",
+    "unspecified", 2
+  );
+  assert.ok(plan.some(row => /SEARCH jobs USING.*idx_jobs_queued_purpose/.test(row.detail)));
 });

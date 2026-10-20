@@ -1,6 +1,7 @@
 slug: austin-tx-planning-commission
 city: austin-tx
 provider: swagit
+meeting_family: planning_and_zoning
 source:
   list_url: https://austintx.new.swagit.com/views/117/planning-commission
   body: "Planning Commission"
