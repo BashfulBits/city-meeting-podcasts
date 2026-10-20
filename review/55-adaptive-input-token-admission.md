@@ -131,6 +131,53 @@ Google `own_tpm` now logs `own_tpm_observed` (no DO rows) so the margin can be s
 Per-attempt rows are not stored (route_failures is a per-day counter), which is why the
 reconstruction above is inferred from the ledger arithmetic, not measured per call.
 
+## Quota recovery and pending input reservations (maintainer-directed, 2026-10-19)
+
+Implementation follow-up under validation; production verification remains pending deployment.
+The maintainer approved these three fixes after investigating the exported Google failures and
+confirmed the primary and secondary keys belong to distinct Google projects.
+
+**Correction to the margin diagnosis above:** scheduled-start jitter was inferred, not measured.
+The export covers 2026-10-18 21:30 through 2026-10-19 20:43 UTC: Google's Gemma 31B has 835 HTTP
+429s in 1,410 attempts (59.2%), versus 6 in 414 (1.4%) for 26B. The latest partial hour still has
+30 refusals and 18 successes for 31B. Successful 31B inputs reach 13,559 tokens; failed records
+contain no prompt, quota error body, or project identifier. These observations do not distinguish
+oversized requests, timing overlap, and quota consumption elsewhere. Do not claim jitter is proven.
+
+- **Cooldown:** `authorizeRetry` applies `own_tpm` feedback even after the job's retry allowance is
+  spent. `blocked_until` is the greater of the existing deadline, the local input-window span,
+  and the provider's Retry-After/RetryInfo delay plus one second. Invalid hints use the local
+  window. A Google success already in flight preserves an unexpired cooldown.
+- **Size:** the 429 token-quota classifier checks explicit `Requested > Limit` before returning
+  `own_tpm`, using the same numeric comparison as 400/413. A limit alone is insufficient evidence.
+  `route_input_limit` does not alter rate/backoff state in `authorizeRetry`; completion uses the
+  existing per-job route exclusion, sibling routing, and terminal `input_too_large` repacking path.
+- **Timing:** Google pending entries in the existing `input_window_json` carry their lease token,
+  scheduled start, and a release clock initially set to the lease expiry. They stay charged while
+  B2 reads, gateway transit/retries and provider generation are outstanding. Completion replaces
+  only that lease's entry with actual input at response end (the conservative arrival upper bound),
+  retaining the estimated amount if usage is unknown. Non-consuming and unstarted work releases
+  its own entry. Lost executors release after lease expiry plus the token-window span; stale or
+  duplicate completions cannot settle a newer lease. Small jobs may still share the window.
+
+This is the conservative completion-based accounting option: slow responses reduce throughput;
+we are not asserting Google actually bills tokens at response end. No new endpoint, RPC, table,
+dependency, production quota knob, or pipeline-version bump is needed. Settlement rides existing
+route writes; the failure path adds one route-keyed read. Existing untagged entries are supported
+and simply age out normally; old in-flight claims retain their original scheduled-time accounting
+until settled, so assess the rollout only after pre-deploy leases drain. Stored model results and
+queued payloads are unchanged; no catalog reprocessing or artifact backfill is triggered.
+
+Regression coverage includes explicit/unknown request sizes on 429, delayed starts beyond the
+15-second margin, eviction, lost-executor expiry, measured error replies, unknown usage,
+non-consuming/unstarted work, duplicate/stale settlement, quota feedback after retry exhaustion,
+and preservation of a provider cooldown when an in-flight sibling succeeds. Production validation
+should compare per-route refusal/completion rates and `own_tpm_observed` pending-call counts after
+deploy; the exported gateway summaries alone cannot establish a root cause or confirm improvement.
+CLI CodeRabbit review found two valid edge cases, both fixed with regressions: success preserves
+only an active `own_tpm` block (and its class across repeated successes), and comma-separated quota
+numbers must begin with a digit so stray punctuation cannot hide a later valid limit.
+
 ## Additional goals
 
 Per-key observability (n, p50/p95/p99, size rejections, near-edge admissions) in `/v2/calibration`

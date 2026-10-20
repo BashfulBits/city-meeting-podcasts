@@ -34,6 +34,7 @@ import {
   earliestSafeStart,
   dailyTokenDebt,
   inputWindow,
+  settleInputWindow,
   computeRouteLaneWait,
   minInterRequestGapMs,
   rpmWindowDurationMs,
@@ -4521,7 +4522,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * with _writeRouteLedger -- a bundle that admits several jobs on one route used to rewrite the
    * same routes row once per job (one billed row each).
    */
-  _applyProvisionalReservation(mergedRoute, reservation, notBeforeAt) {
+  _applyProvisionalReservation(mergedRoute, reservation, notBeforeAt, lease = null) {
     const tpm = Number(mergedRoute.tpm) || 0;
 
     let rpmWindowStart = mergedRoute.rpm_window_start;
@@ -4590,7 +4591,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       tpd_updated_at: notBeforeAt,
       input_window_json: mergedRoute.provider === "gemini"
         ? JSON.stringify([...inputWindow(mergedRoute).filter((e) => e.at > notBeforeAt - tpmWindowSpanMs(mergedRoute)),
-            { at: notBeforeAt, tokens: reservation }])
+            // Keep pending calls charged through their lease, then settle at response end.
+            { at: lease?.expiresAt ?? notBeforeAt, tokens: reservation,
+              ...(lease ? { lease_token: lease.token, scheduled_at: notBeforeAt } : {}) }])
         : "[]",
       tpm_window_start: tpmWindowStart,
       tpm_reserved: tpmReserved,
@@ -5608,7 +5611,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           workingRoute = this._applyProvisionalReservation(
             workingRoute,
             waitResult.reservation,
-            waitResult.not_before_at
+            waitResult.not_before_at,
+            { token: leaseToken, expiresAt: leaseExpiresAt }
           );
           ledgerCache.set(route.route_id, workingRoute);
           dirtyRoutes.add(route.route_id);
@@ -5746,7 +5750,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const routeId = job.lease_route_id;
       this._recordRouteFailure(sql, now, routeId, failureClass, 429);
 
-      if (job.attempts > this._max429Retries()) {
+      // A size refusal belongs to this job, not the route's rate/backoff state.
+      if (failureClass === "route_input_limit") {
+        return { authorized: false, retry_not_before: null };
+      }
+      // TPM feedback must update the route even when this job has spent its retry allowance.
+      if (job.attempts > this._max429Retries() && failureClass !== "own_tpm") {
         return { authorized: false, retry_not_before: null };
       }
 
@@ -5809,21 +5818,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job_input_estimate: Number(job.input_token_estimate) || 0,
               ledger_window_tokens: windowEntries.reduce((sum, e) => sum + e.tokens, 0),
               ledger_window_calls: windowEntries.length,
+              ledger_pending_calls: windowEntries.filter((e) => e.lease_token).length,
               newest_entry_age_ms: windowEntries.length
-                ? now - windowEntries[windowEntries.length - 1].at : null,
-              oldest_entry_age_ms: windowEntries.length ? now - windowEntries[0].at : null,
+                ? now - Math.max(...windowEntries.map((e) => e.scheduled_at ?? e.at)) : null,
+              oldest_entry_age_ms: windowEntries.length
+                ? now - Math.min(...windowEntries.map((e) => e.scheduled_at ?? e.at)) : null,
               window_margin_ms: tpmWindowSpanMs(route) - 60_000,
             }));
           }
+          const retrySeconds = Number(retryAfterSeconds);
+          const providerDelay = Number.isFinite(retrySeconds) && retrySeconds > 0
+            ? Math.ceil(retrySeconds * 1000) + 1000 : 0;
+          const blockedUntil = now + Math.max(tpmWindowSpanMs(route), providerDelay);
           sql.exec(
             `UPDATE routes SET full_token_budget = 0, token_budget_updated_at = ?,
                                tpm_reserved = ?, tpm_window_start = ?,
-                               last_provider_status = 429, last_failure_class = ?
+                               last_provider_status = 429, last_failure_class = ?,
+                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
              WHERE route_id = ?`,
             now,
             tpm,
             now,
             failureClass,
+            blockedUntil,
             routeId
           );
           // Token budget exhausted: do not retry in-window.
@@ -6010,11 +6027,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // tpm_reserved is adjusted only by settlements whose claim-time window is still the
         // route's current one; each settlement recorded its window, so pick that window's sum.
         const current = [...sql.exec(
-          "SELECT tpm_window_start, rpd_day_key FROM routes WHERE route_id = ?",
+          "SELECT tpm_window_start, rpd_day_key, input_window_json FROM routes WHERE route_id = ?",
           routeId
         )][0];
         const windowDelta = current ? (pending.windowDeltas.get(current.tpm_window_start) ?? 0) : 0;
         const dayDelta = pending.dailyDelta;
+        const catalogRoute = this._dispatchLimits()?.routes_by_id?.[routeId];
+        let inputWindowJson = current?.input_window_json || "[]";
+        for (const { job, result } of pending.inputSettlements) {
+          inputWindowJson = settleInputWindow(
+            { ...catalogRoute, input_window_json: inputWindowJson }, job, result, now
+          );
+        }
         sql.exec(
           `UPDATE routes SET
              provisional_reservation = MAX(0, provisional_reservation - ?),
@@ -6024,7 +6048,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
              full_token_budget = full_token_budget + ?,
              throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
              payment_required_streak = 0, upstream_capacity_streak = 0,
-             last_failure_class = '', blocked_until = NULL, last_provider_status = ?,
+             last_failure_class = CASE
+               WHEN ? AND last_failure_class = 'own_tpm' AND blocked_until > ?
+               THEN last_failure_class ELSE '' END,
+             blocked_until = CASE
+               WHEN ? AND last_failure_class = 'own_tpm' AND blocked_until > ?
+               THEN blocked_until ELSE NULL END,
+             last_provider_status = ?,
+             input_window_json = CASE WHEN ? THEN ? ELSE input_window_json END,
              input_accepted_at = CASE
                WHEN ? > 0 AND (? > input_accepted_max OR ? - input_accepted_at > ?) THEN ?
                ELSE input_accepted_at END,
@@ -6037,7 +6068,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           dayDelta,
           windowDelta,
           pending.budgetDelta,
+          catalogRoute?.provider === "gemini" ? 1 : 0, now,
+          catalogRoute?.provider === "gemini" ? 1 : 0, now,
           pending.lastStatus,
+          catalogRoute?.provider === "gemini" ? 1 : 0, inputWindowJson,
           // Raise-only high-water mark of accepted input (provider tokens); re-seeded from the
           // current observation once the stored one is older than half the TTL, so a route that
           // stops seeing large inputs does not keep an old maximum alive forever.
@@ -6074,7 +6108,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           }));
         }
 
-        if (jobRows.length === 0 || jobRows[0].lease_token !== result.lease_token) {
+        if (jobRows.length === 0 || jobRows[0].lease_token !== result.lease_token ||
+            jobRows[0].state !== "leased") {
           continue; // stale/duplicate completion for an already-settled job
         }
         // The claim (or a granted 429 retry) counted this attempt before it started. A result
@@ -6345,11 +6380,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (newState === "failed") failedCount += 1;
 
         // Settle the route's provisional reservation and decay its throttle state on success.
-        // Never touch rpm/rpd/tpm-window/full-token-budget bookkeeping here: those were already
-        // advanced forward at claim time to the reservation's planned not_before_at, and
-        // under/over-consumption doesn't change WHEN that capacity was consumed, only how much --
-        // adjusting them retroactively risks pulling a future reservation forward, which Unit 5
-        // explicitly forbids.
+        // Window identities stay at claim time for refunds. Google's input ledger separately
+        // keeps pending leases charged and settles them at response end, so payload/gateway
+        // delays cannot release a reservation before the provider has consumed it.
         if (job.lease_route_id) {
           const observedTotal =
             result.observed_input_tokens != null && result.observed_output_tokens != null
@@ -6388,17 +6421,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 ? reservation - (servedRoute.provider === "gemini"
                     ? result.observed_input_tokens : observedTotal)
                 : 0;
+            const inputLedger = servedRoute?.provider === "gemini"
+              ? [...sql.exec("SELECT input_window_json FROM routes WHERE route_id = ?",
+                  job.lease_route_id)][0] : null;
+            const inputWindowJson = inputLedger
+              ? settleInputWindow(
+                  { ...servedRoute, ...inputLedger }, job, result, now, nonConsuming
+                )
+              : "[]";
             sql.exec(
               `UPDATE routes SET
                  provisional_reservation = MAX(0, provisional_reservation - ?),
                  settled_usage = settled_usage + ?,
                  tpd_used = MAX(0, tpd_used - ?),
-                 full_token_budget = full_token_budget + ?
+                 full_token_budget = full_token_budget + ?,
+                 input_window_json = CASE WHEN ? THEN ? ELSE input_window_json END
                WHERE route_id = ?`,
               reservation,
               settledUsage,
               nonConsuming ? reservation : observedTotal != null ? reservation - observedTotal : 0,
               servedDelta,
+              inputLedger ? 1 : 0, inputWindowJson,
               job.lease_route_id
             );
           }
@@ -6461,9 +6504,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             let pending = pendingSuccess.get(job.lease_route_id);
             if (!pending) {
               pending = { reservation: 0, settledUsage: 0, budgetDelta: 0,
-                windowDeltas: new Map(), dailyDelta: 0, maxObservedInput: 0 };
+                windowDeltas: new Map(), dailyDelta: 0, maxObservedInput: 0,
+                inputSettlements: [] };
               pendingSuccess.set(job.lease_route_id, pending);
             }
+            if (catalogRoute?.provider === "gemini") pending.inputSettlements.push({ job, result });
             pending.reservation += reservation;
             pending.settledUsage += settledUsage;
             pending.budgetDelta += delta;

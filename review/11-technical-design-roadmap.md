@@ -6,6 +6,12 @@ endpoint rate-limit characterization & failure-class-aware backoff; review/45 re
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
 `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
 
+Maintainer-directed Google quota recovery (2026-10-19, under validation):
+[review/55](55-adaptive-input-token-admission.md), quota recovery follow-up,
+records the approved TPM retry-deadline, HTTP 429 size-recovery, and lease-held/completion-settled
+input-window fixes. The 15-second jitter explanation remains a hypothesis; the maintainer verified
+the two Google keys belong to separate projects. No provider quota or artifact version is changed.
+
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
 pointer to its detailed design. It exists to:

@@ -808,3 +808,37 @@ test("a minute bucket that is merely full stays own_tpm", () => {
   });
   assert.equal(result.failure_class, "own_tpm");
 });
+
+test("Google 429 separates an impossible request from a temporarily full token window", () => {
+  for (const metric of ["tokens per minute (TPM)", "input_token_count"]) {
+    for (const [requested, expected] of [["17,000", "route_input_limit"], ["2,000", "own_tpm"]]) {
+      const result = classifyProviderFailure({
+        status: 429,
+        body: { error: { status: "RESOURCE_EXHAUSTED",
+          message: `Quota exceeded for ${metric}: ` +
+            `Limit 16,000, Used 15,000, Requested ${requested}`,
+          details: [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "90s" }],
+        } },
+        route: { provider: "gemini" },
+      });
+      assert.equal(result.failure_class, expected);
+      assert.equal(result.retry_after_seconds, 90);
+    }
+  }
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "Quota exceeded for input_token_count, limit: 16000" } },
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "own_tpm", "a limit alone does not prove request size");
+});
+
+test("stray commas do not hide explicit quota numbers on size or rate statuses", () => {
+  for (const status of [400, 413, 429]) {
+    const result = classifyProviderFailure({ status, route: { provider: "gemini" },
+      body: { error: { message: "tokens per minute limit, used 7000, " +
+        "limit 8,000, requested, requested 9,500" } },
+    });
+    assert.equal(result.failure_class, "route_input_limit");
+  }
+});

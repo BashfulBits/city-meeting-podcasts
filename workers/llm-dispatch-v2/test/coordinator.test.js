@@ -3723,3 +3723,193 @@ test("a declined upstream_capacity 429 advances the cooldown ladder once, not on
   assert.equal(row.upstream_capacity_streak, 1);
   assert.ok(row.blocked_until <= now + 90_000, "still the first rung");
 });
+
+// One Google project/model: no sibling account can hide a premature window release.
+async function googleQuotaFixture(t, count = 2, input = 11000) {
+  let now = Date.UTC(2026, 9, 19, 12);
+  t.mock.method(Date, "now", () => now);
+  const routeId = "google-project";
+  const route = { route_id: routeId, model: "gemma", provider: "gemini", free: true,
+    rpm: 30, rpd: 14400, tpm: 14400, hard_input_ceiling: 14400, input_token_ratio: 1,
+    input_context_limit: 262144, output_context_limit: 32768, tpm_window_margin_seconds: 15 };
+  const catalog = { routes_by_id: { [routeId]: route }, model_routes_map: { gemma: [routeId] },
+    providers: { gemini: {} }, model_aliases: {} };
+  const fixture = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({ "judge:sibling": {
+      reserved_write_units: 0, daily_write_units: 1000000,
+    } }),
+  });
+  const jobs = Array.from({ length: count }, (_, i) => ({
+    id: `google-${i}`, idempotency_key: `google-${i}`, request_digest: `digest-${i}`,
+    policy_json: JSON.stringify({ allowed_models: ["gemma"], purpose: "judge:sibling" }),
+    prompt_family: "judge", input_token_estimate: input, max_output_token_estimate: 1000,
+    payload_key: `payloads/google-${i}.json`,
+  }));
+  const admission = await fixture.coordinator.enqueueBatch(jobs);
+  assert.equal(admission.accepted.length, count, JSON.stringify(admission));
+  const plan = await fixture.coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0, JSON.stringify(plan));
+  const ledger = () => fixture.sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0];
+  const result = (job = plan.jobs[0], overrides = {}) => ({
+    job_id: job.id, lease_token: job.lease_token, attempt_id: `attempt-${job.id}`,
+    actual_start_at: now - 10_000, actual_end_at: now, outcome: "success",
+    provider_status_code: 200, observed_input_tokens: input, observed_output_tokens: 500,
+    result_key: `results/${job.id}.json`, ...overrides,
+  });
+  return { ...fixture, plan, routeId, ledger, result,
+    clock: (at) => { now = at; }, start: now };
+}
+
+test("Google holds pending input past 75s, settles at response end and resumes", async t => {
+  const fixture = await googleQuotaFixture(t);
+  const { coordinator, sql, storage, plan, ledger, result, start, clock } = fixture;
+  assert.equal(plan.jobs.length, 1);
+  const pending = JSON.parse(ledger().input_window_json)[0];
+  assert.equal(pending.at, plan.jobs[0].lease_expires_at);
+  assert.equal(pending.scheduled_at, start);
+  assert.equal(pending.lease_token, plan.jobs[0].lease_token);
+  clock(start + 90_000);
+  assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result()]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 90_000, tokens: 11000 }]);
+  // Persisted window survives eviction/recreation, with no extra per-call RPC.
+  const recreated = new LLMSchedulerDO({ storage }, coordinator.env);
+  clock(start + 120_000);
+  assert.equal((await recreated.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
+  clock(start + 165_000);
+  assert.equal((await recreated.claimDispatchWindow(Date.now(), 30)).jobs.length, 1);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='completed'")[0].n, 1);
+});
+
+test("Google failed and unstarted calls release only their own lease-tagged input", async t => {
+  for (const failure of ["route_input_limit", "server_error", "deferred_late", "unknown_429"]) {
+    await t.test(failure, async t => {
+      const { coordinator, plan, ledger, result, start, clock } = await googleQuotaFixture(t);
+      const foreign = { at: start + 200_000, tokens: 1000, lease_token: "another-lease" };
+      coordinator._getSql().exec("UPDATE routes SET input_window_json=? WHERE route_id=?",
+        JSON.stringify([...JSON.parse(ledger().input_window_json), foreign]), "google-project");
+      clock(start + 90_000);
+      const outcome = result(undefined, {
+        outcome: failure === "deferred_late" ? failure : "terminal_error",
+        failure_class: failure, provider_status_code: failure === "unknown_429" ? 429 : 400,
+        observed_input_tokens: null, observed_output_tokens: null,
+        ...(failure === "deferred_late" ? { actual_start_at: null, actual_end_at: null } : {}),
+      });
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [outcome]);
+      const entries = JSON.parse(ledger().input_window_json);
+      assert.ok(entries.some(e => e.lease_token === "another-lease"));
+      assert.equal(entries.some(e => e.lease_token === plan.jobs[0].lease_token), false);
+      assert.equal(entries.length, failure === "unknown_429" ? 2 : 1);
+      if (failure === "unknown_429") {
+        assert.ok(entries.some(e => e.at === start + 90_000 && e.tokens === 11000));
+      }
+      const saved = ledger().input_window_json;
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [outcome]);
+      assert.equal(ledger().input_window_json, saved, "duplicate completion cannot charge again");
+    });
+  }
+});
+
+test("Google measured errors settle input usage", async t => {
+  const { coordinator, plan, ledger, result, start, clock } = await googleQuotaFixture(t);
+  clock(start + 80_000);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(undefined, {
+    outcome: "retryable_error", failure_class: "output_budget_exhausted",
+    observed_input_tokens: 12000, observed_output_tokens: 2000,
+  })]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 80_000, tokens: 12000 }]);
+});
+
+test("Google TPM cooldown survives exhausted retries and in-flight success", async t => {
+  const fixture = await googleQuotaFixture(t, 2, 3000);
+  const { coordinator, sql, plan, ledger, result, start, clock } = fixture;
+  assert.equal(plan.jobs.length, 2);
+  const job = plan.jobs[0];
+  sql.exec("UPDATE jobs SET attempts=99 WHERE id=?", job.id);
+  const reply = await coordinator.authorizeRetry(job.id, job.lease_token, "refused", start,
+    120.5, "own_tpm");
+  assert.equal(reply.authorized, false);
+  assert.equal(ledger().blocked_until, start + 121_500);
+  clock(start + 10_000);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(plan.jobs[1])]);
+  assert.equal(ledger().blocked_until, start + 121_500);
+  // A shorter or invalid retry hint never shortens an existing provider cooldown.
+  for (const delay of [null, -1, "bad", 1]) {
+    await coordinator.authorizeRetry(
+      job.id, job.lease_token, "refused-again", Date.now(), delay, "own_tpm"
+    );
+    assert.equal(ledger().blocked_until, start + 121_500);
+  }
+});
+
+test("Google 429 size refusal preserves rate state and uses size recovery", async t => {
+  const { coordinator, plan, ledger, result } = await googleQuotaFixture(t);
+  const before = ledger();
+  const job = plan.jobs[0];
+  assert.equal((await coordinator.authorizeRetry(job.id, job.lease_token, "large", Date.now(),
+    120, "route_input_limit")).authorized, false);
+  assert.equal(ledger().blocked_until, before.blocked_until);
+  assert.equal(ledger().full_token_budget, before.full_token_budget);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(undefined, {
+    outcome: "terminal_error", failure_class: "route_input_limit", provider_status_code: 429,
+    observed_input_tokens: null, observed_output_tokens: null,
+  })]);
+  const stored = coordinator._getSql().exec("SELECT * FROM jobs WHERE id=?", job.id)[0];
+  assert.equal(stored.terminal_reason, "input_too_large");
+  assert.equal(stored.transient_retry_count, 0);
+  assert.equal(ledger().blocked_until, before.blocked_until);
+});
+
+test("Google partial-bundle duplicates and stale leases cannot double-charge input", async t => {
+  const fixture = await googleQuotaFixture(t, 2, 3000);
+  const { coordinator, sql, plan, ledger, result, start, clock } = fixture;
+  clock(start + 20_000);
+  const completed = result(plan.jobs[0]);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [completed]);
+  const saved = ledger().input_window_json;
+  assert.equal(JSON.parse(saved).filter(e => e.lease_token).length, 1);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [completed]);
+  assert.equal(ledger().input_window_json, saved);
+  const stillPending = plan.jobs[1];
+  sql.exec("UPDATE jobs SET lease_token='new-lease' WHERE id=?", stillPending.id);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(stillPending)]);
+  assert.equal(ledger().input_window_json, saved);
+});
+
+test("Google lost-executor input debt survives reaping, then expires", async t => {
+  const { coordinator, plan, ledger, start, clock } = await googleQuotaFixture(t);
+  clock(plan.jobs[0].lease_expires_at + 1);
+  assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
+  assert.equal(ledger().provisional_reservation, 0);
+  clock(plan.jobs[0].lease_expires_at + 75_000);
+  assert.ok((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length > 0);
+  assert.ok(Date.now() > start);
+});
+
+test("Google completion refunds input so fitting jobs share the window", async t => {
+  const { coordinator, plan, ledger, result, start, clock } = await googleQuotaFixture(t);
+  clock(start + 20_000);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(undefined, {
+    observed_input_tokens: 2000,
+  })]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 20_000, tokens: 2000 }]);
+  assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 1,
+    "actual 2k plus the next 11k fits the input window without an unnecessary full-window wait");
+});
+
+test("Google successes preserve only active TPM cooldowns, including repeated successes", async t => {
+  for (const failure of ["own_tpm", "upstream_capacity", "server_error"]) {
+    await t.test(failure, async t => {
+      const { coordinator, sql, plan, ledger, result, start, clock } =
+        await googleQuotaFixture(t, 2, 3000);
+      sql.exec("UPDATE routes SET blocked_until=?, last_failure_class=? WHERE route_id=?",
+        start + 120_000, failure, "google-project");
+      clock(start + 10_000);
+      for (const job of plan.jobs) {
+        await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(job)]);
+        assert.equal(ledger().blocked_until, failure === "own_tpm" ? start + 120_000 : null);
+        assert.equal(ledger().last_failure_class, failure === "own_tpm" ? "own_tpm" : "");
+      }
+    });
+  }
+});

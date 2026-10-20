@@ -524,3 +524,17 @@ test("tpmWindowMarginMs ignores absent, zero, negative and non-numeric margins",
   // RPM spacing is a separate knob and must not move.
   assert.equal(minInterRequestGapMs({ rpm: 30, tpm_window_margin_seconds: 15 }), 2000);
 });
+
+test("pending Google input survives slow starts until lease plus window", () => {
+  const route = freshRoute({ provider: "gemini", tpm: 14400, input_token_ratio: 1,
+    tpm_window_margin_seconds: 15,
+    input_window_json: JSON.stringify([
+      { at: NOW + 300_000, tokens: 11000, lease_token: "pending" },
+    ]),
+  });
+  const next = job({ input_token_estimate: 11000 });
+  assert.equal(earliestSafeStart(route, next, NOW + 90_000, NOW + 90_000).notBeforeAt,
+    NOW + 375_000);
+  assert.equal(earliestSafeStart(route, next, NOW + 375_000, NOW + 375_000).notBeforeAt,
+    NOW + 375_000, "a lost executor cannot block the route forever");
+});
