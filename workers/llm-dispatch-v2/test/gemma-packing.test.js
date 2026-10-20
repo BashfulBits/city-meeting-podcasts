@@ -18,7 +18,7 @@ test("a single correlated recovery cannot move a cold target", () => {
 });
 
 test("combined usage can lower the target after twenty resolutions, bounded to ten percent", () => {
-  const state = recordGemmaPacking(seed(), sample("packet:digest", 14000, 12000, 4000));
+  const state = recordGemmaPacking(seed(), sample("packet:digest", 14000, 12000, 4000), 12000);
   assert.ok(state.target <= 11400 && state.target >= 10800);
   assert.equal(state.fresh, 0);
   assert.deepEqual(recordGemmaPacking(state, sample("packet:digest", 14000, 12000, 4000)), state);
@@ -26,7 +26,7 @@ test("combined usage can lower the target after twenty resolutions, bounded to t
 });
 
 test("old backlog and fewer than twenty fresh resolutions cannot repeatedly shrink", () => {
-  let state = recordGemmaPacking(seed(), sample("first", 18000));
+  let state = recordGemmaPacking(seed(), sample("first", 18000), 12000);
   const target = state.target;
   for (let i = 0; i < 20; i++) state = recordGemmaPacking(state, sample(`old${i}`, 19000));
   assert.equal(state.target, target);
@@ -40,9 +40,9 @@ test("old backlog and fewer than twenty fresh resolutions cannot repeatedly shri
 test("below five percent retains the target; exactly five percent permits a cut", () => {
   const rare = recordGemmaPacking(seed(20), sample("rare", 17000));
   assert.equal(rare.target, null, "1/21 is below five percent");
-  const frequent = recordGemmaPacking(rare, sample("second", 17000));
+  const frequent = recordGemmaPacking(rare, sample("second", 17000), 12000);
   assert.ok(frequent.target < 12000);
-  const boundary = recordGemmaPacking(seed(19), sample("exact", 17000));
+  const boundary = recordGemmaPacking(seed(19), sample("exact", 17000), 12000);
   assert.ok(boundary.target < 12000);
 });
 
@@ -56,7 +56,7 @@ test("safety floor survives output-heavy replies and successes never grow it", (
 });
 
 test("window bounded; malformed usage ignored; no timer-driven rebound", () => {
-  let state = recordGemmaPacking(seed(), sample("fail", 18000));
+  let state = recordGemmaPacking(seed(), sample("fail", 18000), 12000);
   const target = state.target;
   for (let i = 0; i < 200; i++) state = recordGemmaPacking(state, sample(`pass${i}`, 8000, 8000));
   assert.equal(state.samples.length, 128);
@@ -65,4 +65,10 @@ test("window bounded; malformed usage ignored; no timer-driven rebound", () => {
   assert.deepEqual(recordGemmaPacking("bad json", sample("bad", NaN)), {
     target: null, samples: [], fresh: 0,
   });
+});
+
+
+test("a small output-heavy offender cannot collapse a much larger cold baseline", () => {
+  const state = recordGemmaPacking(seed(), sample("small-outlier", 10000, 5000, 31000), 12000);
+  assert.equal(state.target, 10800, "first cut is capped against the published normal ceiling");
 });

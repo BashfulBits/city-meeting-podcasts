@@ -62,7 +62,7 @@ NVIDIA recoveries. When a newly observed combined-budget overflow comprises at l
 relevant resolved window after 20 relevant resolutions and 20 fresh resolutions since the last
 cut, lower the producer bound using the p95 combined/input-estimate ratio with 5% headroom.
 A cut is at least 5% where the 4,000 raw-unit safety floor permits, and at most 10% of the
-previous bound (or the offending estimate for the first cut). The floor is a guard, not an
+previous bound (the current normal packing preflight ceiling for the first cut). The floor is a guard, not an
 empirically fitted starting target. Never grow it
 automatically. Old backlog above the bound cannot repeatedly shrink it. Keep this state separate
 from pooled tokenizer calibration and physical admission/refusal classification. Unresolved quota
@@ -83,7 +83,8 @@ pipeline-version bump, artifact invalidation, or deployment was performed.
 The local workerd rows-written harness, 20 one-job bundles of Google Gemma, measured enqueue
 124, claim 119, completion 139, consumption retirement 21 billed rows: **403 lifecycle rows,
 20.15 per job** (409 including retention pruning). Feedback adds one point read and one row
-update per qualifying completion; first insertion of its TEXT-primary-key row also writes the
+update per qualifying completion; a cold correlated-overflow cut also reads the bounded Google
+route preflight inputs to anchor its percentage reduction to the normal published ceiling; first insertion of its TEXT-primary-key row also writes the
 unique-key index. Single-model positive/paired outcomes alone qualify. The conservative existing
 23-row per-lease reservation remains above this success-path cost, with bundle/enqueue overhead
 reserved separately. No new schema, job index, or queue scan is introduced.
@@ -96,3 +97,9 @@ was fixed and expanded: 20 relevant samples, 20 fresh samples between cuts, a ma
 a 4,000 raw-unit safety floor, and whole-item Gemma overflow preservation. Actual output is not
 clipped to a reservation, preserving the maintainer's explicit combined-usage rule. No automatic
 growth/expiry rebound is intentional. Regression tests cover all safeguards and singleton overflow.
+
+The safeguarded CLI pass found two minor issues: non-string allowed-model entries now use the
+same filtering as quota recovery, and singleton overflow is capped by the existing structural
+route catalog. Tests cover malformed policy entries and an item beyond every route's context.
+A further cold-baseline regression verifies a small output-heavy offender cannot cut a much larger
+normal ceiling by more than 10%; `_packingRouteLimit` is shared with the actual packing preflight.

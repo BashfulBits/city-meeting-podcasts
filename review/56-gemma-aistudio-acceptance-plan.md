@@ -611,8 +611,8 @@ No synthetic calls, quota changes, queue rewrites, or deployment are part of thi
   Require at least 20 relevant resolved packets and 20 fresh relevant resolutions since the
   last cut. At a resolved-window overflow fraction of at least 5%, lower the complete-request
   target, capped at a 10% cut per step and a 4,000 raw-unit safety floor, using
-  the observed p95 combined-usage/input-estimate ratio with 5% headroom, strictly below the offending estimate
-  and the prior target where the safety floor permits. The floor is a safety guard, not a
+  the observed p95 combined-usage/input-estimate ratio with 5% headroom. Move toward a bound
+  below the offending estimate, while prioritizing the per-step cut cap and safety floor. The floor is a safety guard, not a
   historically fitted starting target. Do not repeatedly shrink for older packets already larger than the
   current target. No automatic growth or expiry-driven rebound; manual future growth needs its
   own evidence. Apply the minimum of this bound and the normal packing ceiling to Google routes
@@ -635,3 +635,12 @@ No synthetic calls, quota changes, queue rewrites, or deployment are part of thi
   evidence stay bounded and read-only. If no verified >16k-combined historical pair can be found,
   state that limitation; do not seed a fabricated target. New producers adopt the ceiling on
   their next normal run. Stored queued payloads and already persisted artifacts remain unchanged.
+
+
+Review refinements to this L3 slice: bound singleton overflow with `overflow_input_limit`, derived
+in `_sibling_backend` from existing free nonexperimental ROUTE_CANDIDATES (context/output,
+static tokenizer ratio, explicit input and Google TPM limits). Items beyond every structural route
+retain payload-too-large handling. Anchor a cold cut to the current normal preflight ceiling via
+shared `_packingRouteLimit`, rather than the possibly much smaller offending packet. This prevents
+a single small output-heavy outlier from collapsing a larger family's target. Model policy entries
+are filtered identically to the existing Google quota-recovery predicate.

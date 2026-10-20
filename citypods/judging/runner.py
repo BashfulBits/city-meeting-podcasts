@@ -12,6 +12,7 @@ themselves are never written, in shadow mode or otherwise.
 
 from __future__ import annotations
 
+import math
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -21,6 +22,7 @@ from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_lanes import LaneConfig
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
 from citypods.compute.llm_submission_telemetry import record as record_submission_telemetry
 from citypods.judging import ledger
 from citypods.judging.adjudication import (
@@ -226,12 +228,26 @@ def _sibling_backend(
     worker = (pack_ceilings or {}).get(model)
     if worker:
         # Never above the safe share of what the Worker will admit, however small; an item too big
-        # for it is reported as payload_too_large by the packer instead of being sent to fail.
+        # for every structural same-model route remains payload_too_large. A Gemma item above
+        # only Google's target is isolated intact for larger-route admission.
         total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
+    overflow_limits = []
+    if model.startswith("google/gemma-4-"):
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            if not route.free or route.experimental or route.output_context_limit < 2048:
+                continue
+            capacity = max(0, route.input_context_limit - 2048)
+            if route.hard_input_ceiling:
+                capacity = min(capacity, route.hard_input_ceiling)
+            if route.provider == "gemini" and route.quota.tpm:
+                capacity = min(capacity, route.quota.tpm)
+            overflow_limits.append(math.floor(capacity / route.input_token_ratio))
+    overflow_limit = max(overflow_limits, default=0)
     return ChatJudgeBackend(
         max_total_tokens=total,
         max_items=items,
-        allow_single_item_overflow=model.startswith("google/gemma-4-"),
+        allow_single_item_overflow=overflow_limit > 0,
+        overflow_input_limit=overflow_limit or None,
     )
 
 

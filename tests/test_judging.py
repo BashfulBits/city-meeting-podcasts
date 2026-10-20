@@ -2249,3 +2249,20 @@ def test_gemma_indivisible_over_target_item_is_preserved_for_same_model_overflow
     assert result.packets[0].items == (item,)
     assert backend.packet_input_estimate((item,)) > backend.max_total_tokens
     assert not _sibling_backend("other-model").allow_single_item_overflow
+
+
+def test_gemma_indivisible_item_beyond_all_route_contexts_stays_blocked():
+    from citypods.judging.runner import _sibling_backend
+
+    backend = _sibling_backend("google/gemma-4-31b-it", {"google/gemma-4-31b-it": 4000})
+    assert backend.overflow_input_limit and backend.overflow_input_limit > 5000
+    item = _item("impossible", backend.overflow_input_limit + 1000)
+    result = pack(
+        [[item]],
+        backend,
+        purpose="judge:sibling",
+        role="sibling",
+        judge_model="google/gemma-4-31b-it",
+    )
+    assert result.payload_too_large == 1
+    assert not result.packets

@@ -4775,22 +4775,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const stored = limits.routes_by_id?.[routeId];
       // Only an explicit zero daily quota pauses a route; null means unspecified (unlimited).
       if (!stored || !stored.free || (stored.rpd != null && Number(stored.rpd) === 0)) continue;
-      const row = [...sql.exec(
-        `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
-                prompt_cap_estimate
-           FROM routes WHERE route_id = ?`,
-        routeId
-      )][0] || {};
-      const route = { ...stored, ...row, route_id: routeId, model: canonical };
-      const calibration = this._calibration(route, family);
-      let limit = packingInputLimit(route, calibration.packRatio, now);
+      const { calibration, limit: normalLimit } = this._packingRouteLimit(
+        routeId, canonical, family, now
+      );
+      let limit = normalLimit;
       if (stored.provider === "gemini" && feedback?.input_estimate_target != null) {
         limit = limit == null ? feedback.input_estimate_target
           : Math.min(limit, feedback.input_estimate_target);
       }
-      // A learned free-prompt cap is a RAW estimate limit (admission compares it before scaling).
-      const promptCap = Number(route.prompt_cap_estimate) || 0;
-      if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
       routes.push({
         route_id: routeId,
         pack_ratio: calibration.packRatio,
@@ -4805,6 +4797,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ...(feedback ? { size_feedback: feedback } : {}),
       routes,
     };
+  }
+
+  _packingRouteLimit(routeId, model, family, now) {
+    const stored = this._dispatchLimits().routes_by_id[routeId];
+    const row = [...this._getSql().exec(
+      `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
+              prompt_cap_estimate FROM routes WHERE route_id = ?`, routeId
+    )][0] || {};
+    const route = { ...stored, ...row, route_id: routeId, model };
+    const calibration = this._calibration(route, family);
+    let limit = packingInputLimit(route, calibration.packRatio, now);
+    const promptCap = Number(route.prompt_cap_estimate) || 0;
+    if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
+    return { route, calibration, limit };
   }
 
   async calibrationStatus(routeId, promptFamily) {
@@ -6852,6 +6858,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         !Number.isFinite(job.input_token_estimate) || job.input_token_estimate < 200) return;
     const policy = jobPolicy(job);
     const models = new Set((Array.isArray(policy.allowed_models) ? policy.allowed_models : [])
+      .filter(m => typeof m === "string")
       .map(m => canonicalModelName(m, catalog)));
     if (models.size !== 1 || !models.has(model) || policy.backup_models?.length) return;
     const googleRoutes = [...new Set([
@@ -6865,12 +6872,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const prior = [...sql.exec(
       "SELECT recent_observed_summary FROM estimates WHERE key = ?", key
     )][0]?.recent_observed_summary;
+    let baseline = null;
+    if (recovered && input + output > GEMMA_COMBINED_TARGET &&
+        gemmaPackingStatus(prior).input_estimate_target == null) {
+      for (const id of catalog.model_routes_map?.[model] || []) {
+        const candidate = catalog.routes_by_id[id];
+        if (!candidate || candidate.provider !== "gemini" || !candidate.free ||
+            (candidate.rpd != null && Number(candidate.rpd) === 0)) continue;
+        const limit = this._packingRouteLimit(id, model, job.prompt_family, now).limit;
+        if (limit != null) baseline = baseline == null ? limit : Math.min(baseline, limit);
+      }
+    }
     const state = recordGemmaPacking(prior, {
       id: `${job.id}:${job.request_digest}`,
       estimate: job.input_token_estimate,
       input, output,
       overflow: recovered && input + output > GEMMA_COMBINED_TARGET,
-    });
+    }, baseline);
     sql.exec(
       `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
        VALUES (?, 0, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET
@@ -6881,6 +6899,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (recovered) console.info(JSON.stringify({
       event: "gemma_correlated_size_outcome", job_id: job.id, request_digest: job.request_digest,
       model, prompt_family: job.prompt_family, google_route_ids: googleRoutes,
+      route_id: job.lease_route_id, actual_start_at: result.actual_start_at,
+      actual_end_at: result.actual_end_at,
       input_token_estimate: job.input_token_estimate, observed_input_tokens: input,
       observed_output_tokens: output, observed_total_tokens: input + output,
       correlated_size_overflow: input + output > GEMMA_COMBINED_TARGET,

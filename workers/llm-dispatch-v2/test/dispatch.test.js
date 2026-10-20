@@ -4238,6 +4238,7 @@ test("NVIDIA input plus output above 16k is correlated budget overflow", async (
   const start = Date.now();
   await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
   await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start + 120_000, 25));
+  const previous = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
   const plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
   await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
     outcome: "success", provider_status_code: 200, failure_class: null,
@@ -4247,7 +4248,9 @@ test("NVIDIA input plus output above 16k is correlated budget overflow", async (
   const { size_feedback } = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
   assert.equal(size_feedback.resolved_packets, 20);
   assert.equal(size_feedback.correlated_size_overflows, 1);
-  assert.ok(size_feedback.input_estimate_target < 10000);
+  assert.ok(size_feedback.input_estimate_target < previous.pack_ceiling_input_estimate);
+  assert.ok(size_feedback.input_estimate_target >=
+    Math.floor(previous.pack_ceiling_input_estimate * 0.9), "cold cut uses the normal ceiling");
 });
 
 test("NVIDIA combined usage without a prior Google refusal cannot lower packing", async () => {
@@ -4263,4 +4266,19 @@ test("NVIDIA combined usage without a prior Google refusal cannot lower packing"
   const { size_feedback } = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
   assert.equal(size_feedback.resolved_packets, 0);
   assert.equal(size_feedback.input_estimate_target, null);
+});
+
+
+test("feedback ignores malformed model entries just like quota recovery", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("model-entry")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  sql.exec("UPDATE jobs SET policy_json=? WHERE id='model-entry'",
+    JSON.stringify({ allowed_models: [GEMMA_MODEL, null], allow_paid: false }));
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
+    outcome: "success", provider_status_code: 200, failure_class: null,
+    result_key: "results/model-entry.json", observed_input_tokens: 600, observed_output_tokens: 100,
+  })]);
+  assert.equal((await coordinator.packingCeiling(GEMMA_MODEL, "tags")).size_feedback
+    .resolved_packets, 1);
 });

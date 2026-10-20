@@ -297,12 +297,14 @@ class ChatJudgeBackend:
         max_items: int,
         output_reservation: int = 2048,
         allow_single_item_overflow: bool = False,
+        overflow_input_limit: int | None = None,
     ):
         self.max_total_tokens = max_total_tokens
         self.max_question_tokens = max_total_tokens
         self.max_items = max_items
         self.output_reservation = output_reservation
         self.allow_single_item_overflow = allow_single_item_overflow
+        self.overflow_input_limit = overflow_input_limit
 
     SYSTEM = (
         "You are an independent judge. Answer every item using only the evidence given with it. "

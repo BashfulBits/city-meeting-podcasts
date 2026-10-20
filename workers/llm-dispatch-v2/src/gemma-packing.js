@@ -27,7 +27,7 @@ export function parseGemmaPacking(raw) {
 }
 
 /** One resolved packet, never a retry count. No automatic growth or timer-driven rebound. */
-export function recordGemmaPacking(raw, sample) {
+export function recordGemmaPacking(raw, sample, baseline = null) {
   const state = parseGemmaPacking(raw);
   if (!sample || typeof sample.id !== "string" || sample.id.length > 256 ||
       !Number.isFinite(sample.estimate) || sample.estimate < 200 ||
@@ -47,7 +47,8 @@ export function recordGemmaPacking(raw, sample) {
   if (failures / relevant.length < 0.05) return state;
   const ratios = relevant.map(s => (s.input + s.output) / s.estimate).sort((a, b) => a - b);
   const ratio = ratios[Math.max(0, Math.ceil(ratios.length * 0.95) - 1)];
-  const reference = state.target ?? sample.estimate;
+  const reference = state.target ?? baseline;
+  if (!Number.isSafeInteger(reference) || reference <= 0) return state;
   const candidate = Math.max(GEMMA_TARGET_FLOOR, Math.floor(reference * 0.9), Math.min(
     Math.floor(GEMMA_COMBINED_TARGET / (ratio * 1.05)),
     Math.floor(sample.estimate * 0.95),
