@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Gemma quota diagnostics.** Correlate request timing, input estimates, observed usage,
+  full/cached/uncached input, response validity, gateway configuration, and bounded quota details.
+  This distinguishes
+  per-minute exhaustion from confirmed size refusals without logging prompts or full errors.
+  Document the investigation and plan for roughly 95% AI Studio packet coverage with larger
+  same-model routes handling size overflow. Packing and retry behavior are unchanged; no stored
+  artifacts are invalidated or queued payloads rewritten.
+
 - Google Gemini/Gemma dispatch now honors token-quota retry deadlines even after job retry
   exhaustion, and an in-flight success preserves an active provider cooldown. Explicit oversized
   HTTP 429 requests use sibling-route/repacking recovery instead of repeated quota waits.
