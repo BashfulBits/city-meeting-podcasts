@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.compute.llm_policy import estimate_tokens as estimate_message_tokens
 from citypods.judging.tasks import Evidence, QuestionSpec, Subject
 
 JUDGE_CONTRACT = "judge-answers-v1"
@@ -307,10 +309,9 @@ class ChatJudgeBackend:
         "passage from the evidence, or with a quote that is not in it, is discarded."
     )
 
-    def build(self, packet: Packet) -> InferenceJob:
-        ensure_contract()
+    def _messages(self, packet_items: Sequence[Item]) -> list[dict[str, str]]:
         items = []
-        for item in packet.items:
+        for item in packet_items:
             entry: dict[str, Any] = {
                 "id": item.qid,
                 "kind": item.question.kind,
@@ -325,13 +326,23 @@ class ChatJudgeBackend:
             if item.question.kind == "choose":
                 entry["options"] = [letter for letter, _value in item.options]
             items.append(entry)
+        return [
+            {"role": "system", "content": self.SYSTEM},
+            {"role": "user", "content": json.dumps({"items": items}, ensure_ascii=False)},
+        ]
+
+    def packet_input_estimate(self, items: Sequence[Item]) -> int:
+        """Use enqueue's complete-request estimate, including the structured contract."""
+        return estimate_message_tokens(self._messages(items)) + math.ceil(
+            len(json.dumps(JUDGE_REQUEST_CONTRACT)) / 4
+        )
+
+    def build(self, packet: Packet) -> InferenceJob:
+        ensure_contract()
         return InferenceJob(
             task="judge",
             inputs={
-                "messages": [
-                    {"role": "system", "content": self.SYSTEM},
-                    {"role": "user", "content": json.dumps({"items": items}, ensure_ascii=False)},
-                ],
+                "messages": self._messages(packet.items),
                 "structured_output": JUDGE_REQUEST_CONTRACT,
                 "llm_policy": _policy(packet.purpose, packet.judge_model),
                 "max_tokens": self.output_reservation,

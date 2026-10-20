@@ -253,7 +253,9 @@ def test_packing_respects_ceilings_and_skips_only_an_item_too_large_alone():
     units.append([_item("e", 100), _item("f", 100), _item("g", 100)])
     result = pack(units, backend, purpose="judge:sibling", role="sibling", judge_model="m")
     sizes = [[i.subjects[0].subject_id for i in p.items] for p in result.packets]
-    assert sizes == [["a", "b"], ["c"], ["e", "f", "g"]]
+    # Full framing makes two 400-token items exceed the 1,000-token budget.
+    assert sizes == [["a"], ["b"], ["c"], ["e", "f", "g"]]
+    assert all(backend.packet_input_estimate(p.items) <= 1000 for p in result.packets)
     assert result.payload_too_large == 1
     again = pack(units, backend, purpose="judge:sibling", role="sibling", judge_model="m")
     assert [p.recipe_hash for p in again.packets] == [p.recipe_hash for p in result.packets]
@@ -2193,3 +2195,38 @@ def test_sibling_packets_track_the_workers_packing_ceiling():
         runner._sibling_backend(GEMMA_31B, {GEMMA_31B: 6_000}).max_items
         == (runner.SIBLING_CEILINGS[GEMMA_31B][1])
     )
+
+
+def test_chat_packet_size_matches_enqueue_estimate_and_boundary():
+    import json
+    import math
+
+    from citypods.compute.llm_policy import estimate_tokens as estimate_messages
+
+    backend = ChatJudgeBackend(max_total_tokens=10_000, max_items=25)
+    items = (_item("size-a", 400), _item("size-b", 400))
+    packet = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", items)
+    job = backend.build(packet)
+    estimate = estimate_messages(job.inputs["messages"]) + math.ceil(
+        len(json.dumps(job.inputs["structured_output"])) / 4
+    )
+    assert backend.packet_input_estimate(items) == estimate
+    backend.max_total_tokens = estimate
+    result = pack(
+        [[i] for i in items],
+        backend,
+        purpose=packet.purpose,
+        role=packet.role,
+        judge_model=packet.judge_model,
+    )
+    assert len(result.packets) == 1
+    backend.max_total_tokens = estimate - 1
+    result = pack(
+        [[i] for i in items],
+        backend,
+        purpose=packet.purpose,
+        role=packet.role,
+        judge_model=packet.judge_model,
+    )
+    assert [i.qid for p in result.packets for i in p.items] == [i.qid for i in items]
+    assert len(result.packets) == 2

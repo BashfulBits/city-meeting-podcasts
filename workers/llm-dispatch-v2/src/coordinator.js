@@ -9,6 +9,9 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
+import {
+  GEMMA_COMBINED_TARGET, gemmaPackingStatus, recordGemmaPacking,
+} from "./gemma-packing.js";
 import { canonicalJson, sha256Hex, validateReserveRequest } from "./protocol.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE,
@@ -4762,6 +4765,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const now = Date.now();
     const family = String(promptFamily || "");
     const routes = [];
+    const feedback = String(canonical).startsWith("google/gemma-4-")
+      ? gemmaPackingStatus([...sql.exec(
+        "SELECT recent_observed_summary FROM estimates WHERE key = ?",
+        `gemma-size:${canonical}:${family}`
+      )][0]?.recent_observed_summary) : null;
     let ceiling = null;
     for (const routeId of routeIds) {
       const stored = limits.routes_by_id?.[routeId];
@@ -4776,6 +4784,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const route = { ...stored, ...row, route_id: routeId, model: canonical };
       const calibration = this._calibration(route, family);
       let limit = packingInputLimit(route, calibration.packRatio, now);
+      if (stored.provider === "gemini" && feedback?.input_estimate_target != null) {
+        limit = limit == null ? feedback.input_estimate_target
+          : Math.min(limit, feedback.input_estimate_target);
+      }
       // A learned free-prompt cap is a RAW estimate limit (admission compares it before scaling).
       const promptCap = Number(route.prompt_cap_estimate) || 0;
       if (promptCap > 0) limit = limit == null ? promptCap : Math.min(limit, promptCap);
@@ -4790,6 +4802,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       model: canonical,
       prompt_family: family,
       pack_ceiling_input_estimate: ceiling,
+      ...(feedback ? { size_feedback: feedback } : {}),
       routes,
     };
   }
@@ -5689,6 +5702,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
           resultJobs.push({
             id: job.id,
+            request_digest: job.request_digest,
             payload_key: job.payload_key,
             lease_token: leaseToken,
             // The executor's attempt fence: a provider call starts only if it can finish before
@@ -6782,6 +6796,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
           // Unit 7 calibration, now a bounded recent window of input ratios and output sizes
           // (calibration.js) rather than a never-decreasing total.
+          if (result.outcome === "success") this._recordGemmaPacking(job, result, now);
           if (observedTotal != null) {
             this._calibrateEstimate(job.lease_route_id, job.prompt_family, observedTotal, now, {
               jobId: job.id,
@@ -6823,6 +6838,52 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
     });
+  }
+
+  /** Correlate only within a live, lease-validated job generation. No payload/ledger scans. */
+  _recordGemmaPacking(job, result, now) {
+    const catalog = this._dispatchLimits();
+    const route = catalog.routes_by_id?.[job.lease_route_id];
+    const model = this._modelForRoute(job.lease_route_id);
+    const input = result.observed_input_tokens;
+    const output = result.observed_output_tokens;
+    if (!Number.isFinite(output) || output < 0) return;
+    if (!String(model).startsWith("google/gemma-4-") || !Number.isFinite(input) || input <= 0 ||
+        !Number.isFinite(job.input_token_estimate) || job.input_token_estimate < 200) return;
+    const policy = jobPolicy(job);
+    const models = new Set((Array.isArray(policy.allowed_models) ? policy.allowed_models : [])
+      .map(m => canonicalModelName(m, catalog)));
+    if (models.size !== 1 || !models.has(model) || policy.backup_models?.length) return;
+    const googleRoutes = [...quotaExcludedRoutes(job)].filter(id =>
+      catalog.routes_by_id?.[id]?.provider === "gemini" && this._modelForRoute(id) === model);
+    const recovered = route?.provider === "nvidia" && googleRoutes.length > 0;
+    if (route?.provider !== "gemini" && !recovered) return;
+    const key = `gemma-size:${model}:${job.prompt_family}`;
+    const sql = this._getSql();
+    const prior = [...sql.exec(
+      "SELECT recent_observed_summary FROM estimates WHERE key = ?", key
+    )][0]?.recent_observed_summary;
+    const state = recordGemmaPacking(prior, {
+      id: `${job.id}:${job.request_digest}`,
+      estimate: job.input_token_estimate,
+      input, output,
+      overflow: recovered && input + output > GEMMA_COMBINED_TARGET,
+    });
+    sql.exec(
+      `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+       VALUES (?, 0, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET
+       sample_count=excluded.sample_count, recent_observed_summary=excluded.recent_observed_summary,
+       updated_at=excluded.updated_at`,
+      key, state.samples.length, JSON.stringify(state), now
+    );
+    if (recovered) console.info(JSON.stringify({
+      event: "gemma_correlated_size_outcome", job_id: job.id, request_digest: job.request_digest,
+      model, prompt_family: job.prompt_family, google_route_ids: googleRoutes,
+      input_token_estimate: job.input_token_estimate, observed_input_tokens: input,
+      observed_output_tokens: output, observed_total_tokens: input + output,
+      correlated_size_overflow: input + output > GEMMA_COMBINED_TARGET,
+      input_estimate_target: state.target,
+    }));
   }
 
   /** Unit 7: never decrease an existing margin; insert the configured floor as the first

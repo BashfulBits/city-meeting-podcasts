@@ -33,10 +33,12 @@ def item_size(backend: Any, item: Item) -> int:
 
 
 def _fits(items: Sequence[Item], sizes: Sequence[int], backend: Any) -> bool:
+    sizer = getattr(backend, "packet_input_estimate", None)
+    total = sizer(items) if sizer is not None else sum(sizes)
     return (
         bool(items)
         and max(sizes) <= backend.max_question_tokens
-        and sum(sizes) <= backend.max_total_tokens
+        and total <= backend.max_total_tokens
         and len(items) <= backend.max_items
     )
 
@@ -61,24 +63,21 @@ def pack(
 ) -> PackResult:
     packets: list[Packet] = []
     current: list[Item] = []
-    tokens = 0
     too_large = 0
     split = 0
 
     def flush() -> None:
-        nonlocal current, tokens
+        nonlocal current
         if current:
             packets.append(Packet(purpose, role, judge_model, tuple(current)))
-        current, tokens = [], 0
+        current = []
 
     def place(items: Sequence[Item], sizes: Sequence[int]) -> None:
-        nonlocal tokens
-        if tokens + sum(sizes) > backend.max_total_tokens or len(current) + len(items) > (
-            backend.max_items
+        if not _fits(
+            [*current, *items], [*[item_size(backend, i) for i in current], *sizes], backend
         ):
             flush()
         current.extend(items)
-        tokens += sum(sizes)
 
     for unit in units:
         if not unit:

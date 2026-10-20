@@ -205,7 +205,7 @@ def _return_run_slot(ctx: JudgingContext, purpose: str) -> None:
 
 
 # Share of the Worker's packing ceiling a packet may use: the ceiling is for the request as the
-# Worker sizes it (system prompt and JSON framing included); the packer sizes items.
+# Worker sizes it, including system prompt, item framing, and structured contract.
 PACK_CEILING_SAFETY = 0.9
 # The configured ceiling is the safe default used when the Worker cannot be read. When it can, the
 # Worker's figure decides, up to this multiple of the default.
@@ -219,7 +219,8 @@ def _sibling_backend(
 
     Without a Worker figure: the configured ceiling. With one: 90% of the largest packet the Worker
     will admit on the model's smallest route (its tightest size limit over the p95 packing ratio),
-    at most 1.5x the configured ceiling, so packets track admission instead of a hard-coded guess in
+    at most 1.5x the configured ceiling, applied to the complete serialized request so packets track
+    admission instead of a hard-coded guess in
     both directions."""
     total, items = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)
     worker = (pack_ceilings or {}).get(model)

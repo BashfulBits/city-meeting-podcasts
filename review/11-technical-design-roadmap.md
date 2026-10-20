@@ -23,8 +23,10 @@ PR #2510**; [initial baseline](evidence/2026-10-19-gemma-2509-baseline.md) confi
 The follow-up bounded-recovery slice **shipped in PR #2511**:
 Google TPM refusals exclude the refusing project for that packet, preserve the transient retry
 allowance, and permit remaining same-model routes without learning an unproven size bound.
-The next L3 slice distinguishes confirmed response timeouts from ambiguous transport failures
-and moves work to fitting siblings after two deadlines per route;
+Response-timeout recovery shipped in PR #2512 and moves work to fitting siblings after two
+confirmed deadlines per route. The next L3 slice sizes complete chat requests and uses correlated
+Google refusals followed by NVIDIA combined input/output usage above 16k for downward packing
+feedback (maintainer-authorized empirical rule, not a claim about Google's quota dimension);
 [overflow evidence][overflow-timeouts]
 records NVIDIA failures after successful route recovery. Request tuning remains unpromoted.
 

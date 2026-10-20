@@ -915,6 +915,7 @@ function logGemmaAttempt({
   console.info(JSON.stringify({
     event: "gemma_provider_attempt",
     job_id: job.id,
+    request_digest: job.request_digest ?? null,
     lease_token: job.lease_token,
     attempt_id: attemptId,
     attempt_ordinal: job.attempt_ordinal ?? null,
