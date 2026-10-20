@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Recover Gemma packets after Google TPM refusals.** Keep per-packet Google route exclusions
+  separate from size evidence and preserve the transient retry allowance for remaining routes
+  of the same model. Wait for temporarily unavailable overflow capacity; report exhausted route
+  recovery explicitly. Existing pins, free/paid permissions, quotas, and dispatch limits still
+  apply. Add a nullable coordinator field without rewriting payloads or invalidating stored
+  artifacts. No pipeline-version bump or automatic revival of already-failed jobs.
+
 - **Gemma acceptance measurement.** Add an offline report for saved Worker events with deployment
   and time cutoffs, a response-maturity allowance, attempt deduplication, and separate model/route
   counts. Retries do not repair first-attempt refusal rates; cached input is not packet size.
