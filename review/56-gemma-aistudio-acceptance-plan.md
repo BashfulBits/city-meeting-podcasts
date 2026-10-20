@@ -341,3 +341,50 @@ would add latency and requests; prefer sampled checks or a validated local token
 
 [quota-failure]: https://docs.cloud.google.com/tasks/docs/reference/rpc/google.rpc#quotafailure
 [count-tokens]: https://ai.google.dev/api/tokens
+
+
+## Cached-input correction from a supplied request (2026-10-19 Central)
+
+The maintainer supplied a Google Gemma request/response created at 2026-10-19 14:34:52 UTC.
+Cloudflare displayed 827 input tokens, while the raw Google response reports:
+
+- `prompt_tokens = 10728`, including `cached_tokens = 9901`;
+- uncached input `10728 - 9901 = 827`;
+- `completion_tokens = 983`, `total_tokens = 11711`.
+
+The complete attachment has 25 items and 42,081 user-message characters. The same offline
+Gemma tokenizer used above counts 10,726 message-content tokens, just two fewer than Google's
+reported prompt count. The returned answer lists all 25 item IDs, with two true and 23 false
+verdicts. These facts strongly support full-context accounting; neither the dashboard's 827 nor
+the predominance of false verdicts establishes truncation. Cached context is reused context,
+not omitted context. This does not prove every verdict is substantively correct.
+
+**Correction to diagnostic interpretation:** small gateway input counts in earlier samples must
+not be treated as evidence of small packets without checking cached usage and the full provider
+response. Acceptance/error counts remain attempt counts, but an apparent tiny-prompt control may
+actually be a large cached prompt. Match controls on the full input count and actual payload.
+Cloudflare documents subtracting inclusive cache tokens for input-cost calculations; this sample
+numerically matches that split. See [Cloudflare cache accounting][cache-accounting]. This does
+not establish how Google's quota enforcement treats cached tokens for these specific routes.
+
+`gateway.js:observedTokens` already uses full `usage.prompt_tokens`, so this response would
+calibrate and settle at 10,728, not 827. The diagnostic slice additionally logs reported cached
+and derived uncached input, keeping absent or inconsistent cache metadata unknown. No pacing or
+calibration formula changes. Test this example's full/cached/uncached accounting explicitly.
+
+The attached request predates the current chat request revision: its system prompt is 408
+characters and its schema requires only answer `id`; `reason` has an empty-string default. Every
+returned answer omits a reason. Current requests use `judge-answers-v2`, require a reason in the
+requested schema, name each item's answer field, and include the chat request revision in packet
+identity. Historical responses remain leniently parseable; the collection path records quote
+validity, while the Worker only checks structured JSON syntax, not the complete judge schema or
+substantive support. When evidence is available for the quote check, an absent reason becomes
+`quote_valid: false` and is excluded from judgment statistics; this is independent of the verdict
+being true or false. Track usable-answer quality separately from HTTP acceptance.
+
+A spot-check also makes some negative verdicts plausible: item 2 proposes parks/recreation for a
+sidewalk-waiver discussion, while item 1 asks the walking/access question and receives true. Item
+25 mentions transit during a housing discussion; its instructions explicitly exclude passing
+references. These examples are not an audit of all 25 judgments.
+
+[cache-accounting]: https://developers.cloudflare.com/ai-gateway/configuration/custom-costs/

@@ -254,12 +254,15 @@ test("Google Gemma logs each actual call without response text", async () => {
     assert.ok(events[0].actual_end_at >= events[0].actual_start_at);
     globalThis.fetch = async () => new Response(JSON.stringify({
       choices: [{ message: { content: "PRIVATE_OUTPUT" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 12653, completion_tokens: 1659 },
+      usage: { prompt_tokens: 10728, completion_tokens: 983,
+        prompt_tokens_details: { cached_tokens: 9901 } },
     }), { status: 200 });
     job.attempt_ordinal = 2;
     assert.equal((await call()).result.outcome, "success");
     assert.equal(events.length, 2);
-    assert.equal(events[1].observed_input_tokens, 12653);
+    assert.equal(events[1].observed_input_tokens, 10728);
+    assert.equal(events[1].observed_cached_input_tokens, 9901);
+    assert.equal(events[1].observed_uncached_input_tokens, 827);
     assert.equal(events[1].response_problem, null);
     assert.equal(events[1].attempt_ordinal, 2);
     globalThis.fetch = async () => { throw new Error("PRIVATE_TRANSPORT"); };
@@ -280,4 +283,12 @@ test("Google Gemma logs each actual call without response text", async () => {
     console.info = info;
     globalThis.fetch = fetch;
   }
+});
+
+
+test("cached prompt tokens remain included in scheduler calibration input", () => {
+  assert.deepEqual(observedTokens({ usage: {
+    prompt_tokens: 10728, completion_tokens: 983,
+    prompt_tokens_details: { cached_tokens: 9901 },
+  } }), { input: 10728, output: 983 });
 });

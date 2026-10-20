@@ -959,7 +959,8 @@ The primary and secondary Google keys belong to distinct projects (maintainer-co
 Google Gemma calls emit `gemma_provider_attempt` before batch settlement: job/lease/attempt
 identity,
 known attempt ordinal, start/end, raw/admitted/reserved input estimates, sent output cap, reported
-usage, HTTP status and response-shape validation, retry hints, and bounded allowlisted quota facts.
+usage (full, cached, and uncached input), HTTP status and response-shape validation, retry hints,
+and bounded allowlisted quota facts.
 Transport failures have no HTTP status; unstarted work emits no attempt. Configured gateway retry
 policy is labelled as configuration, not an observed upstream call count. No prompt, completion,
 full error body, or credential is logged, and no per-attempt SQL row or extra RPC is introduced.

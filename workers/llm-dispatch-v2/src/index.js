@@ -902,6 +902,9 @@ function logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, re
     inputTokens: job.input_token_estimate,
   }) : null;
   const usage = response ? shape.observedTokens(response.body) : null;
+  const reportedCached = response?.body?.usage?.prompt_tokens_details?.cached_tokens;
+  const cachedInput = Number.isFinite(reportedCached) && reportedCached >= 0 &&
+    Number.isFinite(usage?.input) && reportedCached <= usage.input ? reportedCached : null;
   const problem = response?.ok
     ? shape.emptyCompletion(response.status, response.body) ? "empty_completion"
       : shape.lengthTruncated(response.body) ? "output_budget_exhausted"
@@ -929,6 +932,8 @@ function logGemmaAttempt({ job, route, attemptId, actualStartAt, actualEndAt, re
     requested_max_tokens: response?.sentMaxTokens ?? null,
     observed_input_tokens: usage?.input ?? null,
     observed_output_tokens: usage?.output ?? null,
+    observed_cached_input_tokens: cachedInput,
+    observed_uncached_input_tokens: cachedInput == null ? null : usage.input - cachedInput,
     failure_class: classification?.failure_class ?? (response ? null : "server_error"),
     response_problem: problem,
     retry_after_seconds: classification?.retry_after_seconds ?? null,
