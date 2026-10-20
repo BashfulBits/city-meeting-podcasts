@@ -14,6 +14,8 @@ Maintainer-directed operational follow-up (2026-10-19): roughly 95% of new Gemma
 execute on AI Studio, with size overflow served by larger same-model routes. The evidence and
 L2 delivery plan are in [review/56](review/56-gemma-aistudio-acceptance-plan.md); diagnostics
 precede further tuning. PR #2507 shipped quota recovery but did not change producer sizing.
+PR #2509 deployed correlated quota diagnostics; its initial passive baseline is recorded in
+[the measurement evidence](review/evidence/2026-10-19-gemma-2509-baseline.md).
 
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
 remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
