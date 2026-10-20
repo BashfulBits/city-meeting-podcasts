@@ -6,11 +6,16 @@ endpoint rate-limit characterization & failure-class-aware backoff; review/45 re
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
 `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
 
-Maintainer-directed Google quota recovery (2026-10-19, under validation):
+Maintainer-directed Google quota recovery (2026-10-19, shipped in PR #2507):
 [review/55](55-adaptive-input-token-admission.md), quota recovery follow-up,
 records the approved TPM retry-deadline, HTTP 429 size-recovery, and lease-held/completion-settled
 input-window fixes. The 15-second jitter explanation remains a hypothesis; the maintainer verified
 the two Google keys belong to separate projects. No provider quota or artifact version is changed.
+
+Maintainer-directed follow-up: [review/56](56-gemma-aistudio-acceptance-plan.md) is **L2**.
+It records post-deploy refusals and the goal of roughly 95% AI Studio packet coverage, with
+larger same-model routes serving size overflow. Diagnostics, complete-request packing, route
+acceptance feedback, and bounded recovery have explicit rollout gates; tuning is not deployed.
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a

@@ -133,7 +133,10 @@ reconstruction above is inferred from the ledger arithmetic, not measured per ca
 
 ## Quota recovery and pending input reservations (maintainer-directed, 2026-10-19)
 
-Implementation follow-up under validation; production verification remains pending deployment.
+Implemented in [PR #2507](https://github.com/BashfulBits/city-meeting-podcasts/pull/2507);
+deployed 2026-10-20 00:18 UTC. Post-deploy investigation and the maintainer's 95% AI Studio
+acceptance goal are recorded in [review/56](56-gemma-aistudio-acceptance-plan.md). Refusals
+continue; deployment does not establish that the original timing hypothesis was correct.
 The maintainer approved these three fixes after investigating the exported Google failures and
 confirmed the primary and secondary keys belong to distinct Google projects.
 
