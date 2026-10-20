@@ -301,8 +301,11 @@ per-request limit was measured.
 
 ### First diagnostic slice: L3 implementation contract
 
-Implemented locally, awaiting PR review and deployment. The complete acceptance/controller plan
+Implemented in [PR #2509](https://github.com/BashfulBits/city-meeting-podcasts/pull/2509),
+deployed 2026-10-20 04:29:25 UTC (October 19 Central). The complete acceptance/controller plan
 remains L2; these logs provide evidence and do not establish that the 95% goal has been met.
+The [initial passive baseline](evidence/2026-10-19-gemma-2509-baseline.md) records the cutoff and
+first quota dimensions; the sample remains insufficient for a population acceptance claim.
 
 This slice is authorized by the maintainer's instruction to continue. It prepares evidence for
 tuning; it does not change packing, retries, request shapes, quotas, dependencies, or schemas.
@@ -441,3 +444,41 @@ and HTTP 200 at **2026-10-19 14:34:53.331 UTC**. Its response-cache flag is `fal
 is 61,380 ms. Thus this example is historical even without relying on the provider response's
 `created` field. Google's 9,901 cached prompt tokens are distinct from a Cloudflare whole-response
 cache hit; Cloudflare reports the latter as false here.
+
+## Post-deploy measurement slice: L3 contract (2026-10-19 Central)
+
+The maintainer merged #2509 and directed continued follow-up. Diagnostics are deployed; this
+slice makes the passive report reproducible without changing production or generating requests.
+
+- Add `scripts/gemma_acceptance_report.py`, an offline CLI reading saved observability event
+  exports. Require explicit deployment version, start cutoff, and observation end. Default the
+  response-maturity allowance to 780 seconds (720-second response ceiling plus delivery slack).
+  Exclude recent starts from the rate denominator: fast refusals arrive before slow successes.
+- Deduplicate attempt IDs across overlapping exports. Exclude conflicting duplicates and jobs
+  with multiple ordinal-one attempts as ambiguous generations. Count each observed global first
+  attempt once, separating model, purpose, and first route; retries never repair first acceptance.
+- Report attempt/status counts, Wilson intervals, quota IDs/limits, and known pre-request size
+  estimates. Preserve full input usage; cached usage must not become packet size. Missing usage
+  stays unknown. Do not print raw messages, prompts, completions, or unrestricted error fields.
+- Be explicit that logs alone do not establish full producer coverage, usable answer quality,
+  lost-call completeness, or preparation time. Keep existing queued work separate from genuinely
+  new producer cohorts; record producer-run provenance when available.
+- Add `tests/test_gemma_acceptance_report.py` for retry/dedup correctness, version/time/maturity
+  boundaries, ambiguous generations, invalid exports, cached-versus-full usage, and redaction.
+- Update this plan, review/11, and a changelog fragment. No other source files, dependencies,
+  workflow steps, quotas, schemas, or runtime behavior change. Run whole-repo Ruff and relevant
+  offline tests; CLI CodeRabbit reviews the final diff. Broader checks follow the pre-push hook.
+
+Raw exports stay outside Git. Sanitized results go in
+`review/evidence/2026-10-19-gemma-2509-baseline.md`; do not label a small or incomplete sample as
+an acceptance-rate improvement. A later passive check may extend the observation window.
+
+### Confirmed recovery defect from the first deployed observations
+
+The baseline records a job that received `own_tpm` 429s on both Google projects and then failed
+after two attempts without reaching a larger route. The existing generic-429 path shares the
+single 5xx retry allowance. This makes bounded same-model recovery an actionable follow-up even
+before a representative acceptance sample exists. Its runtime implementation remains outside
+the offline-report slice: specify per-job route exclusions, independent recovery bounds, eventual
+outcome accounting, and no-route behavior before implementation. Generic quota errors must not
+become size-learning evidence merely because this recovery path was exhausted.
