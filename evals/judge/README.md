@@ -122,3 +122,33 @@ be separated statistically; T0's 12/13 does not show it is as good as T2, only t
 
 What to do next: extend `gold.json` with maintainer-verified labels (the weekly audit promotes clear-cut items into it), grow the question-type sample, and
 re-run `context-ladder` so the tier choice rests on more than 15 labels.
+
+## Production chat-contract evaluation (2026-10-20)
+
+The September pilot used evaluation-specific response shapes (`best`, `verdicts[].supported`)
+and JSON extraction, not `ChatJudgeBackend.parse` or the production quote check. Its results
+establish behavior under those pilot prompts, not compatibility with later mixed-kind judge
+packets. They must not be used as evidence that Gemma, GLM or DeepSeek passed that later contract.
+
+`scripts/eval_judge_contract.py` now builds mixed-kind packets from every frozen manifest item
+(30 synthetic claims, 44 T1 tag candidates/controls, six four-quote meetings), applies the compiled
+route's schema shaping, and invokes the actual backend parser and deterministic quote checker.
+Moment evidence here is limited to the frozen quote/reason, not the full meeting transcript.
+These are contract/consistency checks, not new human labels or a calibration-quality benchmark.
+
+```
+PYTHONPATH=. python scripts/eval_judge_contract.py --out /tmp/judge-contract-plan
+citypods-env python scripts/eval_judge_contract.py --live --out /tmp/judge-contract-live
+```
+
+`--route` may be repeated for bounded reruns. `--packet-limit 1` is a smoke test, not the full
+set. A diagnostic `--output-cap` overrides only that evaluation request and must be reported
+separately from the production `route_max` result. Default live requests use production output
+sizing and lane reasoning controls. Requests contain no credentials; raw replies, per-item parsed
+rows, schema coverage, exact answer-ID coverage, choice capture and quote support are retained.
+Provider/authentication/quota errors are inconclusive, never passing model outputs. No corrective
+retry or production-state write is hidden in this harness.
+
+The October 20 candidate iterations and route limitations are recorded with the dated results;
+parsing success and quote-support rates are deliberately separate. Newly planned chat packets use
+request revision 3, leaving JEV, already-stored judgments and pending pointers unchanged.

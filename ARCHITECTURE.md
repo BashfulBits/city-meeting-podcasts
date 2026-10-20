@@ -1422,7 +1422,13 @@ lane the Worker's ingress preflight reports closed starts with no packets. Adjud
 `judging.adjudication.enabled`) puts contested subject-questions and a 3% calibration sample to a
 third, independent judge at the largest context tier, and a chat judge's or adjudicator's quoted
 evidence is checked mechanically (`quote_valid`; false rows are kept but ignored as votes); 2% of
-subjects are also re-asked, worded differently, as stability probes. All of it is data only: nothing
+subjects are also re-asked, worded differently, as stability probes. New chat packets request the typed `judge-answers-v3` reply contract: each kind requires its own
+answer field and duplicate IDs are rejected. Historical v1/v2 replies remain readable. Chat packet
+request revision 3 prevents a newly planned packet from reusing an older completed result; it does
+not invalidate stored judgments or existing pending pointers, and JEV identities do not change.
+`scripts/eval_judge_contract.py` validates the frozen input set with local direct provider calls,
+compiled schema shaping and the real parser; raw replies and quote checks are separate evidence.
+All of it is data only: nothing
 reads these judgments to decide until the calibration report (PR7). Human-verified probes
 (`evals/judge/<task>/gold.json`) ride invisibly in each judge's live packets and are reported per judge
 (non-gating until 20), and a weekly blind audit (`judge-audit.yml`, at most 12 claims chosen by

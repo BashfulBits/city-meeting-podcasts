@@ -2,8 +2,8 @@
 
 ``JevBackend`` compiles questions to BeatAPI's systemone types (validate/gate -> ``noul``, grade ->
 ``score``, choose -> ``choice``). ``ChatJudgeBackend`` asks sibling chat models through one
-structured contract, ``judge-answers-v1``. Both return rows for :mod:`citypods.judging.ledger`; an
-unanswered or malformed item yields no row.
+typed request contract, ``judge-answers-v3`` (legacy replies remain readable). Both return rows for
+:mod:`citypods.judging.ledger`; an unanswered or malformed item yields no row.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm_policy import LLMRequestPolicy
@@ -21,8 +21,8 @@ from citypods.compute.llm_policy import estimate_tokens as estimate_message_toke
 from citypods.judging.tasks import Evidence, QuestionSpec, Subject
 
 JUDGE_CONTRACT = "judge-answers-v1"
-# What a packet asks for (reason required); JUDGE_CONTRACT still parses every reply.
-JUDGE_REQUEST_CONTRACT = "judge-answers-v2"
+# New packets require a typed answer per kind; v1/v2 remain readable for older packets.
+JUDGE_REQUEST_CONTRACT = "judge-answers-v3"
 # The stored reason is trimmed to REASON_MAX after the quote check. The reply schema allows more, so
 # one verbose answer cannot discard the 20 others in its packet; the prompts still ask for 300.
 REASON_MAX = 300
@@ -77,8 +77,8 @@ class Item:
 
 
 # Bump when what a chat judge is asked changes in a way that must not reuse earlier results
-# (see Packet.recipe_hash). "2": each item names its answer field and lists the choose letters.
-CHAT_REQUEST_REVISION = "2"
+# (see Packet.recipe_hash). "3": required per-kind reply fields, including choose letters.
+CHAT_REQUEST_REVISION = "3"
 
 
 @dataclass(frozen=True)
@@ -104,12 +104,11 @@ class Packet:
 
 
 def ensure_contract():
-    """Register both judge reply contracts and return the lenient one (``JUDGE_CONTRACT``).
+    """Register historical replies and the typed v3 request contract; return the v1 model.
 
-    The lenient contract parses every reply, including those of packets sent before the strict one
-    existed. The strict one (``JUDGE_REQUEST_CONTRACT``) is what a new packet asks for: ``reason``
-    is required, because with it optional the judge left it out of 53% of its answers (2026-10-18)
-    and there was nothing to check."""
+    v1/v2 remain readable for existing packets. v3 requires kind and its own non-null answer
+    field: a choose response cannot satisfy the schema by naming a letter only in reason.
+    """
     from citypods.compute.structured import register_response_model, response_model
 
     try:
@@ -117,13 +116,18 @@ def ensure_contract():
     except ValueError:
         lenient = None
     try:
-        response_model(JUDGE_REQUEST_CONTRACT)
+        response_model("judge-answers-v2")
         strict_registered = True
     except ValueError:
         strict_registered = False
-    if lenient is not None and strict_registered:
+    try:
+        response_model(JUDGE_REQUEST_CONTRACT)
+        typed_registered = True
+    except ValueError:
+        typed_registered = False
+    if lenient is not None and strict_registered and typed_registered:
         return lenient
-    from pydantic import BaseModel, ConfigDict, Field
+    from pydantic import BaseModel, ConfigDict, Field, model_validator
 
     class Answer(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -145,10 +149,63 @@ def ensure_contract():
         answers: list[RequiredAnswer] = Field(max_length=100)
 
     if not strict_registered:
-        register_response_model(JUDGE_REQUEST_CONTRACT, RequiredResponse)
+        register_response_model("judge-answers-v2", RequiredResponse)
+    if not typed_registered:
+
+        class TypedAnswer(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+            id: str = Field(min_length=1, max_length=200)
+            reason: str = Field(min_length=1, max_length=REASON_CONTRACT_MAX)
+
+        class ValidateAnswer(TypedAnswer):
+            kind: Literal["validate"]
+            verdict: bool = Field(strict=True)
+
+        class GateAnswer(TypedAnswer):
+            kind: Literal["gate"]
+            verdict: bool = Field(strict=True)
+
+        class GradeAnswer(TypedAnswer):
+            kind: Literal["grade"]
+            level: int = Field(strict=True, ge=0, le=10)
+
+        class ChooseAnswer(TypedAnswer):
+            kind: Literal["choose"]
+            choice: str = Field(pattern="^[A-Z]$")
+
+        class TypedResponse(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+            answers: list[ValidateAnswer | GateAnswer | GradeAnswer | ChooseAnswer] = Field(
+                max_length=100
+            )
+
+            @model_validator(mode="after")
+            def unique_ids(self):
+                ids = [answer.id for answer in self.answers]
+                if len(ids) != len(set(ids)):
+                    raise ValueError("duplicate judge answer ids")
+                return self
+
+        register_response_model(JUDGE_REQUEST_CONTRACT, TypedResponse)
     if lenient is None:
         lenient = register_response_model(JUDGE_CONTRACT, Response)
     return lenient
+
+
+def parse_chat_response(output: Any) -> Any:
+    """Decode chat JSON, including a lone closing Markdown fence some routes append.
+
+    Only remove that final fence when the response starts as an object. The JSON decoder still
+    rejects an incomplete object or trailing prose; this never infers a missing answer field.
+    """
+    from citypods.compute.structured import parse_structured_json
+
+    content = output["choices"][0]["message"]["content"]
+    if isinstance(content, str):
+        text = content.strip()
+        if text.startswith("{") and text.endswith("```"):
+            content = text[:-3].rstrip()
+    return parse_structured_json(content, context="judge response")
 
 
 def _policy(purpose: str, model: str) -> LLMRequestPolicy:
@@ -308,15 +365,18 @@ class ChatJudgeBackend:
 
     SYSTEM = (
         "You are an independent judge. Answer every item using only the evidence given with it. "
-        "Never rewrite or create a candidate. For each item return its id and exactly the field "
+        "Never rewrite or create a candidate. Return one JSON object with an answers array. "
+        "Return each item exactly once, with id, reason, kind, and its required answer field. "
+        "Copy kind from the item. Never omit the required field or put its value only in reason. "
+        "For each item return its id and exactly the field "
         "its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it "
         "must be held back); grade -> level (0 = lowest listed level); choose -> choice (the "
         "option letter). Fill only the field named in the item's answer_with; for choose, "
         "choice must be exactly one of the item's options. Always give a reason (at most 300 "
-        "characters): copy a short passage "
-        'from the evidence word for word and put it in double quotes ("..."), also when you '
-        "find nothing to flag; an answer with no "
-        "passage from the evidence, or with a quote that is not in it, is discarded."
+        "characters): start reason with at least five consecutive words copied exactly from "
+        "the evidence, then briefly explain if needed. Do not surround the copied passage or "
+        "paraphrases with quotation marks. Include the passage even when nothing is flagged; "
+        "a reason without a real copied passage is discarded."
     )
 
     def _messages(self, packet_items: Sequence[Item]) -> list[dict[str, str]]:
@@ -362,14 +422,17 @@ class ChatJudgeBackend:
         )
 
     def parse(self, packet: Packet, output: Any) -> list[tuple[Subject, dict[str, Any]]]:
-        from citypods.compute.structured import parse_structured_json
-
         try:
-            content = output["choices"][0]["message"]["content"]
-            reply = ensure_contract().model_validate(
-                parse_structured_json(content, context="judge response")
-            )
-        except (KeyError, IndexError, TypeError, ValueError):
+            ensure_contract()
+            from citypods.compute.structured import response_model
+
+            raw = parse_chat_response(output)
+            # Typed replies must satisfy their per-kind contract. Only older replies without
+            # kind use the legacy parser; malformed v3 answers cannot downgrade to v1.
+            typed = any(isinstance(a, dict) and "kind" in a for a in raw.get("answers", []))
+            contract = response_model(JUDGE_REQUEST_CONTRACT if typed else JUDGE_CONTRACT)
+            reply = contract.model_validate(raw)
+        except (AttributeError, KeyError, IndexError, TypeError, ValueError):
             return []
         by_id = {answer.id: answer for answer in reply.answers}
         rows: list[tuple[Subject, dict[str, Any]]] = []
@@ -378,6 +441,8 @@ class ChatJudgeBackend:
             if answer is None:
                 continue
             kind = item.question.kind
+            if getattr(answer, "kind", kind) != kind:
+                continue
             if kind in ("validate", "gate"):
                 if answer.verdict is None:
                     continue
@@ -412,15 +477,19 @@ class AdjudicatorBackend(ChatJudgeBackend):
     SYSTEM = (
         "You are the adjudicator. Decide every item using only the evidence given with it. Try to "
         "disprove the claim being tested: answer that it is supported only if the evidence leaves "
-        "no reasonable way to read it otherwise. Never rewrite or create a candidate. For each "
+        "no reasonable way to read it otherwise. Never rewrite or create a candidate. "
+        "Return one JSON object with an answers array. Return each item exactly once, "
+        "with id, reason, kind, and its required answer field. Copy kind from the item. "
+        "Never omit the required field or put its value only in reason. For each "
         "item return its id and exactly the field its kind asks for: validate -> verdict (true if "
         "supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest "
         "listed level); choose -> choice (the option letter). Fill only the field named in the "
         "item's answer_with; for choose, choice must be exactly one of the item's options. "
-        "Always give a reason (at most 300 "
-        "characters): copy the short passage that decides the item from the evidence word for "
-        'word and put it in double quotes ("..."), also when you find nothing to flag; an answer '
-        "with no passage from the evidence, or with a quote that is not in it, is discarded."
+        "Always give a reason (at most 300 characters): start reason with at least five "
+        "consecutive words copied exactly from the evidence that decide the item, then briefly "
+        "explain if needed. Do not surround the copied passage or paraphrases with quotation "
+        "marks. Include the passage even when nothing is flagged; a reason without a real "
+        "copied passage is discarded."
     )
 
 

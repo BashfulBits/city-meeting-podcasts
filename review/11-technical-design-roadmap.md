@@ -32,6 +32,11 @@ records NVIDIA failures after successful route recovery. Request tuning remains 
 
 [overflow-timeouts]: evidence/2026-10-20-gemma-overflow-timeouts.md
 
+Maintainer-approved judge prerequisite (2026-10-20, implementation under validation):
+[review/53](53-judge-stack-tags-and-moments.md#typed-chat-reply-validation-maintainer-approved-prerequisite-2026-10-20)
+requires per-kind chat replies and direct frozen-packet validation across active/bench free routes
+before PR7. Legacy judgments remain untouched; recovery and graduation still require their gates.
+
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
 pointer to its detailed design. It exists to:
