@@ -447,6 +447,8 @@ cache hit; Cloudflare reports the latter as false here.
 
 ## Post-deploy measurement slice: L3 contract (2026-10-19 Central)
 
+**Implemented in PR #2510 (2026-10-20 UTC); this measurement contract is frozen.**
+
 The maintainer merged #2509 and directed continued follow-up. Diagnostics are deployed; this
 slice makes the passive report reproducible without changing production or generating requests.
 
@@ -482,3 +484,42 @@ before a representative acceptance sample exists. Its runtime implementation rem
 the offline-report slice: specify per-job route exclusions, independent recovery bounds, eventual
 outcome accounting, and no-route behavior before implementation. Generic quota errors must not
 become size-learning evidence merely because this recovery path was exhausted.
+
+## Bounded Google TPM recovery slice: L3 contract (2026-10-20 Central)
+
+The maintainer authorized implementing the confirmed recovery fix now, while passive acceptance
+measurement continues. This slice does not require the 200-packet tuning gate: it repairs job
+recovery, not producer sizing or learned acceptance targets.
+
+- In `workers/llm-dispatch-v2/src/coordinator.js`, handle an actual Google Gemma 4 `own_tpm`
+  HTTP 429 independently of the shared transient retry budget for a job declaring exactly one
+  canonical model and no backup models. Preserve existing classification and route cooldowns.
+- Persist rejecting route IDs in a nullable JSON-array `jobs.quota_excluded_routes` column.
+  Include fresh schema, additive migration, warm-schema readiness, and supersede reset. Old rows
+  begin with no exclusions. Update this field in the existing settlement write, not an extra write.
+- In `src/routes.js`, skip quota-excluded routes for this job only, independently of size
+  exclusions. Requeue while another policy-eligible configured route can fit; use the full catalog
+  for that decision, so temporary pause, cooldown, exhausted daily quota, or concurrency cannot
+  destroy the job. Normal claim checks still enforce those limits and leave work queued.
+- Preserve logical model, physical pins, free/paid permission, input/output context, route order,
+  and all dispatch/write budgets. Each settled Google refusal removes that route from this
+  packet's candidates; quota refusals do not spend its normal transient allowance. Fail with
+  `quota_recovery_exhausted` when no policy-eligible configured route remains. Mixed quota/size
+  exhaustion must not be reported as proven `input_too_large`. Unrelated failures keep their
+  existing bounded retry behavior. No implicit cross-model fallback.
+- Extend structural indexing/reconciliation to respect these exclusions and distinguish quota
+  exhaustion from size evidence. Do not feed quota exclusions into calibration or learned ceilings.
+- Add regressions in `test/dispatch.test.js` for two Google refusals followed by same-model
+  overflow success, cooldown/capacity waiting, finite exhausted recovery, preserved transient
+  allowance, stale/duplicate settlement, and unchanged unrelated failures. Use `test/routes.test.js`
+  for model/pin/paid/context restrictions and `test/coordinator.test.js` for supersede reset and
+  additive migration. Existing lease expiry must preserve the exclusions.
+- Update this plan, review/11, ROADMAP, ARCHITECTURE, and `changelog.d/`. Run all Worker tests,
+  whole-repository Ruff/format, the pre-push checks, and CLI CodeRabbit; fix valid findings, then
+  push and open a PR. No producer, gateway, pacing, calibration, config, dependency, quota, or
+  pipeline-version changes; no live calls, manual dispatch, or repair of already-failed jobs.
+
+The bound is the finite configured Google route set plus the existing allowances on remaining
+routes, rather than a new tunable retry count. A rollback ignores the additive field and restores
+the previous retry policy; it requires no data rewrite. This does not guarantee overflow capacity
+or a 95% acceptance rate; measure eventual outcomes and queue age after deployment.

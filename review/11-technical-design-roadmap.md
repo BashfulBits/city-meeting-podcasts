@@ -17,9 +17,12 @@ It records post-deploy refusals and the goal of roughly 95% AI Studio packet cov
 larger same-model routes serving size overflow. Diagnostics, complete-request packing, route
 acceptance feedback, and bounded recovery have explicit rollout gates; tuning is not deployed.
 The first diagnostic slice **shipped in PR #2509** (October 19 Central) and logs quota facts and
-correlated attempts without changing packing or quota behavior. The passive report has an L3
-contract in review/56; [initial baseline](evidence/2026-10-19-gemma-2509-baseline.md) confirms the
+correlated attempts without changing packing or quota behavior. The passive report **shipped in
+PR #2510**; [initial baseline](evidence/2026-10-19-gemma-2509-baseline.md) confirms the
 16k per-minute quota dimension but has insufficient mature/new-producer samples for a rate claim.
+The follow-up bounded-recovery slice has an L3 contract in review/56 and is implemented locally:
+Google TPM refusals exclude the refusing project for that packet, preserve the transient retry
+allowance, and permit remaining same-model routes without learning an unproven size bound.
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a

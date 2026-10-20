@@ -455,3 +455,31 @@ test("the eligibility filter and the pacing check share one size gate", async ()
     }
   }
 });
+
+test("quota exclusions preserve model, physical pin, paid and context restrictions", () => {
+  const model = "google/gemma-4-31b-it";
+  const catalog = structuredClone(DISPATCH_LIMITS);
+  const base = {
+    input_token_estimate: 500, max_output_token_estimate: 200,
+    quota_excluded_routes: JSON.stringify(["gemma_4_31b_primary", "gemma_4_31b_secondary"]),
+  };
+  const routes = (policy) => routesEligibleFor({ ...base, policy_json: {
+    allowed_models: [model], allow_paid: false, ...policy,
+  } }, catalog);
+  const remaining = routes({});
+  assert.ok(remaining.length > 0);
+  assert.ok(remaining.every(route => route.provider !== "gemini" && route.model === model));
+  assert.deepEqual(routes({ allowed_route_ids: ["gemma_4_31b_primary"] }), []);
+  const overflowId = "nvidia_gemma_4_31b_it_free";
+  assert.deepEqual(routes({ allowed_route_ids: [overflowId] }).map(r => r.route_id), [overflowId]);
+  catalog.routes_by_id[overflowId].free = false;
+  assert.deepEqual(routes({ allowed_route_ids: [overflowId] }), []);
+  assert.equal(routes({ allowed_route_ids: [overflowId], allow_paid: true }).length, 1);
+  catalog.routes_by_id[overflowId].input_context_limit = 100;
+  assert.deepEqual(routes({ allowed_route_ids: [overflowId], allow_paid: true }), []);
+  const fresh = routesEligibleFor({ ...base, quota_excluded_routes: null, policy_json: {
+    allowed_models: [model], allow_paid: false,
+  } }, catalog);
+  assert.ok(fresh.some(route => route.route_id === "gemma_4_31b_primary"),
+    "a refusal for another job does not exclude this route");
+});
