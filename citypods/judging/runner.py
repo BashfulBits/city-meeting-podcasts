@@ -12,6 +12,7 @@ themselves are never written, in shadow mode or otherwise.
 
 from __future__ import annotations
 
+import math
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -21,6 +22,7 @@ from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_lanes import LaneConfig
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
 from citypods.compute.llm_submission_telemetry import record as record_submission_telemetry
 from citypods.judging import ledger
 from citypods.judging.adjudication import (
@@ -205,7 +207,7 @@ def _return_run_slot(ctx: JudgingContext, purpose: str) -> None:
 
 
 # Share of the Worker's packing ceiling a packet may use: the ceiling is for the request as the
-# Worker sizes it (system prompt and JSON framing included); the packer sizes items.
+# Worker sizes it, including system prompt, item framing, and structured contract.
 PACK_CEILING_SAFETY = 0.9
 # The configured ceiling is the safe default used when the Worker cannot be read. When it can, the
 # Worker's figure decides, up to this multiple of the default.
@@ -219,15 +221,34 @@ def _sibling_backend(
 
     Without a Worker figure: the configured ceiling. With one: 90% of the largest packet the Worker
     will admit on the model's smallest route (its tightest size limit over the p95 packing ratio),
-    at most 1.5x the configured ceiling, so packets track admission instead of a hard-coded guess in
+    at most 1.5x the configured ceiling, applied to the complete serialized request so packets track
+    admission instead of a hard-coded guess in
     both directions."""
     total, items = SIBLING_CEILINGS.get(model, DEFAULT_SIBLING_CEILING)
     worker = (pack_ceilings or {}).get(model)
     if worker:
         # Never above the safe share of what the Worker will admit, however small; an item too big
-        # for it is reported as payload_too_large by the packer instead of being sent to fail.
+        # for every structural same-model route remains payload_too_large. A Gemma item above
+        # only Google's target is isolated intact for larger-route admission.
         total = max(1, min(int(total * PACK_CEILING_GROWTH), int(worker * PACK_CEILING_SAFETY)))
-    return ChatJudgeBackend(max_total_tokens=total, max_items=items)
+    overflow_limits = []
+    if model.startswith("google/gemma-4-"):
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            if not route.free or route.experimental or route.output_context_limit < 2048:
+                continue
+            capacity = max(0, route.input_context_limit - 2048)
+            if route.hard_input_ceiling:
+                capacity = min(capacity, route.hard_input_ceiling)
+            if route.provider == "gemini" and route.quota.tpm:
+                capacity = min(capacity, route.quota.tpm)
+            overflow_limits.append(math.floor(capacity / route.input_token_ratio))
+    overflow_limit = max(overflow_limits, default=0)
+    return ChatJudgeBackend(
+        max_total_tokens=total,
+        max_items=items,
+        allow_single_item_overflow=overflow_limit > 0,
+        overflow_input_limit=overflow_limit or None,
+    )
 
 
 def _marker(packet: Packet, item: Item, subject: Subject) -> dict[str, Any]:

@@ -990,6 +990,22 @@ full error body, or credential is logged, and no per-attempt SQL row or extra RP
 `own_tpm_observed` includes job/lease/attempt identity for correlation. A quota limit without a
 requested amount remains ambiguous between packet size and recent project usage; see
 [review/56](review/56-gemma-aistudio-acceptance-plan.md) for the acceptance and feedback plan.
+Chat judge packing sizes the complete serialized messages and structured contract in the same
+raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
+feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet
+resolved window. Per maintainer policy, a Google TPM refusal followed by NVIDIA input plus output
+above 16k is correlated budget-overflow evidence, not a reclassification of Google's input quota.
+After 20 relevant resolved packets and 20 fresh resolutions since a cut, a fraction of at least
+5% permits a lower target using the p95 combined-usage ratio with 5% headroom. Cuts are capped
+at 10%, with a 4,000 raw-unit safety floor. Indivisible Gemma items above the packing target are
+isolated for normal larger-route admission, preserving evidence. There is no automatic growth;
+older packets already above the bound cannot
+repeatedly shrink it. Targets affect new packing only, not current admission or stored payloads.
+Feedback uses one point-read/upsert in `estimates` per qualifying completion, no new schema or
+queue scan. Generation digests accompany Google diagnostics; correlated logs retain separate full
+input/output counts. HTTP success and resolved-window ratios do not establish usable completion
+or full eligible-cohort coverage. The controller ignores unresolved quota refusals.
+
 Queue estimates include response schemas. Gemma AI Studio routes retain their 14,400 input ceiling
 without tolerance, preserving the 10% quota margin. Other routes may add
 `hard_input_ceiling_tolerance`; near misses are tried only when nothing else can dispatch. A queued

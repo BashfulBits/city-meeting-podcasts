@@ -33,10 +33,12 @@ def item_size(backend: Any, item: Item) -> int:
 
 
 def _fits(items: Sequence[Item], sizes: Sequence[int], backend: Any) -> bool:
+    sizer = getattr(backend, "packet_input_estimate", None)
+    total = sizer(items) if sizer is not None else sum(sizes)
     return (
         bool(items)
         and max(sizes) <= backend.max_question_tokens
-        and sum(sizes) <= backend.max_total_tokens
+        and total <= backend.max_total_tokens
         and len(items) <= backend.max_items
     )
 
@@ -61,24 +63,21 @@ def pack(
 ) -> PackResult:
     packets: list[Packet] = []
     current: list[Item] = []
-    tokens = 0
     too_large = 0
     split = 0
 
     def flush() -> None:
-        nonlocal current, tokens
+        nonlocal current
         if current:
             packets.append(Packet(purpose, role, judge_model, tuple(current)))
-        current, tokens = [], 0
+        current = []
 
     def place(items: Sequence[Item], sizes: Sequence[int]) -> None:
-        nonlocal tokens
-        if tokens + sum(sizes) > backend.max_total_tokens or len(current) + len(items) > (
-            backend.max_items
+        if not _fits(
+            [*current, *items], [*[item_size(backend, i) for i in current], *sizes], backend
         ):
             flush()
         current.extend(items)
-        tokens += sum(sizes)
 
     for unit in units:
         if not unit:
@@ -99,6 +98,15 @@ def pack(
             for item, size in zip(part, part_sizes, strict=True):
                 if _fits([item], [size], backend):
                     place([item], [size])
+                elif (
+                    getattr(backend, "allow_single_item_overflow", False)
+                    and getattr(backend, "overflow_input_limit", None) is not None
+                    and backend.packet_input_estimate([item]) <= backend.overflow_input_limit
+                ):
+                    # The packing target is Google's preference, not a same-model context cap.
+                    # Preserve indivisible evidence for normal Worker admission to larger routes.
+                    flush()
+                    packets.append(Packet(purpose, role, judge_model, (item,)))
                 else:
                     too_large += 1
     flush()

@@ -580,3 +580,67 @@ change its recovery behavior. Gateway settings/logs still return 403. NVIDIA doc
 generation progress were not established for these failed requests. Do not claim that thinking,
 hidden retries, or the output cap caused the timeouts. Any request-shaping comparison needs its
 own bounded canary and answer-quality validation before promotion.
+
+## Correlated Gemma sizing feedback: L3 contract (2026-10-20 Central)
+
+Maintainer explicitly authorized complete-request sizing and downward feedback from historical
+and future Google refusals followed by NVIDIA Gemma successes above 16,000 combined input plus output tokens.
+This advances the previously L2 negative-feedback slice before the 200-new-packet promotion
+sample: shipping a bounded corrective mechanism is authorized; declaring 95% coverage is not.
+No synthetic calls, quota changes, queue rewrites, or deployment are part of this change.
+
+- `citypods/judging/backends.py`: share ChatJudgeBackend message serialization between `build`
+  and complete candidate-packet sizing. Include the structured-output contract using the same
+  chars/4 units as enqueue. `packing.py` uses that optional sizer for candidate combination and
+  splitting, preserving ordering, evidence, and fallback behavior for other backends.
+- `runner.py`: retain existing conservative safety and cold-start defaults; the ceiling now
+  bounds the complete request, rather than just item text. No item truncation or pipeline bump.
+- Add `workers/llm-dispatch-v2/src/gemma-packing.js`: bounded 128-packet resolved-outcome window,
+  scoped by canonical Gemma model and prompt family, versioned separately from tokenizer ratios.
+  Google success contributes observed full input. NVIDIA success contributes only when this same
+  job generation previously excluded a Google route for TPM or explicit input size and the single-model policy matches.
+  Job generation identity includes request digest; supersede/schema correction cannot inherit
+  another payload's negative evidence. Cached/uncached counts are never substituted for full prompt tokens. Preserve input and output
+  separately; the maintainer explicitly selected their sum as an empirical sizing signal, not
+  proof that Google enforces a combined-token quota.
+- Persist feedback in a separate `estimates` key, with point reads and at most one row write per
+  qualifying completion; no schema, queue scans, or retained-attempt downloads. Settlement's
+  execution-token/lease guards provide idempotency. Keep Google physical routes' rejection
+  classes, global tokenizer calibration, admission, and recovery semantics unchanged.
+- A resolved NVIDIA input plus output above 16,000 after Google TPM refusal is a correlated size overflow.
+  Require at least 20 relevant resolved packets and 20 fresh relevant resolutions since the
+  last cut. At a resolved-window overflow fraction of at least 5%, lower the complete-request
+  target, capped at a 10% cut per step and a 4,000 raw-unit safety floor, using
+  the observed p95 combined-usage/input-estimate ratio with 5% headroom. Move toward a bound
+  below the offending estimate, while prioritizing the per-step cut cap and safety floor. The floor is a safety guard, not a
+  historically fitted starting target. Do not repeatedly shrink for older packets already larger than the
+  current target. No automatic growth or expiry-driven rebound; manual future growth needs its
+  own evidence. Apply the minimum of this bound and the normal packing ceiling to Google routes
+  only. Below 5%, retain the bound; it never increases a ceiling. Expose sample counts, correlated
+  overflow counts, policy revision, and raw target in the existing calibration response.
+- Add a sanitized correlated-outcome log with digest, model/family, Google route IDs, full input and output,
+  raw estimate, and applied bound. Existing Google diagnostic events retain quota metric/ID,
+  limit, and requested amount when present. Raw error text, prompts and completions stay private.
+- Add offline `scripts/gemma_size_feedback_report.py`: join retained Google diagnostic events to
+  supplied response manifests by job AND exact generation digest/payload identity. Reject missing
+  or conflicting joins; report >16k full input separately from the selected >16k combined signal and unresolved quota
+  refusals. Historical matches inform evidence/fixtures; never mutate production state via import.
+- Tests: full serialization boundaries, deterministic packing/no item loss, one-item overflow,
+  backend fallback; helper threshold, percentile, duplicates, no growth, old oversized backlog,
+  model isolation, malformed usage; coordinator Google-refusal/NVIDIA-success lifecycle and
+  calibration preflight, no learning from unrelated usage or stale settlement. Run Worker suite,
+  affected Python tests, whole Ruff/format, pre-push, and CLI CodeRabbit. Capture added billed-row
+  cost in the evidence and keep the existing safe-stop budgets.
+- Update review/11, ROADMAP, ARCHITECTURE and a changelog fragment. Historical result reads and
+  evidence stay bounded and read-only. If no verified >16k-combined historical pair can be found,
+  state that limitation; do not seed a fabricated target. New producers adopt the ceiling on
+  their next normal run. Stored queued payloads and already persisted artifacts remain unchanged.
+
+
+Review refinements to this L3 slice: bound singleton overflow with `overflow_input_limit`, derived
+in `_sibling_backend` from existing free nonexperimental ROUTE_CANDIDATES (context/output,
+static tokenizer ratio, explicit input and Google TPM limits). Items beyond every structural route
+retain payload-too-large handling. Anchor a cold cut to the current normal preflight ceiling via
+shared `_packingRouteLimit`, rather than the possibly much smaller offending packet. This prevents
+a single small output-heavy outlier from collapsing a larger family's target. Model policy entries
+are filtered identically to the existing Google quota-recovery predicate.

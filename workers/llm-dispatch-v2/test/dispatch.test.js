@@ -4184,3 +4184,101 @@ test("one timeout does not relabel proven oversize as timeout exhaustion", async
     assert.equal(row.terminal_reason, "unadmissible");
   }
 });
+
+function seedPackingResolutions(sql) {
+  const samples = Array.from({ length: 19 }, (_, i) => ({
+    id: `resolved-${i}`, input: 9000, output: 500, estimate: 8000, overflow: false,
+  }));
+  sql.exec(`INSERT INTO estimates
+    (key, margin_tokens, sample_count, recent_observed_summary, updated_at) VALUES (?,0,19,?,?)`,
+    `gemma-size:${GEMMA_MODEL}:tags`, JSON.stringify({ target: null, samples, fresh: 19 }), Date.now());
+}
+
+test("Google TPM then NVIDIA combined usage over 16k lowers only the producer bound", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  seedPackingResolutions(sql);
+  await coordinator.enqueueBatch([{
+    ...quotaRecoveryJob("size-correlation"), input_token_estimate: 10000,
+  }]);
+  const start = Date.now();
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start + 120_000, 25));
+  const before = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
+  assert.equal(before.size_feedback.input_estimate_target, null);
+  const plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  assert.equal(plan.jobs[0].route_id, "overflow");
+  assert.equal(plan.jobs[0].request_digest, "digest-size-correlation");
+  const result = quotaResult(plan.jobs[0], {
+    outcome: "success", provider_status_code: 200, failure_class: null,
+    result_key: "results/size-correlation.json",
+    observed_input_tokens: 18000, observed_output_tokens: 200,
+  });
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+  const after = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
+  assert.ok(after.pack_ceiling_input_estimate < before.pack_ceiling_input_estimate);
+  assert.equal(after.size_feedback.correlated_size_overflows, 1);
+  assert.equal(after.size_feedback.resolved_packets, 20);
+  assert.ok(after.routes.find(r => r.route_id === "overflow").input_estimate_limit >
+    after.size_feedback.input_estimate_target, "do not constrain the larger route");
+  assert.equal([...sql.exec("SELECT input_rejected_min FROM routes WHERE route_id='google-a'")][0]
+    .input_rejected_min, 0, "do not reclassify the ambiguous Google quota message");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result]);
+  assert.deepEqual((await coordinator.packingCeiling(GEMMA_MODEL, "tags")).size_feedback,
+    after.size_feedback, "duplicate settlement cannot update feedback twice");
+  assert.equal((await coordinator.packingCeiling(GEMMA_MODEL, "other")).size_feedback
+    .input_estimate_target, null, "family isolation");
+});
+
+test("NVIDIA input plus output above 16k is correlated budget overflow", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  seedPackingResolutions(sql);
+  await coordinator.enqueueBatch([{
+    ...quotaRecoveryJob("small-input"), input_token_estimate: 10000,
+  }]);
+  const start = Date.now();
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start, 25));
+  await refuseQuota(coordinator, await coordinator.claimDispatchWindow(start + 120_000, 25));
+  const previous = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
+  const plan = await coordinator.claimDispatchWindow(start + 240_000, 25);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
+    outcome: "success", provider_status_code: 200, failure_class: null,
+    result_key: "results/small-input.json", observed_input_tokens: 14000,
+    observed_output_tokens: 4000,
+  })]);
+  const { size_feedback } = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
+  assert.equal(size_feedback.resolved_packets, 20);
+  assert.equal(size_feedback.correlated_size_overflows, 1);
+  assert.ok(size_feedback.input_estimate_target < previous.pack_ceiling_input_estimate);
+  assert.ok(size_feedback.input_estimate_target >=
+    Math.floor(previous.pack_ceiling_input_estimate * 0.9), "cold cut uses the normal ceiling");
+});
+
+test("NVIDIA combined usage without a prior Google refusal cannot lower packing", async () => {
+  const { coordinator } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("unpaired", { allowed_route_ids: ["overflow"] })]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0].route_id, "overflow");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
+    outcome: "success", provider_status_code: 200, failure_class: null,
+    result_key: "results/unpaired.json", observed_input_tokens: 14000,
+    observed_output_tokens: 4000,
+  })]);
+  const { size_feedback } = await coordinator.packingCeiling(GEMMA_MODEL, "tags");
+  assert.equal(size_feedback.resolved_packets, 0);
+  assert.equal(size_feedback.input_estimate_target, null);
+});
+
+
+test("feedback ignores malformed model entries just like quota recovery", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator();
+  await coordinator.enqueueBatch([quotaRecoveryJob("model-entry")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  sql.exec("UPDATE jobs SET policy_json=? WHERE id='model-entry'",
+    JSON.stringify({ allowed_models: [GEMMA_MODEL, null], allow_paid: false }));
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [quotaResult(plan.jobs[0], {
+    outcome: "success", provider_status_code: 200, failure_class: null,
+    result_key: "results/model-entry.json", observed_input_tokens: 600, observed_output_tokens: 100,
+  })]);
+  assert.equal((await coordinator.packingCeiling(GEMMA_MODEL, "tags")).size_feedback
+    .resolved_packets, 1);
+});
