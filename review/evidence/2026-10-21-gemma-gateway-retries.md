@@ -60,3 +60,13 @@ retry overrides could disappear if the source YAML lacked them. Both Google Gemm
 in `config/provider_limits.yml` include the setting. Recompilation and the precedence regression
 verify preservation in both generated catalogs; no source correction is required for that finding.
 The outgoing-header Worker test also verifies both route credentials and the one-attempt header.
+
+
+## CI runner migration repair
+
+PR #2519's initial CI failed before lint/tests: `ubuntu-latest` selected Ubuntu 26.04.1 and
+APT could not locate `libvpx9`. The checksum-pinned FFmpeg build uses the Ubuntu 24.04 ABI,
+so pin only the CI test job to `ubuntu-24.04`. Binary/checksum and production runners stay
+unchanged. Follow-up: other workflows installing the same runtime libraries under
+`ubuntu-latest` need an independent ABI/runner audit; widening this PR would change production
+execution environments beyond the Google retry fix.

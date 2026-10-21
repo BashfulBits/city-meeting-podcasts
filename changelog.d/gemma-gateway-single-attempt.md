@@ -4,3 +4,6 @@
   with an explicit one-attempt header. Add validated route-level catalog overrides and retain
   provider defaults for other routes. Quotas, pacing, packing, request bodies, deadlines, and
   worker retry budgets remain unchanged. No pipeline version bump or artifact backfill.
+- **CI FFmpeg compatibility.** Pin the test job to Ubuntu 24.04 so the checksum-pinned FFmpeg
+  build can install its required `libvpx9` runtime during GitHub's `ubuntu-latest` migration.
+  Production runner images and the FFmpeg binary/checksum remain unchanged.
