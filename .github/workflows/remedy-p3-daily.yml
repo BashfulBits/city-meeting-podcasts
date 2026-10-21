@@ -88,7 +88,8 @@ jobs:
     needs: p3
     if: >-
       github.ref == 'refs/heads/main' && needs.p3.outputs.report_ready_count != '0'
-    runs-on: ubuntu-latest
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d

@@ -728,7 +728,7 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
         Path(__file__).resolve().parents[1] / ".github" / "audio-runner" / "Dockerfile"
     ).read_text()
     # Ubuntu noble, not the official python:3.12-slim (Debian bookworm) image -- must match the
-    # ubuntu-latest (also noble) host build_ffmpeg_static.sh runs on, since the vendored binary's
+    # pinned ubuntu-24.04 host build_ffmpeg_static.sh runs on, since the vendored binary's
     # dynamically-linked codec libs (libvpx9/libdav1d7 below) are SONAME-specific to that distro.
     assert "FROM ubuntu:24.04" in dockerfile
     # Runtime (non -dev) packages for build_ffmpeg_static.sh's dynamically-linked codec/TLS
@@ -1928,3 +1928,13 @@ def test_internal_scan_windows_use_the_matrix_lane_worker_count():
     step = next(s for s in job["steps"] if "run-internal-worker" in s.get("run", ""))
     assert step["env"]["CITYPODS_INTERNAL_WORKER_COUNT"] == "${{ matrix.workers }}"
     assert step["env"]["CITYPODS_INTERNAL_WORKER_SLOT"] == "${{ matrix.slot }}"
+
+
+@pytest.mark.parametrize("workflow_path", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
+def test_ffmpeg_native_jobs_pin_noble_runner(workflow_path):
+    """The vendored binary's SONAMEs require noble for both build and host consumers."""
+    workflow = yaml.safe_load(workflow_path.read_text())
+    for name, job in workflow.get("jobs", {}).items():
+        runs = "\n".join(str(step.get("run", "")) for step in job.get("steps", []))
+        if "install_static_ffmpeg.py" in runs or "scripts/build_ffmpeg_static.sh" in runs:
+            assert job["runs-on"] == "ubuntu-24.04", f"{workflow_path.name}:{name}"

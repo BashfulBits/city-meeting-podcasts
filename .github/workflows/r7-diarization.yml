@@ -21,7 +21,8 @@ permissions:
 
 jobs:
   diarize:
-    runs-on: ubuntu-latest
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     env:
       # Same checksum-pinned build audio.yml's host fallback uses -- NOT `apt-get install ffmpeg`,
