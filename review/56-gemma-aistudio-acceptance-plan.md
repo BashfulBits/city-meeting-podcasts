@@ -644,3 +644,18 @@ retain payload-too-large handling. Anchor a cold cut to the current normal prefl
 shared `_packingRouteLimit`, rather than the possibly much smaller offending packet. This prevents
 a single small output-heavy outlier from collapsing a larger family's target. Model policy entries
 are filtered identically to the existing Google quota-recovery predicate.
+
+
+## Gateway retry isolation follow-up (2026-10-21)
+
+The maintainer authorized a PR after three spaced replay arms. The
+[evidence report](evidence/2026-10-21-gemma-gateway-retries.md) records zero quota429s for
+51 direct calls and 50 explicit single-attempt Gateway calls, versus20 for48 default Gateway
+calls. Sequential timing and unavailable internal retry traces limit causal attribution.
+
+Set `ai_gateway_max_attempts: 1` on the two Google Gemma-31B routes; compile validated route
+overrides ahead of provider defaults and forward the existing Gateway header. Keep worker
+retry budgets, classification, quota/pacing, deadlines and packing unchanged. Other Google
+models retain their defaults. Existing queued jobs use the new transport setting when dispatched;
+stored payloads/artifacts are not rewritten, and there is no pipeline version bump or backfill.
+Production adoption requires a merged PR and verified rollout, followed by a fresh cohort.

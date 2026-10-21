@@ -1362,6 +1362,13 @@ Newly rendered issue bodies include this catch-up command and explain that a mer
 close the incident until a later audit observes zero unmatched rows; this keeps the action visible
 alongside the affected-row tables when a consolidated issue grows after its first pass.
 
+Google Gemma-31B's two dispatch routes explicitly set `ai_gateway_max_attempts: 1`, carried
+from the catalog into `cf-aig-max-attempts`, so worker-owned retries retain pacing and failure
+classification. Route overrides take precedence over validated provider defaults. Other Google
+routes inherit their existing defaults. The
+[spaced replay evidence](review/evidence/2026-10-21-gemma-gateway-retries.md) supports retry
+amplification as a cause of TPM refusals, without proving intrinsic packet size or 95% coverage.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
