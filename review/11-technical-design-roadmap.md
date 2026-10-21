@@ -30,6 +30,11 @@ feedback (maintainer-authorized empirical rule, not a claim about Google's quota
 [overflow evidence][overflow-timeouts]
 records NVIDIA failures after successful route recovery. Request tuning remains unpromoted.
 
+Maintainer-directed Gateway retry follow-up (2026-10-21): explicit single-attempt handling for
+both Google Gemma-31B project routes is in PR review. Worker-owned paced recovery remains intact;
+[three-arm replay evidence](evidence/2026-10-21-gemma-gateway-retries.md) records the result and
+limitations. This does not establish the 95% producer coverage goal.
+
 [overflow-timeouts]: evidence/2026-10-20-gemma-overflow-timeouts.md
 
 This is the canonical **forward design** reference for the project — the single map of every initiative

@@ -198,6 +198,7 @@
   "routes_by_id": {
     "gemini_3_5_flash_lite_primary": {
       "route_id": "gemini_3_5_flash_lite_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.5-flash-lite",
       "provider": "gemini",
       "upstream_model": "gemini-3.5-flash-lite",
@@ -246,6 +247,7 @@
     },
     "gemini_3_5_flash_lite_secondary": {
       "route_id": "gemini_3_5_flash_lite_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.5-flash-lite",
       "provider": "gemini",
       "upstream_model": "gemini-3.5-flash-lite",
@@ -294,6 +296,7 @@
     },
     "gemini_3_1_flash_lite_primary": {
       "route_id": "gemini_3_1_flash_lite_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.1-flash-lite",
       "provider": "gemini",
       "upstream_model": "gemini-3.1-flash-lite",
@@ -342,6 +345,7 @@
     },
     "gemini_3_1_flash_lite_secondary": {
       "route_id": "gemini_3_1_flash_lite_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.1-flash-lite",
       "provider": "gemini",
       "upstream_model": "gemini-3.1-flash-lite",
@@ -390,6 +394,7 @@
     },
     "gemma_4_26b_primary": {
       "route_id": "gemma_4_26b_primary",
+      "ai_gateway_max_attempts": null,
       "model": "google/gemma-4-26b-a4b-it",
       "provider": "gemini",
       "upstream_model": "gemma-4-26b-a4b-it",
@@ -438,6 +443,7 @@
     },
     "gemma_4_26b_secondary": {
       "route_id": "gemma_4_26b_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "google/gemma-4-26b-a4b-it",
       "provider": "gemini",
       "upstream_model": "gemma-4-26b-a4b-it",
@@ -486,6 +492,7 @@
     },
     "gemma_4_31b_primary": {
       "route_id": "gemma_4_31b_primary",
+      "ai_gateway_max_attempts": 1,
       "model": "google/gemma-4-31b-it",
       "provider": "gemini",
       "upstream_model": "gemma-4-31b-it",
@@ -534,6 +541,7 @@
     },
     "gemma_4_31b_secondary": {
       "route_id": "gemma_4_31b_secondary",
+      "ai_gateway_max_attempts": 1,
       "model": "google/gemma-4-31b-it",
       "provider": "gemini",
       "upstream_model": "gemma-4-31b-it",
@@ -582,6 +590,7 @@
     },
     "gemini_3_flash_preview_primary": {
       "route_id": "gemini_3_flash_preview_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3-flash-preview",
       "provider": "gemini",
       "upstream_model": "gemini-3-flash-preview",
@@ -630,6 +639,7 @@
     },
     "gemini_3_flash_preview_secondary": {
       "route_id": "gemini_3_flash_preview_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3-flash-preview",
       "provider": "gemini",
       "upstream_model": "gemini-3-flash-preview",
@@ -678,6 +688,7 @@
     },
     "gemini_3_8_flash_primary": {
       "route_id": "gemini_3_8_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.8-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.8-flash",
@@ -734,6 +745,7 @@
     },
     "gemini_3_8_flash_secondary": {
       "route_id": "gemini_3_8_flash_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.8-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.8-flash",
@@ -790,6 +802,7 @@
     },
     "gemini_3_7_flash_primary": {
       "route_id": "gemini_3_7_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.7-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.7-flash",
@@ -846,6 +859,7 @@
     },
     "gemini_3_7_flash_secondary": {
       "route_id": "gemini_3_7_flash_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.7-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.7-flash",
@@ -902,6 +916,7 @@
     },
     "gemini_3_6_flash_primary": {
       "route_id": "gemini_3_6_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.6-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.6-flash",
@@ -950,6 +965,7 @@
     },
     "gemini_3_6_flash_secondary": {
       "route_id": "gemini_3_6_flash_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.6-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.6-flash",
@@ -998,6 +1014,7 @@
     },
     "gemini_3_5_flash_primary": {
       "route_id": "gemini_3_5_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.5-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.5-flash",
@@ -1046,6 +1063,7 @@
     },
     "gemini_3_5_flash_secondary": {
       "route_id": "gemini_3_5_flash_secondary",
+      "ai_gateway_max_attempts": null,
       "model": "gemini/gemini-3.5-flash",
       "provider": "gemini",
       "upstream_model": "gemini-3.5-flash",
@@ -1094,6 +1112,7 @@
     },
     "sambanova_gemma_4_31b_it_primary": {
       "route_id": "sambanova_gemma_4_31b_it_primary",
+      "ai_gateway_max_attempts": 1,
       "model": "google/gemma-4-31b-it",
       "provider": "sambanova",
       "upstream_model": "gemma-4-31B-it",
@@ -1135,6 +1154,7 @@
     },
     "groq_gpt_oss_120b_primary": {
       "route_id": "groq_gpt_oss_120b_primary",
+      "ai_gateway_max_attempts": null,
       "model": "openai/gpt-oss-120b",
       "provider": "groq",
       "upstream_model": "openai/gpt-oss-120b",
@@ -1176,6 +1196,7 @@
     },
     "groq_qwen_3_6_27b_primary": {
       "route_id": "groq_qwen_3_6_27b_primary",
+      "ai_gateway_max_attempts": null,
       "model": "qwen/qwen3.6-27b",
       "provider": "groq",
       "upstream_model": "qwen/qwen3.6-27b",
@@ -1217,6 +1238,7 @@
     },
     "groq_qwen_3_8_27b_primary": {
       "route_id": "groq_qwen_3_8_27b_primary",
+      "ai_gateway_max_attempts": null,
       "model": "qwen/qwen3.8-27b",
       "provider": "groq",
       "upstream_model": "qwen/qwen3.8-27b",
@@ -1258,6 +1280,7 @@
     },
     "zai_glm_4_7_flash_primary": {
       "route_id": "zai_glm_4_7_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "zai/glm-4.7-flash",
       "provider": "zai",
       "upstream_model": "glm-4.7-flash",
@@ -1299,6 +1322,7 @@
     },
     "zai_glm_4_5_flash_primary": {
       "route_id": "zai_glm_4_5_flash_primary",
+      "ai_gateway_max_attempts": null,
       "model": "zai/glm-4.5-flash",
       "provider": "zai",
       "upstream_model": "glm-4.5-flash",
@@ -1340,6 +1364,7 @@
     },
     "openrouter_google_gemma_4_31b_it_free": {
       "route_id": "openrouter_google_gemma_4_31b_it_free",
+      "ai_gateway_max_attempts": null,
       "model": "google/gemma-4-31b-it",
       "provider": "openrouter",
       "upstream_model": "google/gemma-4-31b-it:free",
@@ -1381,6 +1406,7 @@
     },
     "openrouter_google_gemma_4_26b_a4b_it_free": {
       "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
+      "ai_gateway_max_attempts": null,
       "model": "google/gemma-4-26b-a4b-it",
       "provider": "openrouter",
       "upstream_model": "google/gemma-4-26b-a4b-it:free",
@@ -1422,6 +1448,7 @@
     },
     "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "ai_gateway_max_attempts": null,
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "openrouter",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -1463,6 +1490,7 @@
     },
     "openrouter_nvidia_nemotron_3_5_super_vl_free": {
       "route_id": "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "ai_gateway_max_attempts": null,
       "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "openrouter",
       "upstream_model": "nvidia/nemotron-3.5-super-vl:free",
@@ -1504,6 +1532,7 @@
     },
     "kilo_stepfun_step_3_7_flash_free": {
       "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "kilo/stepfun/step-3.7-flash:free",
       "provider": "kilo",
       "upstream_model": "stepfun/step-3.7-flash:free",
@@ -1545,6 +1574,7 @@
     },
     "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "ai_gateway_max_attempts": null,
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "kilo",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -1586,6 +1616,7 @@
     },
     "nvidia_kimi_k3_free": {
       "route_id": "nvidia_kimi_k3_free",
+      "ai_gateway_max_attempts": null,
       "model": "moonshotai/kimi-k3",
       "provider": "nvidia",
       "upstream_model": "moonshotai/kimi-k3",
@@ -1631,6 +1662,7 @@
     },
     "nvidia_deepseek_v4_1_flash_free": {
       "route_id": "nvidia_deepseek_v4_1_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4.1-flash",
       "provider": "nvidia",
       "upstream_model": "deepseek-ai/deepseek-v4.1-flash",
@@ -1678,6 +1710,7 @@
     },
     "nvidia_gemma_4_31b_it_free": {
       "route_id": "nvidia_gemma_4_31b_it_free",
+      "ai_gateway_max_attempts": null,
       "model": "google/gemma-4-31b-it",
       "provider": "nvidia",
       "upstream_model": "google/gemma-4-31b-it",
@@ -1719,6 +1752,7 @@
     },
     "nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
+      "ai_gateway_max_attempts": null,
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "nvidia",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b",
@@ -1760,6 +1794,7 @@
     },
     "nvidia_nemotron_3_5_super_vl_120b_a12b_free": {
       "route_id": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+      "ai_gateway_max_attempts": null,
       "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
       "provider": "nvidia",
       "upstream_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
@@ -1801,6 +1836,7 @@
     },
     "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free": {
       "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
+      "ai_gateway_max_attempts": null,
       "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
       "provider": "nvidia",
       "upstream_model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
@@ -1842,6 +1878,7 @@
     },
     "orcarouter_deepseek_v4_flash_free": {
       "route_id": "orcarouter_deepseek_v4_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4-flash",
       "provider": "orcarouter",
       "upstream_model": "deepseek/deepseek-v4-flash-free",
@@ -1883,6 +1920,7 @@
     },
     "orcarouter_tencent_hy3_free": {
       "route_id": "orcarouter_tencent_hy3_free",
+      "ai_gateway_max_attempts": null,
       "model": "tencent/hy3",
       "provider": "orcarouter",
       "upstream_model": "tencent/hy3-free",
@@ -1924,6 +1962,7 @@
     },
     "orcarouter_zai_glm_5_3_flash_free": {
       "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "zai/glm-5.3-flash",
       "provider": "orcarouter",
       "upstream_model": "z-ai/glm-5.3-flash-free",
@@ -1965,6 +2004,7 @@
     },
     "mistral_codestral_airforce_primary": {
       "route_id": "mistral_codestral_airforce_primary",
+      "ai_gateway_max_attempts": 1,
       "model": "mistral/codestral-2508",
       "provider": "airforce",
       "upstream_model": "codestral-latest",
@@ -2006,6 +2046,7 @@
     },
     "beatapi_deepseek_v4_flash_free": {
       "route_id": "beatapi_deepseek_v4_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4-flash",
       "provider": "beatapi",
       "upstream_model": "deepseek-v4-flash-0731-free",
@@ -2049,6 +2090,7 @@
     },
     "beatapi_deepseek_v4_1_flash_free": {
       "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4.1-flash",
       "provider": "beatapi",
       "upstream_model": "deepseek-v4.1-flash-free",
@@ -2092,6 +2134,7 @@
     },
     "beatapi_deepseek_v4_pro_free": {
       "route_id": "beatapi_deepseek_v4_pro_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4-pro",
       "provider": "beatapi",
       "upstream_model": "deepseek-v4-pro-free",
@@ -2135,6 +2178,7 @@
     },
     "beatapi_gpt_6_astra_free": {
       "route_id": "beatapi_gpt_6_astra_free",
+      "ai_gateway_max_attempts": null,
       "model": "openai/gpt-6-astra",
       "provider": "beatapi",
       "upstream_model": "gpt-6-astra-free",
@@ -2178,6 +2222,7 @@
     },
     "beatapi_gpt_6_1_sol_free": {
       "route_id": "beatapi_gpt_6_1_sol_free",
+      "ai_gateway_max_attempts": null,
       "model": "openai/gpt-6.1-sol",
       "provider": "beatapi",
       "upstream_model": "gpt-6.1-sol-free",
@@ -2221,6 +2266,7 @@
     },
     "beatapi_secondary_deepseek_v4_flash_free": {
       "route_id": "beatapi_secondary_deepseek_v4_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4-flash",
       "provider": "beatapi_secondary",
       "upstream_model": "deepseek-v4-flash-0731-free",
@@ -2262,6 +2308,7 @@
     },
     "beatapi_secondary_deepseek_v4_1_flash_free": {
       "route_id": "beatapi_secondary_deepseek_v4_1_flash_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4.1-flash",
       "provider": "beatapi_secondary",
       "upstream_model": "deepseek-v4.1-flash-free",
@@ -2303,6 +2350,7 @@
     },
     "beatapi_secondary_deepseek_v4_pro_free": {
       "route_id": "beatapi_secondary_deepseek_v4_pro_free",
+      "ai_gateway_max_attempts": null,
       "model": "deepseek/deepseek-v4-pro",
       "provider": "beatapi_secondary",
       "upstream_model": "deepseek-v4-pro-free",
@@ -2344,6 +2392,7 @@
     },
     "beatapi_secondary_gpt_6_astra_free": {
       "route_id": "beatapi_secondary_gpt_6_astra_free",
+      "ai_gateway_max_attempts": null,
       "model": "openai/gpt-6-astra",
       "provider": "beatapi_secondary",
       "upstream_model": "gpt-6-astra-free",
@@ -2385,6 +2434,7 @@
     },
     "beatapi_secondary_gpt_6_1_sol_free": {
       "route_id": "beatapi_secondary_gpt_6_1_sol_free",
+      "ai_gateway_max_attempts": null,
       "model": "openai/gpt-6.1-sol",
       "provider": "beatapi_secondary",
       "upstream_model": "gpt-6.1-sol-free",
@@ -2426,6 +2476,7 @@
     },
     "beatapi_jev_1_13_free": {
       "route_id": "beatapi_jev_1_13_free",
+      "ai_gateway_max_attempts": null,
       "model": "typesafe/jev-1.13",
       "provider": "beatapi",
       "upstream_model": "jev-1.13-free",
