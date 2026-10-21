@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-21T05:48:12.620979+00:00",
+  "as_of": "2026-10-21T11:51:16.469171+00:00",
   "policy": "First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.",
   "scope": "Checkpoint of completed attempts; pending requests continue. No calibration inference.",
   "routes": [
@@ -64,7 +64,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 70
+      "attempts_recorded": 142
     },
     {
       "route": "gemma_4_31b_primary",
@@ -159,6 +159,7 @@
           "unexpected_ids": [
             "eval-i18:supported:supported:T1"
           ],
+          "missing_kind_answers": 0,
           "extra_fields": {}
         }
       ],
@@ -212,6 +213,7 @@
           "expected_items": 16,
           "missing_ids": [],
           "unexpected_ids": [],
+          "missing_kind_answers": 0,
           "extra_fields": {
             "level_note": 3
           }
@@ -226,6 +228,7 @@
             "eval-i17:supported:T1"
           ],
           "unexpected_ids": [],
+          "missing_kind_answers": 0,
           "extra_fields": {}
         }
       ],
@@ -242,7 +245,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 55
+      "attempts_recorded": 114
     },
     {
       "route": "nvidia_gemma_4_31b_it_free",
@@ -332,13 +335,55 @@
       "route": "openrouter_google_gemma_4_31b_it_free",
       "role": "sibling",
       "planned_packets": 14,
-      "counts": {},
-      "by_kind": {},
-      "choice_order_pairs": 0,
-      "choice_order_stable": 0,
-      "contract_failures": [],
-      "pending_packets": 14,
-      "attempts_recorded": 332
+      "counts": {
+        "first_http200_packets": 9,
+        "contract_pass_packets": 8,
+        "usable_packets": 8,
+        "expected_items": 124,
+        "parsed_items": 124,
+        "quote_valid": 124,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 64,
+          "parsed": 64,
+          "quote_valid": 64
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 7,
+          "source": "07-attempt-043.result.json",
+          "schema_valid": false,
+          "parsed_items": 13,
+          "expected_items": 13,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 13,
+          "extra_fields": {}
+        }
+      ],
+      "pending_packets": 5,
+      "attempts_recorded": 681
     },
     {
       "route": "openrouter_nvidia_nemotron_3_5_super_vl_free",
@@ -429,6 +474,7 @@
           "expected_items": 7,
           "missing_ids": [],
           "unexpected_ids": [],
+          "missing_kind_answers": 0,
           "extra_fields": {
             "answer_with": 7
           }
@@ -441,6 +487,7 @@
           "expected_items": 7,
           "missing_ids": [],
           "unexpected_ids": [],
+          "missing_kind_answers": 0,
           "extra_fields": {
             "answer_with": 7
           }
@@ -453,6 +500,7 @@
           "expected_items": 7,
           "missing_ids": [],
           "unexpected_ids": [],
+          "missing_kind_answers": 0,
           "extra_fields": {
             "answer_with": 7
           }
@@ -471,7 +519,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 6
+      "attempts_recorded": 12
     }
   ]
 }

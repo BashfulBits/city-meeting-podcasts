@@ -45,6 +45,7 @@
       "expected_items": 16,
       "missing_ids": [],
       "unexpected_ids": [],
+      "missing_kind_answers": 0,
       "extra_fields": {
         "level_note": 3
       }
@@ -59,6 +60,7 @@
         "eval-i17:supported:T1"
       ],
       "unexpected_ids": [],
+      "missing_kind_answers": 0,
       "extra_fields": {}
     }
   ],

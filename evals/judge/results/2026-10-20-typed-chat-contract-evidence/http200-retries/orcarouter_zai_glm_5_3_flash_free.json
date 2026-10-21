@@ -45,6 +45,7 @@
       "expected_items": 7,
       "missing_ids": [],
       "unexpected_ids": [],
+      "missing_kind_answers": 0,
       "extra_fields": {
         "answer_with": 7
       }
@@ -57,6 +58,7 @@
       "expected_items": 7,
       "missing_ids": [],
       "unexpected_ids": [],
+      "missing_kind_answers": 0,
       "extra_fields": {
         "answer_with": 7
       }
@@ -69,6 +71,7 @@
       "expected_items": 7,
       "missing_ids": [],
       "unexpected_ids": [],
+      "missing_kind_answers": 0,
       "extra_fields": {
         "answer_with": 7
       }
