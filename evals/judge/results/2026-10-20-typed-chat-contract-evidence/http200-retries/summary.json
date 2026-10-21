@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-21T11:51:16.469171+00:00",
+  "as_of": "2026-10-21T13:57:59.285996+00:00",
   "policy": "First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.",
   "scope": "Checkpoint of completed attempts; pending requests continue. No calibration inference.",
   "routes": [
@@ -64,7 +64,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 142
+      "attempts_recorded": 167
     },
     {
       "route": "gemma_4_31b_primary",
@@ -245,7 +245,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 114
+      "attempts_recorded": 135
     },
     {
       "route": "nvidia_gemma_4_31b_it_free",
@@ -336,20 +336,20 @@
       "role": "sibling",
       "planned_packets": 14,
       "counts": {
-        "first_http200_packets": 9,
-        "contract_pass_packets": 8,
-        "usable_packets": 8,
-        "expected_items": 124,
-        "parsed_items": 124,
-        "quote_valid": 124,
+        "first_http200_packets": 14,
+        "contract_pass_packets": 12,
+        "usable_packets": 12,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
         "choose_expected": 12,
         "parsed_choose": 12
       },
       "by_kind": {
         "validate": {
-          "expected": 64,
-          "parsed": 64,
-          "quote_valid": 64
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 97
         },
         "gate": {
           "expected": 24,
@@ -380,10 +380,21 @@
           "unexpected_ids": [],
           "missing_kind_answers": 13,
           "extra_fields": {}
+        },
+        {
+          "packet": 9,
+          "source": "09-attempt-034.result.json",
+          "schema_valid": false,
+          "parsed_items": 7,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 7,
+          "extra_fields": {}
         }
       ],
-      "pending_packets": 5,
-      "attempts_recorded": 681
+      "pending_packets": 0,
+      "attempts_recorded": 778
     },
     {
       "route": "openrouter_nvidia_nemotron_3_5_super_vl_free",
@@ -519,7 +530,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 12
+      "attempts_recorded": 15
     }
   ]
 }

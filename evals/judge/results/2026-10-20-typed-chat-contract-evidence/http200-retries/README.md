@@ -1,6 +1,6 @@
 # First-HTTP-200 retry checkpoint
 
-As of 2026-10-21T11:51:16.469171+00:00. Transport retries remain active.
+As of 2026-10-21T13:57:59.285996+00:00. Transport retries remain active.
 
 Every completed transport attempt is retained in its route JSON. Initial attempts remain in the
 parent evidence bundle. The first HTTP 200 is selected mechanically for each packet; failed
@@ -22,7 +22,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 | nvidia_deepseek_v4_1_flash_free | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
 | nvidia_gemma_4_31b_it_free | 14/14 | 14/14 | 158/158 | 158/158 | 12/12 |
 | nvidia_nemotron_3_5_super_vl_120b_a12b_free | 14/14 | 14/14 | 158/158 | 157/158 | 12/12 |
-| openrouter_google_gemma_4_31b_it_free | 9/14 | 8/9 | 124/124 | 124/124 | 12/12 |
+| openrouter_google_gemma_4_31b_it_free | 14/14 | 12/14 | 158/158 | 157/158 | 12/12 |
 | openrouter_nvidia_nemotron_3_5_super_vl_free | 14/14 | 14/14 | 158/158 | 157/158 | 12/12 |
 | orcarouter_zai_glm_5_3_flash_free | 14/14 | 11/14 | 137/158 | 137/137 | 12/12 |
 | sambanova_gemma_4_31b_it_primary | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
@@ -43,15 +43,16 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
   `eval-i17:supported:T1`; duplicate-ID validation rejects it. Both first-200 replies are final.
 
 - OpenRouter Gemma packet 7 omits `kind` on all 13 answers. Compatibility parsing recovers
-  13 decisions, but the required v3 schema fails. Its first HTTP 200 remains terminal.
+  13 decisions, but the required v3 schema fails. Packet 9 similarly omits kind on seven
+  answers; compatibility parses seven. Both first HTTP 200 replies remain terminal.
 
 ## Gates and one recommended next action each
 
 | Gate | Evidence | Recommended next action |
 |---|---|---|
-| HTTP response sampling: pending | See remaining packet counts; auth, missing key, shared-pool 429 and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |
-| Parser contract: failures observed | The eight terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
-| CI: passed at this check | PR #2514 checks all succeeded; local suite 6,778 passed and 17 deselected | Keep PR draft while transport evidence and route decisions are pending |
+| HTTP response sampling: pending | See remaining packet counts; auth, missing key and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |
+| Parser contract: failures observed | The nine terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
+| CI: runner setup failure | Latest test job failed before pytest because apt could not locate libvpx9; local suite 6,778 passed | Inspect the next genuine evidence push checks; keep PR draft |
 | Calibration: insufficient evidence | Last targeted 13-source catalog check has zero clean paired subject-questions | Keep thresholds pending until a verified paired cohort exists |
 
 The maintainer approved the Groq cap correction; commit ed3f492d regenerates both catalogs.
