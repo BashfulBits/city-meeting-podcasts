@@ -1,0 +1,89 @@
+import hashlib
+import importlib.util
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+
+ROOT = Path.cwd()
+spec = importlib.util.spec_from_file_location('judge_eval', ROOT / 'scripts/eval_judge_contract.py')
+e = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(e)
+e.ensure_contract()
+manifest = json.loads((ROOT / 'evals/judge/manifest.json').read_text())
+items = {item.qid: item for unit in e.frozen_units(manifest) for item in unit}
+out = ROOT / 'evals/judge/results/2026-10-20-typed-chat-contract-evidence'
+out.mkdir(exist_ok=True)
+reports = []
+for run_name in ('2026-10-20-typed-chat-contract-final',
+                 '2026-10-20-typed-chat-contract-final-qwen-diagnostic'):
+    run = ROOT / 'evals/judge/results' / run_name
+    metadata = json.loads((run / 'manifest.json').read_text())
+    for directory in sorted(run.iterdir()):
+        if not directory.is_dir():
+            continue
+        summary_path = directory / 'result.json'
+        if not summary_path.exists():
+            continue
+        original = json.loads(summary_path.read_text())
+        route = e.ROUTE_REGISTRY[original['route']]
+        role = original['role']
+        backend = (e.AdjudicatorBackend if role == 'adjudicator' else e.ChatJudgeBackend)(max_total_tokens=4500, max_items=25)
+        packets = []
+        tally = Counter()
+        kinds = defaultdict(Counter)
+        choices = {}
+        for result in original['results']:
+            index = result['packet']
+            request_path = directory / f'{index:02d}-request.json'
+            request = json.loads(request_path.read_text())
+            submitted = json.loads(request['messages'][-1]['content'])['items']
+            packet_items = tuple(items[row['id']] for row in submitted)
+            packet = e.Packet(f'judge:{role}', role, route.model, packet_items)
+            raw_path = directory / f'{index:02d}-response.json'
+            raw = json.loads(raw_path.read_text()) if raw_path.exists() else None
+            if result.get('http_status') == 401 and isinstance(raw, dict):
+                raw = {'error': {'status': 401, 'message': 'Provider authentication error; message redacted'}}
+            inspection = None
+            tally['planned_items'] += len(packet_items)
+            if result.get('http_status') == 200:
+                tally['http_200_packets'] += 1
+                inspection = e.inspect_reply(backend, packet, raw)
+                tally['contract_pass_packets'] += bool(inspection['contract_pass'])
+                tally['usable_packets'] += bool(inspection['pass'])
+                tally['http_200_items'] += len(packet_items)
+                tally['parsed_items'] += inspection['parsed_items']
+                tally['quote_valid_items'] += inspection['quote_valid']
+                tally['choose_expected'] += inspection['choose_expected']
+                tally['choose_parsed'] += inspection['parsed_choose']
+                for item in packet_items:
+                    kinds[item.question.kind]['http_200_expected'] += 1
+                for row in inspection['parsed_rows']:
+                    kind = row['kind']
+                    item = next(i for i in packet_items if i.question_id == row['question_id']
+                                and i.subjects[0].subject_id == row['subject_id'])
+                    kinds[kind]['parsed'] += 1
+                    kinds[kind]['quote_valid'] += e.quote_valid(row.get('reason'), item.evidence.text)
+                    if kind == 'choose':
+                        choices[row['question_id'] + ':' + row['subject_id']] = row['value']
+            elif result.get('http_status'):
+                tally[f"http_{result['http_status']}_packets"] += 1
+            else:
+                tally[result.get('status', 'unknown')] += 1
+            packets.append({'original_result': result, 'request': request, 'response': raw,
+                            'final_parser_evaluation': inspection})
+        artifact = {'run': run_name, 'metadata_at_request_time': metadata,
+                    'replay_backend_sha256': hashlib.sha256(
+                        (ROOT / 'citypods/judging/backends.py').read_bytes()).hexdigest(),
+                    'replay_harness_sha256': hashlib.sha256(
+                        (ROOT / 'scripts/eval_judge_contract.py').read_bytes()).hexdigest(),
+                    'route': route.route_id, 'role': role, 'counts': dict(tally),
+                    'api_base': route.api_base, 'chat_path': route.chat_path,
+                    'by_kind': {k: dict(v) for k, v in kinds.items()},
+                    'recorded_packets': len(packets), 'planned_packets': original['planned_packets'],
+                    'packets': packets}
+        name = ('qwen-diagnostic-' if 'qwen-diagnostic' in run_name else '') + route.route_id
+        (out / f'{name}.json').write_text(json.dumps(artifact, indent=2))
+        reports.append({k: v for k, v in artifact.items() if k != 'packets'})
+(out / 'summary.json').write_text(json.dumps(reports, indent=2))
+for r in reports:
+    print(r['route'], r['role'], r['recorded_packets'], r['counts'])

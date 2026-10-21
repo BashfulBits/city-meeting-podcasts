@@ -174,6 +174,9 @@ def evaluate_route(route, role, manifest, out, live, packet_limit=None, output_c
     import requests
 
     backend, packets = build_packets(manifest, route, role)
+    timeout_seconds = json.loads(
+        (ROOT / "workers/llm-dispatch-v2/src/dispatch_tuning.json").read_bytes()
+    )["values"]["MAX_RESPONSE_SECONDS"]
     if packet_limit:
         packets = packets[:packet_limit]
     directory = out / f"{route.route_id}-{role}"
@@ -203,6 +206,7 @@ def evaluate_route(route, role, manifest, out, live, packet_limit=None, output_c
         "model": route.model,
         "role": role,
         "planned_packets": len(packets),
+        "read_timeout_seconds": timeout_seconds,
         "results": [],
     }
     stopped = None
@@ -245,7 +249,7 @@ def evaluate_route(route, role, manifest, out, live, packet_limit=None, output_c
                 route.api_base.rstrip("/") + route.chat_path,
                 headers={"Authorization": f"Bearer {key}"},
                 json=body,
-                timeout=(20, 180),
+                timeout=(20, timeout_seconds),
             )
             try:
                 raw = response.json()
@@ -304,6 +308,8 @@ def main(argv=None):
     parser.add_argument("--route", action="append", default=[])
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.out.exists() and any(args.out.iterdir()):
+        parser.error("Use a new empty output directory; existing evaluation evidence is immutable")
     ensure_contract()
     manifest_path = ROOT / "evals/judge/manifest.json"
     manifest = json.loads(manifest_path.read_bytes())

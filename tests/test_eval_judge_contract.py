@@ -73,10 +73,18 @@ def test_non_object_provider_error_is_saved_without_crashing(tmp_path, monkeypat
         def json(self):
             return [{"error": {"message": "Temporarily unavailable"}}]
 
-    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Unavailable())
+    sent = []
+
+    def unavailable(*args, **kwargs):
+        sent.append(kwargs)
+        return Unavailable()
+
+    monkeypatch.setattr(requests, "post", unavailable)
     manifest = json.loads((ROOT / "evals/judge/manifest.json").read_bytes())
     result = eval_contract.evaluate_route(route, role, manifest, tmp_path, True, 1)
     assert result["results"][0]["status"] == "transport_error"
+    tuning = json.loads((ROOT / "workers/llm-dispatch-v2/src/dispatch_tuning.json").read_bytes())
+    assert sent[0]["timeout"] == (20, tuning["values"]["MAX_RESPONSE_SECONDS"])
     request = (tmp_path / f"{route.route_id}-{role}" / "00-request.json").read_text()
     assert "not-a-real-key" not in request
     assert json.loads((tmp_path / f"{route.route_id}-{role}" / "00-response.json").read_text())[0][
@@ -131,3 +139,22 @@ def test_missing_keychain_binary_is_an_inconclusive_route(tmp_path, monkeypatch)
     manifest = json.loads((ROOT / "evals/judge/manifest.json").read_bytes())
     result = eval_contract.evaluate_route(route, role, manifest, tmp_path, True, 1)
     assert result["results"][0]["status"] == "missing_key"
+
+
+def test_cli_refuses_to_overwrite_the_first_http200_evidence(tmp_path, monkeypatch):
+    import pytest
+    import requests
+
+    original = tmp_path / "00-response.json"
+    original.write_text('{"http_status":200,"contract_pass":false}')
+    before = original.read_bytes()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Existing evidence must not trigger provider calls")
+
+    monkeypatch.setattr(requests, "post", forbidden)
+    for flags in ([], ["--live"]):
+        with pytest.raises(SystemExit) as exc:
+            eval_contract.main([*flags, "--out", str(tmp_path)])
+        assert exc.value.code == 2
+        assert original.read_bytes() == before

@@ -1,0 +1,246 @@
+"""Explicitly authorized transport retries. First HTTP 200 is terminal, even invalid JSON."""
+import concurrent.futures
+import datetime
+import email.utils
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import time
+
+import requests
+
+ROOT = Path('/Users/Eric/.codex/worktrees/e6a9/city-meeting-podcasts')
+SOURCE = ROOT / 'evals/judge/results/2026-10-20-typed-chat-contract-final'
+OUT = Path('/private/tmp/judge-http200-retry-2026-10-20')
+OUT.mkdir(exist_ok=True)
+spec = importlib.util.spec_from_file_location('judge_eval', ROOT / 'scripts/eval_judge_contract.py')
+e = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(e)
+e.ensure_contract()
+MANIFEST = json.loads((ROOT / 'evals/judge/manifest.json').read_text())
+ITEMS = {i.qid: i for unit in e.frozen_units(MANIFEST) for i in unit}
+ROLES = {r.route_id: role for r, role in e.routes()}
+TIMEOUT = json.loads((ROOT / 'workers/llm-dispatch-v2/src/dispatch_tuning.json').read_text())['values']['MAX_RESPONSE_SECONDS']
+
+
+def save(path, value):
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, indent=2))
+    temporary.replace(path)
+
+
+def read_original(path):
+    try:
+        return json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}  # The original runner can be publishing a summary concurrently.
+
+
+def key_for(route, refresh=False):
+    key = '' if refresh else os.environ.get(route.api_key_env, '').strip()
+    if not key:
+        try:
+            r = subprocess.run(['security', 'find-generic-password', '-a', os.environ.get('USER', ''),
+                                '-s', f'citypods/{route.api_key_env}', '-w'],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                key = r.stdout.strip()
+        except FileNotFoundError:
+            pass
+    return key or os.environ.get(route.api_key_env, '').strip()
+
+
+def worker_cap(route_id, body):
+    query = {'route_id': route_id, 'input_tokens': max(1, len(json.dumps(body['messages'])) // 4),
+             'payload': {'max_tokens_mode': 'route_max', 'max_tokens': 1200}}
+    script = """import fs from 'node:fs';
+import {outputTokensForRoute} from './workers/llm-dispatch-v2/src/gateway.js';
+const q=JSON.parse(fs.readFileSync(0,'utf8'));
+const c=JSON.parse(fs.readFileSync('workers/llm-dispatch-v2/src/dispatch_limits.json'));
+console.log(outputTokensForRoute(q.payload,c.routes_by_id[q.route_id],q.input_tokens));
+"""
+    result = subprocess.run(['node', '--input-type=module', '-e', script], cwd=ROOT,
+                            input=json.dumps(query), capture_output=True, text=True, check=True)
+    return int(result.stdout.strip())
+
+
+def retry_after(response, raw):
+    header = response.headers.get('Retry-After', '')
+    try:
+        return max(0, float(header))
+    except ValueError:
+        if header:
+            try:
+                return max(0, email.utils.parsedate_to_datetime(header).timestamp() - time.time())
+            except (TypeError, ValueError):
+                pass
+    if isinstance(raw, dict):
+        try:
+            return max(0, float(raw.get('error', {}).get('metadata', {}).get('retry_after_seconds', 0)))
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return 0
+
+
+def attempt(route_id, role, index, attempt_number, refresh=False):
+    route = e.ROUTE_REGISTRY[route_id]
+    folder = OUT / route_id
+    folder.mkdir(exist_ok=True)
+    prefix = folder / f'{index:02d}-attempt-{attempt_number:03d}'
+    result = {'route': route_id, 'role': role, 'packet': index, 'attempt': attempt_number,
+              'started_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'read_timeout_seconds': TIMEOUT}
+    key = key_for(route, refresh)
+    if not key:
+        result.update(status='missing_key', retry_in_seconds=300)
+        save(prefix.with_suffix('.result.json'), result)
+        return result
+    body = json.loads((SOURCE / route_id / f'{index:02d}-request.json').read_text())
+    body['max_tokens'] = worker_cap(route_id, body)
+    body['stream'] = False
+    result['max_tokens'] = body['max_tokens']
+    result['worker_catalog_sha256'] = hashlib.sha256(
+        (ROOT / 'workers/llm-dispatch-v2/src/dispatch_limits.json').read_bytes()).hexdigest()
+    save(prefix.with_suffix('.request.json'), body)
+    try:
+        response = requests.post(route.api_base.rstrip('/') + route.chat_path,
+                                 headers={'Authorization': f'Bearer {key}'}, json=body,
+                                 timeout=(20, TIMEOUT))
+        try:
+            raw = response.json()
+        except ValueError:
+            raw = {'non_json_body': response.text[:2000]}
+        # Authentication errors can echo credential fragments; preserve their status, not the echo.
+        stored = {'error': {'status': 401, 'message': 'Authentication error; message redacted'}} if response.status_code == 401 else raw
+        save(prefix.with_suffix('.response.json'), stored)
+        result['http_status'] = response.status_code
+        result['http_200_terminal'] = response.status_code == 200
+        if response.status_code == 200:
+            # No inspection outcome below can trigger another HTTP call for this packet.
+            try:
+                submitted = json.loads(body['messages'][-1]['content'])['items']
+                packet = e.Packet(f'judge:{role}', role, route.model,
+                                  tuple(ITEMS[x['id']] for x in submitted))
+                backend = (e.AdjudicatorBackend if role == 'adjudicator' else e.ChatJudgeBackend)(
+                    max_total_tokens=4500, max_items=25)
+                result['evaluation'] = e.inspect_reply(backend, packet, raw)
+            except Exception as exc:
+                result['inspection_error'] = type(exc).__name__
+            usage = raw.get('usage', {}) if isinstance(raw, dict) else {}
+            tokens = usage.get('total_tokens') or max(1, len(json.dumps(body['messages'])) // 4)
+            result['retry_in_seconds'] = max(60 / (route.quota.rpm or 1),
+                66 * tokens / route.quota.tpm if route.quota.tpm else 0,
+                66 if route.provider.startswith('beatapi') else 0)
+        else:
+            result['status'] = 'transport_error'
+            result['retry_in_seconds'] = max(retry_after(response, raw),
+                3600 if response.status_code in (400, 401, 403, 404) else 60)
+    except requests.RequestException as exc:
+        result.update(status=type(exc).__name__, retry_in_seconds=60)
+    result['finished_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    save(prefix.with_suffix('.result.json'), result)
+    return result
+
+
+def main():
+    lock = (OUT / 'runner.lock').open('w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return 0
+    tasks, due, attempts, refresh = {}, {}, {}, {}
+    account_due = {}
+    for route_id, role in ROLES.items():
+        folder = SOURCE / route_id
+        for request in sorted(folder.glob('*-request.json')):
+            index = int(request.name.split('-')[0])
+            prior_path = folder / 'result.json'
+            prior = read_original(prior_path)
+            result = next((r for r in prior.get('results', []) if r['packet'] == index), {})
+            if result.get('http_status') == 200:
+                continue
+            previous = sorted((OUT / route_id).glob(f'{index:02d}-attempt-*.result.json'))
+            if any(json.loads(p.read_text()).get('http_200_terminal') for p in previous):
+                continue
+            key = (route_id, index)
+            tasks[key] = role
+            attempts[key] = len(previous)
+            if previous:
+                latest = json.loads(previous[-1].read_text())
+                ended = latest.get('finished_at', latest.get('started_at'))
+                wait = max(0, datetime.datetime.fromisoformat(ended).timestamp()
+                           + latest.get('retry_in_seconds', 60) - time.time())
+                due[key] = time.monotonic() + wait
+                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                account_due[account] = max(account_due.get(account, 0), due[key])
+                refresh[key] = latest.get('http_status') == 401
+    active = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        while tasks or active:
+            for future in list(active):
+                if not future.done():
+                    continue
+                key = active.pop(future)
+                result = future.result()
+                route_id, index = key
+                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                wait = result.get('retry_in_seconds', 60)
+                due[key] = time.monotonic() + wait
+                account_due[account] = time.monotonic() + wait
+                refresh[key] = result.get('http_status') == 401
+                if result.get('http_200_terminal'):
+                    tasks.pop(key)
+                print(json.dumps({k:v for k,v in result.items() if k != 'evaluation'}), flush=True)
+            busy = {e.ROUTE_REGISTRY[r].api_key_env for r, _ in active.values()}
+            original_busy = set()
+            for route_id in ROLES:
+                p = SOURCE / route_id / 'result.json'
+                d = read_original(p)
+                if len(d.get('results', [])) < d.get('planned_packets', 14):
+                    original_busy.add(e.ROUTE_REGISTRY[route_id].api_key_env)
+            # Original routes can finish while this retry runner is active. Never retry a
+            # packet that has since obtained its first HTTP 200 in the original process.
+            for route_id, role in ROLES.items():
+                original_path = SOURCE / route_id / 'result.json'
+                original = read_original(original_path)
+                if len(original.get('results', [])) < original.get('planned_packets', 14):
+                    continue
+                for previous in original.get('results', []):
+                    key = (route_id, previous['packet'])
+                    if previous.get('http_status') == 200:
+                        tasks.pop(key, None)
+                    elif key not in tasks:
+                        saved = sorted((OUT / route_id).glob(
+                            f"{previous['packet']:02d}-attempt-*.result.json"))
+                        if not any(json.loads(p.read_text()).get('http_200_terminal') for p in saved):
+                            tasks[key] = role
+                            attempts[key] = len(saved)
+            seen_routes = set()
+            for key, role in sorted(
+                tasks.items(), key=lambda pair: (attempts.get(pair[0], 0), pair[0])
+            ):
+                route_id, index = key
+                if route_id in seen_routes:
+                    continue
+                seen_routes.add(route_id)
+                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                if (len(active) >= 4 or account in busy or account in original_busy
+                        or time.monotonic() < max(due.get(key, 0), account_due.get(account, 0))):
+                    continue
+                attempts[key] += 1
+                active[pool.submit(attempt, route_id, role, index, attempts[key], refresh.get(key, False))] = key
+                busy.add(account)
+            save(OUT / 'status.json', {'pid': os.getpid(), 'pending_packets': len(tasks),
+                'active': [list(k) for k in active.values()],
+                'policy': 'First HTTP 200 terminal, irrespective of validator outcome; no retries of original HTTP 200 packets.',
+                'updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat()})
+            time.sleep(2)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

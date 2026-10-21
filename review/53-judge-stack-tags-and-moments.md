@@ -844,3 +844,8 @@ probe accuracy, stability comparisons, or disagreement selection. Adjudicator de
 retain their evidence requirement. This applies to existing stored sibling rows on read;
 it requires no packet re-submission and does not invalidate JEV records. Required typed
 answer fields and valid option/grade bounds remain mandatory.
+
+Using those stored sibling decisions can expose additional disagreements to the normal
+adjudication selector after deployment. Stored sibling judgments remain in place. Normal
+collection/replanning of unfinished questions can produce revision-3 packets when legacy
+replies omit required answers. This local change has launched no production adjudication jobs.

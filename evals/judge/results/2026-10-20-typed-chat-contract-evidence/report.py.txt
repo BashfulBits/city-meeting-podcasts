@@ -1,0 +1,83 @@
+import json
+from pathlib import Path
+root=Path.cwd()
+out=root/'evals/judge/results/2026-10-20-typed-chat-contract-evidence'
+reports=json.loads((out/'summary.json').read_text())
+lines=['# Direct judge-contract checks, October 20, 2026','',
+'Candidate evaluation; no production rollout or calibration approval. The saved request bodies',
+'are authoritative for exactly what was sent. Request-time hashes and final offline replay hashes',
+'are recorded separately; the sibling quote-policy clarification happened during the live run.',
+'The live processes retained the earlier quote-inclusive `pass`; final-parser evaluations below',
+'apply the maintainer policy: sibling decisions count independently of quote support, while',
+'adjudicators still require supported quotes. The sibling prompt’s last sentence was subsequently',
+'clarified to describe this policy; this is not a claim that every saved call used that later wording.',
+'',
+'## Scope and method','',
+'Twelve free routes serve the configured sibling/adjudicator model sets. All available routes',
+'were attempted with local direct calls; the secondary BeatAPI route has no local credential.',
+'Each full plan contains 158 items from the unchanged frozen manifest: 30 synthetic claims,',
+'44 T1 tag items, and six four-quote meetings with validate/gate/grade plus both choose orders.',
+'Packets preserve the production answer contract, compiled schema shaping, route output sizing,',
+'and lane reasoning. The production backend parser and quote checker process actual replies.',
+'One diagnostic Qwen run caps output at 16,384 tokens and is labeled separately.',
+'',
+'The frozen moment evidence consists of the saved quote/reason, not the full transcript.',
+'No new human labels were added. These are contract and consistency checks, not semantic',
+'accuracy estimates, independent samples, or a replacement for clean paired calibration data.',
+'Provider errors and unattempted packets do not count as parser passes or parser failures.',
+'',
+'## Initial single-pass measurements','',
+'Transport retries authorized afterward are still pending and are recorded separately.',
+'This table retains the original attempts; it is not an all-routes completion claim.','',
+'All denominators below are explicit: parsed items / expected items in HTTP-200 replies;',
+'quote-valid / parsed items; choice capture / expected choices in HTTP-200 replies.',
+'',
+'| Route | Role | HTTP-200 packets | Parsed items | Quotes | Choices | Other outcome |',
+'|---|---|---:|---:|---:|---:|---|']
+for r in reports:
+ c=r['counts']; route=r['route']
+ if 'qwen-diagnostic' in r['run']: route+=' (16,384 cap diagnostic)'
+ other=', '.join(f'{k}: {v}' for k,v in c.items() if k.startswith('http_') and k not in ('http_200_packets','http_200_items') or k in ('ReadTimeout','missing_key')) or 'none recorded'
+ lines.append(f"| {route} | {r['role']} | {c.get('http_200_packets',0)} | {c.get('parsed_items',0)}/{c.get('http_200_items',0)} | {c.get('quote_valid_items',0)}/{c.get('parsed_items',0)} | {c.get('choose_parsed',0)}/{c.get('choose_expected',0)} | {other} |")
+lines += ['',
+'Each route JSON retains requests (without credentials), replies, original result records and',
+'final-parser evaluations, including per-kind counts and parsed values. The SambaNova 401 error',
+'message is redacted because it echoes credential fragments; the status is preserved.',
+'',
+'## Findings and gates','',
+'- **Required answer capture:** successful typed replies contain actual choice fields; no letter',
+'  is inferred from prose. Exact IDs, kind, required fields, grade bounds and option membership',
+'  are checked. The real Gemma closing-fence reply also has a regression fixture.',
+'- **Sibling quote policy:** quote failures remain measured without vetoing parsed decisions.',
+'  The adjudicator evidence gate remains. Reports and disagreement selection use the same rule.',
+'- **DeepSeek reliability:** one BeatAPI reply exhausted all 16,384 completion tokens on reasoning',
+'  and returned empty content. It failed parsing and remains a failure, with its raw reply retained.',
+'- **Qwen configuration:** the production 65,536-token output request receives HTTP 400; Groq',
+'  reports a 16,384 maximum. The separately capped diagnostic does not validate that production',
+'  configuration. Its four parsed choice-order pairs include one winner flip.',
+'- **Availability:** SambaNova authentication, missing secondary BeatAPI credentials, free-capacity',
+'  limits, NVIDIA timeouts and upstream 502/503 responses prevent an all-routes pass.',
+'- **Calibration:** the earlier non-atomic catalog snapshot has no clean paired sibling/adjudicator',
+'  cohort. Direct fixtures do not repair that provenance gap. No thresholds or task graduation',
+'  are proposed from these results; no production cleanup, dispatch, merge or quota-policy change',
+'  was performed.',
+'',
+'**Recommended next action:** review the typed-contract and sibling-policy change with these',
+'explicit route limitations; keep production recovery and calibration blocked until the runtime',
+'configuration/credential failures and clean paired evidence are resolved.',
+'',
+'## Code verification','',
+'Whole-repository Ruff lint and format checks passed. Full offline pytest: 6,778 passed,',
+'17 deselected after the final evidence-overwrite guard. Three CodeRabbit CLI reviews completed; all six findings have explicit',
+'dispositions in review-dispositions.md. The CLI reported review persistence failure (EPERM);',
+'its raw completed reports are retained with the evidence.',
+'',
+'The authorized task-scoped transport scheduler uses the actual v2 Worker output-sizing helper',
+'and the compiled 720-second response budget. It retains the first HTTP 200 for each packet',
+'even if validation fails. Four offline scheduler checks passed. Initial shorter-timeout failures',
+'remain inconclusive until their first-200 retry. The baseline CLI now rejects nonempty output',
+'directories so reruns cannot overwrite existing request/response evidence.',
+'']
+if any(r['recorded_packets'] < r['planned_packets'] for r in reports):
+    lines[2:2] = ['**In progress:** remaining live packets have not finished. Counts are provisional.', '']
+(out/'README.md').write_text('\n'.join(lines))

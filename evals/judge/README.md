@@ -138,7 +138,7 @@ These are contract/consistency checks, not new human labels or a calibration-qua
 
 ```
 PYTHONPATH=. python scripts/eval_judge_contract.py --out /tmp/judge-contract-plan
-citypods-env python scripts/eval_judge_contract.py --live --out /tmp/judge-contract-live
+PYTHONPATH=. citypods-env python scripts/eval_judge_contract.py --live --out /tmp/judge-contract-live
 ```
 
 `--route` may be repeated for bounded reruns. `--packet-limit 1` is a smoke test, not the full
@@ -160,3 +160,27 @@ probe accuracy, stability comparisons, or disagreement selection. Adjudicator de
 retain their evidence requirement. This applies to existing stored sibling rows on read;
 it requires no packet re-submission and does not invalidate JEV records. Required typed
 answer fields and valid option/grade bounds remain mandatory.
+
+Using those stored sibling decisions can expose additional disagreements to the normal
+adjudication selector after deployment. Stored sibling judgments remain in place. Normal
+collection/replanning of unfinished questions can produce revision-3 packets when legacy
+replies omit required answers. This local change has launched no production adjudication jobs.
+
+The direct harness now reads the v2 Worker response-time budget from compiled tuning (720 seconds
+at this change). Earlier initial attempts used a shorter 180-second read timeout; these remain
+inconclusive and their transport retries use the Worker budget. The maintainer authorized retrying
+transport failures until the first HTTP 200, retaining that response even if validation fails.
+Retry attempts must be recorded separately; never repeat an HTTP-200 packet to obtain a passing
+validation result. Quota backoff and missing/invalid credentials remain explicit pending states.
+
+The reusable baseline harness is single-pass and refuses any nonempty output directory in either
+plan or live mode. It does not implement an automatic retry loop. For this explicitly authorized
+October 20 run, the separate task-scoped transport scheduler is retained as
+`results/2026-10-20-typed-chat-contract-evidence/transport-retry.py.txt`, with its four offline
+scheduler checks beside it. It resumes pending packets without changing the original artifacts,
+honors provider backoff, serializes shared credentials fairly, and treats the first HTTP 200 as
+terminal independently of validator outcome. The scheduler's state is local until attempts finish;
+its hard-coded task paths make it an audit artifact, not a general CLI replacement.
+
+[Initial route evidence and retry protocol](results/2026-10-20-typed-chat-contract-evidence/README.md)
+retains failures and pending routes alongside parsed answers. Transport retries remain ongoing.
