@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Restore FFmpeg runtime package installation.** Pin the remaining host FFmpeg jobs and
+  the FFmpeg source-build job to Ubuntu 24.04, matching the existing bundle's codec/TLS ABI.
+  GitHub's `ubuntu-latest` migration to Ubuntu 26.04 caused `libvpx9` installation failures.
+  CI's test job was already pinned separately. Workflow tests prevent build/consumer drift.
+  FFmpeg bytes, pipeline versions and stored artifacts are unchanged; no backfill is triggered.
+
 - **Uncap LLM dispatch runner submissions and optimize R6 moments routing.** Removed
   client-side `max_dispatches_per_run` throttling across all LLM lanes to rely exclusively on
   Cloudflare Dispatch v2 daily write unit budgets and ceilings. Sized R6 moments extraction
