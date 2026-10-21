@@ -258,7 +258,7 @@ pandas==3.0.5
     #   pyannote-database
     #   pyannote-metrics
     #   whisperx
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   -r constraints/asr.in
     #   matplotlib

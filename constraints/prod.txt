@@ -141,7 +141,7 @@ packaging==26.2
     # via
     #   huggingface-hub
     #   litellm
-pillow==12.3.0
+pillow==13.0.0
     # via -r constraints/prod.in
 propcache==0.5.2
     # via
