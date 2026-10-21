@@ -169,35 +169,26 @@ llm_lanes:
     daily_write_units: 9600
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
-    # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
-    # meeting family before dispatching. The two NVIDIA free routes at the end mirror
-    # citypods/moments.py:COUNCIL_MOMENT_MODELS's overflow pair -- council feeds run full-meeting
-    # transcripts that can exceed Gemini's real free-tier per-request ceiling well before its
-    # advertised 1M-token context window (confirmed live -- see `hard_input_ceiling` in
-    # config/provider_limits.yml); the two Gemini entries above stay first/unaffected.
-    # 2026-09-24: gemini-3.8/3.7-flash (AA 40.9/39.1, independent 20/day pools per account) added
-    # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday. The DeepSeek overflow slot is
-    # OrcaRouter's v4, not NVIDIA's v4.1: NVIDIA's v4.1 returns EMPTY content whenever a request
-    # carries any `response_format` (json_schema or json_object; verified live 2026-09-24) and
-    # answers only without one, and the v2 Worker forwards the job's format unchanged.
-    # OrcaRouter's GLM 5.3 Flash (AA 41.8 -- general strength on par with the Gemini Flash
-    # primaries -- 800/day, 1M context, ~5 s; json_object verified live 2026-09-24) adds the
-    # capacity those 20/day Gemini pools lack; it is also in the council list.
-    # Changing the council list is a deliberate moments recipe change (approved backfill).
+    # Size-aware routing selects the shortest model fitting the prompt for small packets (<= 45k)
+    # and prioritizes three highest-capacity primary models with low external lane contention
+    # (GLM 5.3 Flash, DeepSeek V4 Flash, Kimi K3) with the remaining high-context Gemini models in
+    # backup. Gemini 3.1 Flash Lite is removed to eliminate contention with chapter-agenda.
+    # Ingress write units drop to 6 units per job (3 base + 3 primary models).
     models:
+      - "zai/glm-5.3-flash"
+      - "deepseek/deepseek-v4-flash"
+      - "moonshotai/kimi-k3"
+    backup_models:
+      - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.8-flash"
       - "gemini/gemini-3.7-flash"
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
-      - "zai/glm-5.3-flash"
-      - "gemini/gemini-3.5-flash-lite"
-      - "gemini/gemini-3.1-flash-lite"
-      - "deepseek/deepseek-v4-flash"
-      - "moonshotai/kimi-k3"
+    backup_after_attempts: 2
     max_queued_jobs: 3200
     reserved_write_units: 916
-    # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
-    daily_write_units: 9600
+    # 800 eligible meeting jobs x six ingress units = 4,800 units/day.
+    daily_write_units: 4800
   # --- Judge stack (review/49, review/53) ----------------------------------------------------
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
@@ -464,8 +455,8 @@ defaults:
   # catch-up pass that collects thousands of answers (11,688 on 2026-10-16) spent the old 76.5m
   # window before it could plan and submit anything. The step timeout (165m) still bounds the run.
   judge_run_time_budget_minutes: 120
-  # Queue-only LLM lanes use each feature's max_dispatches_per_run count as their safety boundary.
-  # Cloudflare Dispatch v2 owns provider pacing and quota enforcement after the bounded batch lands.
+  # Queue-only LLM lanes rely on Cloudflare Dispatch v2 daily and global ceilings for pacing
+  # and quota enforcement, without client-side per-run limits.
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
