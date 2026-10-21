@@ -15,3 +15,8 @@ completed; saving CodeRabbit's own review metadata reported EPERM.
 
 The final code change after the third review is the small nonempty-directory refusal above.
 Whole-repository lint/format checks and a full offline suite are run after that change.
+
+Approved Groq cap follow-up: a fourth CLI review completed with zero findings across the
+five changed config/catalog/documentation files. Raw output is `approved-groq-cap-coderabbit.ndjson`.
+The actual v2 `outputTokensForRoute` returns 16,384; all 74 compiler tests pass. Historical
+65,536-token request/parity artifacts remain unchanged and describe their original attempts.

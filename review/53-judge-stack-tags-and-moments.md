@@ -642,8 +642,11 @@ invalidated automatically: archive/removal remains a separately approved recover
 
 Implementation scope: `citypods/judging/backends.py`, `tests/test_judging.py`, the new repeatable
 `scripts/eval_judge_contract.py` and `tests/test_eval_judge_contract.py`, frozen evaluation result
-artifacts and README, plus the lifecycle docs. No Worker, route catalog, quota, production-state or
-gold-label changes. The evaluator uses compiled route schema shaping, production `route_max` and
+artifacts and README, plus the lifecycle docs. No Worker runtime, quota, production-state or
+gold-label changes. On October 20 the maintainer separately approved correcting Groq Qwen's
+output limit from 65,536 to the provider-enforced 16,384 tokens and regenerating both catalogs.
+The observed HTTP 400 established the mismatch; this aligns direct calls and the v2 Worker
+without changing stored artifacts or triggering backfill. The evaluator uses compiled route schema shaping, production `route_max` and
 lane reasoning controls; any diagnostic output-cap override is explicitly recorded separately.
 The fixed input set is not re-frozen or labeled by an agent.
 
