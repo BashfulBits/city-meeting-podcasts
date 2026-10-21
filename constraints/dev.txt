@@ -149,7 +149,7 @@ packaging==26.2
     #   litellm
     #   pytest
     #   wheel
-pillow==12.3.0
+pillow==13.0.0
     # via -r constraints/dev.in
 pip-tools==7.5.3
     # via -r constraints/dev.in
